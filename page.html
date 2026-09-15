@@ -1,0 +1,2434 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Agents</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f2f2f7; --fg: #1c1c1e; --dim: #8e8e93; --rule: #e5e5ea;
+    /* A session is a card on the canvas; the one that needs you turns amber. */
+    --card: #ffffff; --card-hover: #f9f9fb; --card-border: #e5e5ea;
+    --blocked-bg: #fff3dc; --blocked-border: #ff9500; --blocked-text: #7a4100;
+    --hot: #2a6fd6; --warn: #a8420a; --warn-bg: #fdf1e7;
+    /* Lamp states. Named for what they are on the board, not for a
+       generic scale -- these belong to this panel and nothing else. */
+    --lit: #2f8f4e; --alert: #c2410c;
+    --lit-bg: #2f8f4e1f; --alert-bg: #c2410c1f;
+    /* Limit bars: headroom, climbing, near the limit. claude-swap's bands, with
+       an amber and a red that still read as amber and red on a light panel. */
+    --sev-ok: #3d6b3d; --sev-warn: #c98a0b; --sev-crit: #dc2626;
+    --scale: 1;
+  }
+  html { zoom: var(--scale); }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1e; --fg: #f2f2f7; --dim: #8e8e93; --rule: #3a3a3c;
+      --card: #2c2c2e; --card-hover: #323236; --card-border: #3a3a3c;
+      --blocked-bg: #3a2500; --blocked-border: #ff9f0a; --blocked-text: #ffd60a;
+      --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
+      --lit: #8ec07c; --alert: #fb8b5e;
+      --lit-bg: #8ec07c26; --alert-bg: #fb8b5e2b;
+      --sev-ok: #87af87; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
+    }
+  }
+  * { box-sizing: border-box; }
+  /* The hidden attribute only hides through a UA rule, which any author rule
+     setting display beats. Without this, `.menu { display: flex }` kept every
+     menu on screen no matter what el.hidden said. */
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    overflow-x: hidden;
+    /* Column so the settings bar can sit at the foot of the panel rather
+       than under the last row, wherever the list happens to end. */
+    /* The body is exactly one viewport tall, so the footer sits at the true
+       bottom. Divided by the scale because zoom renders the result: a plain
+       100vh at 0.8 lands the footer at 80% of the panel's height, floating in
+       the middle. position:fixed avoids the height question but computes its
+       containing block inconsistently under zoom, and lost the controls. */
+    display: flex; flex-direction: column;
+    min-height: calc(100vh / var(--scale));
+  }
+  #banner {
+    display: none; padding: 6px 10px; background: var(--warn-bg);
+    color: var(--warn); font-weight: 600; border-bottom: 1px solid var(--rule);
+  }
+  body.stale #banner { display: block; }
+  /* Fail loud: every row dims at once, so stale data is never mistaken for
+     current data. Opacity only -- compositor-friendly, no layout thrash. */
+  body.stale #groups { opacity: .38; }
+  @media (prefers-reduced-motion: no-preference) {
+    #groups { transition: opacity .15s ease; }
+  }
+  /* Well clear of the last agent family: the heading divides two kinds of
+     row, and at family spacing it read as one more family. */
+  h2 {
+    margin: 0; padding: 22px 10px 4px; font-size: 10px; font-weight: 700;
+    letter-spacing: .09em; color: var(--dim); text-transform: uppercase;
+  }
+  ul { margin: 0; padding: 0; list-style: none; }
+
+  /* Actions are siblings of the row, never inside it: a button inside a
+     button is invalid, and the row itself is a button. */
+  li.line { position: relative; }
+  /* A session, its teammates and its shells are one card, so nothing inside
+     it can be read as belonging to the session below. The card is the list
+     item and holds no position of its own beyond the menu's anchor. */
+  /* The same 8px of canvas above the first card as beside every card. */
+  ul { padding: 0 8px; }
+  #groups { padding-top: 8px; }
+  li.line.card {
+    margin-bottom: 6px; border-radius: 8px;
+    background: var(--card); border: 1px solid var(--card-border);
+    transition: background-color .18s ease-out, border-color .18s ease-out;
+  }
+  /* Agent cards get more air above the name and below the last line. */
+  li.line.card:has(> button.row.agent) { padding-block: 4px; }
+  li.line.card:has(> button.row:hover) { background: var(--card-hover); }
+  li.line.card > button.row { border-radius: 7px; }
+  li.line.card > button.row:hover { background: none; }
+  /* The one exception: amber across the whole card and a heavier left edge,
+     visible without reading a word. */
+  li.line.card.blocked {
+    background: var(--blocked-bg); border-color: var(--blocked-border);
+    border-left-width: 3px;
+  }
+  li.line.card.blocked > button.row { padding-left: calc(var(--row-pad) - 2px); }
+  li.line.card.blocked > button.row .label { color: var(--blocked-text); }
+  /* Teammates, subagents and shells sit inside the card, one line each,
+     each joined to the session by an elbow. */
+  .children { margin: 0 0 4px; }
+  .children button.row {
+    padding: 3px var(--row-pad) 3px var(--child-indent); min-height: 22px;
+  }
+  /* The elbow joins two marks, so it is derived from where they are: it
+     drops from the centre of the parent's branch icon and runs to the left
+     edge of the child's mark. */
+  .children button.row::before {
+    content: ""; position: absolute; top: 0; bottom: calc(50% - 1px);
+    left: var(--child-drop); width: var(--elbow);
+    border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+    border-bottom-left-radius: 3px;
+  }
+  /* A blocked card's 3px edge moves the session's icons 2px in, and its
+     own row pays that back; the children do the same. */
+  /* Busy dots and swatches fill their slot to the edge the elbow ends on,
+     so they keep a hair of air; the shell glyph has its own. */
+  .children button.row > :is(.busy, .swatch, .done-mark):first-child { margin-left: 6px; }
+  /* A finished subagent: kept in place until the next prompt, and quiet. */
+  /* Drawn, not typed: a text tick's ink sits on its baseline, below the
+     middle of the slot the elbow points at. */
+  .done-mark {
+    display: block; width: var(--mark); height: var(--mark); flex-shrink: 0;
+    overflow: visible; fill: none; stroke: var(--lit); stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .children button.row.finished .stack { opacity: .5; }
+  li.line.card.blocked .children button.row { padding-left: calc(var(--child-indent) - 2px); }
+  li.line.card.blocked .children button.row::before { left: calc(var(--child-drop) - 2px); }
+  /* A card's background shells, folded into one line that opens them. */
+  .shell-sum {
+    display: flex; align-items: center; gap: 6px; width: calc(100% - 20px);
+    margin: 0 10px 6px; padding: 5px 0 0; min-height: 22px;
+    border: 0; border-top: 1px dotted var(--card-border); background: none;
+    font: 400 10.5px/1 -apple-system, sans-serif; color: var(--dim);
+    text-align: left; cursor: default;
+  }
+  .shell-sum:hover { color: var(--fg); }
+  .shell-sum .mi { width: 10px; height: 10px; }
+  .shell-sum .chev { margin-left: auto; transition: transform .15s ease-out; }
+  .shell-sum[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  li.line.card.blocked .shell-sum { border-top-color: color-mix(in srgb, var(--blocked-border) 40%, transparent); }
+  .shell-sum[aria-expanded="true"] { margin-bottom: 2px; }
+  /* Shell rows hang off the summary line, so their elbow drops from its
+     10px terminal icon, which sits 10px in. */
+  .children.shell-rows {
+    --child-drop: 15px; --child-indent: calc(var(--child-drop) + var(--elbow));
+    margin-bottom: 6px;
+  }
+  li.line.card.blocked .children.shell-rows button.row { padding-left: var(--child-indent); }
+  li.line.card.blocked .children.shell-rows button.row::before { left: var(--child-drop); }
+  .children button.row .label { font-size: 11.5px; }
+  /* A background shell sits under its session like a subagent, marked with
+     the terminal glyph where a subagent has its dots, labelled with the
+     command in the branch line's face. */
+  .children button.row.bg-shell .mi { width: var(--mark); height: var(--mark); opacity: .55; }
+  .children button.row.bg-shell .label {
+    font: 400 10px/1.2 ui-monospace, Menlo, monospace;
+    color: var(--fg); opacity: .72;
+  }
+
+  /* Vibrancy, the way a native menu sits over its window: a translucent slab
+     that samples what is behind it rather than a flat card pasted on top.
+     Opened by a right-click, so `left` and `top` are set to the pointer. */
+  .menu {
+    position: absolute; z-index: 30;
+    display: flex; flex-direction: column; min-width: 116px; padding: 4px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
+    box-shadow:
+      0 0 0 .5px color-mix(in srgb, var(--fg) 5%, transparent),
+      0 8px 28px -6px color-mix(in srgb, var(--fg) 34%, transparent),
+      0 2px 6px -2px color-mix(in srgb, var(--fg) 18%, transparent);
+    transform-origin: top left;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    /* Scale from the corner at the pointer, so it reads as unfolding from the
+       click rather than appearing beside it. */
+    .menu { animation: unfold .14s cubic-bezier(.32, .72, 0, 1); }
+    .menu.kept { animation: none; }
+    @keyframes unfold {
+      from { opacity: 0; transform: scale(.92) translateY(-3px); }
+      to   { opacity: 1; transform: none; }
+    }
+  }
+
+  /* A shell's whole command, opened by clicking its row. The menu's slab,
+     hung under the row and as wide as the indent allows, with text that can
+     be selected, unlike the rest of the panel. */
+  .shell-pop {
+    left: 6px; right: 6px; min-width: 0;
+    gap: 8px; padding: 8px;
+  }
+  .shell-pop .cmd { display: flex; flex-direction: column; gap: 4px; }
+  .shell-pop .cmd + .cmd { border-top: .5px solid var(--rule); padding-top: 8px; }
+  .shell-pop code {
+    font: 400 10px/1.35 ui-monospace, Menlo, monospace; color: var(--fg);
+    white-space: pre-wrap; word-break: break-all;
+    max-height: 40vh; overflow-y: auto;
+    -webkit-user-select: text; user-select: text;
+  }
+  .shell-pop button { align-self: flex-end; }
+
+  /* The hover card. Same slab as the menu, so the panel keeps one vocabulary
+     for "something floating above the list". */
+  #card {
+    /* top/left stay at zero and the transform does the moving, so following
+       the pointer never triggers a layout. */
+    position: fixed; top: 0; left: 0; will-change: transform;
+    z-index: 60; width: 208px; padding: 8px 10px 7px;
+    border-radius: 11px; pointer-events: none;
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
+    box-shadow:
+      0 0 0 .5px color-mix(in srgb, var(--fg) 5%, transparent),
+      0 10px 30px -8px color-mix(in srgb, var(--fg) 36%, transparent),
+      0 2px 6px -2px color-mix(in srgb, var(--fg) 18%, transparent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    /* Opacity only. A scale or slide on something that chases the pointer
+       reads as the card struggling to keep up. */
+    #card { animation: cardin .09s linear; }
+    @keyframes cardin { from { opacity: 0; } to { opacity: 1; } }
+  }
+  #card .who {
+    font: 600 12.5px/1.25 -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--fg); letter-spacing: -.01em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #card .sub {
+    margin-top: 1px; font: 450 10px/1.3 ui-monospace, Menlo, monospace;
+    color: var(--dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* Two columns of label/value. A table reads faster than sentences when
+     every row is a measurement. */
+  #card .grid {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 10px;
+    margin-top: 6px; padding-top: 6px;
+    border-top: .5px solid color-mix(in srgb, var(--fg) 11%, transparent);
+    font: 450 10.5px/1.5 -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  /* Label, then its note pushed to the right of the same cell. One line per
+     row whether a note is there or not, so the rows keep a rhythm. */
+  #card .grid dt {
+    color: var(--dim); display: flex; align-items: center; gap: 4px;
+    min-width: 0;
+  }
+  #card .grid dt svg { width: 10px; height: 10px; opacity: .75; }
+  #card .grid dd {
+    margin: 0; text-align: right; color: var(--fg);
+    font-variant-numeric: tabular-nums; min-width: 58px;
+  }
+  /* A gauge, not a number. Context, the five-hour window and the week are all
+     budgets being spent, and a bar answers "how much is left" before the
+     digits are read. Everything else in the card is a fact, not a budget, and
+     stays plain -- a bar behind a dollar amount would measure nothing. */
+  /* The fill sits behind the figure rather than as a rule beneath it. A rule
+     needed a row of its own, which pushed every note onto a second line and
+     left the card ragged: rows with notes were twice the height of rows
+     without, so nothing aligned. A fill occupies no height and still says
+     how much is gone. */
+  #card .gauge {
+    position: relative; isolation: isolate;
+    padding: 1px 4px; margin-right: -4px; border-radius: 3px;
+  }
+  #card .gauge::before {
+    content: ""; position: absolute; inset: 0 auto 0 0; z-index: -1;
+    width: var(--fill); border-radius: 3px; background: var(--tint);
+  }
+  #card .gauge.low  { --tint: color-mix(in srgb, var(--lit) 16%, transparent); }
+  #card .gauge.mid  { --tint: color-mix(in srgb, var(--warn) 20%, transparent); }
+  #card .gauge.high {
+    --tint: color-mix(in srgb, var(--alert) 22%, transparent);
+    color: var(--alert); font-weight: 700;
+  }
+  /* Its own column, between label and figure, so it qualifies the number
+     without taking a line from it. */
+  #card .grid .note {
+    margin-left: auto; padding-left: 6px;
+    font: 400 9px/1.5 -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--dim); opacity: .8; white-space: nowrap;
+  }
+  #card .grid .note.urgent { color: var(--alert); }
+  /* Flags are on or they are absent. A row saying "Fast mode: off" spends a
+     line to say nothing happened. */
+  #card .flags {
+    display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px;
+  }
+  #card .flag {
+    padding: 2px 6px; border-radius: 5px;
+    font: 600 9.5px/1.35 -apple-system, sans-serif; letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--fg);
+    background: color-mix(in srgb, var(--fg) 9%, transparent);
+  }
+  #card .flag.hot { color: #fff; background: var(--hot); }
+  #card .flag.warn { color: var(--warn); background: var(--warn-bg); }
+  /* Effort is how much a turn spends, so it reads on the same ramp as the
+     gauges: calm when it is cheap, warm when it is not. Soft tints, because
+     this is a setting the user chose and not something going wrong. */
+  #card .flag.effort.low {
+    color: var(--lit); background: color-mix(in srgb, var(--lit) 14%, transparent);
+  }
+  #card .flag.effort.medium {
+    color: var(--hot); background: color-mix(in srgb, var(--hot) 13%, transparent);
+  }
+  #card .flag.effort.high {
+    color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent);
+  }
+  #card .flag.effort.max, #card .flag.effort.xhigh {
+    color: var(--alert); background: color-mix(in srgb, var(--alert) 16%, transparent);
+  }
+
+  .menu button {
+    font: 450 12.5px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    text-align: left; color: var(--fg); background: none; border: 0;
+    border-radius: 6px; padding: 6px 9px; cursor: default; min-height: 24px;
+    letter-spacing: -.01em; white-space: nowrap;
+  }
+  .menu button:hover { background: var(--hot); color: #fff; }
+  .menu button:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
+  .menu button.danger:hover { background: var(--alert); }
+  /* /clear cannot be undone, so it takes a second, deliberate click. */
+  .menu button.armed { color: var(--alert); font-weight: 700; }
+  .menu button.armed:hover { background: var(--alert); color: #fff; }
+  .menu .sep {
+    height: .5px; margin: 3px 6px;
+    background: color-mix(in srgb, var(--fg) 13%, transparent);
+  }
+  button.row {
+    /* center, not baseline: an SVG's baseline is its bottom edge, so an
+       icon aligned that way rides high against the text's optical centre,
+       and the 10px mono position and 12px sans label then compound it. */
+    display: flex; gap: var(--row-gap); align-items: center; width: 100%;
+    /* >=24px hit target even though the text is 12px. */
+    min-height: 30px; padding: 5px var(--row-pad);
+    background: none; border: 0; border-radius: 0;
+    font: inherit; color: inherit; text-align: left;
+    /* Arrow, not the pointing hand: this is a native list in a terminal's
+       toolbelt, and macOS reserves the hand for links. */
+    cursor: default;
+    touch-action: manipulation;
+  }
+  button.row:hover { background: color-mix(in srgb, var(--hot) 12%, transparent); }
+  button.row:focus-visible {
+    outline: 2px solid var(--hot); outline-offset: -2px;
+  }
+  /* min-width:0 is what lets this shrink at all. A flex child defaults to
+     min-width:auto, meaning content size, so flex:1 alone will not let the
+     text truncate -- the row just grows and the panel scrolls sideways.
+     Adding the status word pushed rows past 250px and did exactly that. */
+  .label {
+    max-width: 100%; line-height: 1.2;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Silence, plus one exception. The panel is read from the corner of an eye,
+     and its only question is "is anything waiting on me". So a row that needs
+     nothing is quiet, and every channel that carries weight -- contrast, a
+     coloured spine, a word, motion -- is spent on the rows that do. */
+  button.row { position: relative; color: var(--dim); }
+  button.row.hot { color: var(--fg); }
+  /* Blocked is the only state that wants you, so its name carries weight -- a
+     row you can pick out without reading the badge. */
+  button.row.hot .label { font-weight: 650; }
+  /* A name carries the card: dark and semibold while the session is doing
+     something, grey once it rests, so activity reads before any word does. */
+  button.row .label { color: var(--fg); font-weight: 600; font-size: 12.5px; }
+  button.row.quiet .label { color: var(--dim); font-weight: 500; }
+  .children button.row .label { font-weight: 500; }
+
+  /* Identity: a 5px swatch, never the ground. Hollow when the state is a claim
+     nobody is alive to back, so fail-loud survives without a whole element. */
+  /* Name over model, sharing one left edge. Removed by accident with a
+     neighbouring rule, which concatenated the two into "symopus-5". */
+  .stack {
+    flex: 1; min-width: 0; display: flex; flex-direction: column;
+    gap: 1px; align-items: flex-start;
+  }
+  .model {
+    display: flex; align-items: center; gap: 9px; max-width: 100%;
+    font: 400 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
+    overflow: hidden;
+  }
+  /* Faded per item rather than on the line, which would cap everything in it
+     at the same strength -- the effort letter is meant to read at full. */
+  .model > * { opacity: .7; }
+  .model > .effort { opacity: 1; }
+  /* The ellipsis goes on the text, not the chip. A chip is a flex box, and
+     text-overflow does nothing for the loose text inside a flex box -- the
+     text was simply cut, "cs/unity-studi" with no sign anything was missing. */
+  .mchip {
+    display: inline-flex; align-items: center; gap: 3px;
+    min-width: 0; white-space: nowrap;
+  }
+  .mchip > .mtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* The branch alone gives way when the line is too long. The model, the
+     effort letter and the context figure never shrink: a model name is short
+     and loses its meaning first ("Fable 5..." is which Fable?), and a clipped
+     "8" is a different number. Weighted shrinking still took two pixels from
+     the model, which is enough for a monospace name to earn its ellipsis. */
+  /* Never down to a bare icon, which reads as a branch with no name. */
+  .mchip.branch { flex-shrink: 1; min-width: calc(var(--meta-icon) + 3px + 2ch); }
+  .mchip.model-name, .mchip.ctx { flex-shrink: 0; }
+  /* Slightly above the text's optical centre, where a 9px glyph sits level
+     with lowercase rather than with the baseline. */
+  /* Effort as one or two letters after the model, in the colours Claude
+     Code's /effort picker uses, as cs-statusline draws them. Max takes the
+     first and last stops of the picker's gradient, one per letter. */
+  :root {
+    --effort-low: #966c1e; --effort-medium: #2c7a39; --effort-high: #5769f7;
+    --effort-xhigh: #8700ff; --effort-max-1: #82aadc; --effort-max-2: #c882b3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --effort-low: #bb9f6d; --effort-medium: #76a97e; --effort-high: #929efa;
+      --effort-xhigh: #b159ff; --effort-max-1: #aec8e8; --effort-max-2: #dbaece;
+    }
+  }
+  /* Sits against the model it qualifies: the line's 9px gap, less 5. */
+  .effort { margin-left: -5px; font-weight: 600; flex-shrink: 0; }
+  /* Brackets in the line's own faded grey, so only the letter carries the colour. */
+  .effort::before { content: "["; color: var(--dim); font-weight: 400; opacity: .7; }
+  .effort::after { content: "]"; color: var(--dim); font-weight: 400; opacity: .7; }
+  .effort.low { color: var(--effort-low); }
+  .effort.medium { color: var(--effort-medium); }
+  .effort.high { color: var(--effort-high); }
+  .effort.xhigh { color: var(--effort-xhigh); }
+  .effort.max i { font-style: normal; color: var(--effort-max-1); }
+  .effort.max i + i { color: var(--effort-max-2); }
+  .mi { width: var(--meta-icon); height: var(--meta-icon); flex-shrink: 0; display: block; opacity: .85; }
+
+  /* One slot, whatever it draws. The mark is the leftmost thing on a row, so
+     its width sets where the label starts: an 11px box for all of them, with
+     the square painted inside rather than by it. Measured before this: the
+     label sat at 26.4px beside a swatch, 31.9 beside the working dots and 23.1
+     beside a subagent's, so every row twitched sideways whenever a session
+     changed state. */
+  /* Every mark paints the same 8px square of ink, centred in the same slot.
+     Choosing an alignment could not fix this on its own: a 6px square and a
+     13px dot cluster share neither a left edge nor a midpoint, so lining up
+     one guarantees the other is out. Equal widths make left, centre and right
+     agree at once, which is the only way the column reads straight. Three dots
+     need most of that width in gaps, so the dot is small and the square grew
+     to meet it. */
+  /* One place the row's horizontal rhythm is decided. The connector
+     between a subagent and its parent is derived from these, so it
+     cannot drift out of step with the marks it joins. */
+  :root { --mark: 8px; --dot: 2px; --row-pad: 10px; --row-gap: 8px;
+          --meta-icon: 9px; --elbow: 8px;
+          --child-drop: calc(var(--row-pad) + var(--mark) + var(--row-gap) + var(--meta-icon) / 2);
+          --child-indent: calc(var(--child-drop) + var(--elbow)); }
+  .swatch, .busy {
+    display: flex; align-items: center; justify-content: center;
+    width: var(--mark); height: var(--mark); flex-shrink: 0;
+  }
+  .swatch { position: relative; }
+  .swatch::before {
+    content: ""; width: var(--mark); height: var(--mark); border-radius: 1.5px;
+    background: var(--hue, var(--rule));
+  }
+  .busy { gap: calc((var(--mark) - 3 * var(--dot)) / 2); }
+  /* Without flex-shrink the dots gave way to whatever box they were in, and
+     the working indicator was quietly thinner than the stylesheet drew it. */
+  .busy i {
+    width: var(--dot); height: var(--dot); border-radius: 50%; flex-shrink: 0;
+    background: var(--hue, var(--dim)); opacity: .55;
+  }
+  /* A subagent stacks its dots instead of laying them out in a row, so a
+     working child reads as a child at a glance rather than only by its
+     indent. Same footprint, different axis. */
+  .busy.down { flex-direction: column; gap: 1.5px; width: var(--mark); }
+  /* A teammate wears the badge colour Claude Code spawned it with, which is
+     its own and not its parent's, so it names which teammate this is rather
+     than repeating the session above. Grey when it was given none. */
+  .busy i { background: var(--hue, var(--dim)); }
+  button.row.child .swatch::before { background: var(--hue, var(--dim)); }
+  button.row.child .swatch:not([style*="--hue"])::before { opacity: .55; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* transform and opacity only: no layout work per frame. */
+    .busy i { animation: bob 1.1s ease-in-out infinite; }
+    /* Down the stack it only cascades: light running through the dots, with
+       nothing moving. A child sits in a narrower slot than its parent, and
+       travel there reads as a wobble. */
+    .busy.down i { animation-name: cascade; }
+    @keyframes cascade {
+      0%, 100% { opacity: .2; }
+      50%      { opacity: 1; }
+    }
+    .busy i:nth-child(2) { animation-delay: .14s; }
+    .busy i:nth-child(3) { animation-delay: .28s; }
+    @keyframes bob {
+      0%, 100% { opacity: .25; transform: translateY(0); }
+      50%      { opacity: 1;   transform: translateY(-2px); }
+    }
+  }
+
+  .swatch.hollow::before {
+    background: none; box-shadow: inset 0 0 0 1.5px var(--dim);
+  }
+
+
+  /* A word, not only a glyph: a glyph alone makes you learn a legend. */
+  .word {
+    font: 700 9px/1 ui-monospace, Menlo, monospace; letter-spacing: .07em;
+    text-transform: uppercase; padding: 3px 5px; border-radius: 3px;
+    flex-shrink: 0;
+  }
+  /* A solid amber badge, the one filled shape on the panel. It sits on the
+     name's line only: as a flex column it took its width out of the details
+     line too, and at larger text sizes that cut the context figure off. */
+  .word.blocked { color: #fff; background: var(--blocked-border); font-family: -apple-system, sans-serif; }
+  button.row.hot > .word.blocked { position: absolute; top: 6px; right: 10px; }
+  button.row.hot .label { padding-right: 62px; }
+  /* Idle is the resting state, so its badge is an outline in the dim ink: it
+     says the session is free for a prompt without competing with "waiting". */
+  .word.idle { color: var(--dim); box-shadow: inset 0 0 0 .5px var(--dim);
+    font-family: -apple-system, sans-serif; font-weight: 600; }
+  button.row.resting > .word.idle { position: absolute; top: 6px; right: 10px; }
+  button.row.resting .label { padding-right: 40px; }
+  /* A turn that has run long enough to be worth a look: warm outline, no fill,
+     so it stays below "waiting", which is the one state that needs you. */
+  .word.long { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn);
+    font-family: -apple-system, sans-serif; }
+  button.row.long-turn > .word.long { position: absolute; top: 6px; right: 10px; }
+  button.row.long-turn .label { padding-right: 70px; }
+
+
+  /* Motion belongs to the exception. An earlier build spun the icon on
+     "working", which is the state that means ignore me -- peripheral vision
+     goes to movement first, so it pulled the eye to the rows needing nothing. */
+  @media (prefers-reduced-motion: no-preference) {
+    .word.blocked { animation: breathe 1.9s ease-in-out infinite; }
+  }
+  @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+  /* Context is a diagnosis, not a decision: nobody acts on 47% at a glance. */
+  /* Context sits among the branch and the model, in their type, so the line
+     reads as one sentence. Only the colour sets it apart, which is the whole
+     point: it speaks at all only past the threshold, so its presence is
+     already the signal and it does not need a second voice.
+     flex-shrink: 0 because when the line runs out of room the branch is the
+     part worth losing -- a number that only appears when it matters outranks
+     a name you can read in the card. */
+  .model .ctx { color: var(--alert); flex-shrink: 0;
+                font-variant-numeric: tabular-nums; }
+  .model .ctx.critical { font-weight: 700; }
+
+  /* One timing scale, shared with the row menu, so the panel feels like one
+     piece of software rather than parts that animate differently. */
+  :root { --quick: 120ms; --enter: 180ms; --ease-out: cubic-bezier(.16,1,.3,1); }
+
+  #bar {
+    position: sticky; bottom: 0; z-index: 20;
+    display: flex; justify-content: flex-end;
+    padding: 3px 6px;
+    background: linear-gradient(to top,
+      var(--bg) 55%, color-mix(in srgb, var(--bg) 0%, transparent));
+  }
+  #groups { flex: 1; }
+  #gear {
+    width: 22px; height: 22px; padding: 0; cursor: default; border: 0;
+    border-radius: 6px; background: none; color: var(--dim);
+    font: 400 13px/1 -apple-system, sans-serif;
+    transition: color var(--quick) ease, background var(--quick) ease,
+                transform var(--enter) var(--ease-out);
+  }
+  #gear:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 9%, transparent); }
+  #gear:focus-visible { outline: 2px solid var(--hot); outline-offset: 1px; }
+  #gear[aria-expanded="true"] { color: var(--fg); transform: rotate(60deg); }
+
+  /* A drawer in the panel's foot, not a card floating over the list: edge to
+     edge, no radius or shadow, one hairline where it meets the rows, and the
+     gear bar below it in the same ground so the two read as one surface. */
+  #settings {
+    position: sticky; bottom: 28px; z-index: 19;
+    max-height: calc(100vh / var(--scale) - 46px); overflow-y: auto;
+    box-sizing: border-box; padding: 10px 12px 8px;
+    background: color-mix(in srgb, var(--fg) 4%, var(--bg));
+    border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
+    display: flex; flex-direction: column; gap: 9px;
+  }
+  body:has(#settings:not([hidden])) #bar {
+    background: color-mix(in srgb, var(--fg) 4%, var(--bg));
+  }
+  /* Grid, not flex: the label column is minmax(0, 1fr), so it gives way
+     instead of pushing the control off the panel. With flex the label kept a
+     percentage basis and the row grew wider than the sheet at large text
+     sizes. Three columns cover label, slider and read-out; a switch row
+     leaves the last two empty and they collapse. */
+  .set {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center; gap: 4px 8px; font-size: 12px;
+  }
+  .set > span:first-child { color: var(--fg); overflow-wrap: anywhere; }
+  .set > :not(span:first-child) { justify-self: end; }
+  .set.sub > span:first-child { padding-left: 12px; color: var(--dim); }
+  .set-head {
+    font: 600 9px/1 -apple-system, sans-serif; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dim); margin-top: 2px;
+  }
+
+  /* A switch, not a checkbox: its state is legible without reading a label. */
+  .step {
+    display: inline-flex; align-items: center; flex-shrink: 0;
+    border-radius: 7px; overflow: hidden;
+    border: .5px solid color-mix(in srgb, var(--fg) 16%, transparent);
+    background: color-mix(in srgb, var(--fg) 5%, transparent);
+  }
+  .step button {
+    width: 22px; height: 20px; padding: 0; border: 0; background: none;
+    color: var(--fg); cursor: default;
+    font: 500 13px/1 -apple-system, sans-serif;
+    transition: background var(--quick) ease;
+  }
+  .step button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--fg) 10%, transparent);
+  }
+  .step button:disabled { color: var(--dim); opacity: .4; }
+  .step .now {
+    min-width: 34px; text-align: center; color: var(--fg);
+    font: 600 10.5px/1 ui-monospace, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    border-left: .5px solid color-mix(in srgb, var(--fg) 12%, transparent);
+    border-right: .5px solid color-mix(in srgb, var(--fg) 12%, transparent);
+    padding: 0 2px;
+  }
+
+  .sw {
+    width: 28px; height: 17px; border-radius: 9px; border: 0; padding: 0;
+    background: color-mix(in srgb, var(--fg) 18%, transparent);
+    position: relative; cursor: default; flex-shrink: 0;
+    transition: background var(--quick) ease;
+  }
+  .sw::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 13px; height: 13px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 2px #00000038;
+    transition: transform var(--enter) var(--ease-out);
+  }
+  .sw[aria-checked="true"] { background: var(--lit); }
+  .sw[aria-checked="true"]::after { transform: translateX(11px); }
+  .sw:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+  .sw:disabled { opacity: .4; cursor: default; }
+
+  .set input[type=range] {
+    flex: 1; max-width: 96px; accent-color: var(--lit); height: 14px;
+  }
+  /* A range input refuses to render below about 96px, so it holds that width
+     whatever else is on the row. Under the grid that squeezed the label column
+     past its own longest word, which overflow-wrap:anywhere then broke a
+     letter to a line -- measured at 1.2x and above in a 250px panel. A slider
+     row is a wrapping flex line instead: the label keeps its longest word and
+     the control drops beneath it once the two no longer fit abreast, at any
+     width and any text size, with no breakpoint to keep in step with the
+     type scale.
+
+     Not a container query, which is the shape this asks for: `zoom` on the
+     root stops @container matching at all above 1x in this WebKit -- measured
+     against a 119px sheet, where a query for anything under 900px still did
+     not match, while the same query at 1x resolved to the true 213px. Fourth
+     thing on the list that `zoom` breaks. */
+  .set:has(.ctl) { display: flex; flex-wrap: wrap; }
+  .set:has(.ctl) > span:first-child { overflow-wrap: normal; }
+  .ctl {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    flex: 1 1 auto; min-width: 0; margin-left: auto;
+  }
+  /* min-width:auto on a range input is its intrinsic 96px, which is what put
+     the read-out past the sheet's edge once the pair had a line to itself in
+     a 250px panel. Zeroed, the track gives way and the number stays on. */
+  .ctl input[type=range] { min-width: 0; }
+  .val {
+    font: 600 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
+    min-width: 26px; text-align: right; font-variant-numeric: tabular-nums;
+  }
+
+  #empty { padding: 12px 10px; color: var(--dim); }
+
+  /* The panel's foot, above the gear bar: who is waiting, then the account's
+     budget. Sticky, so a long list scrolls under it; the settings drawer
+     takes its place while open. */
+  #foot { position: sticky; bottom: 28px; z-index: 18; background: var(--bg); }
+  body:has(#settings:not([hidden])) #foot { display: none; }
+
+  /* The queue: who is waiting, oldest first, in the panel's foot where the
+     eye lands after the list. Type only. The cards already carry the amber,
+     so a second slab here would be the exception shouting twice. */
+  #queue {
+    margin: 0 8px; padding: 8px 0 4px;
+    background: var(--bg);
+    border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  }
+  body.stale #queue { opacity: .38; }
+  #queue h3 {
+    margin: 0; padding: 0 2px 3px; font-size: 10px; font-weight: 700;
+    letter-spacing: .09em; color: var(--dim); text-transform: uppercase;
+  }
+  /* The one warm mark in the section, and it is a number, not a surface. */
+  #queue h3 .n { color: var(--blocked-text); }
+  #queue ul { padding: 0; }
+  .qrow {
+    display: flex; align-items: center; gap: var(--row-gap); width: 100%;
+    min-height: 24px; padding: 3px 2px; border: 0; border-radius: 5px;
+    background: none; font: inherit; color: var(--fg); text-align: left;
+    cursor: default;
+  }
+  .qrow:hover { background: color-mix(in srgb, var(--hot) 12%, transparent); }
+  .qrow:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
+  .qrow .label { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; }
+  .qrow .ago {
+    flex-shrink: 0; font: 400 10.5px/1 ui-monospace, Menlo, monospace;
+    color: var(--dim); font-variant-numeric: tabular-nums;
+  }
+  #queue .more {
+    padding: 2px 2px 0 calc(2px + var(--mark) + var(--row-gap));
+    font-size: 10.5px; color: var(--dim);
+  }
+
+  /* The account's budget, in the panel's foot. Quiet by default: grey
+     hairlines and grey figures. It warms only when a window is both nearly
+     spent and being spent faster than the clock, which is the one budget
+     state worth a glance. */
+  #budget {
+    margin: 0 10px; padding: 7px 0 1px;
+    border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
+    background: var(--bg);
+    font: 400 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+  body.stale #budget { opacity: .38; }
+  #budget .win {
+    display: grid; grid-template-columns: 38px minmax(0, 1fr) 28px 34px;
+    align-items: center; gap: 6px; height: 15px;
+  }
+  #budget .win .pct, #budget .win .at { text-align: right; }
+  #budget .track {
+    position: relative; height: 3px; border-radius: 1.5px;
+    background: color-mix(in srgb, var(--fg) 12%, transparent);
+  }
+  #budget .fill {
+    position: absolute; inset: 0 auto 0 0; border-radius: 1.5px;
+    background: var(--sev-ok);
+  }
+  /* claude-swap's bands: amber from 70%, red from 90%. */
+  #budget .win.climbing .fill { background: var(--sev-warn); }
+  #budget .win.near .fill { background: var(--sev-crit); }
+  #budget .win.near .pct, #budget .win.near.ahead .pct { color: var(--sev-crit); font-weight: 600; }
+  /* Where the window's clock is: used past the tick means ahead of pace. */
+  #budget .tick {
+    position: absolute; top: -2px; width: 1px; height: 6px;
+    margin-left: -.5px; background: var(--fg); opacity: .45;
+  }
+  #budget .win.ahead .pct { color: var(--warn); font-weight: 600; }
+  #budget .cost { margin-top: 4px; height: 13px; line-height: 13px; }
+  /* Accounts: the line naming the login sessions run on, then the others. */
+  #budget .acct-line {
+    display: flex; align-items: center; justify-content: flex-start; gap: 6px;
+    width: 100%; height: 17px; padding: 0; margin-bottom: 2px;
+    border: 0; background: none; font: inherit; color: var(--dim); cursor: default;
+  }
+  #budget .acct-name { font-weight: 600; color: var(--fg); opacity: .85;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #budget .acct-name, #budget .acct-item-name {
+    display: block; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none;
+    font: inherit; text-align: left; cursor: text; }
+  #budget .acct-name { flex: 0 1 auto; font-weight: 600; }
+  #budget button.acct-name:hover, #budget button.acct-item-name:hover { opacity: 1; }
+  #budget .acct-count { flex: none; margin-left: auto; }
+  /* Brand colours: Claude's orange; OpenAI's mark is black, or white on dark. */
+  #budget .provider { flex: none; width: 11px; height: 11px; }
+  #budget .provider.claude { fill: #d97757; }
+  #budget .provider.openai { fill: var(--fg); }
+  #budget .acct-item-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  #budget .codex { margin-top: 10px; padding-top: 8px;
+    border-top: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
+  #budget .acct-badge { flex: none; color: var(--dim); font-size: .9em; }
+  #budget .acct-rename { width: 100%; height: 17px; box-sizing: border-box; padding: 0 3px;
+    border: .5px solid color-mix(in srgb, var(--fg) 30%, transparent); border-radius: 3px;
+    background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); cursor: text; }
+  #budget .acct-status { height: 14px; line-height: 14px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  #budget .acct-list { margin-top: 10px; padding-top: 8px;
+    border-top: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
+  #budget .acct-item + .acct-item { margin-top: 12px; }
+  /* Accounts the sessions are not on recede; pointing at one brings it back. */
+  #budget .acct-item { opacity: .6; transition: opacity .15s; }
+  #budget .acct-item:is(:hover, :focus-within, :has(.armed)) { opacity: 1; }
+  #budget .acct-item-name { height: 15px; line-height: 15px; color: var(--fg); opacity: .75;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #budget .win .wl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #budget .acct-add {
+    margin: 4px 0 2px; padding: 3px 7px; border-radius: 4px;
+    border: .5px solid color-mix(in srgb, var(--fg) 22%, transparent);
+    background: none; font: inherit; color: var(--fg); cursor: default;
+  }
+  #budget .acct-add:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  #budget .acct-switch.armed { border-color: var(--warn); color: var(--warn); font-weight: 600; }
+  /* Pointing at an account frosts its meters and floats Switch over them; an
+     armed Switch keeps the veil up so the confirming click has somewhere to land. */
+  #budget .acct-item { position: relative; }
+  #budget .acct-veil {
+    position: absolute; inset: 17px -4px -2px; display: grid; place-items: center;
+    border-radius: 6px; pointer-events: none; opacity: 0;
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    transition: opacity .18s ease-out;
+  }
+  #budget .acct-switch {
+    display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 5px 13px;
+    border: 0; border-radius: 999px; font: inherit; font-weight: 600; letter-spacing: .01em;
+    color: #fff; background: #d97757; cursor: default; pointer-events: auto;
+    box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 6px 16px -4px color-mix(in srgb, #d97757 55%, transparent);
+    transform: translateY(3px) scale(.96); transition: transform .18s cubic-bezier(.2, .9, .3, 1.2), background .12s;
+  }
+  #budget .acct-switch svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round; }
+  #budget .acct-switch:hover { background: #c96442; }
+  #budget .acct-switch:active { transform: scale(.95); }
+  #budget .acct-switch.armed { background: var(--warn); font-weight: 600;
+    box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 6px 16px -4px color-mix(in srgb, var(--warn) 55%, transparent); }
+  #budget .acct-item:is(:hover, :focus-within) .acct-veil, #budget .acct-veil:has(.armed) { opacity: 1; }
+  #budget .acct-item:is(:hover, :focus-within) .acct-switch, #budget .acct-switch.armed { transform: none; }
+  #budget .acct-item:not(:hover, :focus-within) .acct-veil:not(:has(.armed)) .acct-switch { pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { #budget .acct-veil, #budget .acct-switch { transition: none; } }
+</style>
+
+<div id="banner" role="status" aria-live="polite">
+  STALE — this list is not updating
+</div>
+<div id="groups"></div>
+<div id="foot">
+  <section id="queue" aria-label="Sessions waiting on you" hidden></section>
+  <div id="budget" hidden></div>
+</div>
+<div id="settings" hidden></div>
+<div id="bar">
+  <button id="gear" type="button" aria-expanded="false"
+          aria-label="Settings">⚙</button>
+</div>
+
+<script>
+const TOKEN = new URLSearchParams(location.search).get("token");
+
+// The eight colours cs actually assigns, counted across every session dir on
+// this machine. An unrecognised name paints nothing rather than guessing.
+const SESSION_COLOURS = {
+  red: "#d64545", orange: "#d97706", yellow: "#ca9a04", green: "#3f9142",
+  cyan: "#0e9494", blue: "#3b74d6", purple: "#8250c4", pink: "#c4508f",
+};
+
+// Only "blocked" is an exception. An earlier build treated "waiting" as one
+// too, which was backwards: every agent that is not mid-turn is waiting for
+// input, so it is the resting state of almost every row almost always, and a
+// panel where every row shouts says nothing. It is now called idle and it is
+// silent.
+const IS_EXCEPTION = state => state === "blocked";
+
+// Phosphor Icons (MIT), regular weight, path data read out of the
+// phosphor-svelte package on this machine rather than transcribed.
+const META_ICONS = {
+  branch: '<path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/>',
+  uptime: '<path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216Zm45.66-93.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32L152,132.69V88a8,8,0,0,1,16,0v34.34ZM88,16a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,16Z"/>',
+  cache: '<path d="M128,24C74.17,24,32,48.6,32,80v96c0,31.4,42.17,56,96,56s96-24.6,96-56V80C224,48.6,181.83,24,128,24Zm80,104c0,9.62-7.88,19.43-21.61,26.92C170.93,163.35,150.19,168,128,168s-42.93-4.65-58.39-13.08C55.88,147.43,48,137.62,48,128V111.36c17.06,15,46.23,24.64,80,24.64s62.94-9.68,80-24.64Zm-21.61,74.92C170.93,211.35,150.19,216,128,216s-42.93-4.65-58.39-13.08C55.88,195.43,48,185.62,48,176V159.36c17.06,15,46.23,24.64,80,24.64s62.94-9.68,80-24.64V176C208,185.62,200.12,195.43,186.39,202.92Z"/>',
+  clock: '<path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216Zm45.66-93.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32L152,132.69V80a8,8,0,0,1,16,0v58.34ZM128,72a8,8,0,0,1-8-8V32a8,8,0,0,1,16,0V64A8,8,0,0,1,128,72Z"/>',
+  gauge: '<path d="M207.06,72.67A111.24,111.24,0,0,0,128,40h-.4C66.07,40.21,16,90.6,16,152v40a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V152A111.25,111.25,0,0,0,207.06,72.67ZM224,192H32V152a95.35,95.35,0,0,1,88-95.71V80a8,8,0,0,0,16,0V56.29A95.36,95.36,0,0,1,224,152Zm-90.34-88.34a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32l32-32A8,8,0,0,0,133.66,103.66Z"/>',
+  cost: '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm12-88.84V152a8,8,0,0,1-16,0v-.29a24,24,0,0,1-8.65-11.06,8,8,0,1,1,15.3-4.72c.53,1.6,2.2,4.07,5.35,4.07,3.86,0,7-2.24,7-5s-3.14-5-7-5c-12.68,0-23-9.42-23-21s10.32-21,23-21V80a8,8,0,0,1,16,0v.29a24,24,0,0,1,8.65,11.06,8,8,0,0,1-15.3,4.72c-.53-1.6-2.2-4.07-5.35-4.07-3.86,0-7,2.24-7,5s3.14,5,7,5c12.68,0,23,9.42,23,21S140,127.16,140,127.16Z"/>',
+  lines: '<path d="M112,152a8,8,0,0,0-8,8v28.69L66.34,151A8,8,0,0,1,64,145.37V95a32,32,0,1,0-16,0v50.38a23.85,23.85,0,0,0,7,17L92.69,200H64a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,112,152ZM40,64A16,16,0,1,1,56,80,16,16,0,0,1,40,64Zm168,97V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/>',
+  shells: '<path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/>',
+  model: '<path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"/>',
+};
+
+// A level the picker does not have gets no letter rather than a guessed one.
+const EFFORT_LETTERS = {low: "l", medium: "m", high: "h", xhigh: "xh", max: "mx"};
+
+function metaIcon(kind) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 256 256");
+  svg.setAttribute("fill", "currentColor");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("mi");
+  svg.innerHTML = META_ICONS[kind];
+  return svg;
+}
+
+const STATE_TITLES = {
+  silent: "no state reported yet",
+  working: "working",
+  idle: "idle",
+  blocked: "needs your permission",
+  unknown: "state unknown, the last writer is gone",
+};
+// A turn still working after this long may be stuck: it earns a badge.
+const LONG_TURN_SECONDS = 20 * 60;
+// Heartbeat is every 4s server-side. Two missed, plus a second of slack.
+const STALE_AFTER_MS = 9000;
+// Below this there is room to spare and nothing to decide.
+// Overridden by the stored setting once it loads.
+const CONTEXT_SPEAKS_AT = 70;
+const speaksAt = () => SETTINGS?.context_threshold ?? CONTEXT_SPEAKS_AT;
+
+// Everything in the panel is sized in px off one stylesheet, so one zoom on
+// the root scales type, icons, gaps and hairlines together. Growing only the
+// text would leave it rattling inside furniture that stayed put.
+function applyScale(value) {
+  const scale = Number(value);
+  document.documentElement.style.setProperty(
+    "--scale", Number.isFinite(scale) ? Math.max(0.8, Math.min(1.6, scale)) : 1);
+}
+
+let staleTimer = null;
+let LATEST = {groups: []};
+
+function markFresh() {
+  document.body.classList.remove("stale");
+  clearTimeout(staleTimer);
+  staleTimer = setTimeout(() => document.body.classList.add("stale"), STALE_AFTER_MS);
+}
+
+function act(sessionId, verb, text) {
+  fetch(`/action?token=${encodeURIComponent(TOKEN)}`, {
+    method: "POST",
+    body: JSON.stringify({session_id: sessionId, verb, text}),
+  }).catch(err => console.log("sidebar: action failed", err));
+}
+
+// Offered only on a session that is idle and nearly full: a command typed into
+// a session mid-turn lands in the middle of whatever it is doing, and on a
+// session with room to spare there is nothing to fix.
+const typed = cmd => row => act(row.session_id, "send", cmd + "\n");
+const HOUSEKEEPING = [
+  {label: "/compact", hint: "summarise the conversation and keep working", run: typed("/compact")},
+  {label: "/rotate", hint: "hand off to a fresh conversation", run: typed("/rotate")},
+  {label: "/clear", hint: "discard the conversation", destructive: true, run: typed("/clear")},
+];
+// Every row can be closed, agent or not: it is the pane that goes.
+const CLOSE = {label: "Close", hint: "close this pane", destructive: true,
+               run: row => act(row.session_id, "close")};
+
+// One menu at a time, and it closes on anything that means "not this". Two
+// menus were open at once because opening one never told the others to shut.
+let openMenu = null;
+// Whose right-click menu is open, so a repaint can put that same menu back.
+let openMenuKey = null;
+function closeMenu() {
+  if (!openMenu) return;
+  openMenu.hidden = true;
+  openMenu = null;
+  openShellKey = null;
+  openMenuKey = null;
+}
+document.addEventListener("pointerdown", () => { closeMenu(); hideCard(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
+
+// The hover card. One element reused by every row: a card per row would be
+// dozens of blurred slabs in the layer tree for the one that is visible.
+const card = Object.assign(document.createElement("div"), {id: "card"});
+card.hidden = true;
+document.body.append(card);
+let cardTimer = null;
+
+// Formatted here rather than in Python so they stay true between rebuilds:
+// a countdown baked into a snapshot is wrong the moment it arrives.
+function forHumans(seconds) {
+  if (seconds == null) return null;
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.round(s / 60) + "m";
+  const hours = Math.floor(s / 3600);
+  if (hours < 24) {
+    const mins = Math.round((s % 3600) / 60);
+    return mins ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  return Math.round(s / 86400) + "d";
+}
+
+const until = epoch =>
+  epoch == null ? null : forHumans(epoch - Date.now() / 1000);
+
+function fieldsFor(row) {
+  const d = row.details || {};
+  const pairs = [];
+  const add = (icon, label, value) => {
+    if (value === undefined || value === null) return;
+    pairs.push({icon, label, value});
+  };
+  const gauge = (value, at) => value == null ? null : {
+    percent: value,
+    text: value + "%",
+    // What the number is for: whether to wait for it or work around it.
+    note: at ? "in " + until(at) : null,
+  };
+  add("gauge", "Context", gauge(row.context));
+  add("clock", "5-hour", gauge(d.five_hour, d.five_hour_at));
+  add("gauge", "Weekly", gauge(d.seven_day, d.seven_day_at));
+  add("uptime", "Up", forHumans(row.uptime));
+  add("shells", "Shells", row.shells?.length);
+  add("model", "Subagents", row.agents);
+  add("cost", "Cost", d.cost != null ? "$" + d.cost.toFixed(2) : null);
+  // A warm cache is unremarkable. One about to expire, with a six-figure
+  // rebuild behind it, is the most actionable number on the card.
+  if (d.cache_hit != null) {
+    const cold = d.cache_cold_at != null && d.cache_cold_at * 1000 < Date.now();
+    add("cache", "Cache", {
+      percent: d.cache_hit, text: d.cache_hit + "%", invert: true,
+      note: cold ? (d.recache ? "cold, " + tokens(d.recache) + " to rebuild" : "cold")
+                 : d.cache_cold_at ? "warm for " + until(d.cache_cold_at) : null,
+      alarm: cold,
+    });
+  }
+  if (d.lines_added || d.lines_removed) {
+    add("lines", "Lines", `+${d.lines_added || 0} \u2212${d.lines_removed || 0}`);
+  }
+  return pairs;
+}
+
+const tokens = n =>
+  n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n);
+
+function showCard(row) {
+  const d = row.details || {};
+  const pairs = fieldsFor(row);
+  // Nothing to say is better said by saying nothing.
+  if (!pairs.length && !d.model) return;
+
+  card.textContent = "";
+  card.dataset.row = row.session_id;
+  const who = Object.assign(document.createElement("div"), {className: "who"});
+  who.textContent = d.session_name || row.label;
+  card.append(who);
+
+  if (d.model) {
+    const sub = Object.assign(document.createElement("div"), {className: "sub"});
+    sub.textContent = d.model;
+    card.append(sub);
+  }
+
+  if (pairs.length) {
+    const grid = Object.assign(document.createElement("dl"), {className: "grid"});
+    for (const {icon, label, value} of pairs) {
+      const dt = document.createElement("dt");
+      if (icon) dt.append(metaIcon(icon));
+      dt.append(document.createTextNode(label));
+
+      // Inside the label cell, pushed right: a row stays one line whether it
+      // carries a note or not.
+      if (value && typeof value === "object" && value.note) {
+        const note = document.createElement("span");
+        note.className = "note" + (value.alarm ? " urgent" : "");
+        note.textContent = value.note;
+        dt.append(note);
+      }
+
+      const dd = document.createElement("dd");
+      if (value && typeof value === "object") {
+        // A budget: the bar carries how much is gone, the colour how much
+        // that matters. Under 60 is nothing to look at.
+        const pct = Math.max(0, Math.min(100, value.percent));
+        // The cache reads the other way: a high hit ratio is the good end,
+        // so its colours run in reverse.
+        const heat = value.invert ? 100 - pct : pct;
+        dd.className = "gauge " + (value.alarm || heat >= 90 ? "high"
+                                 : heat >= 60 ? "mid" : "low");
+        dd.style.setProperty("--fill", pct + "%");
+        dd.textContent = value.text;
+      } else {
+        dd.textContent = value;
+      }
+      grid.append(dt, dd);
+    }
+    card.append(grid);
+  }
+
+  const flags = [];
+  if (d.effort) flags.push([d.effort + " effort", "effort " + d.effort]);
+  if (d.thinking) flags.push(["thinking", ""]);
+
+  if (d.fast_mode) flags.push(["fast", "hot"]);
+  // Says the conversation has passed 200k, not that the model has a big
+  // window -- the subtitle already carries the model's size.
+  if (d.beyond_200k) flags.push(["past 200k", "warn"]);
+  if (flags.length) {
+    const bar = Object.assign(document.createElement("div"), {className: "flags"});
+    for (const [text, tone] of flags) {
+      const f = Object.assign(document.createElement("span"),
+                              {className: "flag" + (tone ? " " + tone : "")});
+      f.textContent = text;
+      bar.append(f);
+    }
+    card.append(bar);
+  }
+
+  card.hidden = false;
+}
+
+// Follows the pointer, but only downward-or-up and never sideways: the panel
+// is 250px and the card is 208 of them, so horizontal freedom would just mean
+// horizontal clipping. Vertical tracking is the part that helps, because it
+// keeps the card next to the row being read rather than pinned to where the
+// pointer first landed.
+// Positioned by transform rather than top/left: the browser can move a
+// composited layer without laying the page out again, which is what lets it
+// keep up with the pointer instead of lagging a frame behind it.
+function placeCard(x, y) {
+  const w = card.offsetWidth;
+  const h = card.offsetHeight;
+  const pad = 4;
+  // Below and to the right of the cursor, flipping to whichever side has
+  // room. The card never covers the pointer, so the row stays readable.
+  let left = x + 14;
+  if (left + w > window.innerWidth - pad) left = x - w - 14;
+  let top = y + 16;
+  if (top + h > window.innerHeight - pad) top = y - h - 16;
+  left = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
+  top = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
+  card.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+}
+
+function hideCard() {
+  clearTimeout(cardTimer);
+  card.hidden = true;
+}
+
+function watchForCard(button, row) {
+  // The row is carried on the element so one delegated listener can serve
+  // every row. The old per-row version added a mousemove handler on each
+  // mouseenter and removed none of them.
+  button._row = row;
+  button.addEventListener("focus", () => { showCard(row); atRow(button); });
+  button.addEventListener("blur", hideCard);
+}
+
+// Anchored to a row rather than the pointer, for keyboard focus.
+function atRow(button) {
+  const box = button.getBoundingClientRect();
+  placeCard(box.left + 12, box.bottom - 8);
+}
+
+// Which row the pointer is over right now, or null. The timer below reads it
+// rather than trusting the row it was armed with: leaving the panel quickly
+// used to let a card appear after the pointer had already gone, and since
+// hiding depended on a further mousemove that was never coming, it stayed up
+// until something else disturbed it.
+let hoverRow = null;
+
+// Long enough to need intent. A card that arrives while the pointer is merely
+// passing over a row is noise, and at 110ms it arrived on every crossing --
+// the panel is a list you scan, so most crossings mean nothing.
+const CARD_DELAY_MS = 500;
+
+function leaveRows() {
+  hoverRow = null;
+  hideCard();
+}
+
+// One listener for the whole list. Following the pointer means reading it on
+// every move, so this must stay cheap: no layout reads beyond the card's own
+// size, and no work at all when the pointer is not over a row.
+document.addEventListener("mousemove", event => {
+  const button = event.target.closest ? event.target.closest("button.row") : null;
+  if (!button || !button._row) {
+    leaveRows();
+    return;
+  }
+  const row = button._row;
+  hoverRow = row;
+
+  if (!card.hidden && card.dataset.row === row.session_id) {
+    placeCard(event.clientX, event.clientY);        // already up: just track
+    return;
+  }
+  if (!card.hidden) {                               // sliding to another row
+    showCard(row);                                  // swap contents, no wait
+    placeCard(event.clientX, event.clientY);
+    return;
+  }
+  clearTimeout(cardTimer);
+  const {clientX, clientY} = event;
+  cardTimer = setTimeout(() => {
+    // Still the same row under the pointer, or the wait was for nothing.
+    if (hoverRow !== row) return;
+    showCard(row);
+    placeCard(clientX, clientY);
+  }, CARD_DELAY_MS);
+}, true);
+
+// Exit events, for when they arrive. mouseleave on document does not fire; it
+// has to be the root element.
+document.documentElement.addEventListener("mouseleave", leaveRows);
+document.addEventListener("mouseout", event => {
+  if (!event.relatedTarget) leaveRows();
+}, true);
+window.addEventListener("blur", leaveRows);
+document.addEventListener("scroll", leaveRows, true);
+
+// And the part that actually holds, because none of the above can be relied
+// on. This page is a WKWebView embedded in a native toolbelt, and a pointer
+// leaving that view often produces no event in the page at all -- the moves
+// simply stop. A card shown on the way out then had nothing left to dismiss
+// it and sat there until something else disturbed the page.
+//
+// So ask instead of waiting to be told: :hover is the browser's own hit test,
+// which it maintains whether or not it sends us anything. Cheap enough to poll
+// -- one selector match, and only while a card is actually up.
+setInterval(() => {
+  if (card.hidden) return;
+  if (!document.querySelector("button.row:hover")) leaveRows();
+}, 200);
+
+// Returns the menu for a row. The row opens it on right-click, which
+// also fires for Shift+F10 on a focused row, so the keyboard keeps a way in.
+function menuFor(row, group) {
+  // Every agent row carries the housekeeping commands, whatever it is doing.
+  // The menu was once gated on idle and a high context figure, which meant
+  // the control was missing at the moment you went looking for it. A shell
+  // has no conversation to compact, so it gets Close alone.
+  const items = group.name === "AGENTS" ? [...HOUSEKEEPING, CLOSE] : [CLOSE];
+
+  const menu = document.createElement("div");
+  menu.hidden = true;
+  menu.className = "menu";
+  menu.setAttribute("role", "menu");
+
+  items.forEach(({label, hint, destructive, run}, i) => {
+    // A hairline before the destructive ones, so the pointer has to cross a
+    // boundary to reach them rather than sliding into them.
+    if (destructive && i && !items[i - 1].destructive) menu.append(Object.assign(
+      document.createElement("div"), {className: "sep"}));
+
+    const item = document.createElement("button");
+    item.type = "button";
+    item.setAttribute("role", "menuitem");
+    item.textContent = label;
+    item.title = hint;
+    if (destructive) item.classList.add("danger");
+    item.addEventListener("click", event => {
+      event.stopPropagation();     // the row underneath focuses the session
+      if (destructive && !item.classList.contains("armed")) {
+        item.classList.add("armed");
+        item.textContent = "click to confirm";
+        setTimeout(() => {
+          item.classList.remove("armed");
+          item.textContent = label;
+        }, 4000);
+        return;
+      }
+      run(row);
+      closeMenu();
+    });
+    menu.append(item);
+  });
+
+  menu.addEventListener("pointerdown", e => e.stopPropagation());
+  return menu;
+}
+
+// Which shell's command is open, so a repaint can put it back. The list is
+// rebuilt on every update, and a popover that vanished mid-read or mid-copy
+// would be worse than having none.
+let openShellKey = null;
+
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  const area = Object.assign(document.createElement("textarea"), {value: text});
+  document.body.append(area);
+  area.select();
+  const ok = document.execCommand("copy");
+  area.remove();
+  return ok ? Promise.resolve() : Promise.reject(new Error("copy refused"));
+}
+
+// Every background shell of one session, each whole and each with its own
+// Copy, under the card's summary line.
+function shellPopover(shells) {
+  const pop = document.createElement("div");
+  pop.hidden = true;
+  pop.className = "menu shell-pop";
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", "background shell commands");
+  for (const {command} of shells) {
+    const entry = Object.assign(document.createElement("div"), {className: "cmd"});
+    const code = document.createElement("code");
+    code.textContent = command;
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.textContent = "Copy";
+    copy.addEventListener("click", event => {
+      event.stopPropagation();
+      // Says what happened either way: a copy that silently failed would be
+      // found out only at the paste.
+      copyText(command).then(() => { copy.textContent = "Copied"; },
+                             () => { copy.textContent = "Copy failed"; });
+      setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+    });
+    entry.append(code, copy);
+    pop.append(entry);
+  }
+  pop.addEventListener("pointerdown", e => e.stopPropagation());
+  return pop;
+}
+
+function openShell(pop, key) {
+  closeMenu();
+  hideCard();
+  pop.classList.remove("kept");
+  pop.hidden = false;
+  openMenu = pop;
+  openShellKey = key;
+}
+
+function openMenuAt(menu, li, event, key) {
+  // Option-right-click keeps the WebView's own menu, for Reload and Inspect.
+  if (event.altKey) return;
+  event.preventDefault();
+  closeMenu();
+  hideCard();
+  const box = li.getBoundingClientRect();
+  // A keyboard-opened contextmenu reports no pointer; hang it off the row.
+  const x = event.clientX || box.left + 12;
+  const y = event.clientY || box.bottom;
+  menu.hidden = false;
+  // Clamp inside the panel, which is often narrower than row + menu.
+  const maxX = document.documentElement.clientWidth - menu.offsetWidth - 4;
+  menu.style.left = Math.max(4, Math.min(x, maxX)) - box.left + "px";
+  menu.style.top = y - box.top + "px";
+  menu.classList.remove("kept");
+  openMenu = menu;
+  openMenuKey = key;
+  menu.querySelector("button").focus();
+}
+
+// The list is rebuilt whole on every update, so without this a row that
+// appears shoves its neighbours down in one frame and one that leaves snaps
+// them up. FLIP: measure every card and every line inside it before the
+// rebuild, then play the change in three beats -- what left fades out, then
+// cards resize and slide to where they are, then what arrived fades in -- so
+// the eye follows one change at a time. Transform and opacity, plus a card's
+// own height, which is the resize. Offsets, not client rects: the text-size
+// control zooms the page, and engines disagree on whether a client rect is
+// reported before or after that zoom.
+const MOTION = window.matchMedia("(prefers-reduced-motion: no-preference)");
+const MOVE = {duration: 220, easing: "cubic-bezier(.16,1,.3,1)"};
+const FADE = {duration: 140, easing: "ease-out"};
+
+function measureRows() {
+  const rows = new Map();
+  for (const li of document.querySelectorAll("#groups li[data-key]")) {
+    const lines = new Map();
+    for (const el of li.querySelectorAll("[data-child-key]")) {
+      lines.set(el.dataset.childKey, {el, top: el.offsetTop, holder: el.parentElement.className});
+    }
+    rows.set(li.dataset.key, {li, top: li.offsetTop, left: li.offsetLeft,
+                              width: li.offsetWidth, height: li.offsetHeight, lines});
+  }
+  return rows;
+}
+
+function animateRows(before) {
+  // The first paint has nothing to move from, and a list that fades in
+  // row by row on open is ceremony.
+  if (!MOTION.matches || !before.size) return;
+  const cards = [...document.querySelectorAll("#groups li[data-key]")];
+  const now = new Map(cards.map(li => [li.dataset.key, li]));
+
+  // Plan first, so each beat knows whether the one before it happens at all.
+  const leaving = [], entering = [], moving = [], resizing = [], lineMoves = [];
+  for (const [key, old] of before) {
+    const li = now.get(key);
+    if (!li) { leaving.push({kind: "card", ...old}); continue; }
+    const here = new Set();
+    for (const el of li.querySelectorAll("[data-child-key]")) {
+      const was = old.lines.get(el.dataset.childKey);
+      here.add(el.dataset.childKey);
+      if (!was) entering.push(el);
+      else if (Math.abs(was.top - el.offsetTop) >= 1) lineMoves.push({el, dy: was.top - el.offsetTop});
+    }
+    for (const [childKey, line] of old.lines) {
+      if (!here.has(childKey)) leaving.push({kind: "line", li, ...line});
+    }
+    const dy = old.top - li.offsetTop;
+    if (Math.abs(dy) >= 1) moving.push({li, dy});
+    if (Math.abs(old.height - li.offsetHeight) >= 1) resizing.push({li, from: old.height, to: li.offsetHeight});
+  }
+  for (const li of cards) if (!before.has(li.dataset.key)) entering.push(li);
+
+  const settleAt = leaving.length ? FADE.duration : 0;
+  const shifts = moving.length || resizing.length || lineMoves.length;
+  const arriveAt = settleAt + (shifts ? MOVE.duration : 0);
+
+  // Beat one. A card that left is put back where it was, above the list; a
+  // line that left is put back inside its card, in a holder with its old
+  // parent's class so it keeps its indent. Both fade out there.
+  for (const gone of leaving) {
+    let node = gone.li;
+    if (gone.kind === "card") {
+      Object.assign(node.style, {position: "absolute", top: gone.top + "px", left: gone.left + "px",
+                                 width: gone.width + "px", margin: 0, pointerEvents: "none", zIndex: 5});
+      document.body.append(node);
+    } else {
+      // Out of the next measurement, or a repaint mid-fade would fade it twice.
+      delete gone.el.dataset.childKey;
+      node = Object.assign(document.createElement("div"), {className: gone.holder});
+      Object.assign(node.style, {position: "absolute", top: gone.top + "px", left: 0, right: 0,
+                                 margin: 0, pointerEvents: "none", zIndex: 1});
+      node.append(gone.el);
+      gone.li.append(node);
+    }
+    node.animate([{opacity: 1}, {opacity: 0}], {...FADE, fill: "forwards"})
+      .finished.finally(() => node.remove());
+  }
+
+  // Beat two. Cards hold their old height through the fade, then ease to the
+  // new one, clipped so a growing card never shows what has not arrived yet.
+  for (const {li, from, to} of resizing) {
+    li.style.overflow = "clip";
+    li.animate([{height: from + "px"}, {height: to + "px"}], {...MOVE, delay: settleAt, fill: "backwards"})
+      .finished.finally(() => { li.style.overflow = ""; });
+  }
+  for (const {li, dy} of moving) {
+    li.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}],
+               {...MOVE, delay: settleAt, fill: "backwards"});
+  }
+  for (const {el, dy} of lineMoves) {
+    el.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}],
+               {...MOVE, delay: settleAt, fill: "backwards"});
+  }
+
+  // Beat three.
+  for (const el of entering) {
+    el.animate([{opacity: 0}, {opacity: 1}], {...FADE, delay: arriveAt, fill: "backwards"});
+  }
+}
+
+function render(snapshot) {
+  const before = measureRows();
+  paint(snapshot);
+  paintQueue(snapshot);
+  paintBudget(snapshot);
+  fitMeta();
+  animateRows(before);
+}
+
+// Coarse on purpose: the queue orders by how long, it does not time anyone.
+// Recomputed only when a snapshot repaints, so nothing on it ticks.
+function waited(since) {
+  if (since == null) return null;
+  const s = Math.round(Date.now() / 1000 - since);
+  if (s < 60) return "<1m";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  if (s < 86400) return Math.floor(s / 3600) + "h";
+  return Math.floor(s / 86400) + "d";
+}
+
+const QUEUE_ROWS = 3;
+
+function paintQueue(snapshot) {
+  const box = document.getElementById("queue");
+  box.textContent = "";
+  const waiting = snapshot.groups.flatMap(g => g.rows).filter(r => IS_EXCEPTION(r.state));
+  // Nothing waiting is said by the section not being there.
+  box.hidden = !waiting.length;
+  if (!waiting.length) return;
+
+  // Oldest first. A row with no start time cannot claim a place in the line,
+  // so it goes to the back.
+  waiting.sort((a, b) => (a.blocked_since ?? Infinity) - (b.blocked_since ?? Infinity));
+
+  const h = document.createElement("h3");
+  const n = Object.assign(document.createElement("span"),
+                          {className: "n", textContent: waiting.length});
+  h.append("Waiting on you · ", n);
+  const ul = document.createElement("ul");
+  for (const row of waiting.slice(0, QUEUE_ROWS)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "qrow";
+    const mark = Object.assign(document.createElement("span"), {className: "swatch"});
+    if (SESSION_COLOURS[row.colour]) mark.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+    const label = Object.assign(document.createElement("span"),
+                                {className: "label", textContent: row.label});
+    b.append(mark, label);
+    const ago = waited(row.blocked_since);
+    if (ago) b.append(Object.assign(document.createElement("span"),
+                                    {className: "ago", textContent: ago}));
+    b.setAttribute("aria-label", [row.label, "waiting", ago && `for ${ago}`]
+                                   .filter(Boolean).join(" "));
+    b.addEventListener("click", () => act(row.session_id, "focus"));
+    const li = document.createElement("li");
+    li.append(b);
+    ul.append(li);
+  }
+  box.append(h, ul);
+  const rest = waiting.length - QUEUE_ROWS;
+  if (rest > 0) {
+    box.append(Object.assign(document.createElement("div"),
+                             {className: "more", textContent: `+${rest} more`}));
+  }
+}
+
+const BUDGET_WINDOWS = [
+  {label: "5-hour", used: "five_hour", at: "five_hour_at", seconds: 5 * 3600},
+  {label: "Weekly", used: "seven_day", at: "seven_day_at", seconds: 7 * 86400},
+];
+let accountNotice = "";
+
+const clock = at => {
+  const when = new Date(at * 1000);
+  return String(when.getHours()).padStart(2, "0") + ":" + String(when.getMinutes()).padStart(2, "0");
+};
+
+// One window as a labelled hairline: fill for what is used, an optional tick
+// where an even spend would be, and the reset as a clock time or a weekday.
+// A span of seconds in its largest whole unit: "5d", "2h", "14m", "<1m".
+function duration(seconds) {
+  if (seconds >= 86400) return `${Math.floor(seconds / 86400)}d`;
+  if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h`;
+  if (seconds >= 60) return `${Math.floor(seconds / 60)}m`;
+  return "<1m";
+}
+
+// How long until a reset: "5d", "2h", "14m", or "now" once it has passed.
+function untilReset(at, now) {
+  return at - now <= 0 ? "now" : duration(at - now);
+}
+
+function meterRow(label, used, at, {tick = null, ahead = false} = {}) {
+  used = Math.max(0, Math.min(100, used));
+  const row = document.createElement("div");
+  row.className = "win";
+  if (ahead) row.classList.add("ahead");
+  const name = Object.assign(document.createElement("span"), {className: "wl", textContent: label});
+  const track = Object.assign(document.createElement("span"), {className: "track"});
+  const fill = Object.assign(document.createElement("span"), {className: "fill"});
+  fill.style.width = used + "%";
+  if (used >= 90) row.classList.add("near");
+  else if (used >= 70) row.classList.add("climbing");
+  track.append(fill);
+  if (tick != null) {
+    const mark = Object.assign(document.createElement("span"), {className: "tick"});
+    mark.style.left = Math.max(0, Math.min(100, tick)) + "%";
+    track.append(mark);
+  }
+  const pct = Object.assign(document.createElement("span"), {className: "pct", textContent: Math.round(used) + "%"});
+  const reset = Object.assign(document.createElement("span"), {className: "at"});
+  if (at) {
+    const when = new Date(at * 1000);
+    reset.textContent = untilReset(at, Date.now() / 1000);
+    row.title = `${label}: ${Math.round(used)}% used, resets `
+      + when.toLocaleString(undefined, {weekday: "short", month: "short",
+          day: "numeric", hour: "2-digit", minute: "2-digit"});
+  }
+  row.append(name, track, pct, reset);
+  return row;
+}
+
+// An account's windows: the 5-hour with its reset time, then every weekly
+// window, the overall one and each per-model limit, with cswap's pace rule.
+function accountMeters(account) {
+  const rows = [];
+  if (account.five_hour) rows.push(meterRow("5-hour", account.five_hour.used, account.five_hour.resets_at));
+  const weeklies = [];
+  if (account.seven_day) weeklies.push(["Weekly", account.seven_day]);
+  for (const m of account.models || []) weeklies.push([m.name, m]);
+  for (const [label, w] of weeklies) {
+    rows.push(meterRow(label, w.used, w.resets_at,
+      {tick: w.pace?.expected ?? null, ahead: !!w.pace?.ahead}));
+  }
+  return rows;
+}
+
+// Why an account's figures are not current, in words, or "" when they are.
+function accountStatus(account) {
+  if (account.needs_login) return `log in to ${account.name} again`;
+  if (account.fetched_at == null) return account.outcome ? "no reading yet" : "reading...";
+  if (account.outcome && account.outcome !== "ok") return `as of ${clock(account.fetched_at)}`;
+  return "";
+}
+
+function addAccount() {
+  accountNotice = "adding...";
+  paintBudget(lastSnapshot);
+  fetch(`/accounts?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify({op: "add"})})
+    .then(r => r.json())
+    .then(reply => { accountNotice = reply.error ? `could not add: ${reply.error}` : `added ${reply.account.name}`; })
+    .catch(() => { accountNotice = "could not add: the panel lost its daemon"; })
+    .finally(() => paintBudget(lastSnapshot));
+}
+
+let armedSwitch = null;
+let disarmTimer = null;
+
+// Arms on the first click and switches on the second, like Close: a switch
+// changes the login of every running session.
+function switchButton(account) {
+  const armed = armedSwitch === account.id;
+  const button = Object.assign(document.createElement("button"),
+    {className: "acct-switch", type: "button"});
+  button.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4h8M7.5 1.5 10 4 7.5 6.5M10 8H2M4.5 5.5 2 8l2.5 2.5"/></svg>';
+  button.append(armed ? "Confirm switch" : "Switch");
+  button.setAttribute("aria-label", armed ? `confirm switching to ${account.name}` : `switch to ${account.name}`);
+  if (armed) button.classList.add("armed");
+  button.addEventListener("click", () => {
+    clearTimeout(disarmTimer);
+    if (!armed) {
+      armedSwitch = account.id;
+      disarmTimer = setTimeout(() => { armedSwitch = null; paintBudget(lastSnapshot); }, 4000);
+      paintBudget(lastSnapshot);
+      return;
+    }
+    armedSwitch = null;
+    accountNotice = `switching to ${account.name}...`;
+    paintBudget(lastSnapshot);
+    fetch(`/accounts?token=${encodeURIComponent(TOKEN)}`,
+          {method: "POST", body: JSON.stringify({op: "switch", account_id: account.id})})
+      .then(r => r.json())
+      .then(reply => {
+        accountNotice = reply.error ? `not switched: ${reply.error}`
+          : `switched to ${reply.account.name}; running sessions pick it up within about 30 s`;
+      })
+      .catch(() => { accountNotice = "not switched: the panel lost its daemon"; })
+      .finally(() => paintBudget(lastSnapshot));
+  });
+  return button;
+}
+
+// Which account's name is being edited. A repaint leaves the strip alone
+// while its field has focus, so a snapshot arriving mid-typing keeps the text.
+let renamingAccount = null;
+
+function renameAccount(account, text) {
+  renamingAccount = null;
+  accountNotice = "renaming...";
+  paintBudget(lastSnapshot);
+  fetch(`/accounts?token=${encodeURIComponent(TOKEN)}`,
+        {method: "POST", body: JSON.stringify({op: "rename", account_id: account.id, alias: text})})
+    .then(r => r.json())
+    .then(reply => { accountNotice = reply.error ? `not renamed: ${reply.error}` : `renamed to ${reply.account.name}`; })
+    .catch(() => { accountNotice = "not renamed: the panel lost its daemon"; })
+    .finally(() => paintBudget(lastSnapshot));
+}
+
+// An account's name; clicking it turns it into a field. Enter saves, Escape
+// or leaving the field cancels, and an empty name goes back to the default.
+function accountName(account, className, suffix = "") {
+  if (renamingAccount === account.id) {
+    const field = Object.assign(document.createElement("input"),
+      {className: `${className} acct-rename`, type: "text", value: account.alias ?? "",
+       placeholder: account.default_name, maxLength: 40});
+    field.setAttribute("aria-label", `nickname for ${account.name}`);
+    field.addEventListener("keydown", event => {
+      event.stopPropagation();
+      if (event.key === "Enter") renameAccount(account, field.value);
+      else if (event.key === "Escape") { renamingAccount = null; paintBudget(lastSnapshot); }
+    });
+    field.addEventListener("blur", () => {
+      if (renamingAccount !== account.id) return;
+      renamingAccount = null;
+      paintBudget(lastSnapshot);
+    });
+    requestAnimationFrame(() => { field.focus(); field.select(); });
+    return field;
+  }
+  const name = Object.assign(document.createElement("button"),
+    {className, type: "button", textContent: account.name + suffix, title: "Click to rename"});
+  name.addEventListener("click", event => {
+    event.stopPropagation();
+    renamingAccount = account.id;
+    paintBudget(lastSnapshot);
+  });
+  return name;
+}
+
+function addButton() {
+  const add = Object.assign(document.createElement("button"),
+    {className: "acct-add", type: "button", textContent: "Add this account"});
+  add.title = "Store the login Claude Code is using now, so the panel can meter it";
+  add.addEventListener("click", addAccount);
+  return add;
+}
+
+// The account the sessions run on, then every other stored account with its
+// own meters. Figures come from the daemon's own readings.
+function paintAccounts(strip, store) {
+  const active = store.accounts.find(a => a.active);
+  const head = Object.assign(document.createElement("div"), {className: "acct-line"});
+  head.append(providerIcon("claude", "Claude"), active ? accountName(active, "acct-name")
+    : Object.assign(document.createElement("span"), {className: "acct-name", textContent: "not a stored login"}));
+  // The login every session runs on.
+  if (active && renamingAccount !== active.id) {
+    head.append(Object.assign(document.createElement("span"), {className: "acct-badge", textContent: "active"}));
+  }
+  head.append(
+    Object.assign(document.createElement("span"), {className: "acct-count",
+      textContent: `${store.accounts.length} acct${store.accounts.length === 1 ? "" : "s"}`}));
+  strip.append(head);
+
+  if (active) {
+    const status = accountStatus(active);
+    if (status) strip.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: status}));
+    strip.append(...accountMeters(active));
+  }
+
+  const list = Object.assign(document.createElement("div"), {className: "acct-list"});
+  for (const account of store.accounts.filter(a => !a.active)) {
+    const item = Object.assign(document.createElement("div"), {className: "acct-item"});
+    const itemHead = Object.assign(document.createElement("div"), {className: "acct-item-head"});
+    itemHead.append(providerIcon("claude", "Claude"), accountName(account, "acct-item-name"));
+    item.append(itemHead);
+    const status = accountStatus(account);
+    if (status) item.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: status}));
+    item.append(...accountMeters(account));
+    if (active && !account.needs_login) {
+      const veil = Object.assign(document.createElement("div"), {className: "acct-veil"});
+      veil.append(switchButton(account));
+      item.append(veil);
+    }
+    list.append(item);
+  }
+  if (!active) list.append(addButton());
+  if (accountNotice) list.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: accountNotice}));
+  strip.append(list);
+}
+
+// Rate limits from the sessions' own status lines, for when no account is
+// stored yet. Account-wide figures repeat on every session with bridge data;
+// the highest is the safe reading, and a session with none is skipped.
+function paintSessionBudget(strip, reporting) {
+  const now = Date.now() / 1000;
+  for (const w of BUDGET_WINDOWS) {
+    const best = reporting.filter(d => d[w.used] != null)
+      .reduce((a, d) => (a && a[w.used] >= d[w.used] ? a : d), null);
+    if (!best) continue;
+    const used = best[w.used];
+    const at = best[w.at];
+    const elapsed = at ? Math.max(0, Math.min(1, 1 - (at - now) / w.seconds)) : null;
+    strip.append(meterRow(w.label, used, at, {
+      tick: elapsed == null ? null : elapsed * 100,
+      ahead: elapsed != null && used / 100 > elapsed && used >= 80}));
+  }
+}
+
+// Provider marks (Simple Icons, CC0), in each brand's colour.
+const PROVIDER_ICONS = {
+  claude: '<path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/>',
+  openai: '<path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/>',
+};
+
+function providerIcon(kind, label) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", `provider ${kind}`);
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", label);
+  svg.innerHTML = PROVIDER_ICONS[kind];
+  return svg;
+}
+
+// Codex's own limits, as its session logs last reported them.
+function paintCodex(strip, limits) {
+  const block = Object.assign(document.createElement("div"), {className: "codex"});
+  block.append(Object.assign(document.createElement("div"), {className: "acct-line"}));
+  block.firstChild.append(providerIcon("openai", "OpenAI"),
+    Object.assign(document.createElement("span"), {className: "acct-name", textContent: "Codex"}));
+  for (const w of limits.windows) {
+    block.append(meterRow(w.label, w.used, w.resets_at,
+      {tick: w.pace?.expected ?? null, ahead: !!w.pace?.ahead}));
+  }
+  strip.append(block);
+}
+
+let lastSnapshot = {groups: []};
+// Countdowns move on their own; the daemon only pushes when its data changes.
+setInterval(() => paintBudget(lastSnapshot), 30000);
+// A stuck turn stops sending updates, so its badge has to appear on a clock.
+setInterval(() => { if (lastSnapshot.groups.length) render(lastSnapshot); }, 60000);
+function paintBudget(snapshot) {
+  lastSnapshot = snapshot;
+  const strip = document.getElementById("budget");
+  const reporting = (snapshot.groups || []).flatMap(g => g.rows || [])
+    .map(r => r.details).filter(Boolean);
+  const store = snapshot.accounts;
+  if (renamingAccount && strip.contains(document.activeElement)) return;
+  strip.replaceChildren();
+
+  if (store?.error) {
+    strip.append(Object.assign(document.createElement("div"), {className: "acct-status",
+      textContent: `accounts hidden: ${store.error}`}));
+  } else if (store?.accounts?.length) {
+    paintAccounts(strip, store);
+  } else {
+    paintSessionBudget(strip, reporting);
+    if (store) {
+      strip.append(addButton());
+      if (accountNotice) strip.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: accountNotice}));
+    }
+  }
+
+  if (snapshot.codex?.windows?.length) paintCodex(strip, snapshot.codex);
+
+  const costs = reporting.filter(d => d.cost != null);
+  if (costs.length) {
+    const cost = document.createElement("div");
+    cost.className = "cost";
+    const total = costs.reduce((sum, d) => sum + d.cost, 0);
+    cost.textContent = `$${total.toFixed(2)} · ${costs.length} session`
+      + (costs.length === 1 ? "" : "s");
+    strip.append(cost);
+  }
+  strip.hidden = strip.childElementCount === 0;
+}
+
+// A line that cannot fit even with its branch at two characters drops the
+// branch outright. The alternative is the context figure running off the
+// panel, and a branch is the one item on the line you can read elsewhere.
+function fitMeta() {
+  for (const line of document.querySelectorAll("#groups .model")) {
+    const branch = line.querySelector(".mchip.branch");
+    if (!branch) continue;
+    branch.hidden = false;
+    if (line.scrollWidth > line.clientWidth) branch.hidden = true;
+  }
+}
+window.addEventListener("resize", fitMeta);
+
+// The indented block inside a card that holds its teammates, subagents and
+// shells, made on first use.
+function childrenOf(card) {
+  let kids = card.querySelector(":scope > .children:not(.shell-rows)");
+  if (!kids) {
+    kids = Object.assign(document.createElement("div"), {className: "children"});
+    card.insertBefore(kids, card.querySelector(":scope > .shell-sum"));
+  }
+  return kids;
+}
+
+// Cards whose shells are shown the other way from the Expand shells setting,
+// by session id, so a repaint keeps what you opened or closed.
+const flippedShells = new Set();
+
+function childRow(parent, kind, key) {
+  const b = document.createElement("button");
+  b.dataset.childKey = key;
+  b.type = "button";
+  b.className = "row agent child " + kind;
+  b.dataset.sessionId = parent.session_id;
+  return b;
+}
+
+function stackOf(text, meta) {
+  const stack = Object.assign(document.createElement("span"), {className: "stack"});
+  stack.append(Object.assign(document.createElement("span"), {className: "label", textContent: text}));
+  if (meta) {
+    stack.append(Object.assign(document.createElement("span"), {className: "model", textContent: meta}));
+  }
+  return stack;
+}
+
+function paint(snapshot) {
+  const root = document.getElementById("groups");
+  const focused = document.activeElement;
+  const keepId = focused && focused.dataset ? focused.dataset.sessionId : null;
+  const menuFocus = openMenu && openMenu.contains(focused) ? focused : null;
+  root.textContent = "";
+
+  if (!snapshot.groups.length) {
+    const p = document.createElement("p");
+    p.id = "empty";
+    p.textContent = "No sessions.";
+    root.append(p);
+    return;
+  }
+
+  for (const group of snapshot.groups) {
+    // The Toolbelt already titles this panel "Agents", so the first heading
+    // only repeats it. SESSIONS still earns its line: it divides two kinds of
+    // row rather than naming the panel.
+    const h = document.createElement("h2");
+    h.textContent = group.name;
+    h.hidden = group.name === "AGENTS";
+    const ul = document.createElement("ul");
+    // The card the rows that follow belong to. Rows arrive parent first, then
+    // its teammates, so a depth-1 row always joins the card opened just above.
+    let card = null;
+    for (const row of group.rows) {
+      const li = row.depth && card ? card : document.createElement("li");
+      if (li !== card) {
+        li.className = "line card";
+        li.dataset.key = row.session_id;
+        card = li;
+      }
+      const b = document.createElement("button");
+      b.className = "row " + (group.name === "AGENTS" ? "agent" : "shell")
+                  + (row.depth ? " child" : "");
+      b.dataset.sessionId = row.session_id;
+      b.type = "button";
+
+
+      const hot = IS_EXCEPTION(row.state);
+      if (!hot && row.state !== "working" && !row.running) b.classList.add("quiet");
+      if (hot) {
+        b.classList.add("hot");
+        card.classList.add("blocked");
+      }
+
+      // Identity, always, and never as the ground.
+      const mark = document.createElement("span");
+      // A plain terminal running a command is busy the same way an agent
+      // mid-turn is, so it gets the same dots, in grey for want of a colour.
+      if (row.state === "working" || row.running) {
+        mark.className = "busy" + (row.depth ? " down" : "");
+        mark.innerHTML = "<i></i><i></i><i></i>";
+      } else {
+        mark.className = "swatch" + (row.state === "unknown" ? " hollow" : "");
+      }
+      if (SESSION_COLOURS[row.colour]) {
+        mark.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+      }
+      b.append(mark);
+
+      const stack = document.createElement("span");
+      stack.className = "stack";
+
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = row.label;
+      stack.append(label);
+
+      // Branch then model, on one line under the name: both describe the
+      // session rather than its state, so they belong together and behind it.
+      // Branch then model, on one line under the name: both describe the
+      // session rather than its state, so they belong together and behind it.
+      // An icon each instead of a separator -- at 9px a glyph says which is
+      // which faster than a middot says they are different.
+      const meta = document.createElement("span");
+      meta.className = "model";
+      for (const [kind, value] of [["branch", row.branch], ["model", row.model]]) {
+        if (!value || SETTINGS?.[`show_${kind}`] === false) continue;
+        const chip = document.createElement("span");
+        chip.className = "mchip";
+        chip.classList.add(kind === "branch" ? "branch" : "model-name");
+        const text = Object.assign(document.createElement("span"),
+                                   {className: "mtext", textContent: value});
+        chip.append(metaIcon(kind), text);
+        chip.title = value;
+        const effort = kind === "model" && EFFORT_LETTERS[row.effort]
+          ? document.createElement("span") : null;
+        if (effort) {
+          effort.className = "effort " + row.effort;
+          if (row.effort === "max") effort.innerHTML = "<i>m</i><i>x</i>";
+          else effort.textContent = EFFORT_LETTERS[row.effort];
+        }
+        chip.setAttribute("aria-label",
+                          kind === "branch" ? `on branch ${value}`
+                          : `model ${value}` + (row.effort ? `, ${row.effort} effort` : ""));
+        meta.append(chip);
+        if (effort) meta.append(effort);
+      }
+      // Context reads on this line and not the one above. It is a fact about
+      // the session in the same way the branch and the model are, and every
+      // other item here is an icon and a value -- a bare number on the first
+      // line was the one exception, sitting against the shells count with
+      // nothing between them so the two read as a single figure.
+      if (typeof row.context === "number" && row.context >= speaksAt()) {
+        const chip = document.createElement("span");
+        chip.className = "mchip ctx" + (row.context >= 90 ? " critical" : "");
+        chip.append(metaIcon("gauge"),
+                    document.createTextNode(row.context + "%"));
+        chip.setAttribute("aria-label", `${row.context}% of the context used`);
+        meta.append(chip);
+      }
+      if (meta.childElementCount) stack.append(meta);
+      b.append(stack);
+
+      if (row.job) {
+        const job = document.createElement("span");
+        job.className = "job";
+        job.textContent = row.job;
+        b.append(job);
+      }
+
+      if (hot) {
+        const word = document.createElement("span");
+        word.className = "word blocked";
+        word.textContent = "waiting";
+        b.append(word);
+      } else if (row.state === "working" && row.working_since
+                 && Date.now() / 1000 - row.working_since >= LONG_TURN_SECONDS) {
+        const running = Date.now() / 1000 - row.working_since;
+        const word = document.createElement("span");
+        word.className = "word long";
+        word.textContent = `long ${duration(running)}`;
+        b.append(word);
+        b.classList.add("long-turn");
+      } else if (row.state === "idle" && !row.depth) {
+        const word = document.createElement("span");
+        word.className = "word idle";
+        word.textContent = "idle";
+        b.append(word);
+        b.classList.add("resting");
+      }
+
+
+      // aria-label only, never title: the hover card says the same thing,
+      // and the OS tooltip is drawn by the window server, above any z-index
+      // this page can reach. Two of them at once is what that looks like.
+      const said = row.state ? STATE_TITLES[row.state] || row.state : null;
+      b.setAttribute("aria-label",
+                     [row.label, row.position, said,
+                      b.classList.contains("long-turn")
+                        ? `running for ${duration(Date.now() / 1000 - row.working_since)}, may be stuck` : null,
+                      typeof row.context === "number" ? row.context + "% context" : null]
+                       .filter(Boolean).join(" \u2014 "));
+
+      b.addEventListener("click", () => act(row.session_id, "focus"));
+      watchForCard(b, row);
+      // A repaint puts an open menu back as the same node: its position, its
+      // armed second click and its keyboard focus survive, and it does not
+      // unfold again.
+      const keptMenu = openMenuKey === row.session_id && openMenu;
+      const menu = keptMenu || menuFor(row, group);
+      if (keptMenu) keptMenu.classList.add("kept");
+      const host = card;       // `card` moves on with the loop; the menu stays
+      if (menu) {
+        b.addEventListener("contextmenu", e => openMenuAt(menu, host, e, row.session_id));
+      }
+
+      if (row.depth && li === card) {
+        // A teammate: one line inside its parent's card, above the shells.
+        b.classList.add("child");
+        b.dataset.childKey = "mate\n" + row.session_id;
+        const kids = childrenOf(card);
+        kids.insertBefore(b, kids.querySelector(":scope > .tail"));
+        if (menu) card.append(menu);
+        continue;
+      }
+      li.append(b);
+      if (menu) li.append(menu);
+      ul.append(li);
+
+      // Subagents run inside their parent's process with no terminal of their
+      // own; the hook lists them with the name they were given and the model
+      // they reply with, once their files say so, and by type until then.
+      // Clicking one focuses the session they run in.
+      const subs = SETTINGS?.show_agents !== false ? row.subagents || [] : [];
+      for (const sub of subs) {
+        const sb = childRow(row, "tail", `sub\n${sub.type}\n${sub.since}`);
+        // A finished subagent keeps its place until the next prompt, quiet,
+        // with how long it ran; its key does not change, so nothing moves.
+        const done = sub.ended != null;
+        const dots = Object.assign(document.createElement("span"), {className: done ? "busy" : "busy down"});
+        if (done) dots.innerHTML = '<svg class="done-mark" viewBox="0 0 8 8" aria-hidden="true"><path d="M.8 4.3 3 6.5 7.2 1.5"/></svg>';
+        else dots.innerHTML = "<i></i><i></i><i></i>";
+        if (done) sb.classList.add("finished");
+        const ran = sub.since == null ? null
+          : forHumans((done ? sub.ended : Date.now() / 1000) - sub.since);
+        const title = sub.name || sub.type || "subagent";
+        const stack = stackOf(title);
+        const meta = Object.assign(document.createElement("span"), {className: "model"});
+        if (sub.model && SETTINGS?.show_model !== false) {
+          const chip = Object.assign(document.createElement("span"), {className: "mchip model-name"});
+          chip.append(metaIcon("model"),
+                      Object.assign(document.createElement("span"), {className: "mtext", textContent: sub.model}));
+          meta.append(chip);
+        }
+        if (ran) meta.append(Object.assign(document.createElement("span"), {className: "mchip", textContent: ran}));
+        if (meta.childElementCount) stack.append(meta);
+        sb.append(dots, stack);
+        sb.title = sub.name && sub.type ? `${sub.name} (${sub.type})` : title;
+        sb.setAttribute("aria-label", [`subagent ${title} in ${row.label}`, sub.model,
+                                       ran && (done ? `finished after ${ran}` : `running ${ran}`)]
+                                       .filter(Boolean).join(", "));
+        sb.addEventListener("click", () => act(row.session_id, "focus"));
+        childrenOf(li).append(sb);
+      }
+
+      // Background shells. Claude Code draws these in its own footer from
+      // memory it never publishes, so they are read off the process tree.
+      // Folded into one line that opens them; clicking a shell row shows its
+      // whole command.
+      const shells = SETTINGS?.show_shells !== false ? row.shells || [] : [];
+      if (shells.length) {
+        const key = row.session_id;
+        const open = SETTINGS?.expand_shells ? !flippedShells.has(key) : flippedShells.has(key);
+        const sum = document.createElement("button");
+        sum.type = "button";
+        sum.className = "shell-sum";
+        sum.dataset.childKey = "shells";
+        const n = shells.length;
+        const chev = Object.assign(document.createElement("span"),
+                                   {className: "chev", textContent: "\u203a"});
+        sum.append(metaIcon("shells"), document.createTextNode(
+          `${n} command${n > 1 ? "s" : ""} running`), chev);
+        sum.setAttribute("aria-expanded", String(open));
+        sum.setAttribute("aria-label", `${n} background shell${n > 1 ? "s" : ""} in ${row.label}`);
+        sum.addEventListener("click", () => {
+          if (flippedShells.has(key)) flippedShells.delete(key); else flippedShells.add(key);
+          if (LATEST) render(LATEST);
+        });
+        li.append(sum);
+        if (open) {
+          const rows = Object.assign(document.createElement("div"),
+                                     {className: "children shell-rows"});
+          li.append(rows);
+          for (const shell of shells) {
+            const sb = childRow(row, "bg-shell", "shell\n" + shell.command);
+            sb.append(metaIcon("shells"), stackOf(shell.label));
+            sb.setAttribute("aria-label", `shell in ${row.label}: ${shell.command}`);
+            const popKey = row.session_id + "\n" + shell.command;
+            // A repaint puts the open popover back as the same node, so its
+            // Copy state and any selection survive, and without the unfold:
+            // re-inserting an element restarts its CSS animation.
+            const kept = openShellKey === popKey && openMenu;
+            const pop = kept || shellPopover([shell]);
+            if (kept) pop.classList.add("kept");
+            const place = () => { pop.style.top = sb.offsetTop + sb.offsetHeight + "px"; };
+            sb.addEventListener("pointerdown", e => e.stopPropagation());
+            sb.addEventListener("click", () => {
+              if (openShellKey === popKey) { closeMenu(); return; }
+              place();
+              openShell(pop, popKey);
+            });
+            rows.append(sb);
+            li.append(pop);
+            if (openShellKey === popKey) {
+              pop.hidden = false; openMenu = pop;
+              requestAnimationFrame(place);
+            }
+          }
+        }
+      }
+    }
+    root.append(h, ul);
+  }
+
+  // A shell that has exited, or a session that closed, took its menu with it.
+  if (openMenu && !openMenu.isConnected) { openMenu = null; openShellKey = null; openMenuKey = null; }
+  if (menuFocus && menuFocus.isConnected) menuFocus.focus();
+
+  // Keep the keyboard where it was across a repaint, or the list is unusable
+  // the moment anything changes.
+  if (keepId) {
+    const again = root.querySelector(`[data-session-id="${CSS.escape(keepId)}"]`);
+    if (again) again.focus();
+  }
+}
+
+// Arrows move; Enter and Space activate (free, since rows are buttons).
+// Cmd+Enter (or Ctrl+Enter) sends a newline to the focused session, which is
+// what unblocks a Claude Code session sitting at a prompt. NOT Shift+Enter:
+// iTerm2 claims that combination and it never reaches the page. Measured
+// 2026-09-07 -- Alt, Meta and Ctrl with Enter all arrive, Shift with Enter
+// does not.
+//
+// No letter keys. iTerm2 routes printable characters to the terminal and only
+// passes navigation keys and modifiers through to a Toolbelt webview, so a
+// j/k binding here would be silently dead. Measured 2026-09-07: pressing j and
+// k produced no keydown at all, while ArrowDown, Meta and Shift arrived.
+document.addEventListener("keydown", event => {
+  const rows = [...document.querySelectorAll("button.row")];
+  if (!rows.length) return;
+  const at = rows.indexOf(document.activeElement);
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    (rows[at + 1] || rows[0]).focus();
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    (at > 0 ? rows[at - 1] : rows[rows.length - 1]).focus();
+  } else if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && at >= 0) {
+    event.preventDefault();
+    act(rows[at].dataset.sessionId, "send", "\n");
+  }
+});
+
+// ---------------------------------------------------------------- settings
+let SETTINGS = null;
+const SETTING_ROWS = [
+  {head: "Sound"},
+  {k: "sound",        label: "Play sounds"},
+  {k: "sound_blocked",label: "When a session is blocked", sub: true, needs: "sound"},
+  {k: "sound_done",   label: "When one finishes", sub: true, needs: "sound"},
+  {k: "volume",       label: "Volume", range: [0, 1, .05], needs: "sound", pct: true},
+  {k: "muted",        label: "Mute everything"},
+  {head: "Focus"},
+  {k: "focus_blocked", label: "Bring a blocked session forward"},
+  {k: "return_after_blocked", label: "Go back once it resumes", sub: true, needs: "focus_blocked"},
+  {head: "Rows"},
+  {k: "context_threshold", label: "Warn above", range: [0, 100, 5], pct: true},
+  {k: "show_branch",  label: "Show branch"},
+  {k: "show_model",   label: "Show model"},
+  {k: "show_agents",  label: "Show subagents"},
+  {k: "show_shells",  label: "Show background shells"},
+  {k: "expand_shells", label: "Start expanded", sub: true, needs: "show_shells"},
+  {k: "ui_scale",     label: "Text size",
+   steps: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]},
+];
+
+function settingsBody() {
+  const box = document.getElementById("settings");
+  box.textContent = "";
+  for (const row of SETTING_ROWS) {
+    if (row.head) {
+      const h = document.createElement("div");
+      h.className = "set-head";
+      h.textContent = row.head;
+      box.append(h);
+      continue;
+    }
+    const line = document.createElement("label");
+    line.className = "set" + (row.sub ? " sub" : "");
+    const name = document.createElement("span");
+    name.textContent = row.label;
+    line.append(name);
+
+    // A switch is disabled, not hidden, when its parent is off: the option
+    // stays where the eye already learned to find it.
+    const off = row.needs && !SETTINGS[row.needs];
+
+    if (row.steps) {
+      // Minus, the value, plus. Nine sizes is few enough to step through and
+      // too few to be worth hunting for with a dragged thumb.
+      const box = document.createElement("span");
+      box.className = "step";
+      const back = Object.assign(document.createElement("button"),
+                                 {type: "button", textContent: "\u2212"});
+      const now = document.createElement("span");
+      now.className = "now";
+      const on = Object.assign(document.createElement("button"),
+                               {type: "button", textContent: "+"});
+      back.setAttribute("aria-label", `Smaller ${row.label.toLowerCase()}`);
+      on.setAttribute("aria-label", `Larger ${row.label.toLowerCase()}`);
+
+      const nearest = value =>
+        row.steps.reduce((best, s) =>
+          Math.abs(s - value) < Math.abs(best - value) ? s : best, row.steps[0]);
+      let at = row.steps.indexOf(nearest(Number(SETTINGS[row.k])));
+
+      const paint = () => {
+        const value = row.steps[at];
+        now.textContent = Number(value).toFixed(2).replace(/0$/, "") + "\u00d7";
+        back.disabled = off || at === 0;
+        on.disabled = off || at === row.steps.length - 1;
+      };
+      const move = by => {
+        const next = Math.max(0, Math.min(row.steps.length - 1, at + by));
+        if (next === at) return;
+        at = next;
+        paint();
+        // Applied before it is saved, so the size you are choosing is the
+        // size you are looking at.
+        if (row.k === "ui_scale") applyScale(row.steps[at]);
+        push({[row.k]: row.steps[at]});
+      };
+      back.addEventListener("click", () => move(-1));
+      on.addEventListener("click", () => move(1));
+      paint();
+      box.append(back, now, on);
+      line.append(box);
+    } else if (row.range) {
+      const [min, max, step] = row.range;
+      const slider = document.createElement("input");
+      Object.assign(slider, {type: "range", min, max, step, value: SETTINGS[row.k],
+                             disabled: off});
+      const read = document.createElement("span");
+      read.className = "val";
+      const show = v => read.textContent = row.times
+        ? Number(v).toFixed(2).replace(/0$/, "") + "\u00d7"
+        : row.pct ? Math.round(v * (max <= 1 ? 100 : 1)) + "%" : v;
+      show(SETTINGS[row.k]);
+      slider.addEventListener("input", () => {
+        show(slider.value);
+        if (row.k === "ui_scale") applyScale(slider.value);
+      });
+      slider.addEventListener("change", () => push({[row.k]: Number(slider.value)}));
+      // Slider and read-out travel together: when the row wraps, a number
+      // stranded on a line of its own reads as a value for the row below.
+      const ctl = document.createElement("span");
+      ctl.className = "ctl";
+      ctl.append(slider, read);
+      line.append(ctl);
+    } else {
+      const sw = document.createElement("button");
+      sw.type = "button";
+      sw.className = "sw";
+      sw.setAttribute("role", "switch");
+      sw.setAttribute("aria-checked", String(!!SETTINGS[row.k]));
+      sw.disabled = off;
+      sw.addEventListener("click", () => push({[row.k]: !SETTINGS[row.k]}));
+      line.append(sw);
+    }
+    box.append(line);
+  }
+}
+
+function push(change) {
+  SETTINGS = {...SETTINGS, ...change};
+  settingsBody();
+  render(LATEST);
+  fetch(`/settings?token=${encodeURIComponent(TOKEN)}`,
+        {method: "POST", body: JSON.stringify(change)})
+    .then(r => r.json())
+    .then(s => { SETTINGS = s; applyScale(s.ui_scale); settingsBody(); render(LATEST); })
+    .catch(err => console.log("sidebar: settings save failed", err));
+}
+
+const gear = document.getElementById("gear");
+// Slides up out of the gear bar and back down into it. The close waits for
+// its own animation before hiding, and a click mid-slide reverses it.
+let drawerMotion = null;
+gear.addEventListener("click", () => {
+  const box = document.getElementById("settings");
+  const open = box.hidden || drawerMotion?.closing;
+  gear.setAttribute("aria-expanded", String(open));
+  drawerMotion?.cancel();
+  drawerMotion = null;
+  if (!MOTION.matches) { box.hidden = !open; return; }
+  const shut = {transform: "translateY(24px)", opacity: 0};
+  const shown = {transform: "none", opacity: 1};
+  if (open) {
+    box.hidden = false;
+    box.animate([shut, shown], {duration: 200, easing: "cubic-bezier(.16,1,.3,1)"});
+    return;
+  }
+  drawerMotion = box.animate([shown, shut], {duration: 140, easing: "ease-in", fill: "forwards"});
+  drawerMotion.closing = true;
+  const mine = drawerMotion;
+  mine.finished.then(() => {
+    if (drawerMotion !== mine) return;
+    box.hidden = true;
+    mine.cancel();
+    drawerMotion = null;
+  }, () => {});
+});
+
+fetch(`/settings?token=${encodeURIComponent(TOKEN)}`)
+  .then(r => r.json())
+  .then(s => { SETTINGS = s; applyScale(s.ui_scale); settingsBody(); render(LATEST); })
+  .catch(() => { SETTINGS = {}; });
+
+// ------------------------------------------------------------------- sound
+// Synthesised, because the page has no network and so no audio files. WebKit
+// will not start an AudioContext without a gesture, so it is created on the
+// first one and the first sounds before that are simply skipped.
+let audio = null;
+addEventListener("pointerdown", () => {
+  if (!audio) { try { audio = new AudioContext(); } catch (e) { audio = false; } }
+  if (audio && audio.state === "suspended") audio.resume();
+}, {once: false});
+
+function tone(steps, gain) {
+  if (!audio || !SETTINGS || SETTINGS.muted || !SETTINGS.sound) return;
+  const level = gain * (SETTINGS.volume ?? .4);
+  steps.forEach(([hz, at, len], i) => {
+    const osc = audio.createOscillator();
+    const amp = audio.createGain();
+    osc.type = "sine";
+    osc.frequency.value = hz;
+    const t0 = audio.currentTime + at;
+    // A short attack and an exponential tail: a click on either end is what
+    // makes a synthesised tone sound cheap.
+    amp.gain.setValueAtTime(0.0001, t0);
+    amp.gain.exponentialRampToValueAtTime(level, t0 + .012);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
+    osc.connect(amp).connect(audio.destination);
+    osc.start(t0);
+    osc.stop(t0 + len + .02);
+  });
+}
+
+// Rising pair: a question, and it wants an answer.
+const soundBlocked = () => tone([[660, 0, .16], [880, .13, .26]], .22);
+// Single soft note, falling away: something ended, nothing is being asked.
+const soundDone    = () => tone([[520, 0, .34]], .10);
+
+// Sound fires on a CHANGE of state, never on the state itself: a snapshot
+// arrives every few seconds and re-announcing a standing state is how a
+// notification becomes noise.
+let lastStates = new Map();
+function announce(snapshot) {
+  const now = new Map();
+  for (const g of snapshot.groups || []) {
+    for (const r of g.rows) now.set(r.session_id, r.state);
+  }
+  if (lastStates.size) {
+    let focused = false;
+    for (const [id, state] of now) {
+      const before = lastStates.get(id);
+      if (state === before) continue;
+      if (state === "blocked" && SETTINGS?.sound_blocked) soundBlocked();
+      else if (state === "idle" && before === "working" && SETTINGS?.sound_done) soundDone();
+      // One session per update: two blocking at once would otherwise each
+      // take focus in turn, leaving you on whichever happened to be last.
+      if (state === "blocked" && SETTINGS?.focus_blocked && !focused) {
+        act(id, "bring");
+        focused = true;
+      }
+      // The daemon goes back only if it brought you here and you are still
+      // here, so this can be sent for every session that stops being blocked.
+      if (before === "blocked" && SETTINGS?.focus_blocked && SETTINGS?.return_after_blocked) {
+        act(id, "return");
+      }
+    }
+  }
+  lastStates = now;
+}
+
+const events = new EventSource(`/events?token=${encodeURIComponent(TOKEN)}`);
+// A heartbeat proves the daemon is answering; its payload says whether what
+// the daemon last read is current. An unfresh one paints STALE immediately
+// rather than waiting out the timer, because the daemon already knows.
+events.addEventListener("heartbeat", event => {
+  let fresh = true;
+  try { fresh = JSON.parse(event.data || "{}").fresh !== false; } catch (err) { }
+  if (fresh) markFresh();
+  else document.body.classList.add("stale");
+});
+events.onmessage = event => {
+  markFresh();
+  LATEST = JSON.parse(event.data);
+  announce(LATEST);
+  render(LATEST);
+};
+events.onerror = () => document.body.classList.add("stale");
+markFresh();
+</script>
