@@ -259,3 +259,45 @@ def test_parse_working_since():
     assert parse_working_since(json.dumps({"state": "idle"})) is None
     assert parse_working_since("garbage") is None
     assert parse_working_since(None) is None
+
+
+from sidebar import agent_variable, parse_codex
+
+CLAUDE_RAW = json.dumps({"state": "idle", "pid": 701, "ts": 1789480000})
+CODEX_RAW = json.dumps({"state": "working", "pid": 51201, "ts": 1789480300, "model": "gpt-6-astra",
+                        "transcript_path": "/Users/jane/.codex/sessions/2026/09/15/rollout-x.jsonl"})
+
+
+def test_a_codex_pane_reads_its_codex_variable():
+    assert agent_variable(None, CODEX_RAW) == (CODEX_RAW, "openai")
+
+
+def test_a_claude_pane_reads_its_claude_variable():
+    assert agent_variable(CLAUDE_RAW, None) == (CLAUDE_RAW, "claude")
+    assert agent_variable(CLAUDE_RAW, "") == (CLAUDE_RAW, "claude")
+
+
+def test_a_pane_that_reported_nothing_has_no_agent_variable():
+    assert agent_variable(None, None) == (None, None)
+
+
+def test_when_both_are_set_the_newer_report_wins():
+    """A Claude killed without SessionEnd leaves its variable behind; Codex
+    started later in the same pane reports after it."""
+    assert agent_variable(CLAUDE_RAW, CODEX_RAW) == (CODEX_RAW, "openai")
+    newer_claude = json.dumps({"state": "working", "pid": 702, "ts": 1789480900})
+    assert agent_variable(newer_claude, CODEX_RAW) == (newer_claude, "claude")
+
+
+def test_a_report_without_a_readable_time_loses_to_one_with():
+    assert agent_variable("not json", CODEX_RAW) == (CODEX_RAW, "openai")
+
+
+def test_codex_variable_names_its_model_and_rollout():
+    assert parse_codex(CODEX_RAW) == {
+        "model": "gpt-6-astra", "transcript_path": "/Users/jane/.codex/sessions/2026/09/15/rollout-x.jsonl"}
+
+
+def test_an_unreadable_codex_variable_names_nothing():
+    assert parse_codex("{torn") == {"model": None, "transcript_path": None}
+    assert parse_codex(None) == {"model": None, "transcript_path": None}

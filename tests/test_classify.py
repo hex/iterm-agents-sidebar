@@ -52,7 +52,7 @@ def test_cs_session_whose_title_tmux_stole():
     assert classify(
         "/Users/x/.claude-sessions/claude-sessions",
         "tmux",
-        claude_state="idle",
+        agent_state="idle",
     ) == ("agent", "claude-sessions")
 
 
@@ -76,7 +76,7 @@ def test_an_unmarked_agent_still_falls_back_to_its_folder():
     """tmux ate the title, so there is nothing to read it from."""
     assert classify(
         "/Users/x/.claude-sessions/claude-sessions", "tmux",
-        claude_state="idle",
+        agent_state="idle",
     ) == ("agent", "claude-sessions")
 
 

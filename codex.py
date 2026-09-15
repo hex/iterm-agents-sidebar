@@ -115,3 +115,58 @@ def read_limits(sessions_dir, now):
         if limits is not None:
             return limits
     return None
+
+
+def _event(line):
+    try:
+        event = json.loads(line)
+    except ValueError:
+        return None
+    return event if isinstance(event, dict) and isinstance(event.get("payload"), dict) else None
+
+
+#: Tokens Codex counts as always in the window (system prompt, tools) and leaves
+#: out of its context figure. Fitted to `/status`: 27371 of 258400 reads "94% left".
+BASELINE_TOKENS = 12000
+
+
+def context_used(tokens, window):
+    """Percent of the window used, as Codex's `/status` reports it (100 minus its "% left")."""
+    usable = window - BASELINE_TOKENS
+    left = 100 * (usable - max(0, tokens - BASELINE_TOKENS)) / usable
+    return 100 - round(max(0.0, left))
+
+
+def session_from_lines(lines):
+    """A running session's reasoning effort and context % from its rollout's lines.
+
+    Effort comes from the last `turn_context`. Context is the last turn's
+    tokens against the model's window, less the fixed baseline Codex leaves
+    out of its own figure: `total_token_usage` adds up every turn,
+    so it runs far past the window and says nothing about how full it is.
+    Either is None until the rollout has reported it.
+    """
+    effort = context = None
+    for line in reversed(list(lines)):
+        event = _event(line)
+        if event is None:
+            continue
+        payload = event["payload"]
+        if effort is None and event.get("type") == "turn_context":
+            effort = payload.get("effort")
+        if context is None and payload.get("type") == "token_count" and isinstance(payload.get("info"), dict):
+            used = (payload["info"].get("last_token_usage") or {}).get("total_tokens")
+            window = payload["info"].get("model_context_window")
+            if isinstance(used, int) and isinstance(window, int) and window > BASELINE_TOKENS:
+                context = context_used(used, window)
+        if effort is not None and context is not None:
+            break
+    return {"effort": effort, "context": context}
+
+
+def read_session(rollout_path):
+    """session_from_lines for one rollout file; unknowns when it cannot be read."""
+    try:
+        return session_from_lines(_tail_lines(rollout_path)) if rollout_path else session_from_lines([])
+    except OSError:
+        return session_from_lines([])

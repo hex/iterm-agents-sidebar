@@ -418,8 +418,26 @@ def is_fresh_start(event, payload):
     return event == "UserPromptSubmit"
 
 
-def claude_pid(tty):
-    """The pid of the claude process owning this terminal, or None.
+def pid_named(ps_output, name):
+    """`ps -o pid=,comm=` output -> the pid whose executable path names the agent.
+
+    The executable is the agent's own binary, and matching on the whole path
+    is what makes this work: basename-only checks see "node". For Codex the
+    match is the native binary under vendor/, not the node launcher that
+    starts it, and the commands Codex runs are that binary's children.
+    """
+    for line in ps_output.splitlines():
+        pid, _, comm = line.strip().partition(" ")
+        if name in comm and "claude-status" not in comm:
+            try:
+                return int(pid)
+            except ValueError:
+                continue
+    return None
+
+
+def agent_pid(tty, name):
+    """The pid of the agent process (`name`) owning this terminal, or None.
 
     Found via the controlling TTY rather than by walking parents: Claude Code
     setsid's its hooks, so getppid() is often 1 and a parent walk dies at the
@@ -437,16 +455,7 @@ def claude_pid(tty):
                              capture_output=True, text=True, timeout=3).stdout
     except (OSError, subprocess.SubprocessError):
         return None
-    for line in out.splitlines():
-        pid, _, comm = line.strip().partition(" ")
-        # The executable is the claude launcher itself; matching on the whole
-        # path is what makes this work, since basename-only checks see "node".
-        if "claude" in comm and "claude-status" not in comm:
-            try:
-                return int(pid)
-            except ValueError:
-                continue
-    return None
+    return pid_named(out, name)
 
 
 def find_tty():
@@ -475,7 +484,7 @@ def find_tty():
     return None
 
 
-def emit(value, target=None):
+def emit(value, target=None, variable="claudeState"):
     target = target or find_tty()
     if not target:
         return
@@ -484,9 +493,9 @@ def emit(value, target=None):
     # activity on every BEL byte, even inside a well-formed OSC sequence.
     # Inside tmux passthrough every inner ESC must be doubled, per DCS rules.
     if os.environ.get("TMUX"):
-        seq = f"\033Ptmux;\033\033]1337;SetUserVar=claudeState={encoded}\033\033\\\033\\"
+        seq = f"\033Ptmux;\033\033]1337;SetUserVar={variable}={encoded}\033\033\\\033\\"
     else:
-        seq = f"\033]1337;SetUserVar=claudeState={encoded}\033\\"
+        seq = f"\033]1337;SetUserVar={variable}={encoded}\033\\"
     try:
         with open(target, "w") as tty:
             tty.write(seq)
@@ -494,8 +503,28 @@ def emit(value, target=None):
         pass
 
 
+def published(doc, pid, payload, codex, now):
+    """The JSON the session variable carries, from the folded state document.
+
+    Codex has no statusline to bridge, so its variable also carries the model
+    (on every Codex payload but SessionEnd) and the rollout the daemon reads
+    effort and context from.
+    """
+    value = {"state": aggregate(doc), "pid": pid,
+             "agents": live_agents(doc), "subagents": subagents(doc),
+             "blocked_since": blocked_since(doc), "working_since": working_since(doc),
+             "ts": round(now)}
+    if codex:
+        value["model"] = payload.get("model")
+        value["transcript_path"] = payload.get("transcript_path")
+    return value
+
+
 def main():
     event = sys.argv[1] if len(sys.argv) > 1 else ""
+    # Codex runs this same handler: its hook events and payloads have the
+    # shape Claude Code's do, measured by a probe hook on 2026-09-15.
+    codex = "--codex" in sys.argv[2:]
     payload = read_payload()
     state = state_for(event, payload)
 
@@ -515,7 +544,8 @@ def main():
     state = "" if event == "SessionEnd" else aggregate(doc)
 
     tty = find_tty()
-    pid = claude_pid(tty)
+    pid = agent_pid(tty, "codex" if codex else "claude")
+    variable = "codexState" if codex else "claudeState"
 
     # Keep tracing while the interrupt question is open: an Esc or Ctrl+C
     # during ordinary use gets captured, and the fourth state can then be
@@ -560,13 +590,9 @@ def main():
     if state is None:
         pass                     # nothing this event should change
     elif state == "":
-        emit("")
+        emit("", variable=variable)
     else:
-        emit(json.dumps({"state": state, "pid": pid,
-                         "agents": agents, "subagents": subagents(doc),
-                         "blocked_since": blocked_since(doc), "working_since": working_since(doc),
-                         "ts": round(time.time())}),
-             tty)
+        emit(json.dumps(published(doc, pid, payload, codex, time.time())), tty, variable)
 
     # stdout belongs to the hook protocol. Anything else corrupts it.
     sys.stdout.write("{}")

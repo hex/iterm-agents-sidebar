@@ -359,6 +359,9 @@
     max-width: 100%; line-height: 1.2;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  /* The mark before a name: the agent's provider. */
+  .label > .provider { display: inline-block; width: .85em; height: .85em; margin-right: 4px;
+                       vertical-align: -.1em; fill: currentColor; }
 
   /* Silence, plus one exception. The panel is read from the corner of an eye,
      and its only question is "is anything waiting on me". So a row that needs
@@ -384,9 +387,9 @@
     gap: 1px; align-items: flex-start;
   }
   .model {
-    display: flex; align-items: center; gap: 9px; max-width: 100%;
+    display: flex; align-items: center; gap: 5px; max-width: 100%;
     font: 400 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
-    overflow: hidden;
+    overflow: hidden; padding-block: .2em; margin-block: -.2em;
   }
   /* Faded per item rather than on the line, which would cap everything in it
      at the same strength -- the effort letter is meant to read at full. */
@@ -399,7 +402,12 @@
     display: inline-flex; align-items: center; gap: 3px;
     min-width: 0; white-space: nowrap;
   }
-  .mchip > .mtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* overflow:hidden clips to the box, and at line-height 1 the box ends above
+     the descenders ("gpt" lost its tails). The padding makes room for them and
+     the negative margin keeps the line as tall as it was; the line above does
+     the same, since it clips too. */
+  .mchip > .mtext { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+                    padding-block: .2em; margin-block: -.2em; }
   /* The branch alone gives way when the line is too long. The model, the
      effort letter and the context figure never shrink: a model name is short
      and loses its meaning first ("Fable 5..." is which Fable?), and a clipped
@@ -408,6 +416,9 @@
   /* Never down to a bare icon, which reads as a branch with no name. */
   .mchip.branch { flex-shrink: 1; min-width: calc(var(--meta-icon) + 3px + 2ch); }
   .mchip.model-name, .mchip.ctx { flex-shrink: 0; }
+  /* A dim middot opens every item after the first; the effort letter belongs
+     to its model and gets none. Inside the chip, so it goes with its item. */
+  .model > .mchip ~ .mchip::before { content: "\00b7"; margin-right: 2px; opacity: .6; }
   /* Slightly above the text's optical centre, where a 9px glyph sits level
      with lowercase rather than with the baseline. */
   /* Effort as one or two letters after the model, in the colours Claude
@@ -423,8 +434,8 @@
       --effort-xhigh: #b159ff; --effort-max-1: #aec8e8; --effort-max-2: #dbaece;
     }
   }
-  /* Sits against the model it qualifies: the line's 9px gap, less 5. */
-  .effort { margin-left: -5px; font-weight: 600; flex-shrink: 0; }
+  /* Sits against the model it qualifies: the line's 5px gap, less 1. */
+  .effort { margin-left: -1px; font-weight: 600; flex-shrink: 0; }
   /* Brackets in the line's own faded grey, so only the letter carries the colour. */
   .effort::before { content: "["; color: var(--dim); font-weight: 400; opacity: .7; }
   .effort::after { content: "]"; color: var(--dim); font-weight: 400; opacity: .7; }
@@ -461,6 +472,13 @@
     width: var(--mark); height: var(--mark); flex-shrink: 0;
   }
   .swatch { position: relative; }
+  /* A command name, so it reads in the terminal's own face, as the branch and model do. */
+  .job { font: 400 11px/1.2 ui-monospace, Menlo, monospace; }
+  /* Takes the swatch's place. The glyph overflows the swatch-sized box by a
+     few pixels to stay legible, and the box keeps the name where a swatch would. */
+  .shell-mark { display: flex; width: var(--mark); height: var(--mark); flex-shrink: 0;
+                align-items: center; justify-content: center; color: var(--hue, var(--dim)); }
+  .shell-mark .mi { width: calc(var(--mark) + 3px); height: calc(var(--mark) + 3px); opacity: 1; }
   .swatch::before {
     content: ""; width: var(--mark); height: var(--mark); border-radius: 1.5px;
     background: var(--hue, var(--rule));
@@ -529,15 +547,24 @@
      update, so each badge starts at the point the clock says the sweep has
      reached, and every badge sweeps in step. */
   @media (prefers-reduced-motion: no-preference) {
-    .word.idle {
-      background: linear-gradient(90deg, var(--dim) 0%, var(--dim) 35%,
-                  color-mix(in srgb, var(--dim) 60%, #fff) 50%,
-                  var(--dim) 65%, var(--dim) 100%) 0 0 / 250% 100%;
+    .word.idle, .shimmer {
+      --spread: calc(3ch + 40px);
+      --light: color-mix(in srgb, var(--dim) 35%, #fff);
+      background: linear-gradient(110deg,
+                  var(--dim) calc(50% - var(--spread)),
+                  color-mix(in srgb, var(--light), var(--dim)) calc(50% - var(--spread) * .5),
+                  var(--light) 50%,
+                  color-mix(in srgb, var(--light), var(--dim)) calc(50% + var(--spread) * .5),
+                  var(--dim) calc(50% + var(--spread)))
+                  0 0 / calc(200% + var(--spread) * 2) 100% no-repeat;
       -webkit-background-clip: text; background-clip: text; color: transparent;
-      animation: idle-shimmer 4s ease-in-out infinite; animation-delay: var(--shimmer-delay, 0ms);
+      animation: idle-shimmer 2s linear infinite; animation-delay: var(--shimmer-delay, 0ms);
     }
-    /* The sweep takes the first 45% of the cycle; the rest is a pause. */
-    @keyframes idle-shimmer { 0% { background-position: 100% 0; } 45%, 100% { background-position: -150% 0; } }
+    /* Glyph descenders sit below a line-height of 1, where the clipped
+       background would cut them off. */
+    .shimmer { line-height: normal; }
+    @keyframes idle-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+    .shell-sum:hover .shimmer { animation: none; background: none; color: inherit; }
   }
   button.row.resting .label { padding-right: 40px; }
   /* A turn that has run long enough to be worth a look: warm outline, no fill,
@@ -774,7 +801,14 @@
     margin-left: -.5px; background: var(--fg); opacity: .45;
   }
   #budget .win.ahead .pct { color: var(--warn); font-weight: 600; }
-  #budget .cost { margin-top: 4px; height: 13px; line-height: 13px; }
+  /* Under a dotted rule, so it reads as its own figure rather than a caption
+     to the bar above; the middot rule is the meta line's. */
+  #budget .cost {
+    display: flex; align-items: center; gap: 5px; margin-top: 6px; padding-top: 5px;
+    border-top: 1px dotted var(--card-border); height: 13px; line-height: 13px;
+  }
+  #budget .cost .mchip { cursor: default; }
+  #budget .cost .mchip ~ .mchip::before { content: "\00b7"; margin-right: 2px; opacity: .6; }
   /* Accounts: the line naming the login sessions run on, then the others. */
   #budget .acct-line {
     display: flex; align-items: center; justify-content: flex-start; gap: 6px;
@@ -914,6 +948,13 @@ const STATE_TITLES = {
 };
 // A turn still working after this long may be stuck: it earns a badge.
 const LONG_TURN_SECONDS = 20 * 60;
+// Rows are rebuilt on every update, so a shimmer starts where the clock says
+// the sweep has reached; every shimmer on the page then sweeps in step.
+// Matches the idle-shimmer animation duration in the CSS.
+const SHIMMER_MS = 2000;
+function syncShimmer(el) {
+  el.style.setProperty("--shimmer-delay", `-${Date.now() % SHIMMER_MS}ms`);
+}
 // Heartbeat is every 4s server-side. Two missed, plus a second of slack.
 const STALE_AFTER_MS = 9000;
 // Below this there is room to spare and nothing to decide.
@@ -1823,11 +1864,20 @@ function paintBudget(snapshot) {
 
   const costs = reporting.filter(d => d.cost != null);
   if (costs.length) {
+    // What Claude Code says the running sessions have spent, priced at API
+    // rates: on a subscription it is a measure of use, not a bill.
     const cost = document.createElement("div");
     cost.className = "cost";
     const total = costs.reduce((sum, d) => sum + d.cost, 0);
-    cost.textContent = `$${total.toFixed(2)} · ${costs.length} session`
-      + (costs.length === 1 ? "" : "s");
+    const n = costs.length;
+    const spent = Object.assign(document.createElement("span"), {className: "mchip"});
+    spent.append(metaIcon("cost"), document.createTextNode(`$${total.toFixed(2)}`));
+    spent.title = "Cost so far of the running Claude Code sessions, at API prices";
+    const count = Object.assign(document.createElement("span"), {className: "mchip"});
+    count.append(metaIcon("shells"), document.createTextNode(`${n} session${n === 1 ? "" : "s"}`));
+    count.title = `${n} Claude Code session${n === 1 ? " reports" : "s report"} a cost`;
+    cost.append(spent, count);
+    cost.setAttribute("aria-label", `$${total.toFixed(2)} spent at API prices across ${n} session${n === 1 ? "" : "s"}`);
     strip.append(cost);
   }
   strip.hidden = strip.childElementCount === 0;
@@ -1933,6 +1983,10 @@ function paint(snapshot) {
       if (row.state === "working" || row.running) {
         mark.className = "busy" + (row.depth ? " down" : "");
         mark.innerHTML = "<i></i><i></i><i></i>";
+      } else if (group.name !== "AGENTS" && !row.depth) {
+        // A plain terminal at its prompt: the shell mark, in its session colour.
+        mark.className = "shell-mark";
+        mark.append(metaIcon("shells"));
       } else {
         mark.className = "swatch" + (row.state === "unknown" ? " hollow" : "");
       }
@@ -1946,15 +2000,14 @@ function paint(snapshot) {
 
       const label = document.createElement("span");
       label.className = "label";
-      label.textContent = row.label;
+      // Claude rows are the unmarked default; any other agent names itself.
+      if (PROVIDER_ICONS[row.provider]) label.append(providerIcon(row.provider, "Codex"));
+      label.append(row.label);
       stack.append(label);
 
       // Branch then model, on one line under the name: both describe the
       // session rather than its state, so they belong together and behind it.
-      // Branch then model, on one line under the name: both describe the
-      // session rather than its state, so they belong together and behind it.
-      // An icon each instead of a separator -- at 9px a glyph says which is
-      // which faster than a middot says they are different.
+      // Each item has an icon saying which it is, and a middot between items.
       const meta = document.createElement("span");
       meta.className = "model";
       for (const [kind, value] of [["branch", row.branch], ["model", row.model]]) {
@@ -2019,7 +2072,7 @@ function paint(snapshot) {
         const word = document.createElement("span");
         word.className = "word idle";
         word.textContent = "idle";
-        word.style.setProperty("--shimmer-delay", `-${Date.now() % 4000}ms`);
+        syncShimmer(word);
         b.append(word);
         b.classList.add("resting");
       }
@@ -2030,7 +2083,7 @@ function paint(snapshot) {
       // this page can reach. Two of them at once is what that looks like.
       const said = row.state ? STATE_TITLES[row.state] || row.state : null;
       b.setAttribute("aria-label",
-                     [row.label, row.position, said,
+                     [row.label, row.provider === "openai" ? "Codex" : null, row.position, said,
                       b.classList.contains("long-turn")
                         ? `running for ${duration(Date.now() / 1000 - row.working_since)}, may be stuck` : null,
                       typeof row.context === "number" ? row.context + "% context" : null]
@@ -2113,8 +2166,10 @@ function paint(snapshot) {
         const n = shells.length;
         const chev = Object.assign(document.createElement("span"),
                                    {className: "chev", textContent: "\u203a"});
-        sum.append(metaIcon("shells"), document.createTextNode(
-          `${n} command${n > 1 ? "s" : ""} running`), chev);
+        const count = Object.assign(document.createElement("span"),
+                                    {className: "shimmer", textContent: `${n} command${n > 1 ? "s" : ""} running`});
+        syncShimmer(count);
+        sum.append(metaIcon("shells"), count, chev);
         sum.setAttribute("aria-expanded", String(open));
         sum.setAttribute("aria-label", `${n} background shell${n > 1 ? "s" : ""} in ${row.label}`);
         sum.addEventListener("click", () => {

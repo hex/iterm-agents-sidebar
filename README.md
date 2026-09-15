@@ -60,6 +60,26 @@ To undo:
 cp ~/.claude/settings.json.before-agents-sidebar ~/.claude/settings.json
 ```
 
+### Codex sessions (opt-in)
+
+```sh
+./install.sh --codex
+```
+
+Registers the same state hook in `~/.codex/hooks.json` for seven Codex events,
+run with `--codex`, so a Codex CLI session gets a card in AGENTS too. Codex asks
+once to trust the new hooks, and sessions started after that report. Entries
+other tools put in that file (herdr registers its own) stay where they are, and
+the install first copies the file to `hooks.json.before-agents-sidebar`. A herdr
+update can rewrite the file; re-run `./install.sh --codex` if Codex cards stop
+appearing.
+
+To undo:
+
+```sh
+cp ~/.codex/hooks.json.before-agents-sidebar ~/.codex/hooks.json
+```
+
 ## Using it
 
 | Key | What it does |
@@ -83,7 +103,7 @@ Each session is a card. A session doing something has a dark name and the
 working dots; a resting one goes grey. A session waiting on you turns its whole
 card amber with a WAITING badge, and nothing else on the panel uses that
 colour. A session at rest carries a grey IDLE outline, with a faint light sweeping
-through the word every few seconds (none when macOS reduces motion). One whose turn has been
+through the word every two seconds (none when macOS reduces motion). One whose turn has been
 working for 20 minutes or more gets a warm `long 25m` outline, since it may
 have stalled; the hook stamps when your prompt started the turn. Its teammates sit
 inside the card under a guide line, their working dots stacked vertically.
@@ -94,6 +114,12 @@ to, not iTerm2's internal tab id.
 
 After the model, a bracketed letter gives the session's effort level: `[l]`, `[m]`,
 `[h]`, `[xh]` or `[mx]`, in the colours Claude Code's `/effort` picker uses.
+
+A Codex session's card carries the OpenAI mark before its name and shows the
+same working, waiting, idle and long badges. Its model comes from the hook;
+effort and context come from the tail of its session log, where context is the
+figure Codex's own `/status` shows, as percent used. It has no teammates and no
+background-shell line.
 
 Bring a blocked session forward, in settings, focuses a session the moment it
 starts waiting on you. It is off by default, and like the sounds it only acts
@@ -113,7 +139,7 @@ A teammate wears the badge colour Claude Code gave it when it was spawned,
 read off its process's `--agent-color` argument, which is the only place that
 colour is kept.
 
-A plain terminal running a command shows the working dots and the command's
+A plain terminal at its prompt shows a shell mark in its session colour where an agent shows its square. One running a command shows the working dots and the command's
 name, and goes quiet when it is back at its prompt. Inside tmux iTerm2 reports
 neither a pane's command nor its directory reliably, so the panel asks tmux for
 the pane's tty and directory and names the tty's foreground process. A script
@@ -123,7 +149,9 @@ run by an interpreter shows under the script's name: `node .../bin/codex` shows 
 The panel's foot, above the gear, holds two quiet pieces. While any session
 waits on you, a queue lists them oldest first with how long each has waited
 (`12m`, `<1m`); click one to focus it. Nothing waiting, no queue. Under it sit
-the account limits and the summed cost of the sessions that report one.
+the account limits and, under a dotted rule, a coin mark with what the running
+Claude Code sessions report having spent at API prices, then a terminal mark with
+how many sessions report it. Hover either for what it counts.
 
 Until you store an account, the limits come from the sessions' status lines:
 5-hour and weekly as hairlines with the percentage used and the time left until
@@ -184,7 +212,7 @@ every time one of its agents ends. Click
 one to focus its session. Show subagents in settings hides them.
 
 A session's background shells fold into one line at the foot of its card, such
-as "2 commands running". Click it to open or close the list; each shell then
+as "2 commands running", with the same light sweep as the IDLE badge. Click it to open or close the list; each shell then
 has its own row, labelled with the command. Start expanded, under Show
 background shells in settings, opens every card's list by default. Click a
 shell row for the whole command and a Copy button; the popover stays put while

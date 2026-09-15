@@ -99,3 +99,16 @@ if [ "${1:-}" = "--statusline" ]; then
   echo "        takes effect in sessions started from now on"
   echo "        undo:  cp \"$settings.before-agents-sidebar\" \"$settings\""
 fi
+
+# Codex sessions as panel rows are opt-in, for the same reason as the bridge:
+# ~/.codex/hooks.json is shared (herdr registers its own entries there), so it
+# is edited only when asked. The hooks run the installed copy of the handler.
+if [ "${1:-}" = "--codex" ]; then
+  codex_hooks="$HOME/.codex/hooks.json"
+  [ -d "$HOME/.codex" ] || { echo "error: ~/.codex not found; is Codex installed?" >&2; exit 1; }
+  [ -f "$codex_hooks" ] && cp "$codex_hooks" "$codex_hooks.before-agents-sidebar"
+  bash "$repo/codex-hooks.sh" "$codex_hooks" "$plugin_dir/hooks-handlers/emit-state.py"
+  echo "codex hooks -> $codex_hooks"
+  echo "        Codex asks once to trust them; takes effect in sessions started from now on"
+  [ -f "$codex_hooks.before-agents-sidebar" ] && echo "        undo:  cp \"$codex_hooks.before-agents-sidebar\" \"$codex_hooks\""
+fi
