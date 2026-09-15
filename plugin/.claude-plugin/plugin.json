@@ -1,0 +1,9 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "agents-sidebar",
+  "version": "1.0.0",
+  "description": "Publishes Claude session state to iTerm2 for the Agents sidebar",
+  "author": {
+    "name": "hex"
+  }
+}
