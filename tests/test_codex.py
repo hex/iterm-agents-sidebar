@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from codex import limits_from_lines, read_limits
+from codex import limits_from_lines, read_limits, read_session, session_from_lines
 
 WEEKLY_ONLY = {"limit_id": "codex", "primary": {"used_percent": 27.0, "window_minutes": 10080,
                                                 "resets_at": 1789843280},
@@ -97,3 +97,53 @@ def test_read_limits_finds_the_last_reading_of_a_long_rollout(tmp_path):
 
 def test_read_limits_without_codex_installed_is_none(tmp_path):
     assert read_limits(str(tmp_path / "missing"), now=NOW) is None
+
+
+# Shaped as a real rollout's last turn_context and token_count on 2026-09-15.
+TURN_CONTEXT = json.dumps({"type": "turn_context", "payload": {
+    "cwd": "/Users/jane/project", "model": "gpt-6-astra", "effort": "medium", "approval_policy": "on-request"}})
+TOKEN_COUNT = json.dumps({"type": "event_msg", "payload": {"type": "token_count", "info": {
+    "total_token_usage": {"input_tokens": 6082346, "output_tokens": 9693, "total_tokens": 6092039},
+    "last_token_usage": {"input_tokens": 27581, "cached_input_tokens": 27008, "output_tokens": 280,
+                         "reasoning_output_tokens": 0, "total_tokens": 27861},
+    "model_context_window": 258400}, "rate_limits": WEEKLY_ONLY}})
+
+
+def test_a_session_reads_its_effort_and_how_full_its_context_is():
+    assert session_from_lines([TURN_CONTEXT, TOKEN_COUNT]) == {"effort": "medium", "context": 6}
+
+
+def _last_turn(tokens):
+    return json.dumps({"type": "event_msg", "payload": {"type": "token_count", "info": {
+        "last_token_usage": {"total_tokens": tokens}, "model_context_window": 258400}}})
+
+
+def test_context_agrees_with_codex_status():
+    """Codex /status on 2026-09-15 read "94% left (27.4K used / 258K)" for a
+    session whose last turn was 27371 tokens; the plain ratio says 89% left."""
+    assert session_from_lines([_last_turn(27371)])["context"] == 6
+
+
+def test_a_context_holding_only_the_fixed_prompt_reads_empty():
+    assert session_from_lines([_last_turn(9000)])["context"] == 0
+
+
+def test_context_ignores_the_session_wide_token_total():
+    """total_token_usage adds up every turn: 6 M against a 258 k window."""
+    assert session_from_lines([TOKEN_COUNT])["context"] == 6
+
+
+def test_a_session_that_has_not_finished_a_turn_reads_as_unknown():
+    no_info = json.dumps({"type": "event_msg", "payload": {"type": "token_count", "info": None}})
+    assert session_from_lines([no_info, '{"torn']) == {"effort": None, "context": None}
+
+
+def test_a_rollout_that_cannot_be_read_reads_as_unknown(tmp_path):
+    assert read_session(str(tmp_path / "gone.jsonl")) == {"effort": None, "context": None}
+    assert read_session(None) == {"effort": None, "context": None}
+
+
+def test_a_session_is_read_from_its_rollout_file(tmp_path):
+    rollout = tmp_path / "rollout-2026-09-15T16-33-01-x.jsonl"
+    rollout.write_text("\n".join([TURN_CONTEXT, TOKEN_COUNT]) + "\n")
+    assert read_session(str(rollout)) == {"effort": "medium", "context": 6}

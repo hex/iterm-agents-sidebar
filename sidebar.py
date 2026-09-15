@@ -141,7 +141,7 @@ TOOL_IDENTIFIER = "com.hex.agents-sidebar"
 TOOL_DISPLAY_NAME = "Agents"
 
 
-def classify(path, auto_name, claude_state=None):
+def classify(path, auto_name, agent_state=None):
     """One session's cwd, title and reported state -> (kind, label).
 
     Pure. `kind` is "agent" or "shell"; `label` is what the row shows.
@@ -164,7 +164,7 @@ def classify(path, auto_name, claude_state=None):
     # Union, not either alone: a session running inside tmux loses the marker
     # to tmux but still reports state, and an agent that has not reported yet
     # still carries the marker.
-    if marked or claude_state:
+    if marked or agent_state:
         # A cwd says where a terminal is standing, not which session it is:
         # one session cd'd into another session's directory and took its name.
         # The marked title survives any cd, so prefer it when it is there.
@@ -245,7 +245,7 @@ def snapshot(sessions):
     rows = {"agent": [], "shell": []}
     for session in sessions:
         kind, label = classify(session.get("path"), session.get("auto_name"),
-                               session.get("claude_state"))
+                               session.get("agent_state"))
         resolved = Path(session["path"]) if session.get("path") else None
         # A family is one tab, not one directory. Two cs sessions open on the
         # same repo share a directory and nothing else, and keying on the
@@ -317,8 +317,11 @@ def snapshot(sessions):
         if session.get("colour"):
             row["colour"] = session["colour"]
         if kind == "agent":
-            if session.get("claude_state"):
-                row["state"] = session["claude_state"]
+            # Claude rows are the page's unmarked default; others name themselves.
+            if session.get("provider") not in (None, "claude"):
+                row["provider"] = session["provider"]
+            if session.get("agent_state"):
+                row["state"] = session["agent_state"]
             if session.get("context") is not None:
                 row["context"] = session["context"]
             if session.get("model"):
@@ -656,6 +659,43 @@ def read_shells():
     except (OSError, subprocess.SubprocessError):
         return {}
     return parse_shells(out)
+
+
+def _reported_at(raw):
+    try:
+        ts = json.loads(raw)["ts"]
+    except (ValueError, TypeError, KeyError):
+        return None
+    return ts if isinstance(ts, (int, float)) else None
+
+
+def agent_variable(claude_raw, codex_raw):
+    """A pane's claudeState and codexState -> (the one that speaks for it, provider).
+
+    Both are set only when one agent left its variable behind and another
+    started in the same pane (a Claude killed without SessionEnd, then Codex);
+    the newer report is the one still running. Provider is "claude" or
+    "openai", or None when neither reported.
+    """
+    if not codex_raw:
+        return (claude_raw, "claude") if claude_raw else (None, None)
+    if not claude_raw:
+        return codex_raw, "openai"
+    claude_ts, codex_ts = _reported_at(claude_raw), _reported_at(codex_raw)
+    if codex_ts is not None and (claude_ts is None or codex_ts >= claude_ts):
+        return codex_raw, "openai"
+    return claude_raw, "claude"
+
+
+def parse_codex(raw):
+    """The codexState variable -> the model and rollout path the Codex hook published."""
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        payload = None
+    if not isinstance(payload, dict):
+        payload = {}
+    return {"model": payload.get("model"), "transcript_path": payload.get("transcript_path")}
 
 
 def parse_pid(raw):
@@ -1191,8 +1231,8 @@ POLL_SECONDS = 2
 #: Variables Bridge reads per session. `path` and `autoName` drive classify;
 #: `jobName` is display only, and only on shell rows.
 SESSION_VARIABLES = ("path", "autoName", "jobName", "name", "tmuxWindowPane",
-                     # Written by the plugin hook and by claude-status.
-                     "user.claudeState", "user.claudeStatus")
+                     # Written by the plugin hook (Claude Code and Codex) and by claude-status.
+                     "user.claudeState", "user.codexState", "user.claudeStatus")
 
 
 class Server:
@@ -1335,8 +1375,16 @@ class Bridge:
                     pane = tmux_panes.get(values["tmuxWindowPane"]) or {}
                     # tmux's directory for its own pane over iTerm2's guess.
                     values["path"] = pane.get("path") or values["path"]
-                    claude_pid = parse_pid(values["user.claudeState"])
-                    status = read_status(claude_pid)
+                    raw, provider = agent_variable(values["user.claudeState"], values["user.codexState"])
+                    pid = parse_pid(raw)
+                    if provider == "openai":
+                        # Codex has no statusline: the hook names the model and
+                        # the rollout has the rest.
+                        published = parse_codex(raw)
+                        status = dict(parse_status(None), model=published["model"],
+                                      **codex.read_session(published["transcript_path"]))
+                    else:
+                        status = read_status(pid)
                     marks = transcript_marks(status.get("transcript"))
                     rows.append({
                         "session_id": session.session_id,
@@ -1351,11 +1399,12 @@ class Bridge:
                         "auto_name": values["autoName"],
                         "session_name": values["name"],
                         "job_name": values["jobName"] or pane.get("job"),
-                        "claude_state": parse_state(values["user.claudeState"]),
-                        "agents": parse_agents(values["user.claudeState"]),
-                        "subagents": parse_subagents(values["user.claudeState"]),
-                        "blocked_since": parse_blocked_since(values["user.claudeState"]),
-                        "working_since": parse_working_since(values["user.claudeState"]),
+                        "provider": provider,
+                        "agent_state": parse_state(raw),
+                        "agents": parse_agents(raw),
+                        "subagents": parse_subagents(raw),
+                        "blocked_since": parse_blocked_since(raw),
+                        "working_since": parse_working_since(raw),
                         "context": status["context"],
                         "model": status["model"],
                         "effort": status["effort"],
@@ -1364,11 +1413,11 @@ class Bridge:
                         # snapshot is the pure unit that the tests pin down.
                         "agent_name": marks["agent"],
                         "team": marks["team"],
-                        "shells": shells.get(claude_pid, []),
-                        "uptime": uptime.get(claude_pid),
+                        "shells": shells.get(pid, []),
+                        "uptime": uptime.get(pid),
                         # A teammate wears the colour it was spawned with; a
                         # session wears the one cs gave its directory.
-                        "colour": agent_colours.get(claude_pid)
+                        "colour": agent_colours.get(pid)
                                   or session_colour(values["path"]),
                         "branch": git_branch(values["path"]),
                     })

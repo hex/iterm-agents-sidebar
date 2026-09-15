@@ -78,8 +78,61 @@ def test_pid_lookup_of_a_tty_that_does_not_exist():
     """None, not a crash and not a wrong pid. The reader treats a missing pid
     as unknown, which is the honest answer when we cannot tell.
     """
-    assert emit_state.claude_pid("/dev/ttys999") is None
-    assert emit_state.claude_pid(None) is None
+    assert emit_state.agent_pid("/dev/ttys999", "claude") is None
+    assert emit_state.agent_pid(None, "codex") is None
+
+
+# `ps -t <tty> -o pid=,comm=` for a tmux pane running Codex, shaped as measured
+# 2026-09-15: the node launcher, the native binary it starts, and the hook.
+CODEX_PANE_PS = """\
+51001 -zsh
+51200 /Users/jane/.nvm/versions/node/v25.1.0/bin/node
+51201 /Users/jane/.nvm/versions/node/v25.1.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex
+51300 /Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python
+"""
+
+
+def test_the_codex_pid_is_the_native_binary_not_its_node_launcher():
+    """The commands Codex runs, hooks included, are children of the binary."""
+    assert emit_state.pid_named(CODEX_PANE_PS, "codex") == 51201
+
+
+def test_a_codex_pane_has_no_claude_pid():
+    assert emit_state.pid_named(CODEX_PANE_PS, "claude") is None
+
+
+def test_the_claude_status_helper_is_not_claude():
+    ps = "700 /usr/local/bin/claude-status\n701 /Users/jane/.local/bin/claude\n"
+    assert emit_state.pid_named(ps, "claude") == 701
+
+
+def test_codex_publishes_its_own_variable(tmp_path, monkeypatch):
+    """A Codex pane may once have run Claude; separate variables keep a stale
+    claudeState from being read as this session's."""
+    monkeypatch.delenv("TMUX", raising=False)
+    tty = tmp_path / "tty"
+    tty.write_text("")
+    emit_state.emit("x", str(tty), variable="codexState")
+    assert "]1337;SetUserVar=codexState=eA==" in tty.read_text()
+
+
+def test_codex_state_carries_its_model_and_rollout():
+    """Codex has no statusline to bridge: the model comes from the hook
+    payload and effort and context from the rollout the daemon reads."""
+    payload = {"model": "gpt-6-astra",
+               "transcript_path": "/Users/jane/.codex/sessions/2026/09/15/rollout-x.jsonl"}
+    value = emit_state.published({"parent_active": True}, 51201, payload, codex=True, now=1789000000)
+    assert value["state"] == "working"
+    assert value["pid"] == 51201
+    assert value["model"] == "gpt-6-astra"
+    assert value["transcript_path"] == "/Users/jane/.codex/sessions/2026/09/15/rollout-x.jsonl"
+
+
+def test_claude_state_carries_no_codex_fields():
+    value = emit_state.published({}, 701, {"model": "claude-opus-5", "transcript_path": "/t"},
+                                 codex=False, now=1789000000)
+    assert "model" not in value and "transcript_path" not in value
+    assert value["state"] == "idle"
 
 
 def test_a_tool_running_means_the_permission_prompt_was_answered():

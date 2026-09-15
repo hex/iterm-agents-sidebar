@@ -86,7 +86,7 @@ SPLIT = [
     {"session_id": "9C87CDF1-F37D-4B3A-BFB3-7D535FD17EBD", "window_id": WINDOW,
      "tab_id": "14", "window_index": 1, "tab_index": 5, "pane_index": 1,
      "path": "/Users/x/.claude-sessions/claude-sessions",
-     "auto_name": "tmux", "job_name": None, "claude_state": "idle"},
+     "auto_name": "tmux", "job_name": None, "agent_state": "idle"},
     {"session_id": "657A9D1B-8D8F-4820-AA1C-FB5B19BD94D8", "window_id": WINDOW,
      "tab_id": "14", "window_index": 1, "tab_index": 5, "pane_index": 2,
      "path": "/Users/x/.claude-sessions/claude-sessions",
@@ -149,13 +149,26 @@ def test_agent_rows_carry_state_colour_and_context():
     user.claudeStatus. All three are optional -- a session with none of them is
     still a row.
     """
-    row = dict(LIVE[1], claude_state="working", colour="orange", context=27)
+    row = dict(LIVE[1], agent_state="working", colour="orange", context=27)
     got = snapshot([row])["groups"][0]["rows"][0]
     assert (got["state"], got["colour"], got["context"]) == ("working", "orange", 27)
 
 
+def test_codex_rows_say_which_agent_they_are():
+    row = dict(LIVE[1], agent_state="working", provider="openai", model="gpt-6-astra", effort="medium")
+    got = snapshot([row])["groups"][0]
+    assert got["name"] == "AGENTS"
+    assert (got["rows"][0]["provider"], got["rows"][0]["model"]) == ("openai", "gpt-6-astra")
+
+
+def test_claude_rows_carry_no_provider():
+    """Claude rows are the default the page already draws, unmarked."""
+    row = dict(LIVE[1], agent_state="working", provider="claude")
+    assert "provider" not in snapshot([row])["groups"][0]["rows"][0]
+
+
 def test_agent_rows_carry_their_subagents_and_when_they_blocked():
-    row = dict(LIVE[1], claude_state="blocked", blocked_since=1789462240,
+    row = dict(LIVE[1], agent_state="blocked", blocked_since=1789462240,
                subagents=[{"type": "Explore", "since": 50}])
     got = snapshot([row])["groups"][0]["rows"][0]
     assert got["blocked_since"] == 1789462240
@@ -163,14 +176,14 @@ def test_agent_rows_carry_their_subagents_and_when_they_blocked():
 
 
 def test_agent_rows_carry_when_their_turn_began():
-    row = dict(LIVE[1], claude_state="working", working_since=1789462000)
+    row = dict(LIVE[1], agent_state="working", working_since=1789462000)
     assert snapshot([row])["groups"][0]["rows"][0]["working_since"] == 1789462000
-    idle = dict(LIVE[1], claude_state="idle", working_since=None)
+    idle = dict(LIVE[1], agent_state="idle", working_since=None)
     assert "working_since" not in snapshot([idle])["groups"][0]["rows"][0]
 
 
 def test_no_subagents_and_no_gate_are_absent():
-    got = snapshot([dict(LIVE[1], claude_state="idle", blocked_since=None,
+    got = snapshot([dict(LIVE[1], agent_state="idle", blocked_since=None,
                          subagents=[])])["groups"][0]["rows"][0]
     assert "blocked_since" not in got and "subagents" not in got
 
@@ -188,7 +201,7 @@ def test_shell_rows_get_colour_but_never_state_or_context():
     """A plain shell has no agent state and no context window. It can still sit
     in a cs session directory and carry that colour.
 
-    No claude_state here on purpose: a terminal that reports one is an agent by
+    No agent_state here on purpose: a terminal that reports one is an agent by
     definition, so a "shell with state" is not a thing that can exist.
     """
     got = snapshot([dict(LIVE[0], colour="cyan")])["groups"][0]["rows"][0]
@@ -321,7 +334,7 @@ def test_a_session_that_cd_s_elsewhere_is_not_a_subagent_of_itself():
         "window_index": 1, "tab_index": 1, "pane_index": 1,
         "path": "/Users/x/.claude-sessions/orchard/src/deep",
         "auto_name": "✳ orchard", "job_name": None,
-        "session_name": "cs: orchard (python /x)", "claude_state": "idle",
+        "session_name": "cs: orchard (python /x)", "agent_state": "idle",
     }
     rows = snapshot([wandered])["groups"][0]["rows"]
     # Labelled from its marked title, so the cd does not rename it either.
@@ -333,7 +346,7 @@ def _agent(**over):
             "window_index": 0, "tab_index": 0, "pane_index": 0,
             "path": "/Users/x/.claude-sessions/demo", "auto_name": "✳ demo",
             "session_name": "cs: demo", "job_name": None,
-            "claude_state": "working", "agents": 2, "context": 30,
+            "agent_state": "working", "agents": 2, "context": 30,
             "model": "Opus 5", "colour": None, "branch": None}
     base.update(over)
     return base
@@ -439,7 +452,7 @@ def _terminal(job):
     return {"session_id": "t0", "window_id": "w", "tab_id": "t",
             "window_index": 0, "tab_index": 0, "pane_index": 0,
             "path": "/Users/x/src/app", "auto_name": "app", "session_name": "app",
-            "job_name": job, "claude_state": None}
+            "job_name": job, "agent_state": None}
 
 
 def test_a_terminal_running_a_command_says_so():
