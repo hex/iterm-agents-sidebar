@@ -524,6 +524,21 @@
   .word.idle { color: var(--dim); box-shadow: inset 0 0 0 .5px var(--dim);
     font-family: -apple-system, sans-serif; font-weight: 600; }
   button.row.resting > .word.idle { position: absolute; top: 6px; right: 10px; }
+  /* A highlight sweeps through the letters: the dim ink stays the base and a
+     band of light passes over it, towards white in either theme. The page rebuilds rows on every
+     update, so each badge starts at the point the clock says the sweep has
+     reached, and every badge sweeps in step. */
+  @media (prefers-reduced-motion: no-preference) {
+    .word.idle {
+      background: linear-gradient(90deg, var(--dim) 0%, var(--dim) 35%,
+                  color-mix(in srgb, var(--dim) 60%, #fff) 50%,
+                  var(--dim) 65%, var(--dim) 100%) 0 0 / 250% 100%;
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      animation: idle-shimmer 4s ease-in-out infinite; animation-delay: var(--shimmer-delay, 0ms);
+    }
+    /* The sweep takes the first 45% of the cycle; the rest is a pause. */
+    @keyframes idle-shimmer { 0% { background-position: 100% 0; } 45%, 100% { background-position: -150% 0; } }
+  }
   button.row.resting .label { padding-right: 40px; }
   /* A turn that has run long enough to be worth a look: warm outline, no fill,
      so it stays below "waiting", which is the one state that needs you. */
@@ -2004,6 +2019,7 @@ function paint(snapshot) {
         const word = document.createElement("span");
         word.className = "word idle";
         word.textContent = "idle";
+        word.style.setProperty("--shimmer-delay", `-${Date.now() % 4000}ms`);
         b.append(word);
         b.classList.add("resting");
       }

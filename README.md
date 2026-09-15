@@ -82,7 +82,8 @@ endpoint runs arbitrary code.
 Each session is a card. A session doing something has a dark name and the
 working dots; a resting one goes grey. A session waiting on you turns its whole
 card amber with a WAITING badge, and nothing else on the panel uses that
-colour. A session at rest carries a grey IDLE outline. One whose turn has been
+colour. A session at rest carries a grey IDLE outline, with a faint light sweeping
+through the word every few seconds (none when macOS reduces motion). One whose turn has been
 working for 20 minutes or more gets a warm `long 25m` outline, since it may
 have stalled; the hook stamps when your prompt started the turn. Its teammates sit
 inside the card under a guide line, their working dots stacked vertically.
@@ -232,7 +233,12 @@ The tool identifier `com.hex.agents-sidebar` is permanent. `iterm2.tool`
 exposes only `async_register_web_view_tool` and no way to unregister, so an identifier
 stays in the Toolbelt once anything registers it. Re-registering it with a new
 URL does work, which is why the daemon can take an ephemeral port and still
-find its panel after a restart.
+find its panel after a restart. iTerm2 keeps every identifier it has seen in
+its `NoSyncDynamicTools` preference, and the Toolbelt menu picks a tool by its
+display name, so two identifiers both named "Agents" open whichever one iTerm2
+finds first, possibly a dead port and a white panel. Rename the stale entry
+(`defaults write com.googlecode.iterm2 NoSyncDynamicTools -dict-add <old id>
+'{ URL = "http://127.0.0.1:1/"; name = "OLD-Agents"; }'`) to bring the live one back.
 
 The daemon binds `127.0.0.1` on an OS-assigned port and checks a random
 32-byte token on every request, including the event stream.
