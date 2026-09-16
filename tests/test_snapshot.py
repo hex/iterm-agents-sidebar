@@ -51,7 +51,7 @@ def test_agents_group_comes_first_and_keeps_enumeration_order():
     result = snapshot(LIVE)
     assert [(g["name"], [r["label"] for r in g["rows"]]) for g in result["groups"]] == [
         ("AGENTS", ["iterm-agents-sidebar", "orchard"]),
-        ("SESSIONS", ["Downloads"]),
+        ("SESSIONS", ["/Users/x/Downloads"]),
     ]
 
 
@@ -152,6 +152,15 @@ def test_agent_rows_carry_state_colour_and_context():
     row = dict(LIVE[1], agent_state="working", colour="orange", context=27)
     got = snapshot([row])["groups"][0]["rows"][0]
     assert (got["state"], got["colour"], got["context"]) == ("working", "orange", 27)
+
+
+def test_rows_carry_the_task_the_session_reported():
+    """What the session says it is doing, as the daemon read it; a session
+    with no note has no key, never an empty one."""
+    task = {"title": "Fix login", "activity": "Reading code", "percent": 35, "done": False, "age": 40}
+    got = snapshot([dict(LIVE[1], task=task)])["groups"][0]["rows"][0]
+    assert got["task"] == task
+    assert "task" not in snapshot([dict(LIVE[1], task=None)])["groups"][0]["rows"][0]
 
 
 def test_codex_rows_say_which_agent_they_are():
@@ -298,7 +307,7 @@ def test_a_plain_shell_in_a_session_directory_is_not_a_subagent():
     assert [(r["label"], r["depth"]) for r in groups["AGENTS"]] == [("atlas", 0)]
     # And it is not an agent at all: a path says which directory a terminal is
     # in, not what is running there.
-    assert [r["label"] for r in groups["SESSIONS"]] == ["atlas"]
+    assert [r["label"] for r in groups["SESSIONS"]] == ["/Users/x/.claude-sessions/atlas"]
 
 
 def test_an_orphan_subagent_is_shown_flat_rather_than_guessed_at():
@@ -397,7 +406,7 @@ def test_an_unreadable_title_does_not_take_down_the_other_sessions():
     }
     result = snapshot(LIVE + [unreadable])
     labels = [r["label"] for g in result["groups"] for r in g["rows"]]
-    assert labels == ["iterm-agents-sidebar", "orchard", "Downloads", "?"]
+    assert labels == ["iterm-agents-sidebar", "orchard", "/Users/x/Downloads", "?"]
 
 
 def test_two_sessions_in_one_repo_are_not_parent_and_child():
@@ -472,3 +481,68 @@ def test_a_terminal_at_its_prompt_is_not_running_anything():
 def test_a_terminal_whose_job_cannot_be_read_claims_nothing():
     row = snapshot([_terminal(None)])["groups"][0]["rows"][0]
     assert "running" not in row and "job" not in row
+
+
+def test_a_shell_carries_the_title_its_tab_was_given():
+    """Live: a tab titled "erp-jdoe-mac" by hand, in
+    ~/.claude-sessions/iterm-agents-sidebar, where iTerm2's autoName had
+    shrunk to "..gents-sidebar". The title is how its owner tells it apart.
+    """
+    named = dict(LIVE[0], session_name="erp-jdoe-mac", auto_name="..gents-sidebar")
+    assert snapshot([named])["groups"][0]["rows"][0]["title"] == "erp-jdoe-mac"
+
+
+def test_a_shell_whose_title_is_just_its_shell_or_path_has_none():
+    """zsh's default title is user@host:path, and iTerm2's autoName is the
+    shell's name; neither says anything the row does not already."""
+    default = dict(LIVE[0], session_name="x@macbook:~/Downloads", auto_name="zsh")
+    assert "title" not in snapshot([default])["groups"][0]["rows"][0]
+    plain = dict(LIVE[0], session_name="zsh", auto_name="zsh")
+    assert "title" not in snapshot([plain])["groups"][0]["rows"][0]
+
+
+TEAM = [
+    {"session_id": "lead", "window_id": WINDOW, "tab_id": "50",
+     "window_index": 1, "tab_index": 3, "pane_index": 1,
+     "path": "/Users/x/.claude-sessions/fignity",
+     "auto_name": "✳ fignity", "job_name": None,
+     "claude_session": "6a4d1211-632c-4c8e-9c0a-000000000001"},
+    # Spawned into a subdirectory of its lead's, in a split of the same tab.
+    # Its process names its lead outright with --parent-session-id.
+    {"session_id": "reviewer", "window_id": WINDOW, "tab_id": "50",
+     "window_index": 1, "tab_index": 3, "pane_index": 3,
+     "path": "/Users/x/.claude-sessions/fignity/fignity-project",
+     "auto_name": "✳ feature-dev:code-reviewer", "job_name": None,
+     "team": "session-0da70176", "agent_name": "review-351",
+     "parent_session": "6a4d1211-632c-4c8e-9c0a-000000000001"},
+]
+
+
+def test_a_teammate_nests_under_the_lead_it_names_wherever_it_runs():
+    """Live, 2026-09-16: a code-reviewer teammate ran in fignity/fignity-project
+    while its lead sat in fignity, and the directory rule left it top-level,
+    labelled by its type. The process says who its parent is; that beats
+    any resemblance."""
+    rows = snapshot(TEAM)["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [("fignity", 0), ("review-351", 1)]
+
+
+def test_a_teammate_enumerated_before_its_lead_still_sits_under_it():
+    rows = snapshot([TEAM[1], TEAM[0]])["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [("fignity", 0), ("review-351", 1)]
+
+
+def test_a_teammate_whose_lead_is_not_listed_stays_flat():
+    orphan = dict(TEAM[1], parent_session="not-here")
+    rows = snapshot([TEAM[0], orphan])["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [("fignity", 0), ("review-351", 0)]
+
+
+def test_a_blocked_row_carries_what_it_is_asking():
+    """The notice offers the question's options as buttons, so the row has to
+    carry the question itself, not only that there is one."""
+    asked = {"header": "Icon", "question": "Which icon?", "options": ["Dots"], "multi": False, "more": 0}
+    row = dict(LIVE[1], agent_state="blocked", blocked_since=1789462240, question=asked)
+    assert snapshot([row])["groups"][0]["rows"][0]["question"] == asked
+    quiet = dict(LIVE[1], agent_state="working", question=None)
+    assert "question" not in snapshot([quiet])["groups"][0]["rows"][0]

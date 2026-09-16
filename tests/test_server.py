@@ -250,3 +250,13 @@ def test_a_rename_without_an_account_or_a_text_nickname_never_reaches_the_handle
     server, calls = accounts_server(tmp_path)
     assert server.handle("POST", f"/accounts?token={TOKEN}", body)[0] == 400
     assert calls == []
+
+
+def test_notify_dispatches_the_moment_as_its_text(tmp_path):
+    """The page reports what happened; the daemon decides whether to post."""
+    server, calls = record(tmp_path)
+    status, _, _ = server.handle(
+        "POST", f"/action?token={TOKEN}",
+        b'{"session_id": "abc", "verb": "notify", "text": "blocked"}')
+    assert status == 200
+    assert calls == [("abc", "notify", "blocked")]

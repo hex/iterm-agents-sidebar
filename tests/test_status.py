@@ -34,7 +34,7 @@ def test_a_payload_missing_the_fields_reports_nothing():
     """
     assert sidebar.parse_status(json.dumps({"session_id": "x"})) == {
         "context": None, "model": None, "effort": None, "details": {},
-        "transcript": None}
+        "transcript": None, "session": "x"}
 
 
 def test_unreadable_input_is_not_a_crash():
@@ -44,7 +44,7 @@ def test_unreadable_input_is_not_a_crash():
     for raw in ("", None, "not json", "[1,2]", '{"context_window": "wrong"}'):
         assert sidebar.parse_status(raw) == {
             "context": None, "model": None, "effort": None, "details": {},
-        "transcript": None}
+        "transcript": None, "session": None}
 
 
 def test_no_pid_means_no_reading():
@@ -99,6 +99,19 @@ def test_the_bridge_publishes_the_payload_for_its_parent(tmp_path):
     assert (got["context"], got["model"], got["effort"]) == (26, "Opus 5", "high")
 
 
+def test_the_bridge_names_its_parent_for_the_statusline_it_runs(tmp_path):
+    """cs-statusline keys two per-conversation caches on its parent pid,
+    because Claude Code is the same parent for every render. Under the
+    bridge the render's parent is a new bridge process each tick, so the
+    caches would miss every render; the bridge names the pid it is itself
+    the child of in CS_STATUSLINE_PARENT, set per run, never in a profile.
+    """
+    import os
+    done = run_bridge(tmp_path, '{"context_window":{"used_percentage":26}}',
+                      original="cat > /dev/null; printf '%s' \"$CS_STATUSLINE_PARENT\"")
+    assert done.stdout == str(os.getpid())
+
+
 def test_the_bridge_survives_a_payload_it_cannot_parse(tmp_path):
     """Claude Code changing the payload shape must not cost the user their
     statusline. Nothing is published; the original still renders.
@@ -106,8 +119,9 @@ def test_the_bridge_survives_a_payload_it_cannot_parse(tmp_path):
     done = run_bridge(tmp_path, "not json at all",
                       original="cat > /dev/null; printf 'still here'")
     assert done.stdout == "still here"
-    leftover = list((tmp_path / ".claude" / "agents-sidebar-status").iterdir())
-    assert [p.name for p in leftover] == ["original-statusline"]
+    leftover = [p.name for p in (tmp_path / ".claude" / "agents-sidebar-status").iterdir()
+                if not p.name.endswith(".line")]
+    assert leftover == ["original-statusline"]
 
 
 def test_the_pid_comes_out_of_the_state_variable():
@@ -340,3 +354,218 @@ def test_an_ordinary_session_belongs_to_no_team(tmp_path):
     """Its transcript names it, but nothing claims it as anyone's teammate."""
     path = _transcript(tmp_path, [{"type": "user", "agentName": "claude-sessions"}])
     assert sidebar.transcript_marks(path) == {"agent": "claude-sessions", "team": None}
+
+
+def test_the_bridge_publishes_without_jq_and_without_forking_a_parser(tmp_path):
+    """Live, 2026-09-16: with eight sessions each rendering once a second the
+    bridge took 1.6 s a run, Claude Code killed the overrunning renders, and a
+    new session's statusline never appeared. Publishing must cost a file
+    write, not a jq process.
+    """
+    import os
+    import subprocess
+    # /bin has cat, mkdir, mv and rm; jq lives elsewhere.
+    env = dict(os.environ, HOME=str(tmp_path), PATH="/bin")
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text("cat > /dev/null; printf 'rendered'")
+    script = Path(__file__).resolve().parent.parent / "plugin" / "statusline-bridge.sh"
+    assert subprocess.run(["/bin/sh", "-c", "command -v jq"], env=env, capture_output=True).returncode != 0
+    payload = json.dumps({"context_window": {"used_percentage": 41}, "model": {"display_name": "Fable 5.1"}})
+    done = subprocess.run([str(script)], input=payload, env=env, capture_output=True, text=True, timeout=10)
+    assert done.stdout == "rendered"
+    written = [p for p in d.iterdir() if p.suffix == ".json"]
+    assert len(written) == 1
+    assert sidebar.parse_status(written[0].read_text())["context"] == 41
+
+
+def test_the_bridge_answers_from_its_last_line_while_a_slow_render_catches_up(tmp_path):
+    """Live, 2026-09-16: Claude Code runs the statusline once a second and
+    kills a render that is still going when the next tick comes. With eight
+    sessions and a 0.9 s statusline, 349 of 349 renders in 45 s were killed,
+    and a new session never showed a line. The bridge therefore prints the
+    line it rendered last, at once, and renders the next one in the
+    background, out of reach of the kill.
+    """
+    import os
+    import subprocess
+    import time
+    env = dict(os.environ, HOME=str(tmp_path))
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text("cat > /dev/null; sleep 4; printf 'tick'")
+    script = Path(__file__).resolve().parent.parent / "plugin" / "statusline-bridge.sh"
+    payload = '{"context_window":{"used_percentage":1}}'
+    first = subprocess.run([str(script)], input=payload, env=env, capture_output=True, text=True, timeout=20)
+    assert first.stdout == "tick"
+    # A render is in flight for this session (the lock is fresh): this tick
+    # answers from the last line and does not wait the render's four seconds.
+    (d / f"{os.getpid()}.rendering").mkdir()
+    started = time.monotonic()
+    second = subprocess.run(["/bin/sh", "-c", f'exec "{script}"'], input=payload, env=env,
+                            capture_output=True, text=True, timeout=20)
+    assert second.stdout == "tick"
+    assert time.monotonic() - started < 4
+
+
+def test_a_render_outlives_the_term_of_the_bridge_and_its_group(tmp_path):
+    """Claude Code sends the bridge's process group SIGTERM when the next
+    tick comes, and nothing after (probed live, 2026-09-16: bridges that
+    ignored it ran on for 20 s). The bridge ignores it, so the render
+    keeps its parent and the line still lands for the tick after.
+    """
+    import os
+    import signal
+    import subprocess
+    import time
+    env = dict(os.environ, HOME=str(tmp_path))
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text("cat > /dev/null; sleep 1.5; printf 'landed'")
+    script = Path(__file__).resolve().parent.parent / "plugin" / "statusline-bridge.sh"
+    bridge = subprocess.Popen([str(script)], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+    bridge.stdin.write(b'{"context_window":{"used_percentage":1}}')
+    bridge.stdin.close()
+    # The lock appears once the bridge is past its trap and rendering; a
+    # fixed half-second was not enough on a loaded machine.
+    deadline = time.monotonic() + 10
+    while not list(d.glob("*.rendering")) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    os.killpg(bridge.pid, signal.SIGTERM)
+    bridge.wait(timeout=20)
+    deadline = time.monotonic() + 10
+    while not list(d.glob("*.line")) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    lines = list(d.glob("*.line"))
+    assert [p.read_text() for p in lines] == ["landed"]
+
+
+def test_a_stale_lock_does_not_freeze_the_line(tmp_path):
+    """A render that died without cleaning up leaves its lock. Once a line
+    exists the fast path never looked at the lock's age, so the line stayed
+    as it was for good.
+    """
+    import os
+    import subprocess
+    env = dict(os.environ, HOME=str(tmp_path))
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text("cat > /dev/null; printf 'fresh'")
+    script = Path(__file__).resolve().parent.parent / "plugin" / "statusline-bridge.sh"
+    pid = os.getpid()
+    (d / f"{pid}.line").write_text("stale")
+    lock = d / f"{pid}.rendering"
+    lock.mkdir()
+    os.utime(lock, (0, 0))
+    payload = '{"context_window":{"used_percentage":1}}'
+    subprocess.run([str(script)], input=payload, env=env, capture_output=True, text=True, timeout=10)
+    assert (d / f"{pid}.line").read_text() == "fresh"
+    assert not lock.exists()
+
+
+def test_a_render_killed_outright_leaves_nothing_the_next_render_does_not_reuse(tmp_path):
+    """Live, 2026-09-16: something outside the bridge SIGKILLs every session's
+    in-flight render once every 30 to 60 s (traced: 20 renders started, no
+    "rendered" and no EXIT trap, all within one burst). Each left a
+    <pid>.line.<pid> temp file, 316 of them in an hour. The temp name must
+    not carry the render's pid: the lock already grants one writer, so the
+    next render overwrites the same file and nothing accumulates.
+    """
+    import os
+    import signal
+    import subprocess
+    import time
+    env = dict(os.environ, HOME=str(tmp_path))
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text("cat > /dev/null; printf 'half'; sleep 5; printf 'done'")
+    script = Path(__file__).resolve().parent.parent / "plugin" / "statusline-bridge.sh"
+    payload = '{"context_window":{"used_percentage":1}}'
+    bridge = subprocess.Popen([str(script)], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+    bridge.stdin.write(payload.encode())
+    bridge.stdin.close()
+    time.sleep(2)
+    os.killpg(bridge.pid, signal.SIGKILL)
+    bridge.wait(timeout=5)
+    pid = os.getpid()
+    lock = d / f"{pid}.rendering"
+    assert lock.is_dir(), sorted(p.name for p in d.iterdir())
+    assert (d / f"{pid}.line.tmp").exists(), sorted(p.name for p in d.iterdir())
+    old = time.time() - 15
+    os.utime(lock, (old, old))
+    (d / "original-statusline").write_text("cat > /dev/null; printf 'fresh'")
+    subprocess.run(["/bin/sh", "-c", f'exec "{script}"'], input=payload, env=env,
+                   capture_output=True, text=True, timeout=10)
+    assert sorted(p.name for p in d.iterdir()) == [
+        f"{pid}.json", f"{pid}.line", "original-statusline"]
+    assert (d / f"{pid}.line").read_text() == "fresh"
+
+
+DAY = 86400
+
+
+def test_status_files_a_day_old_are_stale_whatever_shape_the_bridge_gave_them():
+    """Counted 2026-09-16: 492 entries for 9 live sessions. Dead sessions
+    leave <pid>.json, <pid>.line and a <pid>.rendering lock; earlier bridge
+    designs left <pid>.json.<pid> and <pid>.line.<pid> temp files, the
+    current one <pid>.line.tmp. A live session rewrites its files every
+    second, so a day-old one belongs to nobody.
+    """
+    now = 1_800_000_000
+    old = now - DAY - 1
+    entries = [
+        ("123.json", old), ("123.line", old), ("123.rendering", old),
+        ("37314.line.15700", old), ("37314.json.15700", old), ("123.line.tmp", old),
+        ("456.json", now - 1), ("456.line", now - 30), ("456.rendering", now - DAY + 60),
+        ("original-statusline", 0), ("notes.json", old), ("123.txt", old),
+    ]
+    assert sidebar.stale_status_entries(entries, now) == [
+        "123.json", "123.line", "123.rendering",
+        "37314.line.15700", "37314.json.15700", "123.line.tmp"]
+
+
+def test_the_sweep_removes_stale_files_and_lock_dirs_and_keeps_the_rest(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    # Both directories, always: with a `now` set in the future and the real
+    # tasks directory left in place, this test deleted every live session's
+    # note on the machine each time the suite ran.
+    monkeypatch.setattr(sidebar, "TASKS_DIR", str(tmp_path / "tasks"))
+    now = 1_800_000_000
+    old = now - DAY - 1
+    (tmp_path / "123.json").write_text("{}")
+    (tmp_path / "123.rendering").mkdir()
+    (tmp_path / "456.json").write_text("{}")
+    (tmp_path / "original-statusline").write_text("cat")
+    for name in ("123.json", "123.rendering", "original-statusline"):
+        os.utime(tmp_path / name, (old, old))
+    os.utime(tmp_path / "456.json", (now, now))
+    sidebar.sweep_status_dir(now)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["456.json", "original-statusline"]
+
+
+def test_the_sweep_also_clears_day_old_task_notes(tmp_path, monkeypatch):
+    import os
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(sidebar, "TASKS_DIR", str(tmp_path / "tasks"))
+    (tmp_path / "tasks").mkdir()
+    now = 1_800_000_000
+    (tmp_path / "tasks" / "old.json").write_text("{}")
+    (tmp_path / "tasks" / "live.json").write_text("{}")
+    os.utime(tmp_path / "tasks" / "old.json", (now - DAY - 1, now - DAY - 1))
+    os.utime(tmp_path / "tasks" / "live.json", (now - 60, now - 60))
+    sidebar.sweep_status_dir(now)
+    assert sorted(p.name for p in (tmp_path / "tasks").iterdir()) == ["live.json"]
+
+
+def test_the_sweep_of_a_missing_directory_is_not_an_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path / "absent"))
+    monkeypatch.setattr(sidebar, "TASKS_DIR", str(tmp_path / "absent-too"))
+    sidebar.sweep_status_dir(1_800_000_000)
+
+
+def test_the_payload_names_the_session_it_belongs_to():
+    got = sidebar.parse_status(json.dumps({"session_id": "6a4d1211-632c-4c8e-9c0a-000000000001"}))
+    assert got["session"] == "6a4d1211-632c-4c8e-9c0a-000000000001"

@@ -116,7 +116,7 @@ def test_a_shell_sitting_in_a_session_directory_is_not_an_agent():
     """
     assert classify(
         "/Users/x/.claude-sessions/atlas", "zsh",
-    ) == ("shell", "atlas")
+    ) == ("shell", "/Users/x/.claude-sessions/atlas")
 
 
 def test_the_agent_marker_is_not_part_of_the_name():
@@ -131,3 +131,12 @@ def test_the_agent_marker_is_not_part_of_the_name():
 def test_a_name_without_the_marker_is_unchanged():
     assert agent_name("agy-executor (node /path/mcp)") == "agy-executor"
     assert agent_name("cs: atlas") == "cs: atlas"
+
+
+def test_a_plain_shell_is_named_by_its_path_with_home_as_tilde():
+    """A terminal is a place. Its prompt shows the path from home, and the
+    row says the same thing the prompt does. Live: a shell at
+    ~/.claude-sessions/iterm-agents-sidebar rendered as "iterm-agents-sidebar",
+    which is also the name of the agent card above it.
+    """
+    assert classify(str(Path.home() / "src" / "acme"), "zsh") == ("shell", "~/src/acme")

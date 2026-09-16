@@ -69,6 +69,13 @@ UNKEYED = "?"
 #: of claiming Claude needs you after you have already told it no.
 GATE_CLOSING = ("PostToolUse", "PostToolUseFailure", "PermissionDenied")
 
+#: Where task.py keeps each session's note about its own work.
+TASKS_DIR = os.path.expanduser("~/.claude/agents-sidebar-tasks")
+#: A report older than this is worth a nudge at the next tool boundary, and
+#: no session is nudged more often than this.
+NUDGE_AFTER = 60
+INSTRUCTIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "task-instructions.md")
+
 def read_payload():
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
     try:
@@ -80,7 +87,8 @@ def read_payload():
 def blank_state():
     """A session nothing is known about: not working, no children, no gates."""
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
-            "agent_info": {}, "gates": {}, "last_tool": None, "turn_started": None}
+            "agent_info": {}, "gates": {}, "last_tool": None, "turn_started": None,
+            "reminded": 0, "question": None}
 
 
 def live_agents(doc):
@@ -180,6 +188,33 @@ def describe_subagents(doc, transcript_path):
     return {**doc, "agent_info": info}
 
 
+def question_from(payload):
+    """What a permission gate is asking, from its PermissionRequest payload.
+
+    AskUserQuestion carries the question and its option labels, which a
+    notice can show as buttons; the first question is shown and the rest
+    counted. Any other tool names itself and the first line of what it wants
+    to run, so the notice can say "wants to run: git push". None when the
+    payload names no tool.
+    """
+    tool = payload.get("tool_name")
+    if not tool:
+        return None
+    given = payload.get("tool_input") or {}
+    if tool == "AskUserQuestion":
+        questions = given.get("questions") or []
+        if not questions:
+            return None
+        first = questions[0]
+        return {"header": first.get("header") or "",
+                "question": first.get("question") or "",
+                "options": [o.get("label") or "" for o in first.get("options") or []],
+                "multi": bool(first.get("multiSelect")),
+                "more": len(questions) - 1}
+    summary = given.get("command") or given.get("file_path") or given.get("path") or ""
+    return {"tool": tool, "summary": str(summary).strip().splitlines()[0] if summary else ""}
+
+
 def blocked_since(doc):
     """When the oldest open permission gate was raised (epoch s), or None."""
     gates = doc.get("gates") or {}
@@ -225,7 +260,9 @@ def apply_event(doc, event, payload, said):
            "agent_info": dict(doc.get("agent_info") or {}),
            "gates": dict(doc.get("gates") or {}),
            "last_tool": doc.get("last_tool"),
-           "turn_started": doc.get("turn_started")}
+           "turn_started": doc.get("turn_started"),
+           "reminded": doc.get("reminded") or 0,
+           "question": doc.get("question")}
     now = round(time.time(), 3)
 
     if event == "UserPromptSubmit":
@@ -263,9 +300,14 @@ def apply_event(doc, event, payload, said):
         key = payload.get("tool_use_id")
         if key:
             doc["gates"].pop(key, None)
+            if not doc["gates"]:
+                doc["question"] = None
 
     if said == "blocked":
         doc["gates"][payload.get("tool_use_id") or doc["last_tool"] or UNKEYED] = now
+        # What the newest gate asks; the notice needs the question, not
+        # only the fact of one.
+        doc["question"] = question_from(payload) or doc["question"]
         # Asking to run a tool means a turn is under way.
         doc["parent_active"] = True
     elif said == "working":
@@ -280,6 +322,7 @@ def apply_event(doc, event, payload, said):
         # prompt instead left the badge standing for as long as the user took
         # to type, which in practice meant it never came down.
         doc["gates"] = {}
+        doc["question"] = None
 
     return doc
 
@@ -316,7 +359,9 @@ def read_state(session_id):
             "last_tool": doc.get("last_tool") if isinstance(doc.get("last_tool"), str)
                          else None,
             "turn_started": doc.get("turn_started")
-                            if isinstance(doc.get("turn_started"), (int, float)) else None}
+                            if isinstance(doc.get("turn_started"), (int, float)) else None,
+            "reminded": doc.get("reminded") if isinstance(doc.get("reminded"), (int, float)) else 0,
+            "question": doc.get("question") if isinstance(doc.get("question"), dict) else None}
 
 
 def update(session_id, event, payload, said):
@@ -346,6 +391,88 @@ def update(session_id, event, payload, said):
             return doc
     except OSError:
         return apply_event(blank_state(), event, payload, said)
+
+
+def mark_reminded(session_id, now):
+    """Remember that the session was just asked for a check-in."""
+    if not session_id:
+        return
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(_state_path(session_id) + ".lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            doc = dict(read_state(session_id), reminded=round(now))
+            path = _state_path(session_id)
+            temp = path + f".{os.getpid()}.tmp"
+            with open(temp, "w", encoding="utf-8") as fh:
+                json.dump(doc, fh)
+            os.replace(temp, path)
+    except OSError:
+        pass
+
+
+def read_note(session_id):
+    """The session's own note about its work, or None."""
+    if not session_id:
+        return None
+    try:
+        with open(os.path.join(TASKS_DIR, f"{session_id}.json"), encoding="utf-8") as fh:
+            note = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return note if isinstance(note, dict) and "task" in note else None
+
+
+def clear_note(session_id):
+    if not session_id:
+        return
+    try:
+        os.remove(os.path.join(TASKS_DIR, f"{session_id}.json"))
+    except OSError:
+        pass
+
+
+def whisper(event, payload, note, now, reminded, script):
+    """What to add to the agent's context about its task line, or None.
+
+    The agent writes the note itself; this is the reminder. Every prompt
+    gets the instructions and the bound commands. A tool boundary gets one
+    line, when the last report is a minute old and no reminder went out in
+    the last minute. Subagents never hear it, and the report itself is not a
+    boundary worth a nudge.
+    """
+    if payload.get("agent_id") or "/subagents/" in str(payload.get("transcript_path") or ""):
+        return None
+    session_id = payload.get("session_id")
+    if not session_id:
+        return None
+    bound = f"python3 {script} --session {session_id}"
+    if event == "UserPromptSubmit":
+        try:
+            with open(INSTRUCTIONS, encoding="utf-8") as fh:
+                instructions = fh.read().strip()
+        except OSError:
+            return None
+        current = json.dumps(note) if note else "none"
+        return (f"{instructions}\n\nCurrent task: {current}\n\nCommands:\n"
+                f"{bound} begin --title 'Task title'\n"
+                f"{bound} report --activity 'Reading code' --percent 25\n"
+                f"{bound} report --activity 'Assessing task' --unknown\n")
+    if event != "PostToolUse" or "task.py" in json.dumps(payload.get("tool_input") or {}):
+        return None
+    if now - reminded < NUDGE_AFTER:
+        return None
+    if note and (note.get("done") or now - (note.get("ts") or 0) < NUDGE_AFTER):
+        return None
+    return ("Progress check-in is due if this is a natural boundary. Reassess the "
+            f"current task; do not invent progress. {bound} report --activity '...' --percent N")
+
+
+def hook_output(event, text):
+    """The hook protocol's shape for added context, or nothing to add."""
+    if not text:
+        return {}
+    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}
 
 
 def clear_state(session_id):
@@ -510,9 +637,10 @@ def published(doc, pid, payload, codex, now):
     (on every Codex payload but SessionEnd) and the rollout the daemon reads
     effort and context from.
     """
-    value = {"state": aggregate(doc), "pid": pid,
+    value = {"state": aggregate(doc), "pid": pid, "session": payload.get("session_id"),
              "agents": live_agents(doc), "subagents": subagents(doc),
              "blocked_since": blocked_since(doc), "working_since": working_since(doc),
+             "question": doc.get("question") if doc.get("gates") else None,
              "ts": round(now)}
     if codex:
         value["model"] = payload.get("model")
@@ -520,17 +648,33 @@ def published(doc, pid, payload, codex, now):
     return value
 
 
+def nested_agent(environ, codex):
+    """Whether this hook belongs to an agent running inside another's tool.
+
+    A `codex exec` started by a Claude Bash tool inherits Claude Code's
+    environment and shares the pane's tty, so its hooks would publish a
+    codexState over the pane's claudeState and the card would turn into a
+    Codex card. Claude Code's own hooks always carry CLAUDECODE; only a Codex
+    hook seeing it is nested.
+    """
+    return bool(codex and environ.get("CLAUDECODE"))
+
+
 def main():
     event = sys.argv[1] if len(sys.argv) > 1 else ""
     # Codex runs this same handler: its hook events and payloads have the
     # shape Claude Code's do, measured by a probe hook on 2026-09-15.
     codex = "--codex" in sys.argv[2:]
+    # A nested run speaks for no pane; the agent that started it does.
+    if nested_agent(os.environ, codex):
+        return
     payload = read_payload()
     state = state_for(event, payload)
 
     session_id = payload.get("session_id")
     if event == "SessionEnd":
         clear_state(session_id)
+        clear_note(session_id)
         doc = blank_state()
     else:
         doc = update(session_id, event, payload, state)
@@ -563,6 +707,7 @@ def main():
                                  # herdr integration tests exactly this field to
                                  # bail out of subagent events, which implies it
                                  # exists. Verifying rather than assuming.
+                                 "_session": session_id,
                                  "_agent_id": payload.get("agent_id"),
                                  "_agent_name": payload.get("agent_name"),
                                  "_agent_type": payload.get("agent_type"),
@@ -594,8 +739,14 @@ def main():
     else:
         emit(json.dumps(published(doc, pid, payload, codex, time.time())), tty, variable)
 
+    # The task line: what the agent should be told about reporting its work.
+    context = whisper(event, payload, read_note(session_id), time.time(), doc.get("reminded") or 0,
+                      os.path.join(os.path.dirname(os.path.abspath(__file__)), "task.py"))
+    if context:
+        mark_reminded(session_id, time.time())
+
     # stdout belongs to the hook protocol. Anything else corrupts it.
-    sys.stdout.write("{}")
+    sys.stdout.write(json.dumps(hook_output(event, context)))
 
 
 if __name__ == "__main__":

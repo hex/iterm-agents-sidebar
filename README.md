@@ -27,6 +27,19 @@ re-registered URL.
 To start it without restarting iTerm2, use Scripts, AutoLaunch,
 `agents_sidebar`. Then open the panel with View, Toolbelt, Agents.
 
+### Notifications
+
+A macOS notification wears its sender's icon and name, and nothing the poster
+passes changes that, so the panel posts through a small app of its own.
+`install.sh` compiles `assets/notifier.swift` with `swiftc` (Xcode Command
+Line Tools: `xcode-select --install`, then re-run the script) into
+`~/.local/share/agents-sidebar/Agents.app`, with the icon in `assets/`, its
+own bundle id and an ad-hoc signature. macOS asks once to allow notifications
+from Agents; the entry then lives in System Settings, Notifications, where
+sound and banner style are yours to set. The bundle is rebuilt only when the
+source or the icon changes, because re-signing can bring the permission prompt
+back. Without `swiftc` the panel runs as before and posts nothing.
+
 ### The context percentage (opt-in)
 
 ```sh
@@ -45,7 +58,10 @@ Code draws.
 `--statusline` points `statusLine.command` in `~/.claude/settings.json` at
 `plugin/statusline-bridge.sh`, which publishes the payload to
 `~/.claude/agents-sidebar-status/<claude pid>.json` and then renders whatever
-statusline was there before. The displaced command is saved to
+statusline was there before, with `CS_STATUSLINE_PARENT` set to the claude pid so a
+statusline that caches per conversation by its parent pid (cs's does) still hits
+under the bridge. Files a session leaves behind when it exits are
+swept by the daemon once they are a day old. The displaced command is saved to
 `~/.claude/agents-sidebar-status/original-statusline`, and the whole settings
 file is backed up to `settings.json.before-agents-sidebar`.
 
@@ -68,7 +84,9 @@ cp ~/.claude/settings.json.before-agents-sidebar ~/.claude/settings.json
 
 Registers the same state hook in `~/.codex/hooks.json` for seven Codex events,
 run with `--codex`, so a Codex CLI session gets a card in AGENTS too. Codex asks
-once to trust the new hooks, and sessions started after that report. Entries
+once to trust the new hooks, and sessions started after that report. A `codex
+exec` that a Claude session runs as a tool reports nothing: it shares the
+Claude pane, and the card stays the Claude session's. Entries
 other tools put in that file (herdr registers its own) stay where they are, and
 the install first copies the file to `hooks.json.before-agents-sidebar`. A herdr
 update can rewrite the file; re-run `./install.sh --codex` if Codex cards stop
@@ -115,11 +133,38 @@ to, not iTerm2's internal tab id.
 After the model, a bracketed letter gives the session's effort level: `[l]`, `[m]`,
 `[h]`, `[xh]` or `[mx]`, in the colours Claude Code's `/effort` picker uses.
 
-A Codex session's card carries the OpenAI mark before its name and shows the
+A Codex session's card carries the OpenAI mark before its model, where a
+Claude card carries the Claude mark, and shows the
 same working, waiting, idle and long badges. Its model comes from the hook;
 effort and context come from the tail of its session log, where context is the
 figure Codex's own `/status` shows, as percent used. It has no teammates and no
 background-shell line.
+
+Show macOS notifications, in settings, posts a banner when a session asks a
+question and when one finishes a turn, each its own switch, all on by default.
+The banner takes the session's name as the card shows it, so a teammate's
+banner carries its agent name and a plain shell's carries its path. Nothing
+posts for the session you are looking at, which means that session in front
+of its window while iTerm2 is the frontmost application; a session in another
+tab of the same window still gets one, since that is exactly when you cannot
+see it. A session has at most one standing banner, and going back to work
+takes it down. Like the sounds, it only acts while the panel is open, and it
+needs the app `install.sh` builds (see Install). It plays no sound of its own;
+the sound switches are separate, so a banner and a chime are independent
+choices.
+
+The banner can answer for you. A click brings that session forward, tab and
+all. When Claude Code asks a question, the banner shows the question with its
+options as buttons (four at most) and Other as a text field: a button sends
+the option's number into the prompt, Other picks that option and types your
+text. macOS shows a single action flat and folds two or more into an Options
+menu, so a question is always a menu. Any other permission gate says what
+the tool wants to run and offers one flat Allow button, which answers Yes;
+the banner shows only the command's first line, and Allow approves the whole
+of it, so No stays in the terminal. A finished turn offers a Reply field
+whose text becomes the session's next prompt. Keystrokes go only while the
+question the banner was built for still stands, so a prompt you have since
+answered in the terminal gets nothing. Codex sessions get the plain notice.
 
 Bring a blocked session forward, in settings, focuses a session the moment it
 starts waiting on you. It is off by default, and like the sounds it only acts
@@ -135,11 +180,38 @@ Right-click an agent row, or press Shift+F10 on a selected one, for `/compact`,
 the iTerm2 pane, and it and `/clear` both ask for a second click. Option-right-click opens the
 web view's own menu instead, with Reload and Inspect Element.
 
-A teammate wears the badge colour Claude Code gave it when it was spawned,
-read off its process's `--agent-color` argument, which is the only place that
-colour is kept.
+A teammate sits under the lead that spawned it, wherever it runs: its process
+names the lead's session in its `--parent-session-id` argument, and the
+lead's own session id comes from its statusline payload, so the panel needs
+the statusline bridge to make that match. It wears the badge colour Claude
+Code gave it, read off the same command line's `--agent-color`, which is the
+only place that colour is kept, and takes the name Claude Code calls it by.
 
-A plain terminal at its prompt shows a shell mark in its session colour where an agent shows its square. One running a command shows the working dots and the command's
+Under its name, an agent shows what it says it is doing: a task title, then
+`Reading code · 40s`, then a row of ticks, green as far along as it says it
+is. The session writes all of that itself. The name leads in ink, the task
+reads a step back in grey, and what the session is doing right now takes the
+same green as the ticks, so one accent carries the live part of the report. The state hook
+asks it, at every prompt and at most once a minute after a tool, to name the
+current request and report a rough percentage and a two-to-four-word activity
+through `hooks-handlers/task.py`; the note lands in
+`~/.claude/agents-sidebar-tasks/<session id>.json`. Codex writes only inside
+its workspace, so `install.sh --codex` also lists that directory under
+`[sandbox_workspace_write] writable_roots` in `~/.codex/config.toml`. The figure is the model's own
+estimate, not a measurement, so the age of the report is part of the line: over
+five minutes old, it greys and reads `stale`. A hundred percent shows `Done`
+and stays until a new request starts a new task. The ticks are the estimate as
+a count to glance at rather than read; they are deliberately not the solid
+track-and-fill of the limit meters in the foot, whose green-amber-red would
+call being nearly finished a warning. "Show task" in the settings turns the
+line off, and under it the activity, the report's age and the progress ticks
+each turn off on their own. The shape follows herdr-agent-progress.
+
+A plain terminal is named by its path, as its prompt writes it (`~/src/acme`),
+with the title its tab was given on the line below, before the branch; a
+default title, the shell's name or `user@host:path`, is left out. At its
+prompt it shows a shell mark in its session colour where an agent shows its
+square. One running a command shows the working dots and the command's
 name, and goes quiet when it is back at its prompt. Inside tmux iTerm2 reports
 neither a pane's command nor its directory reliably, so the panel asks tmux for
 the pane's tty and directory and names the tty's foreground process. A script
@@ -149,9 +221,13 @@ run by an interpreter shows under the script's name: `node .../bin/codex` shows 
 The panel's foot, above the gear, holds two quiet pieces. While any session
 waits on you, a queue lists them oldest first with how long each has waited
 (`12m`, `<1m`); click one to focus it. Nothing waiting, no queue. Under it sit
-the account limits and, under a dotted rule, a coin mark with what the running
-Claude Code sessions report having spent at API prices, then a terminal mark with
-how many sessions report it. Hover either for what it counts.
+the account limits.
+
+The bar under the foot, behind its own rule, starts with a coin mark and what
+the running Claude Code sessions report having spent at API prices, then a
+terminal mark with how many sessions report it; hover either for what it
+counts. At its right are two buttons: reload, which re-reads `page.html`
+without closing the panel, and the gear, which opens the settings.
 
 Until you store an account, the limits come from the sessions' status lines:
 5-hour and weekly as hairlines with the percentage used and the time left until
@@ -166,7 +242,7 @@ to the credential, and never goes into that file. For a second
 account, `/login` as it in Claude Code and click Add again.
 
 With accounts stored, the foot lists every account behind the Claude mark, the
-one your sessions run on first and labelled `active`; the others sit dimmed
+one your sessions run on first, marked with a green check; the others sit dimmed
 until you point at one. Each shows its 5-hour limit, its weekly limit, and every
 per-model weekly limit the account has (Fable, for example), with the time left
 until each resets (`2h`, `3d`, `14m`). Bars are green, amber from 70%, and red
@@ -178,10 +254,15 @@ Esc cancels, and an empty name goes back to the email. A reading that failed
 shows its last figures with `as of 14:02`, and
 an account whose login no longer works says `log in to <name> again`.
 
-The panel reads usage at most every 10 minutes per account, backing off to 30
-minutes when a reading fails and waiting an hour after a 429. It refreshes the
-tokens of the accounts you are not using, and never touches the active one,
-which belongs to Claude Code.
+The panel reads usage at most every 3 minutes per account, the cadence cswap
+measured the endpoint to tolerate. An account whose usage moved since the
+last reading is read half as far apart, down to that floor; one that sits
+still is read further apart, up to 5 minutes for the active account and 10
+for the others, and never past a window's reset. A failed reading backs off
+to 30 minutes and a 429 waits an hour. The reload button asks for fresh
+readings first, except for an account read within the last 3 minutes. The
+panel refreshes the tokens of the accounts you are not using, and never
+touches the active one, which belongs to Claude Code.
 
 To switch, point at an account and click the **Switch** button that floats over
 its bars, then click **Confirm switch** within 4 seconds. The panel first refreshes that account's token, which proves its
@@ -213,7 +294,11 @@ one to focus its session. Show subagents in settings hides them.
 
 A session's background shells fold into one line at the foot of its card, such
 as "2 commands running", with the same light sweep as the IDLE badge. Click it to open or close the list; each shell then
-has its own row, labelled with the command. Start expanded, under Show
+has its own row, labelled with the command. When the last shell ends the line
+stays for a few seconds, dimmed, as "1 command finished", so a run of short
+commands does not grow and shrink the card on each one. The panel's own task
+report (task.py, run at the prompt hook's word) is never counted, and a home
+directory in a command reads as `~`. Start expanded, under Show
 background shells in settings, opens every card's list by default. Click a
 shell row for the whole command and a Copy button; the popover stays put while
 the list refreshes behind it. The panel finds shells in the process tree, since Claude Code

@@ -20,8 +20,19 @@ WEEK_SECONDS = 604800
 DAY_SECONDS = 86400
 AHEAD_POINTS = 15
 STORE_VERSION = 1
-POLL_FLOOR_SECONDS = 600
+#: Reading cadence, after cswap's measurement of the usage endpoint: about
+#: thirty requests an hour per account, as a trailing window, so a burst
+#: locks the account out for up to an hour. One reading every three minutes
+#: at most; an account whose usage is moving stays near that, one that sits
+#: still drifts out to five minutes (the active account) or ten (the rest).
+POLL_FLOOR_SECONDS = 180
+ACTIVE_CEILING_SECONDS = 300
+OTHER_CEILING_SECONDS = 600
 POLL_CEILING_SECONDS = 1800
+GROWTH = 1.5
+MOVEMENT_POINTS = 1.0
+RESET_SLACK_SECONDS = 60
+JITTER = 0.1
 RATE_LIMIT_HOLD_SECONDS = 3600
 REFRESH_MARGIN_SECONDS = 300
 #: Claude Code's proper-lockfile staleness: credential locks, then its config lock.
@@ -152,21 +163,66 @@ def parse_store(text):
     return accounts
 
 
-def next_poll(interval, outcome, now):
+def next_poll(interval, outcome, now, moved=False, active=False, reset_at=None, jitter=JITTER):
     """When to read an account's usage next, given how the last reading went.
 
-    A good reading waits the floor; a failure backs off by half again up to the
-    ceiling; a 429 holds off for an hour without growing the interval, since
-    cswap polls the same budget and the limit clears on its own.
+    A good reading halves the interval toward the floor when usage moved
+    since the last one and grows it toward the ceiling when it did not; a
+    failure backs off by half again up to the outer ceiling; a 429 holds off
+    for an hour without growing the interval, since cswap polls the same
+    budget and the limit clears on its own. Nothing is scheduled past a
+    known window reset, where the stored figures stop being true. A little
+    jitter keeps this poller and cswap from lining up.
     """
     if outcome == "ok":
-        return {"interval": POLL_FLOOR_SECONDS, "at": now + POLL_FLOOR_SECONDS}
-    if outcome == "failed":
-        grown = min(POLL_CEILING_SECONDS, int(interval * 1.5))
-        return {"interval": grown, "at": now + grown}
-    if outcome == "rate_limited":
+        ceiling = ACTIVE_CEILING_SECONDS if active else OTHER_CEILING_SECONDS
+        if interval is None:
+            chosen = POLL_FLOOR_SECONDS
+        elif moved:
+            chosen = max(POLL_FLOOR_SECONDS, interval // 2)
+        else:
+            chosen = max(POLL_FLOOR_SECONDS, min(ceiling, int(interval * GROWTH)))
+    elif outcome == "failed":
+        chosen = int(interval * GROWTH)
+    elif outcome == "rate_limited":
         return {"interval": interval, "at": now + RATE_LIMIT_HOLD_SECONDS}
-    raise ValueError(f"unknown poll outcome {outcome!r}")
+    else:
+        raise ValueError(f"unknown poll outcome {outcome!r}")
+    if jitter:
+        chosen = int(chosen * (1 + random.random() * jitter))
+    chosen = min(POLL_CEILING_SECONDS, chosen)
+    at = now + chosen
+    if reset_at is not None and now < reset_at + RESET_SLACK_SECONDS < at:
+        at = reset_at + RESET_SLACK_SECONDS
+    return {"interval": chosen, "at": at}
+
+
+def worst_window(usage):
+    """The highest percentage used across an account's windows, or None."""
+    figures = [w["used"] for w in (usage.get("five_hour"), usage.get("seven_day")) if w]
+    figures += [m["used"] for m in usage.get("models") or []]
+    return max(figures) if figures else None
+
+
+def next_reset(usage, now):
+    """The nearest window reset after `now`, or None."""
+    windows = [usage.get("five_hour"), usage.get("seven_day")] + list(usage.get("models") or [])
+    resets = [w["resets_at"] for w in windows if w and w.get("resets_at") is not None and w["resets_at"] > now]
+    return min(resets) if resets else None
+
+
+def read_now_states(states, now):
+    """Every account due at once, except one read within the floor.
+
+    The reload button asks for this; the floor keeps a button held down from
+    spending the hour's budget.
+    """
+    out = {}
+    for account_id, state in states.items():
+        fetched = state.get("fetched_at")
+        fresh = fetched is not None and now - fetched < POLL_FLOOR_SECONDS
+        out[account_id] = state if fresh else dict(state, next_at=0)
+    return out
 
 
 def needs_refresh(expires_at_ms, active, now):
@@ -748,16 +804,24 @@ def due(accounts, states, now):
     return [a["id"] for a in accounts if states.get(a["id"], {}).get("next_at", 0) <= now]
 
 
-def record(state, outcome, usage, now):
+def record(state, outcome, usage, now, active=False, jitter=JITTER):
     """An account's polling state after a reading attempt with this outcome.
 
     A good reading replaces the figures and when they were taken; anything
     else keeps the last good figures, so the panel can show them as stale.
     """
-    previous = state or {"interval": POLL_FLOOR_SECONDS, "usage": None, "fetched_at": None}
-    schedule = next_poll(previous["interval"],
-                         outcome if outcome in ("ok", "rate_limited") else "failed", now)
+    # A first reading has no interval yet; a good one starts at the floor and
+    # a failed one backs off from it.
+    previous = state or {"interval": None if outcome == "ok" else POLL_FLOOR_SECONDS,
+                         "usage": None, "fetched_at": None}
     fresh = outcome == "ok"
+    before = worst_window(previous["usage"]) if previous.get("usage") else None
+    after = worst_window(usage) if fresh and usage else None
+    moved = before is not None and after is not None and abs(after - before) >= MOVEMENT_POINTS
+    schedule = next_poll(previous["interval"],
+                         outcome if outcome in ("ok", "rate_limited") else "failed", now,
+                         moved=moved, active=active,
+                         reset_at=next_reset(usage, now) if fresh and usage else None, jitter=jitter)
     return {"interval": schedule["interval"], "next_at": schedule["at"], "outcome": outcome,
             "usage": usage if fresh else previous["usage"],
             "fetched_at": now if fresh else previous["fetched_at"]}
@@ -886,9 +950,17 @@ class AccountMeters:
                 outcome, usage = "needs_login", None
             else:
                 outcome, usage = self._read_inactive(account["id"], now)
-            self.states[account["id"]] = record(self.states.get(account["id"]), outcome, usage, now)
+            self.states[account["id"]] = record(self.states.get(account["id"]), outcome, usage, now,
+                                                active=account is active)
         self._snapshot = meters_snapshot(load_store(self.store_path), self.states,
                                          active["id"] if active else None, emails=self.emails)
+
+    def read_now(self, now):
+        """Read every account now, except one read within the last three minutes."""
+        with self._one_at_a_time:
+            self.states = read_now_states(self.states, now)
+            self._tick(now)
+        return {"id": None, "name": "accounts"}
 
     def add(self, now):
         """Add the login Claude Code is using; it is read on the next tick."""

@@ -4,28 +4,39 @@
 <style>
   :root {
     color-scheme: light dark;
-    --bg: #f2f2f7; --fg: #1c1c1e; --dim: #8e8e93; --rule: #e5e5ea;
+    --bg: #f2f2f7; --fg: #1c1c1e; --dim: #6c6c70; --rule: #e5e5ea;
     /* A session is a card on the canvas; the one that needs you turns amber. */
     --card: #ffffff; --card-hover: #f9f9fb; --card-border: #e5e5ea;
     --blocked-bg: #fff3dc; --blocked-border: #ff9500; --blocked-text: #7a4100;
     --hot: #2a6fd6; --warn: #a8420a; --warn-bg: #fdf1e7;
+    /* Ink on a filled accent (hot, alert, the Switch pill) and on the amber
+       badge: white only where white reads; the dark theme's fills are pale. */
+    --accent-ink: #ffffff; --badge-ink: #5c3000; --switch-bg: #b5573a;
     /* Lamp states. Named for what they are on the board, not for a
        generic scale -- these belong to this panel and nothing else. */
     --lit: #2f8f4e; --alert: #c2410c;
+    /* The lamp green reads at 4.07:1 on a white card, which a 2px tick does
+       not care about and 11px words do. */
+    --lit-ink: #2a7d45;
     --lit-bg: #2f8f4e1f; --alert-bg: #c2410c1f;
     /* Limit bars: headroom, climbing, near the limit. claude-swap's bands, with
        an amber and a red that still read as amber and red on a light panel. */
     --sev-ok: #3d6b3d; --sev-warn: #c98a0b; --sev-crit: #dc2626;
+    /* Two hovers: a row tint for anything list-shaped, a control tint for
+       buttons; and one focus ring. */
+    --tint-row: color-mix(in srgb, var(--hot) 12%, transparent);
+    --tint-ctl: color-mix(in srgb, var(--fg) 9%, transparent);
     --scale: 1;
   }
   html { zoom: var(--scale); }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #1c1c1e; --fg: #f2f2f7; --dim: #8e8e93; --rule: #3a3a3c;
+      --bg: #1c1c1e; --fg: #f2f2f7; --dim: #98989d; --rule: #3a3a3c;
       --card: #2c2c2e; --card-hover: #323236; --card-border: #3a3a3c;
       --blocked-bg: #3a2500; --blocked-border: #ff9f0a; --blocked-text: #ffd60a;
       --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
-      --lit: #8ec07c; --alert: #fb8b5e;
+      --accent-ink: #1c1c1e; --badge-ink: #3a2500; --switch-bg: #d97757;
+      --lit: #8ec07c; --alert: #fb8b5e; --lit-ink: #8ec07c;
       --lit-bg: #8ec07c26; --alert-bg: #fb8b5e2b;
       --sev-ok: #87af87; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
     }
@@ -57,15 +68,18 @@
   body.stale #banner { display: block; }
   /* Fail loud: every row dims at once, so stale data is never mistaken for
      current data. Opacity only -- compositor-friendly, no layout thrash. */
-  body.stale #groups { opacity: .38; }
+  body.stale #groups { opacity: .55; }
   @media (prefers-reduced-motion: no-preference) {
     #groups { transition: opacity .15s ease; }
   }
   /* Well clear of the last agent family: the heading divides two kinds of
      row, and at family spacing it read as one more family. */
-  h2 {
-    margin: 0; padding: 22px 10px 4px; font-size: 10px; font-weight: 700;
+  h2, #queue h3 {
+    margin: 0; font-size: 10px; font-weight: 700;
     letter-spacing: .09em; color: var(--dim); text-transform: uppercase;
+  }
+  h2 {
+    padding: 22px 10px 4px;
   }
   ul { margin: 0; padding: 0; list-style: none; }
 
@@ -85,28 +99,41 @@
   }
   /* Agent cards get more air above the name and below the last line. */
   li.line.card:has(> button.row.agent) { padding-block: 4px; }
+  /* A card carrying a report is three or four lines tall; it needs the air a
+     two-line card does not. */
+  li.line.card:has(.task) > button.row { padding-block: 8px; }
   li.line.card:has(> button.row:hover) { background: var(--card-hover); }
   li.line.card > button.row { border-radius: 7px; }
   li.line.card > button.row:hover { background: none; }
-  /* The one exception: amber across the whole card and a heavier left edge,
-     visible without reading a word. */
+  /* The one exception: amber across the whole card and a heavier edge all
+     round, visible without reading a word. The extra weight is an inset ring
+     rather than a wider border, so the card keeps its size and nothing shifts
+     when a session starts or stops waiting. */
   li.line.card.blocked {
     background: var(--blocked-bg); border-color: var(--blocked-border);
-    border-left-width: 3px;
+    box-shadow: inset 0 0 0 2px var(--blocked-border);
   }
-  li.line.card.blocked > button.row { padding-left: calc(var(--row-pad) - 2px); }
   li.line.card.blocked > button.row .label { color: var(--blocked-text); }
   /* Teammates, subagents and shells sit inside the card, one line each,
      each joined to the session by an elbow. */
   .children { margin: 0 0 4px; }
   .children button.row {
     padding: 3px var(--row-pad) 3px var(--child-indent); min-height: 22px;
+    /* Where the name's line sits: the row's own top padding plus half a
+       14px line. The mark and the elbow both meet it, so a child row that
+       grows a second line does not leave them stranded in the middle. */
+    --name-mid: 10px;
+  }
+  .children button.row > .busy,
+  .children button.row > .swatch,
+  .children button.row > .shell-mark {
+    align-self: flex-start; margin-top: calc(var(--name-mid) - 3px - var(--mark) / 2);
   }
   /* The elbow joins two marks, so it is derived from where they are: it
      drops from the centre of the parent's branch icon and runs to the left
      edge of the child's mark. */
   .children button.row::before {
-    content: ""; position: absolute; top: 0; bottom: calc(50% - 1px);
+    content: ""; position: absolute; top: 0; bottom: calc(100% - var(--name-mid));
     left: var(--child-drop); width: var(--elbow);
     border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
     border-bottom-left-radius: 3px;
@@ -130,12 +157,14 @@
   /* A card's background shells, folded into one line that opens them. */
   .shell-sum {
     display: flex; align-items: center; gap: 6px; width: calc(100% - 20px);
-    margin: 0 10px 6px; padding: 5px 0 0; min-height: 22px;
+    margin: 0 10px 6px; padding: 5px 0 0; min-height: 24px;
     border: 0; border-top: 1px dotted var(--card-border); background: none;
-    font: 400 10.5px/1 -apple-system, sans-serif; color: var(--dim);
+    font: 400 11px/1 -apple-system, sans-serif; color: var(--dim);
     text-align: left; cursor: default;
   }
   .shell-sum:hover { color: var(--fg); }
+  .shell-sum.quiet { opacity: .7; }
+  .shell-sum.quiet:hover { color: var(--dim); }
   .shell-sum .mi { width: 10px; height: 10px; }
   .shell-sum .chev { margin-left: auto; transition: transform .15s ease-out; }
   .shell-sum[aria-expanded="true"] .chev { transform: rotate(90deg); }
@@ -149,7 +178,7 @@
   }
   li.line.card.blocked .children.shell-rows button.row { padding-left: var(--child-indent); }
   li.line.card.blocked .children.shell-rows button.row::before { left: var(--child-drop); }
-  .children button.row .label { font-size: 11.5px; }
+  .children button.row .label { font-size: 12px; }
   /* A background shell sits under its session like a subagent, marked with
      the terminal glyph where a subagent has its dots, labelled with the
      command in the branch line's face. */
@@ -233,7 +262,7 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   #card .sub {
-    margin-top: 1px; font: 450 10px/1.3 ui-monospace, Menlo, monospace;
+    margin-top: 1px; font: 500 10px/1.3 ui-monospace, Menlo, monospace;
     color: var(--dim);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
@@ -243,7 +272,7 @@
     display: grid; grid-template-columns: 1fr auto; gap: 2px 10px;
     margin-top: 6px; padding-top: 6px;
     border-top: .5px solid color-mix(in srgb, var(--fg) 11%, transparent);
-    font: 450 10.5px/1.5 -apple-system, BlinkMacSystemFont, sans-serif;
+    font: 500 11px/1.5 -apple-system, BlinkMacSystemFont, sans-serif;
   }
   /* Label, then its note pushed to the right of the same cell. One line per
      row whether a note is there or not, so the rows keep a rhythm. */
@@ -251,7 +280,7 @@
     color: var(--dim); display: flex; align-items: center; gap: 4px;
     min-width: 0;
   }
-  #card .grid dt svg { width: 10px; height: 10px; opacity: .75; }
+  #card .grid dt svg { width: var(--meta-icon); height: var(--meta-icon); opacity: .75; }
   #card .grid dd {
     margin: 0; text-align: right; color: var(--fg);
     font-variant-numeric: tabular-nums; min-width: 58px;
@@ -294,12 +323,12 @@
   }
   #card .flag {
     padding: 2px 6px; border-radius: 5px;
-    font: 600 9.5px/1.35 -apple-system, sans-serif; letter-spacing: .02em;
+    font: 600 10px/1.35 -apple-system, sans-serif; letter-spacing: .02em;
     text-transform: uppercase;
     color: var(--fg);
     background: color-mix(in srgb, var(--fg) 9%, transparent);
   }
-  #card .flag.hot { color: #fff; background: var(--hot); }
+  #card .flag.hot { color: var(--accent-ink); background: var(--hot); }
   #card .flag.warn { color: var(--warn); background: var(--warn-bg); }
   /* Effort is how much a turn spends, so it reads on the same ramp as the
      gauges: calm when it is cheap, warm when it is not. Soft tints, because
@@ -318,17 +347,17 @@
   }
 
   .menu button {
-    font: 450 12.5px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    font: 500 12.5px/1 -apple-system, BlinkMacSystemFont, sans-serif;
     text-align: left; color: var(--fg); background: none; border: 0;
     border-radius: 6px; padding: 6px 9px; cursor: default; min-height: 24px;
     letter-spacing: -.01em; white-space: nowrap;
   }
-  .menu button:hover { background: var(--hot); color: #fff; }
+  .menu button:hover { background: var(--hot); color: var(--accent-ink); }
   .menu button:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
   .menu button.danger:hover { background: var(--alert); }
   /* /clear cannot be undone, so it takes a second, deliberate click. */
   .menu button.armed { color: var(--alert); font-weight: 700; }
-  .menu button.armed:hover { background: var(--alert); color: #fff; }
+  .menu button.armed:hover { background: var(--alert); color: var(--accent-ink); }
   .menu .sep {
     height: .5px; margin: 3px 6px;
     background: color-mix(in srgb, var(--fg) 13%, transparent);
@@ -347,7 +376,7 @@
     cursor: default;
     touch-action: manipulation;
   }
-  button.row:hover { background: color-mix(in srgb, var(--hot) 12%, transparent); }
+  button.row:hover { background: var(--tint-row); }
   button.row:focus-visible {
     outline: 2px solid var(--hot); outline-offset: -2px;
   }
@@ -359,9 +388,9 @@
     max-width: 100%; line-height: 1.2;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  /* The mark before a name: the agent's provider. */
-  .label > .provider { display: inline-block; width: .85em; height: .85em; margin-right: 4px;
-                       vertical-align: -.1em; fill: currentColor; }
+  /* The model's mark is its provider's, in the provider's colour. */
+  .model .provider { width: var(--meta-icon); height: var(--meta-icon); flex-shrink: 0; fill: currentColor; }
+  .model .provider.claude { fill: #d97757; opacity: 1; }
 
   /* Silence, plus one exception. The panel is read from the corner of an eye,
      and its only question is "is anything waiting on me". So a row that needs
@@ -391,10 +420,61 @@
     font: 400 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
     overflow: hidden; padding-block: .2em; margin-block: -.2em;
   }
-  /* Faded per item rather than on the line, which would cap everything in it
-     at the same strength -- the effort letter is meant to read at full. */
-  .model > * { opacity: .7; }
-  .model > .effort { opacity: 1; }
+  /* The mark belongs to the name, so on a card carrying a report it sits
+     against the name and the task title rather than the middle of four
+     lines: half of 15px name + 1px gap + 14px title, less half the mark. */
+  button.row:has(.task) > .swatch,
+  button.row:has(.task) > .busy,
+  button.row:has(.task) > .shell-mark { align-self: flex-start; margin-top: 11px; }
+  /* Air above the facts line, but only where a report stands between it and
+     the name: a child row or a card with no report is two lines and needs
+     none. Its own rule because `margin-block` above is a shorthand, so a
+     margin-top set beside it is overwritten by the -.2em that cancels the
+     padding, and the line ends up against what it follows. */
+  button.row:has(.task) > .stack > .model { margin-top: 9px; }
+  /* The tab's own title, in the panel's face rather than the terminal's. */
+  .model > .title { font: 500 10px/1 -apple-system, sans-serif; }
+  /* What the session says it is doing: its own words, so the panel's face
+     rather than the monospace of the facts line; each line cut, not wrapped.
+     A report nobody refreshed for five minutes reads as stale, greyed. */
+  .task { max-width: 100%; align-self: stretch; display: flex; flex-direction: column; gap: 6px; }
+  .task > span {
+    max-width: 100%; display: flex; align-items: baseline; gap: 5px;
+    font: 400 11px/1.3 -apple-system, sans-serif; color: var(--dim);
+  }
+  .task .task-title, .task .task-activity {
+    flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .task .task-age, .task .task-stale, .task .task-done { flex: none; }
+  /* The name leads; the task is what the name is busy with, so it reads a
+     step back from it rather than as a second heading. */
+  .task .task-title { color: var(--dim); font-weight: 500; }
+  .task .task-status > * + *::before { content: "\00b7"; margin-right: 5px; }
+  /* The estimate as a hairline under the report, in the session's own colour:
+     a figure to glance at rather than read. Not the meters' green-amber-red,
+     which would call being nearly finished a warning. */
+  /* The estimate as a row of ticks, the done ones green: a count to glance
+     at, not a gauge. The foot's limit meters are solid track-and-fill bars in
+     a green-amber-red ramp, and this must not be read as one of those -- being
+     nearly finished is not being near a limit. */
+  .task .task-bar {
+    display: block; height: 3px; margin-top: 2px; overflow: hidden;
+    background: color-mix(in srgb, var(--fg) 16%, transparent);
+    -webkit-mask-image: var(--tick-mask); mask-image: var(--tick-mask);
+    --tick-mask: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 6px);
+  }
+  .task .task-bar-fill { display: block; height: 100%; background: var(--lit); }
+  /* Only the mark is nudged onto the x-height; shifting the whole group
+     took the age's digits off the line's baseline with it. */
+  .task .task-age .mi {
+    display: inline-block; width: var(--meta-icon); height: var(--meta-icon);
+    vertical-align: -1px; margin-right: 3px;
+  }
+  /* What it is doing right now wears the same green as the ticks below it,
+     so one accent carries one idea: this is the live part of the report. */
+  .task .task-activity { color: var(--lit-ink); }
+  .task.stale > span { opacity: .7; }
+  .task .task-done { color: var(--sev-ok); font-weight: 600; }
   /* The ellipsis goes on the text, not the chip. A chip is a flex box, and
      text-overflow does nothing for the loose text inside a flex box -- the
      text was simply cut, "cs/unity-studi" with no sign anything was missing. */
@@ -437,8 +517,8 @@
   /* Sits against the model it qualifies: the line's 5px gap, less 1. */
   .effort { margin-left: -1px; font-weight: 600; flex-shrink: 0; }
   /* Brackets in the line's own faded grey, so only the letter carries the colour. */
-  .effort::before { content: "["; color: var(--dim); font-weight: 400; opacity: .7; }
-  .effort::after { content: "]"; color: var(--dim); font-weight: 400; opacity: .7; }
+  .effort::before { content: "["; color: var(--dim); font-weight: 400; }
+  .effort::after { content: "]"; color: var(--dim); font-weight: 400; }
   .effort.low { color: var(--effort-low); }
   .effort.medium { color: var(--effort-medium); }
   .effort.high { color: var(--effort-high); }
@@ -480,7 +560,7 @@
                 align-items: center; justify-content: center; color: var(--hue, var(--dim)); }
   .shell-mark .mi { width: calc(var(--mark) + 3px); height: calc(var(--mark) + 3px); opacity: 1; }
   .swatch::before {
-    content: ""; width: var(--mark); height: var(--mark); border-radius: 1.5px;
+    content: ""; width: var(--mark); height: var(--mark); border-radius: 3px;
     background: var(--hue, var(--rule));
   }
   .busy { gap: calc((var(--mark) - 3 * var(--dot)) / 2); }
@@ -534,7 +614,7 @@
   /* A solid amber badge, the one filled shape on the panel. It sits on the
      name's line only: as a flex column it took its width out of the details
      line too, and at larger text sizes that cut the context figure off. */
-  .word.blocked { color: #fff; background: var(--blocked-border); font-family: -apple-system, sans-serif; }
+  .word.blocked { color: var(--badge-ink); background: var(--blocked-border); font-family: -apple-system, sans-serif; }
   button.row.hot > .word.blocked { position: absolute; top: 6px; right: 10px; }
   button.row.hot .label { padding-right: 62px; }
   /* Idle is the resting state, so its badge is an outline in the dim ink: it
@@ -579,7 +659,7 @@
      "working", which is the state that means ignore me -- peripheral vision
      goes to movement first, so it pulled the eye to the rows needing nothing. */
   @media (prefers-reduced-motion: no-preference) {
-    .word.blocked { animation: breathe 1.9s ease-in-out infinite; }
+    .word.blocked { animation: breathe 1.9s ease-in-out infinite; animation-delay: var(--breathe-delay, 0ms); }
   }
   @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 
@@ -601,22 +681,39 @@
 
   #bar {
     position: sticky; bottom: 0; z-index: 20;
-    display: flex; justify-content: flex-end;
-    padding: 3px 6px;
-    background: linear-gradient(to top,
-      var(--bg) 55%, color-mix(in srgb, var(--bg) 0%, transparent));
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    margin: 14px 8px 0; padding: 4px 0 3px;
+    border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
+    background: var(--bg);
   }
+  #bar .tools { display: flex; gap: 2px; margin-left: auto; }
+  /* What Claude Code says the running sessions have spent, priced at API
+     rates: on a subscription it is a measure of use, not a bill. */
+  #cost {
+    display: flex; align-items: center; gap: 5px; min-width: 0;
+    font: 400 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+  #cost .mchip { cursor: default; }
+  #cost .mchip ~ .mchip::before { content: "\00b7"; margin-right: 2px; opacity: .6; }
   #groups { flex: 1; }
-  #gear {
-    width: 22px; height: 22px; padding: 0; cursor: default; border: 0;
+  #bar button {
+    width: 24px; height: 24px; padding: 0; cursor: default; border: 0;
+    display: inline-flex; align-items: center; justify-content: center;
     border-radius: 6px; background: none; color: var(--dim);
     font: 400 13px/1 -apple-system, sans-serif;
-    transition: color var(--quick) ease, background var(--quick) ease,
-                transform var(--enter) var(--ease-out);
+    transition: color var(--quick) ease, background var(--quick) ease;
   }
-  #gear:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 9%, transparent); }
-  #gear:focus-visible { outline: 2px solid var(--hot); outline-offset: 1px; }
-  #gear[aria-expanded="true"] { color: var(--fg); transform: rotate(60deg); }
+  #bar button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6;
+    stroke-linecap: round; stroke-linejoin: round; }
+  #bar button:hover { color: var(--fg); background: var(--tint-ctl); }
+  #bar button:focus-visible, .step button:focus-visible, .shell-sum:focus-visible,
+  .shell-pop button:focus-visible, #budget .acct-name:focus-visible,
+  #budget .acct-item-name:focus-visible, #budget .acct-add:focus-visible,
+  #budget .acct-switch:focus-visible, #budget .acct-rename:focus-visible {
+    outline: 2px solid var(--hot); outline-offset: 1px;
+  }
+  #gear[aria-expanded="true"] { color: var(--fg); background: var(--tint-ctl); }
 
   /* A drawer in the panel's foot, not a card floating over the list: edge to
      edge, no radius or shadow, one hairline where it meets the rows, and the
@@ -657,18 +754,16 @@
     background: color-mix(in srgb, var(--fg) 5%, transparent);
   }
   .step button {
-    width: 22px; height: 20px; padding: 0; border: 0; background: none;
+    width: 24px; height: 24px; padding: 0; border: 0; background: none;
     color: var(--fg); cursor: default;
     font: 500 13px/1 -apple-system, sans-serif;
     transition: background var(--quick) ease;
   }
-  .step button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--fg) 10%, transparent);
-  }
+  .step button:hover:not(:disabled) { background: var(--tint-ctl); }
   .step button:disabled { color: var(--dim); opacity: .4; }
   .step .now {
     min-width: 34px; text-align: center; color: var(--fg);
-    font: 600 10.5px/1 ui-monospace, Menlo, monospace;
+    font: 600 11px/1 ui-monospace, Menlo, monospace;
     font-variant-numeric: tabular-nums;
     border-left: .5px solid color-mix(in srgb, var(--fg) 12%, transparent);
     border-right: .5px solid color-mix(in srgb, var(--fg) 12%, transparent);
@@ -681,6 +776,8 @@
     position: relative; cursor: default; flex-shrink: 0;
     transition: background var(--quick) ease;
   }
+  /* The finger gets 24px; the drawn pill stays 17. */
+  .sw::before { content: ""; position: absolute; inset: -4px 0; }
   .sw::after {
     content: ""; position: absolute; top: 2px; left: 2px;
     width: 13px; height: 13px; border-radius: 50%; background: #fff;
@@ -689,7 +786,7 @@
   }
   .sw[aria-checked="true"] { background: var(--lit); }
   .sw[aria-checked="true"]::after { transform: translateX(11px); }
-  .sw:focus-visible { outline: 2px solid var(--hot); outline-offset: 2px; }
+  .sw:focus-visible { outline: 2px solid var(--hot); outline-offset: 1px; }
   .sw:disabled { opacity: .4; cursor: default; }
 
   .set input[type=range] {
@@ -740,11 +837,8 @@
     background: var(--bg);
     border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
   }
-  body.stale #queue { opacity: .38; }
-  #queue h3 {
-    margin: 0; padding: 0 2px 3px; font-size: 10px; font-weight: 700;
-    letter-spacing: .09em; color: var(--dim); text-transform: uppercase;
-  }
+  body.stale #queue { opacity: .55; }
+  #queue h3 { padding: 0 2px 3px; }
   /* The one warm mark in the section, and it is a number, not a surface. */
   #queue h3 .n { color: var(--blocked-text); }
   #queue ul { padding: 0; }
@@ -754,16 +848,16 @@
     background: none; font: inherit; color: var(--fg); text-align: left;
     cursor: default;
   }
-  .qrow:hover { background: color-mix(in srgb, var(--hot) 12%, transparent); }
+  .qrow:hover { background: var(--tint-row); }
   .qrow:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
   .qrow .label { flex: 1; min-width: 0; font-size: 12px; font-weight: 500; }
   .qrow .ago {
-    flex-shrink: 0; font: 400 10.5px/1 ui-monospace, Menlo, monospace;
+    flex-shrink: 0; font: 400 10px/1 ui-monospace, Menlo, monospace;
     color: var(--dim); font-variant-numeric: tabular-nums;
   }
   #queue .more {
     padding: 2px 2px 0 calc(2px + var(--mark) + var(--row-gap));
-    font-size: 10.5px; color: var(--dim);
+    font-size: 11px; color: var(--dim);
   }
 
   /* The account's budget, in the panel's foot. Quiet by default: grey
@@ -771,13 +865,13 @@
      spent and being spent faster than the clock, which is the one budget
      state worth a glance. */
   #budget {
-    margin: 0 10px; padding: 7px 0 1px;
+    margin: 0 8px; padding: 7px 0 1px;
     border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
     background: var(--bg);
     font: 400 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
     font-variant-numeric: tabular-nums;
   }
-  body.stale #budget { opacity: .38; }
+  body.stale #budget { opacity: .55; }
   #budget .win {
     display: grid; grid-template-columns: 38px minmax(0, 1fr) 28px 34px;
     align-items: center; gap: 6px; height: 15px;
@@ -803,12 +897,6 @@
   #budget .win.ahead .pct { color: var(--warn); font-weight: 600; }
   /* Under a dotted rule, so it reads as its own figure rather than a caption
      to the bar above; the middot rule is the meta line's. */
-  #budget .cost {
-    display: flex; align-items: center; gap: 5px; margin-top: 6px; padding-top: 5px;
-    border-top: 1px dotted var(--card-border); height: 13px; line-height: 13px;
-  }
-  #budget .cost .mchip { cursor: default; }
-  #budget .cost .mchip ~ .mchip::before { content: "\00b7"; margin-right: 2px; opacity: .6; }
   /* Accounts: the line naming the login sessions run on, then the others. */
   #budget .acct-line {
     display: flex; align-items: center; justify-content: flex-start; gap: 6px;
@@ -822,15 +910,15 @@
     font: inherit; text-align: left; cursor: text; }
   #budget .acct-name { flex: 0 1 auto; font-weight: 600; }
   #budget button.acct-name:hover, #budget button.acct-item-name:hover { opacity: 1; }
-  #budget .acct-count { flex: none; margin-left: auto; }
   /* Brand colours: Claude's orange; OpenAI's mark is black, or white on dark. */
-  #budget .provider { flex: none; width: 11px; height: 11px; }
+  #budget .provider { flex: none; width: 12px; height: 12px; }
   #budget .provider.claude { fill: #d97757; }
   #budget .provider.openai { fill: var(--fg); }
   #budget .acct-item-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
   #budget .codex { margin-top: 10px; padding-top: 8px;
     border-top: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
-  #budget .acct-badge { flex: none; color: var(--dim); font-size: .9em; }
+  /* The login the sessions run on: a filled green check, not a word. */
+  #budget .acct-badge { flex: none; width: 12px; height: 12px; fill: var(--sev-ok); }
   #budget .acct-rename { width: 100%; height: 17px; box-sizing: border-box; padding: 0 3px;
     border: .5px solid color-mix(in srgb, var(--fg) 30%, transparent); border-radius: 3px;
     background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); cursor: text; }
@@ -840,8 +928,9 @@
     border-top: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
   #budget .acct-item + .acct-item { margin-top: 12px; }
   /* Accounts the sessions are not on recede; pointing at one brings it back. */
-  #budget .acct-item { opacity: .6; transition: opacity .15s; }
-  #budget .acct-item:is(:hover, :focus-within, :has(.armed)) { opacity: 1; }
+  #budget .acct-item { opacity: .75; transition: opacity .15s; }
+  @media (prefers-reduced-motion: reduce) { #budget .acct-item { transition: none; } }
+  #budget .acct-item:is(.hover, :focus-within, :has(.armed)) { opacity: 1; }
   #budget .acct-item-name { height: 15px; line-height: 15px; color: var(--fg); opacity: .75;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #budget .win .wl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -850,8 +939,7 @@
     border: .5px solid color-mix(in srgb, var(--fg) 22%, transparent);
     background: none; font: inherit; color: var(--fg); cursor: default;
   }
-  #budget .acct-add:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
-  #budget .acct-switch.armed { border-color: var(--warn); color: var(--warn); font-weight: 600; }
+  #budget .acct-add:hover { background: var(--tint-ctl); }
   /* Pointing at an account frosts its meters and floats Switch over them; an
      armed Switch keeps the veil up so the confirming click has somewhere to land. */
   #budget .acct-item { position: relative; }
@@ -863,21 +951,22 @@
     transition: opacity .18s ease-out;
   }
   #budget .acct-switch {
-    display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 5px 13px;
-    border: 0; border-radius: 999px; font: inherit; font-weight: 600; letter-spacing: .01em;
-    color: #fff; background: #d97757; cursor: default; pointer-events: auto;
-    box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 6px 16px -4px color-mix(in srgb, #d97757 55%, transparent);
-    transform: translateY(3px) scale(.96); transition: transform .18s cubic-bezier(.2, .9, .3, 1.2), background .12s;
+    display: inline-flex; align-items: center; gap: 7px; margin: 0; padding: 7px 18px;
+    border: 0; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; letter-spacing: .01em;
+    color: var(--accent-ink); background: var(--switch-bg); cursor: default; pointer-events: auto;
+    box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 6px 16px -4px color-mix(in srgb, var(--switch-bg) 55%, transparent);
+    transition: background .12s;
   }
-  #budget .acct-switch svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2;
+  #budget .acct-switch svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2;
     stroke-linecap: round; stroke-linejoin: round; }
-  #budget .acct-switch:hover { background: #c96442; }
+  #budget .acct-switch:hover { background: color-mix(in srgb, var(--switch-bg) 88%, var(--fg)); }
   #budget .acct-switch:active { transform: scale(.95); }
   #budget .acct-switch.armed { background: var(--warn); font-weight: 600;
     box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 6px 16px -4px color-mix(in srgb, var(--warn) 55%, transparent); }
-  #budget .acct-item:is(:hover, :focus-within) .acct-veil, #budget .acct-veil:has(.armed) { opacity: 1; }
-  #budget .acct-item:is(:hover, :focus-within) .acct-switch, #budget .acct-switch.armed { transform: none; }
-  #budget .acct-item:not(:hover, :focus-within) .acct-veil:not(:has(.armed)) .acct-switch { pointer-events: none; }
+  #budget .acct-item:is(.hover, :focus-within) .acct-veil, #budget .acct-veil:has(.armed) { opacity: 1; }
+  #budget .acct-item:not(.hover, :focus-within) .acct-veil:not(:has(.armed)) .acct-switch { pointer-events: none; }
+  /* A veil rebuilt while already shown must not fade in again. */
+  #budget .acct-item.settled .acct-veil, #budget .acct-item.settled .acct-switch { transition: none; }
   @media (prefers-reduced-motion: reduce) { #budget .acct-veil, #budget .acct-switch { transition: none; } }
 </style>
 
@@ -891,8 +980,15 @@
 </div>
 <div id="settings" hidden></div>
 <div id="bar">
-  <button id="gear" type="button" aria-expanded="false"
-          aria-label="Settings">⚙</button>
+  <div id="cost" hidden></div>
+  <div class="tools">
+  <button id="reload" type="button" aria-label="Reload the panel" title="Reload the panel">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg>
+  </button>
+  <button id="gear" type="button" aria-expanded="false" aria-controls="settings" aria-label="Settings">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M3.6 12.4l1.2-1.2M11.2 4.8l1.2-1.2"/></svg>
+  </button>
+  </div>
 </div>
 
 <script>
@@ -923,6 +1019,7 @@ const META_ICONS = {
   cost: '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm12-88.84V152a8,8,0,0,1-16,0v-.29a24,24,0,0,1-8.65-11.06,8,8,0,1,1,15.3-4.72c.53,1.6,2.2,4.07,5.35,4.07,3.86,0,7-2.24,7-5s-3.14-5-7-5c-12.68,0-23-9.42-23-21s10.32-21,23-21V80a8,8,0,0,1,16,0v.29a24,24,0,0,1,8.65,11.06,8,8,0,0,1-15.3,4.72c-.53-1.6-2.2-4.07-5.35-4.07-3.86,0-7,2.24-7,5s3.14,5,7,5c12.68,0,23,9.42,23,21S140,127.16,140,127.16Z"/>',
   lines: '<path d="M112,152a8,8,0,0,0-8,8v28.69L66.34,151A8,8,0,0,1,64,145.37V95a32,32,0,1,0-16,0v50.38a23.85,23.85,0,0,0,7,17L92.69,200H64a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,112,152ZM40,64A16,16,0,1,1,56,80,16,16,0,0,1,40,64Zm168,97V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/>',
   shells: '<path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/>',
+  computer: '<path d="M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24h72v16H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16H136V200h72a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8Z"/>',
   model: '<path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"/>',
 };
 
@@ -952,8 +1049,14 @@ const LONG_TURN_SECONDS = 20 * 60;
 // the sweep has reached; every shimmer on the page then sweeps in step.
 // Matches the idle-shimmer animation duration in the CSS.
 const SHIMMER_MS = 2000;
+const BREATHE_MS = 1900;
 function syncShimmer(el) {
   el.style.setProperty("--shimmer-delay", `-${Date.now() % SHIMMER_MS}ms`);
+}
+// Same for the breath: a badge rebuilt every snapshot would otherwise start
+// each breath from the top, twice a second short of a full one.
+function syncBreathe(el) {
+  el.style.setProperty("--breathe-delay", `-${Date.now() % BREATHE_MS}ms`);
 }
 // Heartbeat is every 4s server-side. Two missed, plus a second of slack.
 const STALE_AFTER_MS = 9000;
@@ -1397,17 +1500,21 @@ function openMenuAt(menu, li, event, key) {
 // The list is rebuilt whole on every update, so without this a row that
 // appears shoves its neighbours down in one frame and one that leaves snaps
 // them up. FLIP: measure every card and every line inside it before the
-// rebuild, then play the change in three beats -- what left fades out, then
-// cards resize and slide to where they are, then what arrived fades in -- so
-// the eye follows one change at a time. Transform and opacity, plus a card's
+// rebuild, then play the change: what left fades out while cards resize and
+// slide to where they are, and what arrived fades in as the move settles, so
+// the eye reads one motion. Transform and opacity, plus a card's
 // own height, which is the resize. Offsets, not client rects: the text-size
 // control zooms the page, and engines disagree on whether a client rect is
 // reported before or after that zoom.
 const MOTION = window.matchMedia("(prefers-reduced-motion: no-preference)");
-const MOVE = {duration: 220, easing: "cubic-bezier(.16,1,.3,1)"};
-const FADE = {duration: 140, easing: "ease-out"};
+const MOVE = {duration: 180, easing: "cubic-bezier(.2,.8,.2,1)", id: "flip"};
+const FADE = {duration: 120, easing: "ease-out", id: "flip"};
 
 function measureRows() {
+  // A snapshot that lands mid-motion would otherwise read heights and
+  // offsets part way through the last change, and the next change would
+  // start from there and jump. Settle the old one first.
+  for (const a of document.getAnimations()) if (a.id === "flip") a.finish();
   const rows = new Map();
   for (const li of document.querySelectorAll("#groups li[data-key]")) {
     const lines = new Map();
@@ -1448,9 +1555,13 @@ function animateRows(before) {
   }
   for (const li of cards) if (!before.has(li.dataset.key)) entering.push(li);
 
-  const settleAt = leaving.length ? FADE.duration : 0;
+  if (!leaving.length && !entering.length && !moving.length && !resizing.length && !lineMoves.length) return;
+  // Beats overlap: what leaves fades while the rest is already moving, and
+  // what arrives fades in over the move's last third, so one change reads
+  // as one motion of about a quarter second rather than three in a row.
+  const settleAt = 0;
   const shifts = moving.length || resizing.length || lineMoves.length;
-  const arriveAt = settleAt + (shifts ? MOVE.duration : 0);
+  const arriveAt = shifts ? Math.round(MOVE.duration * 2 / 3) : (leaving.length ? FADE.duration / 2 : 0);
 
   // Beat one. A card that left is put back where it was, above the list; a
   // line that left is put back inside its card, in a holder with its old
@@ -1503,6 +1614,62 @@ function render(snapshot) {
   paintBudget(snapshot);
   fitMeta();
   animateRows(before);
+}
+
+// The session's own account of its work. Self-reported, so the age is
+// part of the reading: a report over five minutes old is shown as stale.
+const TASK_STALE_AFTER = 300;
+function taskLine(task) {
+  const stale = !task.done && task.age >= TASK_STALE_AFTER;
+  const line = Object.assign(document.createElement("span"), {className: "task" + (stale ? " stale" : "")});
+  const age = task.age < 60 ? `${Math.max(0, Math.round(task.age))}s` : waited(Date.now() / 1000 - task.age);
+  const el = (cls, text) => Object.assign(document.createElement("span"), {className: cls, textContent: text});
+  const on = key => SETTINGS?.[key] !== false;
+  const title = el("task-title", task.title || "");
+  title.title = task.title || "";
+  line.append(title);
+
+  // What it is doing and how old that report is. Each piece is the session's
+  // own claim and each can be turned off; what is off is never drawn, so the
+  // separators fall to whatever is left.
+  const status = el("task-status", "");
+  const spoken = [];
+  if (task.done) {
+    status.append(el("task-done", "Done"));
+    spoken.push("Done");
+  } else {
+    if (task.activity && on("show_task_activity")) {
+      status.append(el("task-activity", task.activity));
+      spoken.push(task.activity);
+    }
+    if (on("show_task_age")) {
+      // The age wears a clock, so it reads as "reported this long ago" and
+      // not as one more figure the session claimed.
+      const when = el("task-age", "");
+      when.append(metaIcon("clock"), document.createTextNode(age));
+      status.append(when);
+      spoken.push(age);
+    }
+    // Staleness stays whatever else is hidden: it is the line's own warning
+    // that nobody has refreshed what it says.
+    if (stale) { status.append(el("task-stale", "stale")); spoken.push("stale"); }
+  }
+  status.title = task.done ? "The session reported this task finished"
+    : `The session's own estimate, reported ${age} ago`;
+  if (status.childElementCount) line.append(status);
+
+  if (!task.done && typeof task.percent === "number" && on("show_task_bar")) {
+    const pct = Math.max(0, Math.min(100, task.percent));
+    const bar = el("task-bar", "");
+    const fill = el("task-bar-fill", "");
+    fill.style.width = pct + "%";
+    bar.append(fill);
+    bar.title = `about ${pct}% done, the session's own estimate`;
+    line.append(bar);
+    spoken.push(`about ${pct}% done`);
+  }
+  line.dataset.spoken = `task ${task.title || ""}: ${spoken.join(", ")}`;
+  return line;
 }
 
 // Coarse on purpose: the queue orders by how long, it does not time anyone.
@@ -1606,11 +1773,12 @@ function meterRow(label, used, at, {tick = null, ahead = false} = {}) {
     track.append(mark);
   }
   const pct = Object.assign(document.createElement("span"), {className: "pct", textContent: Math.round(used) + "%"});
+  if (ahead) pct.setAttribute("aria-label", `${Math.round(used)}%, ahead of pace`);
   const reset = Object.assign(document.createElement("span"), {className: "at"});
   if (at) {
     const when = new Date(at * 1000);
     reset.textContent = untilReset(at, Date.now() / 1000);
-    row.title = `${label}: ${Math.round(used)}% used, resets `
+    row.title = `${label}: ${Math.round(used)}% used${ahead ? ", ahead of pace" : ""}, resets `
       + when.toLocaleString(undefined, {weekday: "short", month: "short",
           day: "numeric", hour: "2-digit", minute: "2-digit"});
   }
@@ -1653,23 +1821,32 @@ function addAccount() {
 
 let armedSwitch = null;
 let disarmTimer = null;
+// The inactive account the pointer is over. WebKit leaves a rebuilt element
+// without :hover until the mouse moves, so the page keeps the state itself.
+let hoveredAccount = null;
 
 // Arms on the first click and switches on the second, like Close: a switch
-// changes the login of every running session.
+// changes the login of every running session. Arming changes the button in
+// place; a repaint from a snapshot rebuilds it in the same state.
 function switchButton(account) {
-  const armed = armedSwitch === account.id;
   const button = Object.assign(document.createElement("button"),
     {className: "acct-switch", type: "button"});
+  const label = document.createTextNode("");
   button.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4h8M7.5 1.5 10 4 7.5 6.5M10 8H2M4.5 5.5 2 8l2.5 2.5"/></svg>';
-  button.append(armed ? "Confirm switch" : "Switch");
-  button.setAttribute("aria-label", armed ? `confirm switching to ${account.name}` : `switch to ${account.name}`);
-  if (armed) button.classList.add("armed");
+  button.append(label);
+  const show = () => {
+    const armed = armedSwitch === account.id;
+    label.textContent = armed ? "Confirm switch" : "Switch";
+    button.setAttribute("aria-label", armed ? `confirm switching to ${account.name}` : `switch to ${account.name}`);
+    button.classList.toggle("armed", armed);
+  };
+  show();
   button.addEventListener("click", () => {
     clearTimeout(disarmTimer);
-    if (!armed) {
+    if (armedSwitch !== account.id) {
       armedSwitch = account.id;
-      disarmTimer = setTimeout(() => { armedSwitch = null; paintBudget(lastSnapshot); }, 4000);
-      paintBudget(lastSnapshot);
+      disarmTimer = setTimeout(() => { armedSwitch = null; show(); }, 4000);
+      show();
       return;
     }
     armedSwitch = null;
@@ -1752,11 +1929,14 @@ function paintAccounts(strip, store) {
     : Object.assign(document.createElement("span"), {className: "acct-name", textContent: "not a stored login"}));
   // The login every session runs on.
   if (active && renamingAccount !== active.id) {
-    head.append(Object.assign(document.createElement("span"), {className: "acct-badge", textContent: "active"}));
+    const check = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    check.setAttribute("viewBox", "0 0 256 256");
+    check.setAttribute("class", "acct-badge");
+    check.setAttribute("role", "img");
+    check.setAttribute("aria-label", "active");
+    check.innerHTML = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/>';
+    head.append(check);
   }
-  head.append(
-    Object.assign(document.createElement("span"), {className: "acct-count",
-      textContent: `${store.accounts.length} acct${store.accounts.length === 1 ? "" : "s"}`}));
   strip.append(head);
 
   if (active) {
@@ -1778,6 +1958,14 @@ function paintAccounts(strip, store) {
       const veil = Object.assign(document.createElement("div"), {className: "acct-veil"});
       veil.append(switchButton(account));
       item.append(veil);
+      item.addEventListener("mouseenter", () => { hoveredAccount = account.id; item.classList.add("hover"); });
+      item.addEventListener("mouseleave", () => {
+        hoveredAccount = null; item.classList.remove("hover", "settled");
+      });
+      if (hoveredAccount === account.id) {
+        item.classList.add("hover", "settled");
+        requestAnimationFrame(() => requestAnimationFrame(() => item.classList.remove("settled")));
+      }
     }
     list.append(item);
   }
@@ -1862,12 +2050,17 @@ function paintBudget(snapshot) {
 
   if (snapshot.codex?.windows?.length) paintCodex(strip, snapshot.codex);
 
+  strip.hidden = strip.childElementCount === 0;
+  paintCost(reporting);
+}
+
+// The bar's left half: what the sessions have spent, and how many say so.
+function paintCost(reporting) {
+  const cost = document.getElementById("cost");
+  cost.replaceChildren();
   const costs = reporting.filter(d => d.cost != null);
+  cost.hidden = !costs.length;
   if (costs.length) {
-    // What Claude Code says the running sessions have spent, priced at API
-    // rates: on a subscription it is a measure of use, not a bill.
-    const cost = document.createElement("div");
-    cost.className = "cost";
     const total = costs.reduce((sum, d) => sum + d.cost, 0);
     const n = costs.length;
     const spent = Object.assign(document.createElement("span"), {className: "mchip"});
@@ -1878,9 +2071,7 @@ function paintBudget(snapshot) {
     count.title = `${n} Claude Code session${n === 1 ? " reports" : "s report"} a cost`;
     cost.append(spent, count);
     cost.setAttribute("aria-label", `$${total.toFixed(2)} spent at API prices across ${n} session${n === 1 ? "" : "s"}`);
-    strip.append(cost);
   }
-  strip.hidden = strip.childElementCount === 0;
 }
 
 // A line that cannot fit even with its branch at two characters drops the
@@ -1910,6 +2101,13 @@ function childrenOf(card) {
 // Cards whose shells are shown the other way from the Expand shells setting,
 // by session id, so a repaint keeps what you opened or closed.
 const flippedShells = new Set();
+// When a session's last shell ended. Its commands line stays for a few
+// seconds after, quiet, so a run of short commands reads as one line whose
+// count changes rather than a card that grows and shrinks on each of them.
+const SHELL_LINGER_MS = 4000;
+const shellsHad = new Map();      // session -> how many shells it last had
+const shellsEndedAt = new Map();
+let lingerTimer = null;
 
 function childRow(parent, kind, key) {
   const b = document.createElement("button");
@@ -1978,6 +2176,8 @@ function paint(snapshot) {
 
       // Identity, always, and never as the ground.
       const mark = document.createElement("span");
+      // The session's colour on the row itself, so the task graphic can wear it.
+      if (SESSION_COLOURS[row.colour]) b.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
       // A plain terminal running a command is busy the same way an agent
       // mid-turn is, so it gets the same dots, in grey for want of a colour.
       if (row.state === "working" || row.running) {
@@ -2000,24 +2200,31 @@ function paint(snapshot) {
 
       const label = document.createElement("span");
       label.className = "label";
-      // Claude rows are the unmarked default; any other agent names itself.
-      if (PROVIDER_ICONS[row.provider]) label.append(providerIcon(row.provider, "Codex"));
       label.append(row.label);
       stack.append(label);
+
+      // What the session says it is doing, as it wrote it: a title, then
+      // the rough percent, the activity and how old the report is.
+      if (row.task && SETTINGS?.show_task !== false) {
+        stack.append(taskLine(row.task));
+      }
 
       // Branch then model, on one line under the name: both describe the
       // session rather than its state, so they belong together and behind it.
       // Each item has an icon saying which it is, and a middot between items.
       const meta = document.createElement("span");
       meta.className = "model";
-      for (const [kind, value] of [["branch", row.branch], ["model", row.model]]) {
+      for (const [kind, value] of [["title", row.title], ["branch", row.branch], ["model", row.model]]) {
         if (!value || SETTINGS?.[`show_${kind}`] === false) continue;
         const chip = document.createElement("span");
         chip.className = "mchip";
-        chip.classList.add(kind === "branch" ? "branch" : "model-name");
+        chip.classList.add(kind === "branch" ? "branch" : kind === "title" ? "title" : "model-name");
         const text = Object.assign(document.createElement("span"),
                                    {className: "mtext", textContent: value});
-        chip.append(metaIcon(kind), text);
+        // The model's mark is its provider's; a tab title wears a computer.
+        if (kind === "model") chip.append(providerIcon(row.provider || "claude", row.provider === "openai" ? "OpenAI" : "Claude"));
+        else chip.append(metaIcon(kind === "title" ? "computer" : kind));
+        chip.append(text);
         chip.title = value;
         const effort = kind === "model" && EFFORT_LETTERS[row.effort]
           ? document.createElement("span") : null;
@@ -2026,9 +2233,9 @@ function paint(snapshot) {
           if (row.effort === "max") effort.innerHTML = "<i>m</i><i>x</i>";
           else effort.textContent = EFFORT_LETTERS[row.effort];
         }
-        chip.setAttribute("aria-label",
-                          kind === "branch" ? `on branch ${value}`
-                          : `model ${value}` + (row.effort ? `, ${row.effort} effort` : ""));
+        chip.dataset.spoken = kind === "branch" ? `on branch ${value}`
+          : kind === "title" ? `tab ${value}`
+          : `model ${value}` + (row.effort ? `, ${row.effort} effort` : "");
         meta.append(chip);
         if (effort) meta.append(effort);
       }
@@ -2042,7 +2249,6 @@ function paint(snapshot) {
         chip.className = "mchip ctx" + (row.context >= 90 ? " critical" : "");
         chip.append(metaIcon("gauge"),
                     document.createTextNode(row.context + "%"));
-        chip.setAttribute("aria-label", `${row.context}% of the context used`);
         meta.append(chip);
       }
       if (meta.childElementCount) stack.append(meta);
@@ -2059,6 +2265,7 @@ function paint(snapshot) {
         const word = document.createElement("span");
         word.className = "word blocked";
         word.textContent = "waiting";
+        syncBreathe(word);
         b.append(word);
       } else if (row.state === "working" && row.working_since
                  && Date.now() / 1000 - row.working_since >= LONG_TURN_SECONDS) {
@@ -2082,11 +2289,14 @@ function paint(snapshot) {
       // and the OS tooltip is drawn by the window server, above any z-index
       // this page can reach. Two of them at once is what that looks like.
       const said = row.state ? STATE_TITLES[row.state] || row.state : null;
+      // One label for the whole button: a label on a span inside it is
+      // never read, so the task and the facts line are spoken from here.
       b.setAttribute("aria-label",
                      [row.label, row.provider === "openai" ? "Codex" : null, row.position, said,
                       b.classList.contains("long-turn")
                         ? `running for ${duration(Date.now() / 1000 - row.working_since)}, may be stuck` : null,
-                      typeof row.context === "number" ? row.context + "% context" : null]
+                      typeof row.context === "number" ? row.context + "% context" : null,
+                      ...[...b.querySelectorAll("[data-spoken]")].map(el => el.dataset.spoken)]
                        .filter(Boolean).join(" \u2014 "));
 
       b.addEventListener("click", () => act(row.session_id, "focus"));
@@ -2136,7 +2346,7 @@ function paint(snapshot) {
         const meta = Object.assign(document.createElement("span"), {className: "model"});
         if (sub.model && SETTINGS?.show_model !== false) {
           const chip = Object.assign(document.createElement("span"), {className: "mchip model-name"});
-          chip.append(metaIcon("model"),
+          chip.append(providerIcon("claude", "Claude"),
                       Object.assign(document.createElement("span"), {className: "mtext", textContent: sub.model}));
           meta.append(chip);
         }
@@ -2156,8 +2366,22 @@ function paint(snapshot) {
       // Folded into one line that opens them; clicking a shell row shows its
       // whole command.
       const shells = SETTINGS?.show_shells !== false ? row.shells || [] : [];
+      const key = row.session_id;
+      if (shells.length) { shellsEndedAt.delete(key); shellsHad.set(key, shells.length); }
+      else if (shellsHad.has(key)) { shellsEndedAt.set(key, [Date.now(), shellsHad.get(key)]); shellsHad.delete(key); }
+      const [endedAt, hadN] = shellsEndedAt.get(key) ?? [-Infinity, 0];
+      const lingering = !shells.length && Date.now() - endedAt < SHELL_LINGER_MS;
+      if (lingering) {
+        const sum = Object.assign(document.createElement("div"), {className: "shell-sum quiet"});
+        sum.dataset.childKey = "shells";
+        // What just happened, not a negative: the count it had, finished.
+        sum.append(metaIcon("shells"), Object.assign(document.createElement("span"),
+                                                     {textContent: `${hadN} command${hadN > 1 ? "s" : ""} finished`}));
+        li.append(sum);
+        clearTimeout(lingerTimer);
+        lingerTimer = setTimeout(() => { if (LATEST) render(LATEST); }, SHELL_LINGER_MS + 50);
+      }
       if (shells.length) {
-        const key = row.session_id;
         const open = SETTINGS?.expand_shells ? !flippedShells.has(key) : flippedShells.has(key);
         const sum = document.createElement("button");
         sum.type = "button";
@@ -2171,6 +2395,7 @@ function paint(snapshot) {
         syncShimmer(count);
         sum.append(metaIcon("shells"), count, chev);
         sum.setAttribute("aria-expanded", String(open));
+        sum.setAttribute("aria-controls", "shells-" + row.session_id);
         sum.setAttribute("aria-label", `${n} background shell${n > 1 ? "s" : ""} in ${row.label}`);
         sum.addEventListener("click", () => {
           if (flippedShells.has(key)) flippedShells.delete(key); else flippedShells.add(key);
@@ -2179,7 +2404,7 @@ function paint(snapshot) {
         li.append(sum);
         if (open) {
           const rows = Object.assign(document.createElement("div"),
-                                     {className: "children shell-rows"});
+                                     {className: "children shell-rows", id: "shells-" + row.session_id});
           li.append(rows);
           for (const shell of shells) {
             const sb = childRow(row, "bg-shell", "shell\n" + shell.command);
@@ -2236,6 +2461,8 @@ function paint(snapshot) {
 // j/k binding here would be silently dead. Measured 2026-09-07: pressing j and
 // k produced no keydown at all, while ArrowDown, Meta and Shift arrived.
 document.addEventListener("keydown", event => {
+  // An open menu owns the arrows; the list behind it must not scroll away.
+  if (openMenu && openMenu.contains(document.activeElement)) return;
   const rows = [...document.querySelectorAll("button.row")];
   if (!rows.length) return;
   const at = rows.indexOf(document.activeElement);
@@ -2261,12 +2488,20 @@ const SETTING_ROWS = [
   {k: "sound_done",   label: "When one finishes", sub: true, needs: "sound"},
   {k: "volume",       label: "Volume", range: [0, 1, .05], needs: "sound", pct: true},
   {k: "muted",        label: "Mute everything"},
+  {head: "Notifications"},
+  {k: "notify",       label: "Show macOS notifications"},
+  {k: "notify_blocked", label: "When a session asks a question", sub: true, needs: "notify"},
+  {k: "notify_done",  label: "When one finishes", sub: true, needs: "notify"},
   {head: "Focus"},
   {k: "focus_blocked", label: "Bring a blocked session forward"},
   {k: "return_after_blocked", label: "Go back once it resumes", sub: true, needs: "focus_blocked"},
   {head: "Rows"},
   {k: "context_threshold", label: "Warn above", range: [0, 100, 5], pct: true},
   {k: "show_branch",  label: "Show branch"},
+  {k: "show_task",    label: "Show task"},
+  {k: "show_task_activity", label: "What it is doing", sub: true, needs: "show_task"},
+  {k: "show_task_age", label: "How old the report is", sub: true, needs: "show_task"},
+  {k: "show_task_bar", label: "Progress bar", sub: true, needs: "show_task"},
   {k: "show_model",   label: "Show model"},
   {k: "show_agents",  label: "Show subagents"},
   {k: "show_shells",  label: "Show background shells"},
@@ -2341,6 +2576,7 @@ function settingsBody() {
       const slider = document.createElement("input");
       Object.assign(slider, {type: "range", min, max, step, value: SETTINGS[row.k],
                              disabled: off});
+      slider.setAttribute("aria-label", row.label);
       const read = document.createElement("span");
       read.className = "val";
       const show = v => read.textContent = row.times
@@ -2363,6 +2599,7 @@ function settingsBody() {
       sw.type = "button";
       sw.className = "sw";
       sw.setAttribute("role", "switch");
+      sw.setAttribute("aria-label", row.label);
       sw.setAttribute("aria-checked", String(!!SETTINGS[row.k]));
       sw.disabled = off;
       sw.addEventListener("click", () => push({[row.k]: !SETTINGS[row.k]}));
@@ -2382,6 +2619,14 @@ function push(change) {
     .then(s => { SETTINGS = s; applyScale(s.ui_scale); settingsBody(); render(LATEST); })
     .catch(err => console.log("sidebar: settings save failed", err));
 }
+
+// The panel only re-reads page.html when it is opened; this saves the reopen.
+// Reload also asks the daemon for fresh account readings first, within
+// the reading floor; the reloaded page then paints them.
+document.getElementById("reload").addEventListener("click", () => {
+  fetch(`/accounts?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify({op: "read"})})
+    .catch(() => {}).finally(() => location.reload());
+});
 
 const gear = document.getElementById("gear");
 // Slides up out of the gear bar and back down into it. The close waits for
@@ -2456,18 +2701,40 @@ const soundDone    = () => tone([[520, 0, .34]], .10);
 // arrives every few seconds and re-announcing a standing state is how a
 // notification becomes noise.
 let lastStates = new Map();
+// When each session's current turn began, from the row; a Stop hook that runs
+// a command flips the session to working for a few seconds without starting
+// a turn, and that must neither re-post a finished-turn notice nor take one
+// down. Only a prompt moves working_since.
+const turnStarts = new Map();
+const announcedTurns = new Map();
 function announce(snapshot) {
   const now = new Map();
   for (const g of snapshot.groups || []) {
-    for (const r of g.rows) now.set(r.session_id, r.state);
+    for (const r of g.rows) {
+      now.set(r.session_id, r.state);
+      if (r.working_since) turnStarts.set(r.session_id, r.working_since);
+    }
   }
   if (lastStates.size) {
     let focused = false;
     for (const [id, state] of now) {
       const before = lastStates.get(id);
       if (state === before) continue;
+      const turn = turnStarts.get(id);
+      const newTurn = state === "working" && turn !== undefined && turn !== announcedTurns.get(id);
+      const turnDone = state === "idle" && before === "working" && turn !== announcedTurns.get(id);
       if (state === "blocked" && SETTINGS?.sound_blocked) soundBlocked();
       else if (state === "idle" && before === "working" && SETTINGS?.sound_done) soundDone();
+      // The banner reaches you in another application, where no sound or
+      // focus move can. The daemon decides whether you are already looking
+      // at the session; the page only says what happened. Going back to work
+      // takes a standing notice down, so the list never lies about a session
+      // that has since moved on.
+      if (SETTINGS?.notify) {
+        if (state === "blocked" && SETTINGS.notify_blocked) act(id, "notify", "blocked");
+        else if (turnDone && SETTINGS.notify_done) { act(id, "notify", "done"); announcedTurns.set(id, turn); }
+        else if (before === "blocked" || newTurn) act(id, "notify", "clear");
+      }
       // One session per update: two blocking at once would otherwise each
       // take focus in turn, leaving you on whichever happened to be last.
       if (state === "blocked" && SETTINGS?.focus_blocked && !focused) {
