@@ -116,15 +116,15 @@ def test_parse_store_refuses_a_file_it_cannot_trust(text, reason):
         parse_store(text)
 
 
-def test_next_poll_after_a_good_reading_waits_the_floor():
-    assert next_poll(interval=900, outcome="ok", now=1000) == {"interval": 600, "at": 1600}
+def test_next_poll_after_a_still_good_reading_stops_at_the_ceiling():
+    assert next_poll(interval=900, outcome="ok", now=1000, jitter=0) == {"interval": 600, "at": 1600}
 
 
 def test_next_poll_after_a_failure_backs_off_by_half_again():
-    assert next_poll(interval=600, outcome="failed", now=1000) == {"interval": 900, "at": 1900}
+    assert next_poll(interval=600, outcome="failed", now=1000, jitter=0) == {"interval": 900, "at": 1900}
 
 
-def test_next_poll_backoff_stops_at_half_an_hour():
+def test_next_poll_backoff_stops_at_half_an_hour_even_with_jitter():
     assert next_poll(interval=1500, outcome="failed", now=0) == {"interval": 1800, "at": 1800}
 
 

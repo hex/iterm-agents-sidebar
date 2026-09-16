@@ -136,3 +136,35 @@ def test_background_shells_start_folded_and_can_start_expanded(tmp_path):
     store = tmp_path / "s.json"
     save_settings({"expand_shells": True}, store)
     assert load_settings(store)["expand_shells"] is True
+
+
+
+def test_the_task_line_is_shown_by_default():
+    assert sidebar.DEFAULT_SETTINGS["show_task"] is True
+    assert "show_objective" not in sidebar.DEFAULT_SETTINGS
+
+
+def test_every_piece_of_the_task_line_can_be_turned_off_and_starts_on():
+    """The bar, the activity and the report age are each the session's own
+    claim; a panel that shows fewer of them is still a working panel."""
+    for key in ("show_task_bar", "show_task_activity", "show_task_age"):
+        assert sidebar.DEFAULT_SETTINGS[key] is True
+
+
+def test_turning_off_a_task_line_piece_survives_a_reload(tmp_path):
+    store = tmp_path / "settings.json"
+    save_settings({"show_task_bar": False}, store)
+    assert load_settings(store)["show_task_bar"] is False
+    assert load_settings(store)["show_task_activity"] is True
+
+
+def test_notices_are_on_by_default_and_each_moment_can_be_turned_off(tmp_path):
+    """A banner is the only signal that reaches you in another application,
+    so it starts on; a question and a finished turn are separate switches
+    under it, shaped like the sound pair."""
+    for key in ("notify", "notify_blocked", "notify_done"):
+        assert sidebar.DEFAULT_SETTINGS[key] is True
+    store = tmp_path / "s.json"
+    save_settings({"notify_done": False}, store)
+    assert load_settings(store)["notify_done"] is False
+    assert load_settings(store)["notify_blocked"] is True

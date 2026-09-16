@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from accounts import due, meters_snapshot, record
+from accounts import due, meters_snapshot, record, read_now_states
 
 WEEK = 604800
 A1 = {"id": "acct-1", "alias": "work", "accountUuid": "u1"}
@@ -25,23 +25,73 @@ def test_an_account_is_due_once_its_next_reading_time_arrives():
     assert due([A1], {"acct-1": {"next_at": 900}}, now=900) == ["acct-1"]
 
 
-def test_record_keeps_a_good_reading_and_waits_the_floor():
-    assert record(None, "ok", USAGE, now=0) == {
-        "interval": 600, "next_at": 600, "outcome": "ok", "usage": USAGE, "fetched_at": 0}
+def moved(usage, by):
+    """The same usage with its worst window moved by `by` points."""
+    weekly = dict(usage["seven_day"], used=usage["seven_day"]["used"] + by)
+    return dict(usage, seven_day=weekly)
+
+
+def test_record_keeps_a_first_good_reading_and_waits_the_floor():
+    """Three minutes: the endpoint admits about thirty requests an hour per
+    account (cswap's measurement), and one every three minutes leaves room
+    for cswap and for a reading asked for by hand."""
+    assert record(None, "ok", USAGE, now=0, jitter=0) == {
+        "interval": 180, "next_at": 180, "outcome": "ok", "usage": USAGE, "fetched_at": 0}
+
+
+def test_a_window_that_moved_pulls_the_next_reading_in():
+    """Usage moving a point or more between readings means someone is
+    spending it; the interval halves toward the floor."""
+    rested = dict(record(None, "ok", USAGE, now=0, jitter=0), interval=600, next_at=600)
+    again = record(rested, "ok", moved(USAGE, 1.5), now=600, jitter=0)
+    assert (again["interval"], again["next_at"]) == (300, 900)
+
+
+def test_a_window_that_sits_still_lets_the_interval_grow_to_its_ceiling():
+    """Five minutes for the account the sessions run on, ten for the others."""
+    first = record(None, "ok", USAGE, now=0, jitter=0)
+    second = record(first, "ok", USAGE, now=180, jitter=0, active=True)
+    assert second["interval"] == 270
+    third = record(second, "ok", USAGE, now=450, jitter=0, active=True)
+    assert third["interval"] == 300
+    other = record(dict(third, interval=500), "ok", USAGE, now=750, jitter=0, active=False)
+    assert other["interval"] == 600
+
+
+def test_a_reading_is_never_scheduled_past_a_known_reset():
+    """Stored usage is wrong the moment a window rolls over, so the next
+    reading lands a minute after the nearest reset if that is sooner."""
+    soon = dict(USAGE, five_hour={"used": 19.0, "resets_at": 100})
+    assert record(None, "ok", soon, now=0, jitter=0)["next_at"] == 160
+
+
+def test_jitter_spreads_readings_so_two_pollers_do_not_line_up():
+    a = record(None, "ok", USAGE, now=0, jitter=0.1)
+    assert 180 <= a["interval"] <= 198
 
 
 def test_record_keeps_the_last_good_reading_through_a_failure():
-    good = record(None, "ok", USAGE, now=0)
-    assert record(good, "failed", None, now=600) == {
-        "interval": 900, "next_at": 1500, "outcome": "failed", "usage": USAGE, "fetched_at": 0}
+    good = record(None, "ok", USAGE, now=0, jitter=0)
+    assert record(good, "failed", None, now=180, jitter=0) == {
+        "interval": 270, "next_at": 450, "outcome": "failed", "usage": USAGE, "fetched_at": 0}
 
 
 def test_record_holds_off_an_hour_after_a_429():
-    assert record(None, "rate_limited", None, now=0)["next_at"] == 3600
+    assert record(None, "rate_limited", None, now=0, jitter=0)["next_at"] == 3600
 
 
 def test_record_counts_a_refused_token_as_a_failure_for_scheduling():
-    assert record(None, "unauthorized", None, now=0)["next_at"] == 900
+    assert record(None, "unauthorized", None, now=0, jitter=0)["next_at"] == 270
+
+
+def test_a_reading_asked_for_by_hand_is_due_now_unless_one_is_under_three_minutes_old():
+    """The reload button asks for readings now; an account read within the
+    floor is served as it is, so a button held down cannot spend the budget."""
+    states = {"acct-1": {"next_at": 900, "fetched_at": 100, "interval": 600},
+              "acct-2": {"next_at": 900, "fetched_at": 800, "interval": 600}}
+    fresh = read_now_states(states, now=900)
+    assert fresh["acct-1"]["next_at"] == 0
+    assert fresh["acct-2"]["next_at"] == 900
 
 
 def test_meters_snapshot_names_accounts_and_marks_the_active_one():

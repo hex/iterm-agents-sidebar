@@ -109,6 +109,92 @@ if [ "${1:-}" = "--codex" ]; then
   [ -f "$codex_hooks" ] && cp "$codex_hooks" "$codex_hooks.before-agents-sidebar"
   bash "$repo/codex-hooks.sh" "$codex_hooks" "$plugin_dir/hooks-handlers/emit-state.py"
   echo "codex hooks -> $codex_hooks"
+  # Codex's sandbox writes only inside the workspace, so the task note the
+  # agent keeps about its own work needs its directory opened up. Appended
+  # once; a config that already names the directory is left alone.
+  codex_config="$HOME/.codex/config.toml"
+  tasks_dir="$HOME/.claude/agents-sidebar-tasks"
+  mkdir -p "$tasks_dir"
+  if ! grep -qs "agents-sidebar-tasks" "$codex_config"; then
+    printf '\n[sandbox_workspace_write]\nwritable_roots = ["%s"]\n' "$tasks_dir" >> "$codex_config"
+    echo "codex sandbox -> $tasks_dir writable (config.toml [sandbox_workspace_write])"
+  fi
   echo "        Codex asks once to trust them; takes effect in sessions started from now on"
   [ -f "$codex_hooks.before-agents-sidebar" ] && echo "        undo:  cp \"$codex_hooks.before-agents-sidebar\" \"$codex_hooks\""
+fi
+
+# The macOS notice for a finished turn or a question. A notification wears its
+# SENDER's icon and name and nothing the poster passes changes that, and
+# UNUserNotificationCenter refuses to run outside a bundle, so the panel posts
+# through a small app of its own: assets/notifier.swift compiled by swiftc,
+# our icon, our bundle id, an ad-hoc signature. Assembled in a staging
+# directory and moved into place whole, so a failed build leaves the previous
+# bundle standing. Rebuilt only when the source or the icon has changed:
+# re-signing an unchanged bundle can make macOS ask for notification
+# permission again, and this script runs after every plugin edit.
+notifier_dest="$HOME/.local/share/agents-sidebar/Agents.app"
+if ! command -v swiftc >/dev/null 2>&1; then
+  echo "notifications off: swiftc not found (xcode-select --install), then re-run ./install.sh"
+else
+  icon="$repo/assets/notifier-icon.png"
+  source="$repo/assets/notifier.swift"
+  stamp=$(shasum -a 256 "$source" "$icon" | cut -d' ' -f1 | tr '\n' ' ')
+  if [ "$(cat "$notifier_dest/Contents/Resources/agents-sidebar-source.sha256" 2>/dev/null)" = "$stamp" ]; then
+    echo "notifier bundle -> $notifier_dest (unchanged)"
+  else
+    stage="$notifier_dest.staging.$$"; iconset="$notifier_dest.$$.iconset"
+    rm -rf "$stage" "$iconset"
+    mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources" "$iconset"
+    if ! swiftc -O -o "$stage/Contents/MacOS/agents-notifier" "$source" 2>"$stage.log"; then
+      echo "warning: the notifier did not compile; keeping what is installed" >&2
+      sed 's/^/        /' "$stage.log" >&2
+      rm -rf "$stage" "$stage.log" "$iconset"
+    else
+      rm -f "$stage.log"
+      # The banner shows the icon at a few dozen points; 256 covers it at 2x
+      # without shipping a megabyte of upscaled 1024s.
+      for size in 16 32 64 128 256; do
+        sips -z "$size" "$size" "$icon" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+      done
+      cp "$iconset/icon_32x32.png" "$iconset/icon_16x16@2x.png"
+      cp "$iconset/icon_64x64.png" "$iconset/icon_32x32@2x.png"
+      cp "$iconset/icon_256x256.png" "$iconset/icon_128x128@2x.png"
+      rm "$iconset/icon_64x64.png"
+      iconutil -c icns "$iconset" -o "$stage/Contents/Resources/Agents.icns"
+      rm -rf "$iconset"
+      cat > "$stage/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.hex.agents-sidebar.notifier</string>
+  <key>CFBundleName</key><string>Agents</string>
+  <key>CFBundleDisplayName</key><string>Agents</string>
+  <key>CFBundleExecutable</key><string>agents-notifier</string>
+  <key>CFBundleIconFile</key><string>Agents</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>LSMinimumSystemVersion</key><string>13.0</string>
+  <key>LSUIElement</key><true/>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+PLIST
+      echo "$stamp" > "$stage/Contents/Resources/agents-sidebar-source.sha256"
+      codesign --force -s - "$stage" 2>/dev/null
+      # An executable that cannot run here still passes the -x test the
+      # daemon makes, and every notice would then be lost silently.
+      if "$stage/Contents/MacOS/agents-notifier" </dev/null >/dev/null 2>&1; [ $? -eq 2 ]; then
+        rm -rf "$notifier_dest"
+        mv "$stage" "$notifier_dest"
+        /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$notifier_dest" >/dev/null 2>&1 || true
+        echo "notifier bundle -> $notifier_dest"
+        echo "        macOS asks once to allow notifications from Agents"
+      else
+        rm -rf "$stage"
+        echo "warning: the assembled notifier does not run here; keeping what is installed" >&2
+      fi
+    fi
+  fi
 fi

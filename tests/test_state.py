@@ -10,6 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import sidebar  # noqa: E402
+
 from sidebar import parse_context, parse_state
 
 
@@ -301,3 +303,44 @@ def test_codex_variable_names_its_model_and_rollout():
 def test_an_unreadable_codex_variable_names_nothing():
     assert parse_codex("{torn") == {"model": None, "transcript_path": None}
     assert parse_codex(None) == {"model": None, "transcript_path": None}
+
+
+def test_parse_session_reads_the_id_the_hook_published():
+    from sidebar import parse_session
+    assert parse_session('{"state": "working", "pid": 5, "session": "abc-123"}') == "abc-123"
+    assert parse_session('{"state": "working", "pid": 5}') is None
+    assert parse_session("not json") is None
+    assert parse_session(None) is None
+
+
+def test_read_task_reports_the_note_with_its_age(tmp_path, monkeypatch):
+    """The note is what the session wrote about itself; the daemon adds only
+    how old it is, so the page can grey a report nobody refreshed."""
+    import json
+    from sidebar import read_task
+    monkeypatch.setattr(sidebar, "TASKS_DIR", str(tmp_path))
+    (tmp_path / "abc.json").write_text(json.dumps({
+        "task": "t1", "title": "Fix login", "activity": "Reading code",
+        "percent": 35, "done": False, "ts": 1789000000}))
+    assert read_task("abc", now=1789000040) == {
+        "title": "Fix login", "activity": "Reading code", "percent": 35, "done": False, "age": 40}
+
+
+def test_read_task_of_a_session_without_a_note_or_with_a_broken_one(tmp_path, monkeypatch):
+    from sidebar import read_task
+    monkeypatch.setattr(sidebar, "TASKS_DIR", str(tmp_path))
+    assert read_task("none", now=1) is None
+    assert read_task(None, now=1) is None
+    (tmp_path / "bad.json").write_text("{nope")
+    assert read_task("bad", now=1) is None
+    (tmp_path / "half.json").write_text('{"task": "t", "title": "x"}')
+    assert read_task("half", now=1789000000) == {
+        "title": "x", "activity": None, "percent": None, "done": False, "age": 1789000000}
+
+
+def test_parse_question():
+    from sidebar import parse_question
+    asked = {"header": "Icon", "question": "Which icon?", "options": ["Dots"], "multi": False, "more": 0}
+    assert parse_question(json.dumps({"question": asked})) == asked
+    assert parse_question(json.dumps({"question": None})) is None
+    assert parse_question("not json") is None

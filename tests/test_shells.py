@@ -75,7 +75,7 @@ def test_one_listing_yields_both_shells_and_uptime():
     """Both facts come off the same ps, because running it twice per rebuild
     to learn two things about the same processes would be silly.
     """
-    shells, uptime, _ = sidebar.parse_processes(UPTIMES)
+    shells, uptime, _, _ = sidebar.parse_processes(UPTIMES)
     assert shells == {52583: [{"label": "ls", "command": "ls"},
                               {"label": "tail -f log", "command": "tail -f log"}]}
     assert uptime[52583] == 39636
@@ -102,7 +102,7 @@ def test_a_shell_without_an_eval_has_no_command():
 
 def test_a_shell_whose_command_cannot_be_read_is_still_listed():
     """Dropping it would undercount; guessing would lie. It renders "?"."""
-    shells, _, _ = sidebar.parse_processes(f"58776 52583 1:41 /bin/zsh -c source {SNAP}\n")
+    shells, _, _, _ = sidebar.parse_processes(f"58776 52583 1:41 /bin/zsh -c source {SNAP}\n")
     assert shells == {52583: [{"label": "?", "command": "?"}]}
 
 
@@ -136,7 +136,7 @@ def test_a_plain_command_is_its_own_label():
 
 def test_a_listed_shell_carries_its_label_and_its_whole_command():
     ps = f"58776 52583 1:41 /bin/zsh -c source {SNAP} && eval 'cd ~/repo && npm test' < /dev/null && pwd -P >| /tmp/claude-1-cwd\n"
-    shells, _, _ = sidebar.parse_processes(ps)
+    shells, _, _, _ = sidebar.parse_processes(ps)
     assert shells == {52583: [{"label": "npm test", "command": "cd ~/repo && npm test"}]}
 
 
@@ -149,10 +149,36 @@ TEAMMATE = ("86515     1  4:02 /Users/x/.local/share/claude/versions/2.1.270 "
 
 
 def test_a_teammate_reports_the_colour_it_was_spawned_with():
-    _, _, colours = sidebar.parse_processes(TEAMMATE)
+    _, _, colours, _ = sidebar.parse_processes(TEAMMATE)
     assert colours == {86515: "blue"}
 
 
 def test_a_session_started_without_a_colour_has_none():
-    _, _, colours = sidebar.parse_processes(UPTIMES)
+    _, _, colours, _ = sidebar.parse_processes(UPTIMES)
     assert colours == {}
+
+
+def test_a_teammates_parent_session_is_read_off_its_command_line():
+    """Claude Code hands a teammate its lead's session id as
+    --parent-session-id; nothing else the sidebar reads says who spawned it."""
+    from sidebar import parse_processes
+    raw = ("4242 4000 01:02 /x/claude --agent-id review-351@session-0da70176 --agent-name review-351 "
+           "--team-name session-0da70176 --agent-color yellow --parent-session-id 6a4d1211-632c-4c8e-9c0a-000000000001 --resume x\n")
+    assert parse_processes(raw)[3] == {4242: "6a4d1211-632c-4c8e-9c0a-000000000001"}
+
+
+def test_the_panels_own_task_report_is_not_a_command_running():
+    """The prompt hook asks every session to run task.py; counting that run
+    would make each report grow and shrink the card it describes."""
+    ours = (f"/bin/zsh -c source {SNAP} && eval 'python3 /Users/x/.claude/skills/agents-sidebar/hooks-handlers/task.py"
+            " --session abc report --activity Testing --percent 40' < /dev/null && pwd -P >| /tmp/claude-1-cwd")
+    theirs = f"/bin/zsh -c source {SNAP} && eval 'python3 tools/task.py --all' < /dev/null && pwd -P >| /tmp/claude-2-cwd"
+    shells, _, _, _ = sidebar.parse_processes(f"1 52583 0:01 {ours}\n2 52583 0:02 {theirs}\n")
+    assert shells == {52583: [{"label": "python3 tools/task.py --all", "command": "python3 tools/task.py --all"}]}
+
+
+def test_a_home_path_in_a_command_reads_as_tilde():
+    args = (f"/bin/zsh -c source {SNAP} && eval 'python3 /Users/x/.claude/skills/x/run.py --flag' < /dev/null"
+            " && pwd -P >| /tmp/claude-3-cwd")
+    shells, _, _, _ = sidebar.parse_processes(f"1 5 0:01 {args}\n", home="/Users/x")
+    assert shells[5][0]["label"] == "python3 ~/.claude/skills/x/run.py --flag"

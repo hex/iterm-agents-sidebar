@@ -52,10 +52,12 @@ UNKNOWN = "?"
 #: arbitrary code, and `send` targets a named session id only.
 VERBS = ("focus", "send", "close",
          # focus that remembers where you were, and the trip back from it.
-         "bring", "return")
+         "bring", "return",
+         # a macOS notice; the text names the moment, never the message.
+         "notify")
 
 #: What the page may do with accounts. Nothing here removes one.
-ACCOUNT_OPS = ("add", "switch", "rename")
+ACCOUNT_OPS = ("add", "switch", "rename", "read")
 
 #: Settings live in a file, not in the page. The daemon takes an ephemeral
 #: port, so the page's origin changes on every restart and anything stored
@@ -71,10 +73,17 @@ DEFAULT_SETTINGS = {
     "sound_done": True,
     "focus_blocked": False,
     "return_after_blocked": True,
+    "notify": True,
+    "notify_blocked": True,
+    "notify_done": True,
     "muted": False,
     "context_threshold": 70,
     "show_model": True,
     "show_branch": True,
+    "show_task": True,
+    "show_task_activity": True,
+    "show_task_age": True,
+    "show_task_bar": True,
     "show_agents": True,
     "show_shells": True,
     "expand_shells": False,
@@ -140,6 +149,223 @@ def save_settings(changes, path=None):
 TOOL_IDENTIFIER = "com.hex.agents-sidebar"
 TOOL_DISPLAY_NAME = "Agents"
 
+#: Clicking a notice brings iTerm2 forward. Which tab it lands on is whichever
+#: was last in front: reaching a named session would mean baking this daemon's
+#: port and token into the notification, and both change on every restart.
+ITERM_BUNDLE_ID = "com.googlecode.iterm2"
+
+#: Our own sender, assembled by install.sh: a notification wears its sender's
+#: icon and name and nothing the poster passes changes that, and
+#: UNUserNotificationCenter refuses to run outside a bundle. Both reasons the
+#: bundle exists.
+NOTIFIER_APP = Path.home() / ".local" / "share" / "agents-sidebar" / "Agents.app"
+
+#: What each moment says. The session's own name is the title, so the message
+#: only has to finish the sentence.
+NOTIFY_MESSAGES = {
+    "blocked": "is asking a question",
+    "done": "finished a turn",
+}
+
+#: macOS shows no more buttons than this on a notice.
+NOTICE_BUTTONS = 4
+
+
+def notify_argv(app, session_id, name, kind, question):
+    """agents-notifier's argv for one moment, or None for a moment we skip.
+
+    `kind` is a key of NOTIFY_MESSAGES, or "clear" to take a standing notice
+    down. `question` is the row's, when the session is asking one: its
+    options become buttons, and Other -- which Claude Code always offers --
+    becomes the reply field. A multi-select question gets neither, since one
+    button cannot express several picks. Any other gated tool gets a single
+    Allow button. A finished turn offers a reply that becomes the next prompt.
+    """
+    exe = str(Path(app) / "Contents" / "MacOS" / "agents-notifier")
+    if kind == "clear":
+        return [exe, "remove", "--id", session_id]
+    body = NOTIFY_MESSAGES.get(kind)
+    if body is None:
+        return None
+    argv = [exe, "post", "--id", session_id,
+            # The sender titles an empty string with its own name, which is
+            # not what this is about.
+            "--title", name or "Session"]
+    if kind == "done":
+        return argv + ["--body", body, "--reply", "Next prompt"]
+    if question and "options" in question:
+        body = question.get("question") or body
+        if question.get("more"):
+            body += f" (+{question['more']} more)"
+        argv += ["--body", body]
+        if not question.get("multi"):
+            for n, label in enumerate(question["options"][:NOTICE_BUTTONS], 1):
+                argv += ["--button", f"{n}={label}"]
+            argv += ["--reply", "Other"]
+        return argv
+    if question and question.get("tool"):
+        # One action is all macOS shows flat; two fold into an Options menu.
+        # Allow is the one worth a click, and No stays in the terminal.
+        return argv + ["--body", "wants to run: " + (question.get("summary") or question["tool"]),
+                       "--button", "allow=Allow"]
+    return argv + ["--body", body]
+
+
+def notify_response(line, kind, question):
+    """One line the sender printed -> (verb, text) for act, or (None, None).
+
+    A click brings the session forward. Allow on a tool gate sends 1, the
+    Yes of every permission prompt. A button sends the digit that picks
+    that option: Claude Code's prompt takes the number outright, and a digit
+    that somehow misses moves a cursor and confirms nothing. A reply to a
+    question picks Other -- the option after the last listed -- and types
+    the text; a reply to a finished turn is the next prompt. Both are sent
+    only while the question the buttons were built for still stands, since
+    keystrokes into whatever replaced it are the one failure this must not
+    have.
+    """
+    try:
+        response = json.loads(line)
+        action = response.get("action")
+    except (ValueError, TypeError, AttributeError):
+        return None, None
+    if action == "default":
+        return "bring", None
+    if action == "reply":
+        text = response.get("text") or ""
+        if kind == "done":
+            return "send", text + "\n"
+        if question and "options" in question:
+            return "send", f"{len(question['options']) + 1}{text}\n"
+        return None, None
+    if action == "allow" and question and question.get("tool") and "options" not in question:
+        # Yes is option 1 on every Claude Code permission prompt.
+        return "send", "1"
+    if isinstance(action, str) and action.isdigit() and question and "options" in question:
+        if 1 <= int(action) <= min(len(question["options"]), NOTICE_BUTTONS):
+            return "send", action
+    return None, None
+
+
+def response_target(line, own_session_id):
+    """Which session's notice one sender's line answers.
+
+    macOS hands every response for the bundle to one running sender,
+    whichever notice was clicked, so a sender prints the notice's id with
+    the response and the daemon routes on it. A line without one is the
+    sender answering for itself.
+    """
+    try:
+        named = json.loads(line).get("id")
+    except (ValueError, TypeError, AttributeError):
+        named = None
+    return named if isinstance(named, str) and named else own_session_id
+
+
+def keystrokes(text):
+    """Text for a session -> the writes that type it, Enter on its own.
+
+    A newline written together with text reaches Claude Code as a pasted
+    block, where a newline is a line break; sent by itself, as carriage
+    return, it is the Enter key.
+    """
+    if text.endswith(("\n", "\r")):
+        body = text[:-1]
+        return ([body] if body else []) + ["\r"]
+    return [text] if text else []
+
+
+class Notices:
+    """One standing notice per session: the sender process behind it.
+
+    The sender stays alive until the notice is acted on, so the response
+    reaches a daemon that still remembers the session and nothing about this
+    daemon -- port, token -- is ever written into a notification. A new notice
+    for the same session replaces the old, and a session going back to work
+    takes its notice down.
+    """
+
+    def __init__(self):
+        self._procs = {}
+        self._asked = {}
+
+    def standing(self, session_id):
+        proc = self._procs.get(session_id)
+        return proc if proc is not None and proc.returncode is None else None
+
+    def asked(self, session_id):
+        """(kind, question) the standing notice was built from, or None."""
+        return self._asked.get(session_id) if self.standing(session_id) else None
+
+    def replace(self, session_id, proc, kind, question):
+        self.clear(session_id)
+        self._procs[session_id] = proc
+        self._asked[session_id] = (kind, question)
+
+    def clear(self, session_id):
+        proc = self._procs.pop(session_id, None)
+        self._asked.pop(session_id, None)
+        if proc is not None and proc.returncode is None:
+            proc.terminate()
+
+    async def retire(self, session_id):
+        """Take the standing notice down and wait until it is gone.
+
+        A sender's exit removes the notice by id, and its replacement will
+        carry the same id: posted before the old sender has finished, the
+        new notice is the one that disappears.
+        """
+        proc = self._procs.pop(session_id, None)
+        self._asked.pop(session_id, None)
+        if proc is None or proc.returncode is not None:
+            return
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), 2)
+        except asyncio.TimeoutError:
+            pass
+
+    def forget(self, session_id, proc):
+        """Drop `proc` once it ended on its own, unless it was replaced first."""
+        if self._procs.get(session_id) is proc:
+            del self._procs[session_id]
+            self._asked.pop(session_id, None)
+
+
+def find_row(snapshot, session_id):
+    """The panel's row for that session, or None when it does not list it."""
+    for group in snapshot.get("groups", []):
+        for row in group.get("rows", []):
+            if row.get("session_id") == session_id:
+                return row
+    return None
+
+
+def row_label(snapshot, session_id):
+    """What the panel calls that session, or "" when it does not list it.
+
+    The notice takes its title from here rather than from iTerm2 so that the
+    banner and the card always say the same thing -- teammates included, which
+    the panel names by their agent name and iTerm2 does not know about.
+    """
+    row = find_row(snapshot, session_id)
+    return row.get("label", "") if row else ""
+
+
+def notify_wanted(kind, session_id, active, app_active):
+    """Whether a notice is worth posting, given what you are looking at.
+
+    Pointless only when that very session is in front AND iTerm2 is the
+    frontmost application. Another tab of the same window still gets one --
+    that is the case a shell hook cannot see, and the one that matters most.
+
+    Unknown focus posts: a banner you did not need costs less than a question
+    you never saw.
+    """
+    if kind == "clear":
+        return True
+    return not (session_id == active and app_active is True)
+
 
 def classify(path, auto_name, agent_state=None):
     """One session's cwd, title and reported state -> (kind, label).
@@ -169,7 +395,35 @@ def classify(path, auto_name, agent_state=None):
         # one session cd'd into another session's directory and took its name.
         # The marked title survives any cd, so prefer it when it is there.
         return ("agent", subagent_label(auto_name) or label if marked else label)
-    return ("shell", label)
+    # A plain terminal is a place, and its row says what its prompt says:
+    # the path from home. The basename alone repeats the agent card above
+    # it when both stand in the same directory.
+    return ("shell", tilde_path(resolved) if resolved else label)
+
+
+def tilde_path(path):
+    """A path as a prompt writes it: home and below as `~/...`, others whole."""
+    try:
+        return "~/" + str(path.relative_to(Path.home())) if path != Path.home() else "~"
+    except ValueError:
+        return str(path)
+
+
+def shell_title(session_name, auto_name, path):
+    """The title a person gave a plain terminal's tab, or None.
+
+    zsh's default title is user@host:path and iTerm2's automatic name is the
+    shell's own; both repeat what the row already says, so only a title
+    that mentions neither the shell nor the place is worth a line.
+    """
+    if not session_name or session_name == auto_name:
+        return None
+    place = os.path.basename(path) if path else None
+    if place and place in session_name:
+        return None
+    if session_name.lstrip("-") in SHELLS:
+        return None
+    return session_name
 
 
 def agent_name(session_name):
@@ -241,6 +495,8 @@ def snapshot(sessions):
     # subagent under whichever unrelated row happens to precede it, which is a
     # lie the eye believes instantly.
     families = {}
+    teammates = []          # (lead's claude session id, name) per row, in row order
+    leads = {}              # claude session id -> its row
 
     rows = {"agent": [], "shell": []}
     for session in sessions:
@@ -293,6 +549,13 @@ def snapshot(sessions):
                      or subagent_label(session.get("auto_name"))
                      or label)
 
+        # A teammate's process names its lead's session outright; that is
+        # settled after every row exists, since the lead may be enumerated
+        # later, and it holds wherever the teammate runs.
+        if kind == "agent" and session.get("parent_session"):
+            teammates.append((session["parent_session"],
+                              session.get("agent_name") or agent_name(session.get("session_name"))
+                              or subagent_label(session.get("auto_name")) or label))
         row = {
             "depth": 1 if child else 0,
             "session_id": session["session_id"],
@@ -310,12 +573,18 @@ def snapshot(sessions):
         if kind == "shell" and job and job.lstrip("-") not in SHELLS:
             row["job"] = job
             row["running"] = True
+        if kind == "shell":
+            title = shell_title(session.get("session_name"), session.get("auto_name"), session.get("path"))
+            if title:
+                row["title"] = title
 
         # Optional signals. Absent means absent -- a key with a placeholder
         # would assert something false, and a session whose state cannot be
         # read is not "idle".
         if session.get("colour"):
             row["colour"] = session["colour"]
+        if session.get("task"):
+            row["task"] = session["task"]
         if kind == "agent":
             # Claude rows are the page's unmarked default; others name themselves.
             if session.get("provider") not in (None, "claude"):
@@ -336,6 +605,8 @@ def snapshot(sessions):
                 row["subagents"] = session["subagents"]
             if session.get("blocked_since") is not None:
                 row["blocked_since"] = session["blocked_since"]
+            if session.get("question"):
+                row["question"] = session["question"]
             if session.get("working_since") is not None:
                 row["working_since"] = session["working_since"]
             if session.get("shells"):
@@ -346,6 +617,10 @@ def snapshot(sessions):
                 row["details"] = session["details"]
         if session.get("branch"):
             row["branch"] = session["branch"]
+        if kind == "agent" and session.get("claude_session"):
+            leads[session["claude_session"]] = row
+        if kind == "agent" and session.get("parent_session"):
+            row["_lead"] = teammates[-1]
         if kind == "agent" and home:
             families.setdefault(home, []).append(row)
         else:
@@ -355,6 +630,23 @@ def snapshot(sessions):
     # list still never re-sorts on anything a session does.
     for family in families.values():
         rows["agent"].extend(family)
+
+    # Then teammates that name a listed lead move under it, after any child
+    # already there, and take the name Claude Code calls them by. One whose
+    # lead is not listed stays where it is: an indent under nothing is a
+    # claim pointing at empty space.
+    for row in [r for r in rows["agent"] if "_lead" in r]:
+        lead_session, name = row.pop("_lead")
+        row["label"] = name
+        lead = leads.get(lead_session)
+        if lead is None or lead is row:
+            continue
+        rows["agent"].remove(row)
+        row["depth"] = 1
+        at = rows["agent"].index(lead) + 1
+        while at < len(rows["agent"]) and rows["agent"][at]["depth"]:
+            at += 1
+        rows["agent"].insert(at, row)
 
     groups = [
         {"name": "AGENTS", "rows": rows["agent"]},
@@ -371,6 +663,17 @@ STATES = ("working", "blocked", "idle", "unknown")
 
 #: iTerm2 renders context usage into user.claudeStatus as "886k (88%)".
 CONTEXT_PERCENT = re.compile(r"\((\d{1,3})%\)")
+
+
+def parse_session(raw):
+    """The claudeState user variable -> the session id the hook published, or None."""
+    if not raw:
+        return None
+    try:
+        session = json.loads(raw).get("session")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return session if isinstance(session, str) and session else None
 
 
 def parse_state(raw):
@@ -516,19 +819,27 @@ def uptime_seconds(etime):
     return total
 
 
-#: Claude Code passes a teammate its badge colour on the command line, and
-#: records it nowhere else the sidebar can read.
+#: Claude Code passes a teammate its badge colour and its lead's session id
+#: on the command line, and records neither anywhere else the sidebar can read.
 _AGENT_COLOUR = re.compile(r"\s--agent-color[ =]([a-z]+)\b")
+_AGENT_PARENT = re.compile(r"\s--parent-session-id[ =]([0-9a-fA-F-]+)\b")
 
 
-def parse_processes(raw):
+#: The panel's own task report, run by the model at the prompt hook's word.
+#: Counting it would make every report grow and shrink the card it describes.
+OWN_REPORT = "/agents-sidebar/hooks-handlers/task.py"
+
+
+def parse_processes(raw, home=None):
     """One process listing -> (shell commands by parent pid, uptime by pid,
-    teammate colour by pid).
+    teammate colour by pid, lead session id by teammate pid).
 
-    All three come off the same ps: running it once per fact per rebuild would
-    be silly.
+    All four come off the same ps: running it once per fact per rebuild would
+    be silly. A home directory in a label reads as ~, so the part that
+    differs is not pushed off the row by the part that never does.
     """
-    shells, uptime, colours = {}, {}, {}
+    home = os.path.expanduser("~") if home is None else home
+    shells, uptime, colours, parents = {}, {}, {}, {}
     for line in (raw or "").splitlines():
         parts = line.split(None, 3)
         if len(parts) < 4:
@@ -541,24 +852,27 @@ def parse_processes(raw):
         seconds = uptime_seconds(elapsed)
         if seconds is not None:
             uptime[pid] = seconds
-        if SHELL_MARKER in args:
+        if SHELL_MARKER in args and OWN_REPORT not in args:
             command = shell_command(args) or UNKNOWN
             shells.setdefault(parent, []).append(
-                {"label": shell_label(command), "command": command})
+                {"label": shell_label(command).replace(home + "/", "~/"), "command": command})
         colour = _AGENT_COLOUR.search(args)
         if colour:
             colours[pid] = colour.group(1)
-    return shells, uptime, colours
+        parent_session = _AGENT_PARENT.search(args)
+        if parent_session:
+            parents[pid] = parent_session.group(1)
+    return shells, uptime, colours, parents
 
 
 def read_processes():
-    """Shell commands, uptimes and teammate colours, from one listing."""
+    """Shell commands, uptimes, teammate colours and leads, from one listing."""
     try:
         # -ww: the command sits at the end of a long line, past any width cap.
         out = subprocess.run(["/bin/ps", "-ww", "-eo", "pid=,ppid=,etime=,args="],
                              capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
-        return {}, {}, {}
+        return {}, {}, {}, {}
     return parse_processes(out)
 
 
@@ -774,6 +1088,15 @@ def parse_blocked_since(raw):
         return None
 
 
+def parse_question(raw):
+    """The claudeState payload -> what its open gate is asking, or None."""
+    try:
+        asked = json.loads(raw).get("question")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return asked if isinstance(asked, dict) else None
+
+
 def parse_working_since(raw):
     """The claudeState payload -> when the turn under way began, or None."""
     try:
@@ -804,6 +1127,31 @@ def parse_model(status):
 #: claude pid. The bridge learns that pid for free: it is the $PPID of the
 #: statusline process itself.
 STATUS_DIR = os.path.expanduser("~/.claude/agents-sidebar-status")
+
+#: Where task.py keeps each session's own note about its work, by session id.
+TASKS_DIR = os.path.expanduser("~/.claude/agents-sidebar-tasks")
+
+
+def read_task(session_id, now):
+    """What the session last said it was doing, with the report's age, or None.
+
+    The note is the session's own claim; the daemon adds only the age, so
+    the page can grey a report nobody refreshed rather than trust it.
+    """
+    if not session_id:
+        return None
+    try:
+        with open(os.path.join(TASKS_DIR, f"{session_id}.json"), encoding="utf-8") as fh:
+            note = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(note, dict) or "task" not in note:
+        return None
+    ts = note.get("ts") if isinstance(note.get("ts"), (int, float)) else 0
+    return {"title": note.get("title"), "activity": note.get("activity"),
+            "percent": note.get("percent") if isinstance(note.get("percent"), int) else None,
+            "done": bool(note.get("done")), "age": max(0, round(now - ts))}
+
 
 #: How old a statusline payload may be and still describe its pid. Claude Code
 #: renders at refreshInterval 1, so a live session rewrites its file every
@@ -887,7 +1235,7 @@ def parse_status(raw):
     renders nothing rather than a figure we cannot stand behind.
     """
     blank = {"context": None, "model": None, "effort": None, "details": {},
-             "transcript": None}
+             "transcript": None, "session": None}
     if not raw:
         return blank
     try:
@@ -909,11 +1257,13 @@ def parse_status(raw):
         # a quarter of the row saying the same thing twice.
         name = name.split(" (", 1)[0].strip() or None
     transcript = payload.get("transcript_path")
+    session = payload.get("session_id")
     return {"context": int(used) if isinstance(used, (int, float)) else None,
             "model": name,
             "effort": field("effort", "level"),
             "details": details(payload, field),
-            "transcript": transcript if isinstance(transcript, str) else None}
+            "transcript": transcript if isinstance(transcript, str) else None,
+            "session": session if isinstance(session, str) else None}
 
 
 def details(payload, field):
@@ -963,6 +1313,55 @@ def details(payload, field):
         "recache": cache.get("recache_tokens_if_cold"),
     }
     return {k: v for k, v in found.items() if v is not None}
+
+
+#: A status file this old was left by a session that has exited; a live one
+#: is rewritten every second.
+STATUS_SWEEP_AFTER = 86400
+#: Every file the bridge has ever written beside a session's payload: the
+#: payload, the rendered line, the render lock, and the temp files of this
+#: and earlier designs. `original-statusline` is the user's own and never
+#: matches.
+_STATUS_ENTRY = re.compile(r"^\d+\.(json|line|rendering)(\.(\d+|tmp))?$")
+
+
+def stale_status_entries(entries, now):
+    """Names among (name, mtime) pairs that belong to sessions long gone."""
+    return [name for name, mtime in entries
+            if _STATUS_ENTRY.match(name) and now - mtime > STATUS_SWEEP_AFTER]
+
+
+def sweep_status_dir(now):
+    """Remove what dead sessions left in the status directory.
+
+    Nothing reads the directory as a whole, so the leftovers cost nothing
+    but clutter; still, 470 of them for nine live sessions is a mess.
+    """
+    try:
+        with os.scandir(STATUS_DIR) as it:
+            found = [(e.name, e.stat().st_mtime, e.is_dir()) for e in it]
+    except OSError:
+        found = []
+    stale = set(stale_status_entries([(n, m) for n, m, _ in found], now))
+    for name, _, is_dir in found:
+        if name not in stale:
+            continue
+        try:
+            (os.rmdir if is_dir else os.remove)(os.path.join(STATUS_DIR, name))
+        except OSError:
+            pass
+    # A task note outlives its session the same way; a day-old one is nobody's.
+    try:
+        with os.scandir(TASKS_DIR) as it:
+            notes = [(e.name, e.stat().st_mtime) for e in it if e.name.endswith(".json")]
+    except OSError:
+        return
+    for name, mtime in notes:
+        if now - mtime > STATUS_SWEEP_AFTER:
+            try:
+                os.remove(os.path.join(TASKS_DIR, name))
+            except OSError:
+                pass
 
 
 def read_status(pid):
@@ -1349,6 +1748,8 @@ class Bridge:
         #: publishing its empty starting list as though it were an answer.
         self.last_ok = None
         self.trips = ReturnTrips()
+        self.notifier_missing_said = False
+        self.notices = Notices()
 
     def active_session_id(self):
         """The session in front of the key iTerm2 window, or None."""
@@ -1358,7 +1759,7 @@ class Bridge:
         return session.session_id if session else None
 
     async def read_sessions(self):
-        shells, uptime, agent_colours = read_processes()
+        shells, uptime, agent_colours, agent_parents = read_processes()
         tmux_panes = read_tmux_panes()
         rows = []
         for window_index, window in enumerate(self.app.terminal_windows, start=1):
@@ -1404,6 +1805,7 @@ class Bridge:
                         "agents": parse_agents(raw),
                         "subagents": parse_subagents(raw),
                         "blocked_since": parse_blocked_since(raw),
+                        "question": parse_question(raw),
                         "working_since": parse_working_since(raw),
                         "context": status["context"],
                         "model": status["model"],
@@ -1419,6 +1821,11 @@ class Bridge:
                         # session wears the one cs gave its directory.
                         "colour": agent_colours.get(pid)
                                   or session_colour(values["path"]),
+                        "task": read_task(parse_session(raw), time.time()),
+                        # Who spawned this pane, and which Claude session it
+                        # is, so a teammate can be nested under its lead.
+                        "parent_session": agent_parents.get(pid),
+                        "claude_session": status["session"],
                         "branch": git_branch(values["path"]),
                     })
         return rows
@@ -1442,6 +1849,12 @@ class Bridge:
             self.server.broadcast(frame)
 
     async def act(self, session_id, verb, text):
+        # Before the lookup below: a notice names a session, it does not touch
+        # one, so taking a stale notice down must still work once the session
+        # it belongs to has closed.
+        if verb == "notify":
+            await self.notify(session_id, text)
+            return
         session = self.app.get_session_by_id(session_id)
         if session is None:
             # A row can outlive the session it names: the page holds a
@@ -1461,13 +1874,125 @@ class Bridge:
                 return
             await origin.async_activate(select_tab=True, order_window_front=True)
         elif verb == "send":
-            await session.async_send_text(text or "")
+            for stroke in keystrokes(text or ""):
+                await session.async_send_text(stroke)
+                await asyncio.sleep(0.05)
         elif verb == "close":
             # Forced: the page has already asked for a second click, and
             # iTerm2's own "a job is running" prompt would then ask a third
             # time, behind the panel, for every agent pane.
             await session.async_close(force=True)
         print(f"sidebar: {verb} on {session_id}: ok", flush=True)
+
+    def log(self, *words):
+        """Say it in the Script Console and in a file beside the status files.
+
+        The console cannot be read from a shell, and a notice's life is a
+        chain of processes whose failures are otherwise invisible.
+        """
+        line = " ".join(str(w) for w in words)
+        print("sidebar: " + line, flush=True)
+        try:
+            with open(os.path.join(STATUS_DIR, "daemon.log"), "a", encoding="utf-8") as fh:
+                fh.write(time.strftime("%Y-%m-%d %H:%M:%S ") + line + "\n")
+        except OSError:
+            pass
+
+    async def sweep_notices(self):
+        """Take down every notice a previous daemon left standing.
+
+        Their senders died with it, or die on their own once they notice, and
+        a banner whose reply has nowhere to go is worse than none.
+        """
+        argv = notify_argv(NOTIFIER_APP, "ALL", "", "clear", None)
+        if not os.access(argv[0], os.X_OK):
+            return
+        try:
+            sweeper = await asyncio.create_subprocess_exec(
+                *argv, stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            await sweeper.wait()
+        except OSError as error:
+            self.log(f"sweeping notices: {error!r}")
+
+    async def notify(self, session_id, kind):
+        """Post one session's notice, or take a standing one down.
+
+        The sender stays alive until the notice is acted on and then prints
+        what happened; that answer is turned into an action on the session.
+        Silent when the bundle is not installed -- install.sh builds it, and
+        a panel that works everywhere else should not stop because a notice
+        cannot be sent. It says so once so the reason is findable in the
+        Script Console.
+        """
+        if not notify_wanted(kind, session_id, self.active_session_id(),
+                             self.app.app_active):
+            return
+        if kind == "clear":
+            if self.notices.standing(session_id):
+                self.log("notice down", session_id[:8])
+            self.notices.clear(session_id)
+            return
+        row = find_row(self.latest, session_id) or {}
+        question = row.get("question")
+        argv = notify_argv(NOTIFIER_APP, session_id, row.get("label", ""), kind, question)
+        if argv is None:
+            return
+        if not os.access(argv[0], os.X_OK):
+            if not self.notifier_missing_said:
+                self.notifier_missing_said = True
+                self.log(f"no notifier at {NOTIFIER_APP}; run install.sh")
+            return
+        await self.notices.retire(session_id)
+        try:
+            poster = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL)
+        except OSError as error:
+            self.log(f"notify {kind} on {session_id}: {error!r}")
+            return
+        self.notices.replace(session_id, poster, kind, question)
+        self.log("notice up", session_id[:8], kind, "question" if question else "plain")
+        asyncio.ensure_future(self.answer(session_id, poster))
+
+    async def answer(self, session_id, poster):
+        """Read the sender's lines and act on each, for whichever notice.
+
+        macOS hands every response for the bundle to one running sender, so
+        a line may answer another session's notice; the id it names says
+        which, and that notice's own sender is then taken down. The question
+        is checked again against the row as it is NOW, not as it was when
+        the notice went up: a button for a prompt the user has since
+        answered in the terminal must send nothing.
+        """
+        while True:
+            line = (await poster.stdout.readline()).decode("utf-8", "replace").strip()
+            if not line:
+                break
+            target = response_target(line, session_id)
+            asked = self.notices.asked(target)
+            if asked is None:
+                self.log("notice answered", target[:8], line, "but nothing stands for it")
+                continue
+            kind, question = asked
+            if target != session_id:
+                self.notices.clear(target)
+            standing = (find_row(self.latest, target) or {}).get("question")
+            if kind == "blocked" and standing != question:
+                self.log("notice answered", target[:8], "but its question has gone")
+                question = None
+            verb, text = notify_response(line, kind, question)
+            self.log("notice answered", target[:8], line, "->", verb, repr(text))
+            if verb is None:
+                continue
+            try:
+                await self.act(target, verb, text)
+            except Exception as error:               # noqa: BLE001
+                self.log(f"acting on a notice for {target}: {error!r}")
+        await poster.wait()
+        self.notices.forget(session_id, poster)
 
     async def watch_layout(self):
         import iterm2
@@ -1490,6 +2015,8 @@ class Bridge:
         Runs in the server's worker thread, not on the loop, so the reading
         that follows is made here directly.
         """
+        if op == "read":
+            return self.meters.read_now(time.time())
         if op == "add":
             result = self.meters.add(time.time())
         elif op == "rename":
@@ -1511,6 +2038,15 @@ class Bridge:
                 await asyncio.to_thread(self.meters.tick, time.time())
             except Exception as error:               # noqa: BLE001
                 print(f"sidebar: account meters failed: {error!r}", flush=True)
+            await asyncio.sleep(ACCOUNT_TICK_SECONDS)
+
+    async def sweep_status(self):
+        """Clear dead sessions' status files, on the account loop's cadence."""
+        while True:
+            try:
+                await asyncio.to_thread(sweep_status_dir, time.time())
+            except Exception as error:               # noqa: BLE001
+                print(f"sidebar: status sweep failed: {error!r}", flush=True)
             await asyncio.sleep(ACCOUNT_TICK_SECONDS)
 
     async def poll(self):
@@ -1548,6 +2084,7 @@ async def main(connection):
 
     port = await server.start()
     await bridge.rebuild()
+    await bridge.sweep_notices()
 
     await iterm2.tool.async_register_web_view_tool(
         connection, TOOL_DISPLAY_NAME, TOOL_IDENTIFIER, True,
@@ -1557,6 +2094,7 @@ async def main(connection):
     asyncio.ensure_future(bridge.watch_layout())
     asyncio.ensure_future(bridge.poll())
     asyncio.ensure_future(bridge.watch_accounts())
+    asyncio.ensure_future(bridge.sweep_status())
 
 
 if __name__ == "__main__":
