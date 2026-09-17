@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sidebar import snapshot
+from sidebar import by_name, snapshot
 
 WINDOW = "pty-3DB79DF4-CAA8-44F2-B92D-B359716CDFCB"
 
@@ -598,3 +598,43 @@ def test_a_worktree_session_whose_main_session_is_not_open_keeps_its_place_and_n
     rows = snapshot([OTHER, LINKED])["groups"][0]["rows"]
     assert [r["label"] for r in rows] == ["beacon", "atlas@worktree"]
     assert "worktree_of" not in rows[1]
+
+
+def test_cards_keep_the_terminal_order_unless_asked_for_names():
+    """The default is the order iTerm2 enumerates windows, tabs and panes, so
+    a card sits where its terminal does."""
+    rows = snapshot([OTHER, MAIN])["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["beacon", "atlas"]
+
+
+def test_sorting_by_name_orders_the_top_level_cards():
+    rows = snapshot([OTHER, MAIN], sort_by_name=True)["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["atlas", "beacon"]
+
+
+def test_sorting_by_name_keeps_a_teammate_under_its_lead():
+    """Sorting the rows flat would scatter children away from their parent,
+    and an indent under an unrelated row is a lie the eye believes."""
+    rows = snapshot([TEAM[0], TEAM[1], MAIN], sort_by_name=True)["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [
+        ("atlas", 0), ("fignity", 0), ("review-351", 1)]
+
+
+def test_sorting_by_name_keeps_a_worktree_docked_to_its_session():
+    rows = snapshot([OTHER, MAIN, LINKED], sort_by_name=True)["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["atlas", "worktree", "beacon"]
+
+
+def test_sorting_by_name_ignores_case():
+    upper = dict(OTHER, session_id="Zephyr", path="/Users/x/.claude-sessions/Anvil",
+                 auto_name="✳ Anvil")
+    rows = snapshot([MAIN, upper], sort_by_name=True)["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["Anvil", "atlas"]
+
+
+def test_sorting_by_name_survives_a_nested_row_with_nothing_above_it():
+    """Both placement rules put a child after its parent, so a leading nested
+    row should be impossible; sorting is not the place to find out otherwise.
+    With no card above it to belong to, it sorts as a card of its own."""
+    assert [r["label"] for r in by_name([{"label": "orphan", "depth": 1},
+                                         {"label": "atlas", "depth": 0}])] == ["atlas", "orphan"]

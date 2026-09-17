@@ -102,6 +102,9 @@ DEFAULT_SETTINGS = {
     "show_task_bar": True,
     "show_agents": True,
     "show_shells": True,
+    # The list follows the terminals by default: a card sits where its tab
+    # does, and nothing a session does moves it.
+    "sort_by_name": False,
     "expand_shells": False,
     # A multiplier on the stylesheet's own sizes, so 1.0 means "as designed".
     "ui_scale": 1.0,
@@ -486,12 +489,32 @@ def position(session, panes_in_tab, many_windows):
     return where
 
 
-def snapshot(sessions):
+def by_name(rows):
+    """Top-level cards in name order, each with everything nested in it.
+
+    A card's block is its own row plus the teammates indented under it and
+    the worktree cards docked to it; sorting the rows flat would put an
+    indent under whatever row happened to land above it.
+    """
+    blocks = []
+    for row in rows:
+        if blocks and (row["depth"] or row.get("worktree_of")):
+            blocks[-1].append(row)
+        else:
+            blocks.append([row])
+    blocks.sort(key=lambda block: block[0]["label"].casefold())
+    return [row for block in blocks for row in block]
+
+
+def snapshot(sessions, sort_by_name=False):
     """Raw session dicts -> the payload the page renders.
 
-    Agents first, then everything else; order within a group is the order
-    handed in. Each input dict needs session_id, window_id, tab_id, path,
-    auto_name and job_name.
+    Agents first, then everything else. Order within a group is the order
+    handed in, which is the order iTerm2 enumerates windows, tabs and panes,
+    so a card sits where its terminal does and nothing a session does moves
+    it; `sort_by_name` puts the top-level cards in name order instead. Each
+    input dict needs session_id, window_id, tab_id, path, auto_name and
+    job_name.
     """
     # A tab is only worth numbering by pane when it actually has more than one,
     # and a window prefix is noise until a second window exists.
@@ -693,6 +716,10 @@ def snapshot(sessions):
                                            or rows["agent"][at].get("worktree_of") == main["session_id"]):
             at += 1
         rows["agent"].insert(at, row)
+
+    if sort_by_name:
+        for kind in rows:
+            rows[kind] = by_name(rows[kind])
 
     groups = [
         {"name": "AGENTS", "rows": rows["agent"]},
@@ -1989,7 +2016,8 @@ class Bridge:
 
     async def _rebuild_once(self):
         await self.app.async_refresh()
-        self.latest = snapshot(await self.read_sessions())
+        self.latest = snapshot(await self.read_sessions(),
+                               load_settings()["sort_by_name"])
         self.latest["version"] = version()
         if self.meters is not None:
             self.latest["accounts"] = self.meters.snapshot()
