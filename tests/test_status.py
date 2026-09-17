@@ -156,7 +156,7 @@ def test_a_model_name_without_a_parenthetical_is_left_alone():
 
 def test_a_payload_older_than_the_render_interval_is_not_trusted(tmp_path, monkeypatch):
     """macOS reuses pids, and these files outlive the process they were named
-    for. A live session rewrites its file every second (refreshInterval 1), so
+    for. A live session rewrites its file every tick, so
     anything older is either a dead session or a pid that has come round again.
     Either way it describes someone else.
     """
@@ -573,3 +573,47 @@ def test_the_sweep_of_a_missing_directory_is_not_an_error(tmp_path, monkeypatch)
 def test_the_payload_names_the_session_it_belongs_to():
     got = sidebar.parse_status(json.dumps({"session_id": "6a4d1211-632c-4c8e-9c0a-000000000001"}))
     assert got["session"] == "6a4d1211-632c-4c8e-9c0a-000000000001"
+
+
+# ----------------------------------------------------- the bridge's forks
+
+def _bridge_env(tmp_path, tools):
+    """An environment whose PATH holds only the named tools, so a run
+    proves which programs the bridge forks. Symlinks, since the tools live
+    in /bin and /usr/bin and PATH cannot pick one file from a directory.
+    """
+    import os
+    import shutil
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    for tool in tools:
+        target = shutil.which(tool, path="/bin:/usr/bin")
+        assert target, tool
+        os.symlink(target, bin_dir / tool)
+    return dict(os.environ, HOME=str(tmp_path), PATH=str(bin_dir))
+
+
+def test_a_tick_with_a_line_to_show_forks_only_the_lock_the_move_and_the_render(tmp_path):
+    """Traced 2026-09-17 on a machine with eight sessions: the bridge's own
+    forks per tick, before the user's statusline even ran, were what an
+    endpoint agent inspected one by one until the machine saturated. The
+    fast path is builtins: reading stdin and the last line, testing the
+    directory, comparing the payload. Only the lock (mkdir, atomic), the
+    move into place and the render itself may fork.
+    """
+    import os
+    import subprocess
+    env = _bridge_env(tmp_path, ["mkdir", "mv", "rmdir", "sh"])
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text("printf 'fresh'")
+    pid = os.getpid()
+    (d / f"{pid}.line").write_text("last")
+    script = Path(__file__).resolve().parent.parent / "plugin" / "statusline-bridge.sh"
+    payload = '{"context_window":{"used_percentage":1}}'
+    run = subprocess.run(["/bin/sh", "-c", f'exec "{script}"'], input=payload, env=env,
+                         capture_output=True, text=True, timeout=10)
+    assert run.stdout == "last", run.stderr
+    assert (d / f"{pid}.json").read_text() == payload
+    assert (d / f"{pid}.line").read_text() == "fresh"
+

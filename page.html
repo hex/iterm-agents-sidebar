@@ -523,7 +523,7 @@
      the model, which is enough for a monospace name to earn its ellipsis. */
   /* Never down to a bare icon, which reads as a branch with no name. */
   .mchip.branch { flex-shrink: 1; min-width: calc(var(--meta-icon) + 3px + 2ch); }
-  .mchip.model-name, .mchip.ctx { flex-shrink: 0; }
+  .mchip.model-name, .mchip.ctx, .mchip.heavy { flex-shrink: 0; }
   /* A dim middot opens every item after the first; the effort letter belongs
      to its model and gets none. Inside the chip, so it goes with its item. */
   .model > .mchip ~ .mchip::before { content: "\00b7"; margin-right: 2px; opacity: .6; }
@@ -702,6 +702,7 @@
   .model .ctx { color: var(--alert); flex-shrink: 0;
                 font-variant-numeric: tabular-nums; }
   .model .ctx.critical { font-weight: 700; }
+  .model .heavy { color: var(--alert); }
 
   /* One timing scale, shared with the row menu, so the panel feels like one
      piece of software rather than parts that animate differently. */
@@ -754,9 +755,44 @@
     border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
     display: flex; flex-direction: column; gap: 9px;
   }
+  /* With the drawer open the bar loses its side margins, or the scrim shows
+     through them and the bar reads as a box floating in a dark frame. */
   body:has(#settings:not([hidden])) #bar {
     background: color-mix(in srgb, var(--fg) 4%, var(--bg));
+    margin-inline: 0; padding-inline: 8px;
   }
+  /* While the drawer is open the list behind it is dimmed and inert: a
+     click there closes the drawer rather than reaching a row. */
+  #scrim {
+    position: fixed; inset: 0; z-index: 18;
+    background: color-mix(in srgb, #000 22%, transparent);
+  }
+  @media (prefers-color-scheme: dark) { #scrim { background: color-mix(in srgb, #000 42%, transparent); } }
+  /* Grid, not flex: the label column is minmax(0, 1fr), so it gives way
+     instead of pushing the control off the panel. With flex the label kept a
+     percentage basis and the row grew wider than the sheet at large text
+     sizes. Three columns cover label, slider and read-out; a switch row
+     leaves the last two empty and they collapse. */
+  /* Each topic is a card, as each session is: the switch that governs it
+     sits in the title, its options hang under a guide line and fold away
+     when it is off. A plain row governs itself; one with options of its
+     own folds them the same way. */
+  .set-card {
+    background: var(--card); border: 1px solid var(--card-border);
+    border-radius: 8px; overflow: hidden;
+  }
+  .set-title {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+    font-size: 12.5px; font-weight: 600; color: var(--fg);
+  }
+  .set-title > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .set-kids {
+    display: grid; grid-template-rows: 1fr;
+    transition: grid-template-rows 220ms var(--ease-out), opacity var(--enter) ease-out;
+  }
+  .set-kids.off { grid-template-rows: 0fr; opacity: 0; pointer-events: none; }
+  .set-kids > div { min-height: 0; overflow: hidden; }
+  @media (prefers-reduced-motion: reduce) { .set-kids { transition: none; } }
   /* Grid, not flex: the label column is minmax(0, 1fr), so it gives way
      instead of pushing the control off the panel. With flex the label kept a
      percentage basis and the row grew wider than the sheet at large text
@@ -764,15 +800,34 @@
      leaves the last two empty and they collapse. */
   .set {
     display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center; gap: 4px 8px; font-size: 12px;
+    align-items: center; gap: 4px 8px; font-size: 12px; position: relative;
   }
   .set > span:first-child { color: var(--fg); overflow-wrap: anywhere; }
   .set > :not(span:first-child) { justify-self: end; }
-  .set.sub > span:first-child { padding-left: 12px; color: var(--dim); }
-  .set-head {
-    font: 600 9px/1 -apple-system, sans-serif; letter-spacing: .1em;
-    text-transform: uppercase; color: var(--dim); margin-top: 2px;
+  /* The last control reaches the final column, so a switch row does not
+     keep the gap in front of an empty third column and its switch lines up
+     with the one in the title. */
+  .set > :last-child { grid-column-end: -1; }
+  .set.plain {
+    padding: 7px 10px;
+    border-top: 1px dotted color-mix(in srgb, var(--fg) 14%, transparent);
   }
+  .set.child { padding: 6px 10px 6px 22px; }
+  .set.child > span:first-child { color: var(--fg); }
+  /* The guide: a line down from the title, an elbow into each option, in
+     the weight the subagent rows use. */
+  .set.child::before {
+    content: ""; position: absolute; left: 12px; top: 0; bottom: 0;
+    border-left: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  }
+  .set.child:last-child::before { bottom: 50%; }
+  .set.child::after {
+    content: ""; position: absolute; left: 12px; top: 50%; width: 6px;
+    border-top: 1px solid color-mix(in srgb, var(--fg) 14%, transparent);
+  }
+  .set-kids > div > .set.child:first-child { padding-top: 2px; }
+  .set-kids > div > .set.child:last-child { padding-bottom: 8px; }
+  h2.set-name { padding: 0 0 2px; }
   .set-version {
     font: 11px/1.2 -apple-system, sans-serif; color: var(--dim);
     margin-top: 10px; padding-top: 8px;
@@ -819,12 +874,13 @@
   }
   .sw[aria-checked="true"] { background: var(--lit); }
   .sw[aria-checked="true"]::after { transform: translateX(11px); }
+  /* A switch that governs a card or a fold is ink, so the green stays the
+     colour of an option that is on rather than of every row in the sheet. */
+  .sw.ink[aria-checked="true"] { background: var(--fg); }
+  .sw.ink[aria-checked="true"]::after { background: var(--bg); }
   .sw:focus-visible { outline: 2px solid var(--hot); outline-offset: 1px; }
   .sw:disabled { opacity: .4; cursor: default; }
 
-  .set input[type=range] {
-    flex: 1; max-width: 96px; accent-color: var(--lit); height: 14px;
-  }
   /* A range input refuses to render below about 96px, so it holds that width
      whatever else is on the row. Under the grid that squeezed the label column
      past its own longest word, which overflow-wrap:anywhere then broke a
@@ -845,10 +901,26 @@
     display: flex; align-items: center; justify-content: flex-end; gap: 8px;
     flex: 1 1 auto; min-width: 0; margin-left: auto;
   }
-  /* min-width:auto on a range input is its intrinsic 96px, which is what put
-     the read-out past the sheet's edge once the pair had a line to itself in
-     a 250px panel. Zeroed, the track gives way and the number stays on. */
-  .ctl input[type=range] { min-width: 0; }
+  /* The slider is the task bar's ticks with the real range input laid over
+     them, transparent, so the keyboard and the finger keep a native control
+     while the eye gets the sheet's own language. */
+  .ticks { position: relative; width: 108px; height: 14px; display: flex; align-items: center; flex-shrink: 1; min-width: 60px; }
+  .ticks .bar {
+    width: 100%; height: 4px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--lit) 0 var(--p), color-mix(in srgb, var(--fg) 16%, transparent) var(--p) 100%);
+    -webkit-mask: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 6px);
+    mask: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 6px);
+  }
+  .ticks input[type=range] { position: absolute; inset: -6px 0; width: 100%; min-width: 0; margin: 0; opacity: 0; }
+  .ticks input[type=range]:focus-visible + .bar, .ticks:has(input:focus-visible) .bar { outline: 2px solid var(--hot); outline-offset: 4px; }
+  .ticks .bub {
+    position: absolute; top: -18px; left: var(--p); transform: translateX(-50%);
+    padding: 2px 5px; border-radius: 4px; background: var(--fg); color: var(--bg);
+    font: 600 10px/1 ui-monospace, Menlo, monospace; opacity: 0; pointer-events: none;
+    transition: opacity var(--quick);
+  }
+  .ticks:has(input:active) .bub { opacity: 1; }
+  .ticks:has(input:disabled) { opacity: .4; }
   .val {
     font: 600 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
     min-width: 26px; text-align: right; font-variant-numeric: tabular-nums;
@@ -1011,6 +1083,7 @@
   <section id="queue" aria-label="Sessions waiting on you" hidden></section>
   <div id="budget" hidden></div>
 </div>
+<div id="scrim" hidden></div>
 <div id="settings" hidden></div>
 <div id="bar">
   <div id="cost" hidden></div>
@@ -1054,6 +1127,8 @@ const META_ICONS = {
   shells: '<path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/>',
   computer: '<path d="M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24h72v16H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16H136V200h72a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8Z"/>',
   model: '<path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"/>',
+  cpu: '<path d="M152,96H104a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V104A8,8,0,0,0,152,96Zm-8,48H112V112h32Zm88,0H216V112h16a8,8,0,0,0,0-16H216V56a16,16,0,0,0-16-16H160V24a8,8,0,0,0-16,0V40H112V24a8,8,0,0,0-16,0V40H56A16,16,0,0,0,40,56V96H24a8,8,0,0,0,0,16H40v32H24a8,8,0,0,0,0,16H40v40a16,16,0,0,0,16,16H96v16a8,8,0,0,0,16,0V216h32v16a8,8,0,0,0,16,0V216h40a16,16,0,0,0,16-16V160h16a8,8,0,0,0,0-16Zm-32,56H56V56H200v95.87s0,.09,0,.13,0,.09,0,.13V200Z"/>',
+  memory: '<path d="M232,56H24A16,16,0,0,0,8,72V200a8,8,0,0,0,16,0V184H40v16a8,8,0,0,0,16,0V184H72v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V72A16,16,0,0,0,232,56ZM24,72H232v96H24Zm88,80a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H48a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8ZM56,104h48v32H56Zm88,48h64a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H144a8,8,0,0,0-8,8v48A8,8,0,0,0,144,152Zm8-48h48v32H152Z"/>',
 };
 
 // A level the picker does not have gets no letter rather than a guessed one.
@@ -1192,7 +1267,7 @@ function fieldsFor(row) {
   add("gauge", "Context", gauge(row.context));
   add("clock", "5-hour", gauge(d.five_hour, d.five_hour_at));
   add("gauge", "Weekly", gauge(d.seven_day, d.seven_day_at));
-  add("uptime", "Up", forHumans(row.uptime));
+  add("uptime", "Up", row.started_at == null ? null : forHumans(Date.now() / 1000 - row.started_at));
   add("shells", "Shells", row.shells?.length);
   add("model", "Subagents", row.agents);
   add("cost", "Cost", d.cost != null ? "$" + d.cost.toFixed(2) : null);
@@ -1658,6 +1733,7 @@ function render(snapshot) {
   paintBudget(snapshot);
   fitMeta();
   paintSeams();
+  paintVersion();
   animateRows(before);
 }
 
@@ -1690,10 +1766,17 @@ function pluck(li) {
 // The session's own account of its work. Self-reported, so the age is
 // part of the reading: a report over five minutes old is shown as stale.
 const TASK_STALE_AFTER = 300;
+// How long ago a report was stamped, in the page's own clock: seconds while
+// it is fresh, then the coarser units waited() uses.
+function reportAge(since) {
+  const s = Date.now() / 1000 - since;
+  return s < 60 ? `${Math.max(0, Math.round(s))}s` : waited(since);
+}
 function taskLine(task) {
-  const stale = !task.done && task.age >= TASK_STALE_AFTER;
+  const since = task.reported_at;
+  const stale = !task.done && (since == null || Date.now() / 1000 - since >= TASK_STALE_AFTER);
   const line = Object.assign(document.createElement("span"), {className: "task" + (stale ? " stale" : "")});
-  const age = task.age < 60 ? `${Math.max(0, Math.round(task.age))}s` : waited(Date.now() / 1000 - task.age);
+  const age = since == null ? null : reportAge(since);
   const el = (cls, text) => Object.assign(document.createElement("span"), {className: cls, textContent: text});
   const on = key => SETTINGS?.[key] !== false;
   const title = el("task-title", task.title || "");
@@ -1713,10 +1796,12 @@ function taskLine(task) {
       status.append(el("task-activity", task.activity));
       spoken.push(task.activity);
     }
-    if (on("show_task_age")) {
+    if (on("show_task_age") && age != null) {
       // The age wears a clock, so it reads as "reported this long ago" and
-      // not as one more figure the session claimed.
+      // not as one more figure the session claimed. It keeps its stamp, and
+      // ticks on from it between snapshots.
       const when = el("task-age", "");
+      when.dataset.since = since;
       when.append(metaIcon("clock"), document.createTextNode(age));
       status.append(when);
       spoken.push(age);
@@ -2097,6 +2182,15 @@ let lastSnapshot = {groups: []};
 setInterval(() => paintBudget(lastSnapshot), 30000);
 // A stuck turn stops sending updates, so its badge has to appear on a clock.
 setInterval(() => { if (lastSnapshot.groups.length) render(lastSnapshot); }, 60000);
+// The report ages tick every second on their own: a snapshot arrives only
+// when something changed, and a fresh report counts up in seconds.
+setInterval(() => {
+  for (const when of document.querySelectorAll(".task-age[data-since]")) {
+    const since = Number(when.dataset.since);
+    when.lastChild.textContent = reportAge(since);
+    when.closest(".task").classList.toggle("stale", Date.now() / 1000 - since >= TASK_STALE_AFTER);
+  }
+}, 1000);
 function paintBudget(snapshot) {
   lastSnapshot = snapshot;
   const strip = document.getElementById("budget");
@@ -2333,6 +2427,18 @@ function paint(snapshot) {
                     document.createTextNode(row.context + "%"));
         meta.append(chip);
       }
+      // Heavy is the daemon's verdict on the session's whole process tree,
+      // so a busy MCP server or build lights the session that started it.
+      for (const kind of row.heavy || []) {
+        const chip = document.createElement("span");
+        chip.className = "mchip heavy";
+        const limit = kind === "cpu" ? `${SETTINGS?.cpu_threshold ?? 100}% CPU`
+                                     : `${SETTINGS?.memory_threshold ?? 2} GB of memory`;
+        chip.title = `Its processes are using ${limit} or more`;
+        chip.dataset.spoken = kind === "cpu" ? "high CPU" : "high memory";
+        chip.append(metaIcon(kind), document.createTextNode(kind === "cpu" ? "CPU" : "Mem"));
+        meta.append(chip);
+      }
       if (meta.childElementCount) stack.append(meta);
       b.append(stack);
 
@@ -2565,146 +2671,229 @@ document.addEventListener("keydown", event => {
 let SETTINGS = null;
 const SETTING_ROWS = [
   {head: "Sound"},
-  {k: "sound",        label: "Play sounds"},
-  {k: "sound_blocked",label: "When a session is blocked", sub: true, needs: "sound"},
-  {k: "sound_done",   label: "When one finishes", sub: true, needs: "sound"},
+  {k: "sound",        label: "Play sounds", master: true},
+  {k: "sound_blocked",label: "When a session is blocked", needs: "sound"},
+  {k: "sound_done",   label: "When one finishes", needs: "sound"},
   {k: "volume",       label: "Volume", range: [0, 1, .05], needs: "sound", pct: true},
   {k: "muted",        label: "Mute everything"},
   {head: "Notifications"},
-  {k: "notify",       label: "Show macOS notifications"},
-  {k: "notify_blocked", label: "When a session asks a question", sub: true, needs: "notify"},
-  {k: "notify_done",  label: "When one finishes", sub: true, needs: "notify"},
+  {k: "notify",       label: "Show macOS notifications", master: true},
+  {k: "notify_blocked", label: "When a session asks a question", needs: "notify"},
+  {k: "notify_done",  label: "When one finishes", needs: "notify"},
   {head: "Focus"},
-  {k: "focus_blocked", label: "Bring a blocked session forward"},
-  {k: "return_after_blocked", label: "Go back once it resumes", sub: true, needs: "focus_blocked"},
+  {k: "focus_blocked", label: "Bring a blocked session forward", master: true},
+  {k: "return_after_blocked", label: "Go back once it resumes", needs: "focus_blocked"},
   {head: "Rows"},
   {k: "context_threshold", label: "Warn above", range: [0, 100, 5], pct: true},
-  {k: "show_branch",  label: "Show branch"},
-  {k: "show_task",    label: "Show task"},
-  {k: "show_task_activity", label: "What it is doing", sub: true, needs: "show_task"},
-  {k: "show_task_age", label: "How old the report is", sub: true, needs: "show_task"},
-  {k: "show_task_bar", label: "Progress bar", sub: true, needs: "show_task"},
-  {k: "show_model",   label: "Show model"},
-  {k: "show_agents",  label: "Show subagents"},
-  {k: "show_shells",  label: "Show background shells"},
-  {k: "expand_shells", label: "Start expanded", sub: true, needs: "show_shells"},
+  {k: "cpu_threshold", label: "CPU heavy at", range: [25, 400, 25], pct: true},
+  {k: "memory_threshold", label: "Memory heavy at", range: [0.5, 8, 0.5], unit: " GB"},
+  {k: "show_branch",  label: "Branch"},
+  {k: "show_task",    label: "Task"},
+  {k: "show_task_activity", label: "What it is doing", needs: "show_task"},
+  {k: "show_task_age", label: "How old the report is", needs: "show_task"},
+  {k: "show_task_bar", label: "Progress bar", needs: "show_task"},
+  {k: "show_model",   label: "Model"},
+  {k: "show_agents",  label: "Subagents"},
+  {k: "show_shells",  label: "Background shells"},
+  {k: "expand_shells", label: "Start expanded", needs: "show_shells"},
   {k: "ui_scale",     label: "Text size",
    steps: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]},
 ];
 
+// Each control keeps a closure that repaints it from SETTINGS, so a change
+// updates the sheet in place: rebuilding it would cut the fold of a group
+// short and drop the focus the person was holding.
+let SETTING_SYNC = [];
+
+function settingCard(title, master) {
+  const card = document.createElement("div");
+  card.className = "set-card";
+  const head = document.createElement("div");
+  head.className = "set-title";
+  const t = document.createElement("span");
+  t.textContent = title;
+  head.append(t);
+  if (master) head.append(settingSwitch(master, "ink"));
+  card.append(head);
+  return card;
+}
+
+// A row's children sit in a box that folds shut when the row is off: the
+// options do not apply, and the sheet says so by taking them away.
+function settingKids(parentKey) {
+  const kids = document.createElement("div");
+  kids.className = "set-kids";
+  const inner = document.createElement("div");
+  kids.append(inner);
+  SETTING_SYNC.push(() => kids.classList.toggle("off", !SETTINGS[parentKey]));
+  return {kids, inner, of: parentKey};
+}
+
+function settingSwitch(row, tone) {
+  const sw = document.createElement("button");
+  sw.type = "button";
+  sw.className = "sw" + (tone ? " " + tone : "");
+  sw.setAttribute("role", "switch");
+  sw.setAttribute("aria-label", row.label);
+  sw.addEventListener("click", () => push({[row.k]: !SETTINGS[row.k]}));
+  SETTING_SYNC.push(() => {
+    sw.setAttribute("aria-checked", String(!!SETTINGS[row.k]));
+    sw.disabled = !!(row.needs && !SETTINGS[row.needs]);
+  });
+  return sw;
+}
+
+function settingRow(row, kind) {
+  const line = document.createElement("label");
+  line.className = "set " + kind;
+  const name = document.createElement("span");
+  name.textContent = row.label;
+  line.append(name);
+  const off = () => !!(row.needs && !SETTINGS[row.needs]);
+
+  if (row.steps) {
+    // Minus, the value, plus. Nine sizes is few enough to step through and
+    // too few to be worth hunting for with a dragged thumb.
+    const box = document.createElement("span");
+    box.className = "step";
+    const back = Object.assign(document.createElement("button"),
+                               {type: "button", textContent: "−"});
+    const now = document.createElement("span");
+    now.className = "now";
+    const on = Object.assign(document.createElement("button"),
+                             {type: "button", textContent: "+"});
+    back.setAttribute("aria-label", `Smaller ${row.label.toLowerCase()}`);
+    on.setAttribute("aria-label", `Larger ${row.label.toLowerCase()}`);
+
+    const nearest = value =>
+      row.steps.reduce((best, s) =>
+        Math.abs(s - value) < Math.abs(best - value) ? s : best, row.steps[0]);
+    let at = 0;
+    const paint = () => {
+      at = row.steps.indexOf(nearest(Number(SETTINGS[row.k])));
+      now.textContent = Number(row.steps[at]).toFixed(2).replace(/0$/, "") + "×";
+      back.disabled = off() || at === 0;
+      on.disabled = off() || at === row.steps.length - 1;
+    };
+    const move = by => {
+      const next = Math.max(0, Math.min(row.steps.length - 1, at + by));
+      if (next === at) return;
+      // Applied before it is saved, so the size you are choosing is the
+      // size you are looking at.
+      if (row.k === "ui_scale") applyScale(row.steps[next]);
+      push({[row.k]: row.steps[next]});
+    };
+    back.addEventListener("click", () => move(-1));
+    on.addEventListener("click", () => move(1));
+    SETTING_SYNC.push(paint);
+    box.append(back, now, on);
+    line.append(box);
+  } else if (row.range) {
+    // The task bar's ticks, not a thumb on a rail: a count of fifths that
+    // reads at a glance, with the number shown while it is being dragged.
+    const [min, max, step] = row.range;
+    const ticks = document.createElement("span");
+    ticks.className = "ticks";
+    const bar = document.createElement("span");
+    bar.className = "bar";
+    const bub = document.createElement("span");
+    bub.className = "bub";
+    const slider = document.createElement("input");
+    Object.assign(slider, {type: "range", min, max, step});
+    slider.setAttribute("aria-label", row.label);
+    const read = document.createElement("span");
+    read.className = "val";
+    const text = v => row.pct ? Math.round(v * (max <= 1 ? 100 : 1)) + "%" : v + (row.unit || "");
+    const show = v => {
+      const p = (v - min) / (max - min) * 100;
+      ticks.style.setProperty("--p", p + "%");
+      read.textContent = bub.textContent = text(v);
+    };
+    slider.addEventListener("input", () => show(Number(slider.value)));
+    slider.addEventListener("change", () => push({[row.k]: Number(slider.value)}));
+    SETTING_SYNC.push(() => {
+      slider.value = SETTINGS[row.k];
+      slider.disabled = off();
+      show(Number(SETTINGS[row.k]));
+    });
+    ticks.append(bar, bub, slider);
+    // Ticks and read-out travel together: when the row wraps, a number
+    // stranded on a line of its own reads as a value for the row below.
+    const ctl = document.createElement("span");
+    ctl.className = "ctl";
+    ctl.append(ticks, read);
+    line.append(ctl);
+  } else {
+    line.append(settingSwitch(row, kind === "plain" ? "ink" : ""));
+  }
+  return line;
+}
+
 function settingsBody() {
   const box = document.getElementById("settings");
   box.textContent = "";
-  for (const row of SETTING_ROWS) {
+  SETTING_SYNC = [];
+  // The drawer names itself the way the list's sections do.
+  const title = document.createElement("h2");
+  title.className = "set-name";
+  title.textContent = "Settings";
+  box.append(title);
+  // A head opens a card. A master row sits in the card's title with its
+  // options under it; any other row with options gets a fold of its own.
+  let card = null, kids = null, i = 0;
+  while (i < SETTING_ROWS.length) {
+    const row = SETTING_ROWS[i++];
     if (row.head) {
-      const h = document.createElement("div");
-      h.className = "set-head";
-      h.textContent = row.head;
-      box.append(h);
+      const master = SETTING_ROWS[i] && SETTING_ROWS[i].master ? SETTING_ROWS[i++] : null;
+      card = settingCard(master ? master.label : row.head, master);
+      box.append(card);
+      kids = master ? settingKids(master.k) : null;
+      if (kids) card.append(kids.kids);
       continue;
     }
-    const line = document.createElement("label");
-    line.className = "set" + (row.sub ? " sub" : "");
-    const name = document.createElement("span");
-    name.textContent = row.label;
-    line.append(name);
-
-    // A switch is disabled, not hidden, when its parent is off: the option
-    // stays where the eye already learned to find it.
-    const off = row.needs && !SETTINGS[row.needs];
-
-    if (row.steps) {
-      // Minus, the value, plus. Nine sizes is few enough to step through and
-      // too few to be worth hunting for with a dragged thumb.
-      const box = document.createElement("span");
-      box.className = "step";
-      const back = Object.assign(document.createElement("button"),
-                                 {type: "button", textContent: "\u2212"});
-      const now = document.createElement("span");
-      now.className = "now";
-      const on = Object.assign(document.createElement("button"),
-                               {type: "button", textContent: "+"});
-      back.setAttribute("aria-label", `Smaller ${row.label.toLowerCase()}`);
-      on.setAttribute("aria-label", `Larger ${row.label.toLowerCase()}`);
-
-      const nearest = value =>
-        row.steps.reduce((best, s) =>
-          Math.abs(s - value) < Math.abs(best - value) ? s : best, row.steps[0]);
-      let at = row.steps.indexOf(nearest(Number(SETTINGS[row.k])));
-
-      const paint = () => {
-        const value = row.steps[at];
-        now.textContent = Number(value).toFixed(2).replace(/0$/, "") + "\u00d7";
-        back.disabled = off || at === 0;
-        on.disabled = off || at === row.steps.length - 1;
-      };
-      const move = by => {
-        const next = Math.max(0, Math.min(row.steps.length - 1, at + by));
-        if (next === at) return;
-        at = next;
-        paint();
-        // Applied before it is saved, so the size you are choosing is the
-        // size you are looking at.
-        if (row.k === "ui_scale") applyScale(row.steps[at]);
-        push({[row.k]: row.steps[at]});
-      };
-      back.addEventListener("click", () => move(-1));
-      on.addEventListener("click", () => move(1));
-      paint();
-      box.append(back, now, on);
-      line.append(box);
-    } else if (row.range) {
-      const [min, max, step] = row.range;
-      const slider = document.createElement("input");
-      Object.assign(slider, {type: "range", min, max, step, value: SETTINGS[row.k],
-                             disabled: off});
-      slider.setAttribute("aria-label", row.label);
-      const read = document.createElement("span");
-      read.className = "val";
-      const show = v => read.textContent = row.times
-        ? Number(v).toFixed(2).replace(/0$/, "") + "\u00d7"
-        : row.pct ? Math.round(v * (max <= 1 ? 100 : 1)) + "%" : v;
-      show(SETTINGS[row.k]);
-      slider.addEventListener("input", () => {
-        show(slider.value);
-        if (row.k === "ui_scale") applyScale(slider.value);
-      });
-      slider.addEventListener("change", () => push({[row.k]: Number(slider.value)}));
-      // Slider and read-out travel together: when the row wraps, a number
-      // stranded on a line of its own reads as a value for the row below.
-      const ctl = document.createElement("span");
-      ctl.className = "ctl";
-      ctl.append(slider, read);
-      line.append(ctl);
-    } else {
-      const sw = document.createElement("button");
-      sw.type = "button";
-      sw.className = "sw";
-      sw.setAttribute("role", "switch");
-      sw.setAttribute("aria-label", row.label);
-      sw.setAttribute("aria-checked", String(!!SETTINGS[row.k]));
-      sw.disabled = off;
-      sw.addEventListener("click", () => push({[row.k]: !SETTINGS[row.k]}));
-      line.append(sw);
+    if (row.needs) {
+      if (!kids || kids.of !== row.needs) {
+        kids = settingKids(row.needs);
+        card.append(kids.kids);
+      }
+      kids.inner.append(settingRow(row, "child"));
+      continue;
     }
-    box.append(line);
+    kids = null;
+    card.append(settingRow(row, "plain"));
+    if (SETTING_ROWS[i] && SETTING_ROWS[i].needs === row.k) {
+      kids = settingKids(row.k);
+      card.append(kids.kids);
+    }
   }
-  // The release, at the foot where a person looking for it looks; a
-  // checkout with none says so rather than inventing one.
+  // The release, at the foot where a person looking for it looks.
   const rel = document.createElement("div");
   rel.className = "set-version";
-  rel.textContent = LATEST?.version ? "Agents " + LATEST.version : "Agents, unreleased checkout";
   box.append(rel);
+  syncSettings();
+  paintVersion();
+}
+
+function syncSettings() {
+  for (const sync of SETTING_SYNC) sync();
+}
+
+// The settings box is built before the first snapshot arrives and rebuilt
+// only when a setting changes, so the release line is painted on its own
+// from each snapshot. A checkout with none says so rather than inventing one.
+function paintVersion() {
+  const rel = document.querySelector("#settings .set-version");
+  if (rel) rel.textContent = LATEST.version ? "Agents " + LATEST.version : "Agents, unreleased checkout";
 }
 
 function push(change) {
   SETTINGS = {...SETTINGS, ...change};
-  settingsBody();
+  syncSettings();
   render(LATEST);
   fetch(`/settings?token=${encodeURIComponent(TOKEN)}`,
         {method: "POST", body: JSON.stringify(change)})
     .then(r => r.json())
-    .then(s => { SETTINGS = s; applyScale(s.ui_scale); settingsBody(); render(LATEST); })
+    .then(s => { SETTINGS = s; applyScale(s.ui_scale); syncSettings(); render(LATEST); })
     .catch(err => console.log("sidebar: settings save failed", err));
 }
 
@@ -2722,27 +2911,35 @@ const gear = document.getElementById("gear");
 let drawerMotion = null;
 gear.addEventListener("click", () => {
   const box = document.getElementById("settings");
+  const scrim = document.getElementById("scrim");
   const open = box.hidden || drawerMotion?.closing;
   gear.setAttribute("aria-expanded", String(open));
   drawerMotion?.cancel();
   drawerMotion = null;
-  if (!MOTION.matches) { box.hidden = !open; return; }
+  if (!MOTION.matches) { box.hidden = scrim.hidden = !open; return; }
   const shut = {transform: "translateY(24px)", opacity: 0};
   const shown = {transform: "none", opacity: 1};
   if (open) {
-    box.hidden = false;
+    box.hidden = scrim.hidden = false;
     box.animate([shut, shown], {duration: 200, easing: "cubic-bezier(.16,1,.3,1)"});
+    scrim.animate([{opacity: 0}, {opacity: 1}], {duration: 200, easing: "ease-out"});
     return;
   }
   drawerMotion = box.animate([shown, shut], {duration: 140, easing: "ease-in", fill: "forwards"});
   drawerMotion.closing = true;
   const mine = drawerMotion;
+  scrim.animate([{opacity: 1}, {opacity: 0}], {duration: 140, easing: "ease-in", fill: "forwards"});
   mine.finished.then(() => {
     if (drawerMotion !== mine) return;
-    box.hidden = true;
+    box.hidden = scrim.hidden = true;
     mine.cancel();
+    for (const a of scrim.getAnimations()) a.cancel();
     drawerMotion = null;
   }, () => {});
+});
+document.getElementById("scrim").addEventListener("click", () => gear.click());
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !document.getElementById("settings").hidden) gear.click();
 });
 
 fetch(`/settings?token=${encodeURIComponent(TOKEN)}`)

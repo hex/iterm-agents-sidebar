@@ -17,7 +17,8 @@ not guesswork:
 
     UserPromptSubmit                       -> working, and clears the record
     PermissionRequest                      -> opens a gate on its tool
-    Notification type=permission_prompt    -> opens an uncorrelated gate
+    Notification type=permission_prompt    -> opens an uncorrelated gate, unless
+                                              the tool it could be about has run
     PreToolUse                             -> working
     PostToolUse                            -> working, closes its own gate
     PostToolUseFailure, PermissionDenied   -> closes its own gate
@@ -90,8 +91,8 @@ def read_payload():
 def blank_state():
     """A session nothing is known about: not working, no children, no gates."""
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
-            "agent_info": {}, "gates": {}, "last_tool": None, "turn_started": None,
-            "reminded": 0, "question": None}
+            "agent_info": {}, "gates": {}, "last_tool": None, "last_tool_ran": False,
+            "turn_started": None, "reminded": 0, "question": None}
 
 
 def live_agents(doc):
@@ -263,6 +264,7 @@ def apply_event(doc, event, payload, said):
            "agent_info": dict(doc.get("agent_info") or {}),
            "gates": dict(doc.get("gates") or {}),
            "last_tool": doc.get("last_tool"),
+           "last_tool_ran": bool(doc.get("last_tool_ran")),
            "turn_started": doc.get("turn_started"),
            "reminded": doc.get("reminded") or 0,
            "question": doc.get("question"),
@@ -286,7 +288,9 @@ def apply_event(doc, event, payload, said):
         # tool_input but no tool_use_id -- measured across 13 real gates on
         # 2026-09-08 -- and it arrives directly after the PreToolUse for the
         # same tool. That event has the id, so remember it.
-        doc["last_tool"] = payload.get("tool_use_id") or doc["last_tool"]
+        if payload.get("tool_use_id"):
+            doc["last_tool"] = payload["tool_use_id"]
+            doc["last_tool_ran"] = False
 
     if event == "SubagentStart":
         doc["agents"][payload.get("agent_id") or UNKEYED] = now
@@ -306,8 +310,19 @@ def apply_event(doc, event, payload, said):
             doc["gates"].pop(key, None)
             if not doc["gates"]:
                 doc["question"] = None
+            if key == doc["last_tool"]:
+                doc["last_tool_ran"] = True
 
-    if said == "blocked":
+    if (said == "blocked" and event == "Notification" and not payload.get("tool_use_id")
+            and doc["last_tool"] and doc["last_tool_ran"]):
+        # The permission_prompt Notification comes seconds after the prompt
+        # opens, on its own clock, and can land after the tool it was about
+        # was approved and has run. The only tool it could name has finished,
+        # so it is that echo, and a gate keyed on it would never be closed:
+        # traced 2026-09-17, five minutes of blocked through steady work. A
+        # notification with no tool seen at all still holds its gate.
+        pass
+    elif said == "blocked":
         doc["gates"][payload.get("tool_use_id") or doc["last_tool"] or UNKEYED] = now
         # What the newest gate asks; the notice needs the question, not
         # only the fact of one.
@@ -367,6 +382,7 @@ def read_state(session_id):
                           else {},
             "finished": doc.get("finished") if isinstance(doc.get("finished"), dict) else {},
             "gates": doc.get("gates") if isinstance(doc.get("gates"), dict) else {},
+            "last_tool_ran": bool(doc.get("last_tool_ran")),
             "last_tool": doc.get("last_tool") if isinstance(doc.get("last_tool"), str)
                          else None,
             "turn_started": doc.get("turn_started")

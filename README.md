@@ -68,7 +68,10 @@ Code draws.
 `~/.claude/agents-sidebar-status/<claude pid>.json` and then renders whatever
 statusline was there before, with `CS_STATUSLINE_PARENT` set to the claude pid so a
 statusline that caches per conversation by its parent pid (cs's does) still hits
-under the bridge. Files a session leaves behind when it exits are
+under the bridge. It leaves `refreshInterval` alone: the tick rate is cs's to
+set, since its logo's attention pulse animates on that timer, and at one
+second the bridge costs two execs on a tick that finds a render still going.
+Files a session leaves behind when it exits are
 swept by the daemon once they are a day old. The displaced command is saved to
 `~/.claude/agents-sidebar-status/original-statusline`, and the whole settings
 file is backed up to `settings.json.before-agents-sidebar`.
@@ -150,6 +153,19 @@ same working, waiting, idle and long badges. Its model comes from the hook;
 effort and context come from the tail of its session log, where context is the
 figure Codex's own `/status` shows, as percent used. It has no teammates and no
 background-shell line.
+
+A session using a lot of the machine gets a `CPU` or `Mem` chip at the end of
+its facts line. The figure is the session's whole process tree: claude or
+codex, its MCP servers, shells, builds and subagent processes, found by parent
+pid from the one `ps` listing each refresh already takes. A teammate or other
+session further down the tree counts only on its own card. CPU is `ps %cpu`
+summed, where 100% is one full core; memory is resident size. The chips show
+at 100% CPU and 2 GB by default, set under Rows in settings as CPU heavy at and
+Memory heavy at. Only the verdict reaches the panel, not the figures, so a
+session's usage moving under the threshold does not repaint anything. A chip
+stays for 15 seconds after its last heavy reading: under load a busy process
+reads anywhere from a quarter to most of a core from one refresh to the next,
+and a session near the line would otherwise flicker.
 
 Show macOS notifications, in settings, posts a banner when a session asks a
 question and when one finishes a turn, each its own switch, all on by default.
@@ -246,7 +262,9 @@ The bar under the foot, behind its own rule, starts with a coin mark and what
 the running Claude Code sessions report having spent at API prices, then a
 terminal mark with how many sessions report it; hover either for what it
 counts. At its right are two buttons: reload, which re-reads `page.html`
-without closing the panel, and the gear, which opens the settings.
+without closing the panel, and the gear, which opens the settings. Each
+topic there is a card: the switch in its title governs it, and its options
+hang under a guide line and fold away while it is off.
 
 Until you store an account, the limits come from the sessions' status lines:
 5-hour and weekly as hairlines with the percentage used and the time left until
@@ -355,9 +373,21 @@ python3 -m pytest tests/ -q
 The daemon itself needs neither. Both are test-only, and `tests/test_integration.py`
 drives a real listener over real sockets.
 
-`Bridge` is the one unit without automated tests, because it alone talks to
-iTerm2, and mocking that API would only test the mock. It gets a
-manual smoke test against a live iTerm2 instead.
+`Bridge` alone talks to iTerm2, and mocking that API would only test the
+mock, so what its tests pin is how it takes its readings (`tests/test_rebuild.py`:
+one process listing per rebuild, read in a thread, a burst of layout events
+folded into one more rebuild, a session's variables fetched together) and the
+rest gets a manual smoke test against a live iTerm2.
+
+### Measuring what the machine executes
+
+Every exec on the machine is inspected by the endpoint agents that ship on a
+managed Mac, so the exec rate, not CPU time, is what decides whether the
+panel's helpers weigh on it. `sudo ./measure-load.sh 10` watches ten seconds
+with `fs_usage` and reports execs per second, what ran, who ran it, PATH
+misses kept apart, and the load average before and after; the raw lines are kept under `$TMPDIR` for a
+closer look. The daemon itself execs `ps` and `tmux` once per rebuild, in a
+thread; the statusline bridge four times per render.
 
 ## Notes
 

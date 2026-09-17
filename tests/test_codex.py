@@ -33,10 +33,15 @@ def test_a_weekly_only_plan_reads_as_one_weekly_window():
         "label": "Weekly", "used": 27.0, "resets_at": 1789843280, "minutes": 10080}
 
 
-def test_a_weekly_window_carries_its_even_spend_mark():
-    # 363280 s left of 604800 means 241520 s gone: an even spend is at 39.93%.
+def test_a_weekly_window_carries_its_even_spend_mark_as_of_the_reading():
+    # Worked out at the event's own time, 2026-09-15T12:03:53Z = 1789473833,
+    # not at the time of the rebuild: a mark that crept with the clock would
+    # change the snapshot every tick. 369447 s left of 604800 means 235353 s
+    # gone: an even spend is at 38.91%.
     pace = limits_from_lines([_token_count(WEEKLY_ONLY)], now=NOW)["windows"][0]["pace"]
-    assert round(pace["expected"], 2) == 39.93 and pace["ahead"] is False
+    assert round(pace["expected"], 2) == 38.91 and pace["ahead"] is False
+    later = limits_from_lines([_token_count(WEEKLY_ONLY)], now=NOW + 3600)["windows"][0]["pace"]
+    assert later == pace
 
 
 def test_a_five_hour_window_has_no_even_spend_mark():

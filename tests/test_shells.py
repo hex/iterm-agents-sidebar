@@ -2,32 +2,52 @@
 
 Neither the statusline payload nor the transcript publishes this, so the
 process tree is the only place the fact escapes. Sample lines are the real
-shape of `ps -eo pid=,ppid=,args=`, taken from a live session on 2026-09-07
-whose own footer read "2 shells".
+shape of `ps -ww -eo pid=,ppid=,pgid=,tpgid=,tty=,lstart=,%cpu=,rss=,args=`, from a live
+session on 2026-09-07 whose own footer read "2 shells".
 """
 import importlib.util
+import time
 from pathlib import Path
+
+import pytest
 
 spec = importlib.util.spec_from_file_location(
     "sidebar", Path(__file__).resolve().parent.parent / "sidebar.py")
 sidebar = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sidebar)
 
+
+@pytest.fixture
+def utc(monkeypatch):
+    """Start stamps read as UTC for the test, and the process clock goes back
+    with the variable: tzset() reads TZ once, so restoring the variable alone
+    would leave every later test in the wrong zone."""
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
 SNAP = "/Users/x/.claude/shell-snapshots/snapshot-zsh-1788767509187-cg9f4y.sh"
-PS = f"""\
-52583     1 /Users/x/.local/bin/claude
-52605 52583 /usr/bin/caffeinate -i
-53418 52583 npm exec chrome-devtools-mcp@1.8.0
-58776 52583 /bin/zsh -c source {SNAP} && eval 'ls'
-97694 52583 /bin/zsh -c source {SNAP} && eval 'tail -f log'
-70173 52583 /bin/bash /some/hook.sh
-16656     1 /Users/x/.local/bin/claude
-31030 16656 /bin/zsh -c source {SNAP} && eval 'pwd'
-"""
+ROW = "{pid} {parent} {pid} {parent} ttys001 Thu Sep 17 12:00:00 2026 0.0 0 {args}\n"
+PS = "".join(ROW.format(pid=pid, parent=parent, args=args) for pid, parent, args in [
+    (52583, 1, "/Users/x/.local/bin/claude"),
+    (52605, 52583, "/usr/bin/caffeinate -i"),
+    (53418, 52583, "npm exec chrome-devtools-mcp@1.8.0"),
+    (58776, 52583, f"/bin/zsh -c source {SNAP} && eval 'ls'"),
+    (97694, 52583, f"/bin/zsh -c source {SNAP} && eval 'tail -f log'"),
+    (70173, 52583, "/bin/bash /some/hook.sh"),
+    (16656, 1, "/Users/x/.local/bin/claude"),
+    (31030, 16656, f"/bin/zsh -c source {SNAP} && eval 'pwd'"),
+])
+
+
+def shells_of(raw):
+    return {parent: [s["command"] for s in rows] for parent, rows in sidebar.parse_processes(raw)[0].items()}
 
 
 def test_a_session_reports_only_its_own_shells():
-    assert sidebar.parse_shells(PS) == {52583: 2, 16656: 1}
+    assert shells_of(PS) == {52583: ["ls", "tail -f log"], 16656: ["pwd"]}
 
 
 def test_the_marker_is_the_snapshot_not_the_shell_name():
@@ -35,51 +55,49 @@ def test_the_marker_is_the_snapshot_not_the_shell_name():
     subprocess. Claude Code sources a snapshot from ~/.claude/shell-snapshots
     into every shell it opens, whatever $SHELL happens to be.
     """
-    ps = f"98000 52583 /bin/bash -c source {SNAP} && eval 'make'\n"
-    assert sidebar.parse_shells(ps) == {52583: 1}
-
-    assert sidebar.parse_shells("98001 52583 /bin/zsh -l\n") == {}
+    assert shells_of(ROW.format(pid=98000, parent=52583, args=f"/bin/bash -c source {SNAP} && eval 'make'")) == {52583: ["make"]}
+    assert shells_of(ROW.format(pid=98001, parent=52583, args="/bin/zsh -l")) == {}
 
 
 def test_processes_that_are_not_shells_are_not_counted():
-    assert sidebar.parse_shells("52605 52583 /usr/bin/caffeinate -i\n") == {}
+    assert shells_of(ROW.format(pid=52605, parent=52583, args="/usr/bin/caffeinate -i")) == {}
 
 
 def test_unreadable_output_is_not_a_crash():
-    for raw in ("", None, "garbage", "notapid 52583 /bin/zsh -c source " + SNAP):
-        assert sidebar.parse_shells(raw) == {}
+    for raw in ("", None, "garbage", ROW.format(pid="notapid", parent=52583, args=f"/bin/zsh -c source {SNAP}")):
+        assert shells_of(raw) == {}
 
 
-# ps reports elapsed time in four shapes depending on how long ago it started.
-def test_elapsed_time_in_every_shape_ps_uses():
-    assert sidebar.uptime_seconds("11:23") == 683                 # MM:SS
-    assert sidebar.uptime_seconds("06:28:36") == 23316            # HH:MM:SS
-    assert sidebar.uptime_seconds("2-03:04:05") == 183845         # D-HH:MM:SS
-    assert sidebar.uptime_seconds("  11:00:36 ") == 39636         # padded
+# ps prints a process's start as `lstart`, a fixed calendar stamp in local
+# time; the moment it started, not how long ago, so it reads the same on
+# every rebuild.
+def test_a_process_start_stamp_reads_as_local_time(utc):
+    assert sidebar.process_start("Thu Sep 17 09:44:37 2026") == 1789638277
+    assert sidebar.process_start("  Mon Jan  5 00:00:00 2026 ") == 1767571200
 
 
-def test_elapsed_time_that_makes_no_sense():
-    for raw in (None, "", "soon", "1:2:3:4", "--"):
-        assert sidebar.uptime_seconds(raw) is None
+def test_a_start_stamp_that_makes_no_sense():
+    for raw in (None, "", "soon", "11:00:36", "Thu Sep 17 09:44 2026"):
+        assert sidebar.process_start(raw) is None
 
 
 UPTIMES = f"""\
-52583     1  11:00:36 /Users/x/.local/bin/claude
-58776 52583      1:41 /bin/zsh -c source {SNAP} && eval 'ls'
-97694 52583   9:41:01 /bin/zsh -c source {SNAP} && eval 'tail -f log'
-16656     1  06:28:36 /Users/x/.local/bin/claude
+52583     1 52583 52583 ttys001 Thu Sep 17 09:44:37 2026 0.0 0 /Users/x/.local/bin/claude
+58776 52583 58776 52583 ttys001 Thu Sep 17 20:43:32 2026 0.0 0 /bin/zsh -c source {SNAP} && eval 'ls'
+97694 52583 97694 52583 ttys001 Thu Sep 17 11:04:12 2026 0.0 0 /bin/zsh -c source {SNAP} && eval 'tail -f log'
+16656     1 16656 16656 ttys002 Thu Sep 17 14:16:37 2026 0.0 0 /Users/x/.local/bin/claude
 """
 
 
-def test_one_listing_yields_both_shells_and_uptime():
+def test_one_listing_yields_both_shells_and_start_times(utc):
     """Both facts come off the same ps, because running it twice per rebuild
     to learn two things about the same processes would be silly.
     """
-    shells, uptime, _, _ = sidebar.parse_processes(UPTIMES)
+    shells, started, _, _ = sidebar.parse_processes(UPTIMES)
     assert shells == {52583: [{"label": "ls", "command": "ls"},
                               {"label": "tail -f log", "command": "tail -f log"}]}
-    assert uptime[52583] == 39636
-    assert uptime[16656] == 23316
+    assert started[52583] == 1789638277
+    assert started[16656] == 1789654597
 
 
 # What a shell is running, so it can be listed under its session. The quoting
@@ -102,7 +120,7 @@ def test_a_shell_without_an_eval_has_no_command():
 
 def test_a_shell_whose_command_cannot_be_read_is_still_listed():
     """Dropping it would undercount; guessing would lie. It renders "?"."""
-    shells, _, _, _ = sidebar.parse_processes(f"58776 52583 1:41 /bin/zsh -c source {SNAP}\n")
+    shells, _, _, _ = sidebar.parse_processes(f"58776 52583 58776 52583 ttys001 Thu Sep 17 20:43:32 2026 0.0 0 /bin/zsh -c source {SNAP}\n")
     assert shells == {52583: [{"label": "?", "command": "?"}]}
 
 
@@ -135,7 +153,7 @@ def test_a_plain_command_is_its_own_label():
 
 
 def test_a_listed_shell_carries_its_label_and_its_whole_command():
-    ps = f"58776 52583 1:41 /bin/zsh -c source {SNAP} && eval 'cd ~/repo && npm test' < /dev/null && pwd -P >| /tmp/claude-1-cwd\n"
+    ps = f"58776 52583 58776 52583 ttys001 Thu Sep 17 20:43:32 2026 0.0 0 /bin/zsh -c source {SNAP} && eval 'cd ~/repo && npm test' < /dev/null && pwd -P >| /tmp/claude-1-cwd\n"
     shells, _, _, _ = sidebar.parse_processes(ps)
     assert shells == {52583: [{"label": "npm test", "command": "cd ~/repo && npm test"}]}
 
@@ -143,7 +161,7 @@ def test_a_listed_shell_carries_its_label_and_its_whole_command():
 # A teammate's colour is on its own command line, the only place it is kept:
 # its transcript records a name and a team but no colour. Shape from a live
 # teammate on 2026-09-15.
-TEAMMATE = ("86515     1  4:02 /Users/x/.local/share/claude/versions/2.1.270 "
+TEAMMATE = ("86515     1 86515 86515 ttys004 Thu Sep 17 12:00:00 2026 0.0 0 /Users/x/.local/share/claude/versions/2.1.270 "
             "--agent-id icon@session-503e9a69 --agent-name icon "
             "--team-name session-503e9a69 --agent-color blue --parent-session-id 6f594cbd\n")
 
@@ -162,7 +180,7 @@ def test_a_teammates_parent_session_is_read_off_its_command_line():
     """Claude Code hands a teammate its lead's session id as
     --parent-session-id; nothing else the sidebar reads says who spawned it."""
     from sidebar import parse_processes
-    raw = ("4242 4000 01:02 /x/claude --agent-id review-351@session-0da70176 --agent-name review-351 "
+    raw = ("4242 4000 4242 4242 ttys005 Thu Sep 17 12:00:00 2026 0.0 0 /x/claude --agent-id review-351@session-0da70176 --agent-name review-351 "
            "--team-name session-0da70176 --agent-color yellow --parent-session-id 6a4d1211-632c-4c8e-9c0a-000000000001 --resume x\n")
     assert parse_processes(raw)[3] == {4242: "6a4d1211-632c-4c8e-9c0a-000000000001"}
 
@@ -173,12 +191,12 @@ def test_the_panels_own_task_report_is_not_a_command_running():
     ours = (f"/bin/zsh -c source {SNAP} && eval 'python3 /Users/x/.claude/skills/agents-sidebar/hooks-handlers/task.py"
             " --session abc report --activity Testing --percent 40' < /dev/null && pwd -P >| /tmp/claude-1-cwd")
     theirs = f"/bin/zsh -c source {SNAP} && eval 'python3 tools/task.py --all' < /dev/null && pwd -P >| /tmp/claude-2-cwd"
-    shells, _, _, _ = sidebar.parse_processes(f"1 52583 0:01 {ours}\n2 52583 0:02 {theirs}\n")
+    shells, _, _, _ = sidebar.parse_processes(f"1 52583 1 52583 ttys001 Thu Sep 17 12:00:00 2026 0.0 0 {ours}\n2 52583 2 52583 ttys001 Thu Sep 17 12:00:01 2026 0.0 0 {theirs}\n")
     assert shells == {52583: [{"label": "python3 tools/task.py --all", "command": "python3 tools/task.py --all"}]}
 
 
 def test_a_home_path_in_a_command_reads_as_tilde():
     args = (f"/bin/zsh -c source {SNAP} && eval 'python3 /Users/x/.claude/skills/x/run.py --flag' < /dev/null"
             " && pwd -P >| /tmp/claude-3-cwd")
-    shells, _, _, _ = sidebar.parse_processes(f"1 5 0:01 {args}\n", home="/Users/x")
+    shells, _, _, _ = sidebar.parse_processes(f"1 5 1 5 ttys001 Thu Sep 17 12:00:00 2026 0.0 0 {args}\n", home="/Users/x")
     assert shells[5][0]["label"] == "python3 ~/.claude/skills/x/run.py --flag"
