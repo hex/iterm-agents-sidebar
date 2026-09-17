@@ -13,6 +13,7 @@ report, which the panel shows, and that a new request starts a new task.
 A hundred percent means done and locks the task; more work needs `begin`.
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -36,6 +37,13 @@ def clean(text, width):
 
 def note_path(session_id):
     return os.path.join(TASKS_DIR, f"{session_id}.json")
+
+
+def lock_path(session_id):
+    """Held around every read-then-write of the note and its removal at
+    SessionEnd. A sibling file, because the write renames a new note over
+    the old one and a lock on the note itself would go with it."""
+    return os.path.join(TASKS_DIR, f"{session_id}.lock")
 
 
 def read_note(path):
@@ -104,12 +112,15 @@ def main(argv):
         return 1
     path = note_path(args.session)
     try:
-        if args.verb == "begin":
-            note = begin(args.title, time.time())
-        else:
-            note = report(read_note(path), args.activity,
-                          None if args.unknown else args.percent, time.time())
-        write_note(path, note)
+        os.makedirs(TASKS_DIR, exist_ok=True)
+        with open(lock_path(args.session), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if args.verb == "begin":
+                note = begin(args.title, time.time())
+            else:
+                note = report(read_note(path), args.activity,
+                              None if args.unknown else args.percent, time.time())
+            write_note(path, note)
     except (ValueError, OSError) as error:
         print(f"task.py: {error}", file=sys.stderr)
         return 1

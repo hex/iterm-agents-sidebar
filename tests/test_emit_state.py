@@ -199,6 +199,23 @@ def test_the_state_variable_names_its_session():
     assert value["session"] == "abc-123"
 
 
+def test_the_state_variable_keeps_the_turn_start_after_the_turn_ends():
+    """working_since goes to None once the session is idle, but a Codex job
+    that finished during the turn stays listed until the next prompt, so the
+    daemon needs the prompt's time on its own."""
+    doc = emit_state.apply_event(emit_state.blank_state(),
+                                 "UserPromptSubmit", {}, "working")
+    started = doc["turn_started"]
+    doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": False}, "idle")
+    value = emit_state.published(doc, 701, {"session_id": "abc-123"}, codex=False, now=1789000000)
+    assert value["working_since"] is None and value["turn_started"] == round(started)
+
+
+def test_a_session_with_no_prompt_yet_has_no_turn_start():
+    value = emit_state.published({}, 701, {"session_id": "abc-123"}, codex=False, now=1789000000)
+    assert value["turn_started"] is None
+
+
 NOTE = {"task": "t1", "title": "Fix login", "activity": "Reading code",
         "percent": 35, "done": False, "ts": 1789000000}
 SCRIPT = "/plugin/hooks-handlers/task.py"
@@ -336,3 +353,19 @@ def test_a_permission_notification_for_a_tool_that_already_ran_opens_no_gate():
     doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t2"}, "working")
     doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t2"}, "working")
     assert emit_state.aggregate(doc) == "working"
+
+
+def test_clearing_a_note_waits_for_a_report_in_progress(tmp_path, monkeypatch):
+    import fcntl
+    import threading
+    monkeypatch.setattr(emit_state, "TASKS_DIR", str(tmp_path))
+    (tmp_path / "s1.json").write_text('{"task": "x"}')
+    holder = open(tmp_path / "s1.lock", "a")
+    fcntl.flock(holder, fcntl.LOCK_EX)
+    worker = threading.Thread(target=emit_state.clear_note, args=("s1",))
+    worker.start()
+    worker.join(0.3)
+    assert worker.is_alive() and (tmp_path / "s1.json").exists()
+    holder.close()
+    worker.join(2)
+    assert not (tmp_path / "s1.json").exists()

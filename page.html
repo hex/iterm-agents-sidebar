@@ -146,7 +146,10 @@
      each joined to the session by an elbow. */
   .children { margin: 0 0 4px; }
   .children button.row {
-    padding: 3px var(--row-pad) 3px var(--child-indent); min-height: 22px;
+    /* A subagent's own subagent sits one step in: its elbow drops from the
+       centre of the mark on the row above. */
+    --nest: calc(var(--depth, 0) * (var(--elbow) + 6px + var(--mark) / 2));
+    padding: 3px var(--row-pad) 3px calc(var(--child-indent) + var(--nest)); min-height: 22px;
     /* Where the name's line sits: the row's own top padding plus half a
        14px line. The mark and the elbow both meet it, so a child row that
        grows a second line does not leave them stranded in the middle. */
@@ -162,7 +165,7 @@
      edge of the child's mark. */
   .children button.row::before {
     content: ""; position: absolute; top: 0; bottom: calc(100% - var(--name-mid));
-    left: var(--child-drop); width: var(--elbow);
+    left: calc(var(--child-drop) + var(--nest)); width: var(--elbow);
     border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
     border-bottom-left-radius: 3px;
   }
@@ -180,8 +183,8 @@
     stroke-linecap: round; stroke-linejoin: round;
   }
   .children button.row.finished .stack { opacity: .5; }
-  li.line.card.blocked .children button.row { padding-left: calc(var(--child-indent) - 2px); }
-  li.line.card.blocked .children button.row::before { left: calc(var(--child-drop) - 2px); }
+  li.line.card.blocked .children button.row { padding-left: calc(var(--child-indent) + var(--nest) - 2px); }
+  li.line.card.blocked .children button.row::before { left: calc(var(--child-drop) + var(--nest) - 2px); }
   /* A card's background shells, folded into one line that opens them. */
   .shell-sum {
     display: flex; align-items: center; gap: 6px; width: calc(100% - 20px);
@@ -2519,19 +2522,35 @@ function paint(snapshot) {
       // Clicking one focuses the session they run in.
       const subs = SETTINGS?.show_agents !== false ? row.subagents || [] : [];
       for (const sub of subs) {
-        const sb = childRow(row, "tail", `sub\n${sub.type}\n${sub.since}`);
+        // A Codex job the session started through the codex plugin is keyed
+        // by its job id: two rescues can start in the same second.
+        const codex = sub.provider === "codex";
+        const sb = childRow(row, "tail", codex ? `codex\n${sub.id}` : `sub\n${sub.type}\n${sub.since}`);
         // A finished subagent keeps its place until the next prompt, quiet,
         // with how long it ran; its key does not change, so nothing moves.
         const done = sub.ended != null;
+        // A Codex job that failed or was cancelled ended, but did not finish.
+        const failed = codex && done && ["failed", "cancelled"].includes(sub.phase);
         const dots = Object.assign(document.createElement("span"), {className: done ? "busy" : "busy down"});
-        if (done) dots.innerHTML = '<svg class="done-mark" viewBox="0 0 8 8" aria-hidden="true"><path d="M.8 4.3 3 6.5 7.2 1.5"/></svg>';
+        if (failed) dots.innerHTML = "";
+        else if (done) dots.innerHTML = '<svg class="done-mark" viewBox="0 0 8 8" aria-hidden="true"><path d="M.8 4.3 3 6.5 7.2 1.5"/></svg>';
         else dots.innerHTML = "<i></i><i></i><i></i>";
         if (done) sb.classList.add("finished");
+        if (sub.depth) sb.style.setProperty("--depth", sub.depth);
+        else sb.style.removeProperty("--depth");
         const ran = sub.since == null ? null
           : forHumans((done ? sub.ended : Date.now() / 1000) - sub.since);
-        const title = sub.name || sub.type || "subagent";
+        const title = codex ? `Codex ${sub.type || "job"}` : sub.name || sub.type || "subagent";
         const stack = stackOf(title);
         const meta = Object.assign(document.createElement("span"), {className: "model"});
+        if (codex && sub.phase && sub.phase !== "done") {
+          const chip = Object.assign(document.createElement("span"), {className: "mchip model-name"});
+          chip.append(providerIcon("openai", "OpenAI"),
+                      Object.assign(document.createElement("span"), {className: "mtext", textContent: sub.phase}));
+          meta.append(chip);
+        } else if (codex) {
+          meta.append(providerIcon("openai", "OpenAI"));
+        }
         if (sub.model && SETTINGS?.show_model !== false) {
           const chip = Object.assign(document.createElement("span"), {className: "mchip model-name"});
           chip.append(providerIcon("claude", "Claude"),
@@ -2542,8 +2561,9 @@ function paint(snapshot) {
         if (meta.childElementCount) stack.append(meta);
         sb.append(dots, stack);
         sb.title = sub.name && sub.type ? `${sub.name} (${sub.type})` : title;
-        sb.setAttribute("aria-label", [`subagent ${title} in ${row.label}`, sub.model,
-                                       ran && (done ? `finished after ${ran}` : `running ${ran}`)]
+        sb.setAttribute("aria-label", [`${codex ? "" : "subagent "}${title} in ${row.label}`, sub.model,
+                                       codex && sub.phase,
+                                       ran && (failed ? `ended after ${ran}` : done ? `finished after ${ran}` : `running ${ran}`)]
                                        .filter(Boolean).join(", "));
         sb.addEventListener("click", () => act(row.session_id, "focus"));
         childrenOf(li).append(sb);

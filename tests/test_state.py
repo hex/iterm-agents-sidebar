@@ -204,19 +204,43 @@ def test_parse_subagents_reads_type_and_start():
     raw = json.dumps({"state": "working", "pid": os.getpid(), "agents": 2,
                       "subagents": [{"type": "Explore", "since": 50},
                                     {"type": None, "since": 90}]})
-    assert parse_subagents(raw) == [{"type": "Explore", "since": 50, "ended": None, "name": None, "model": None},
-                                    {"type": None, "since": 90, "ended": None, "name": None, "model": None}]
+    assert parse_subagents(raw) == [{"type": "Explore", "since": 50, "ended": None, "name": None, "model": None, "depth": 0},
+                                    {"type": None, "since": 90, "ended": None, "name": None, "model": None, "depth": 0}]
 
 
 def test_parse_subagents_drops_what_it_cannot_read():
     from sidebar import parse_subagents
     raw = json.dumps({"subagents": [{"type": 7, "since": "soon"}, "x",
                                     {"type": "Plan", "since": 10}]})
-    assert parse_subagents(raw) == [{"type": None, "since": None, "ended": None, "name": None, "model": None},
-                                    {"type": "Plan", "since": 10, "ended": None, "name": None, "model": None}]
+    assert parse_subagents(raw) == [{"type": None, "since": None, "ended": None, "name": None, "model": None, "depth": 0},
+                                    {"type": "Plan", "since": 10, "ended": None, "name": None, "model": None, "depth": 0}]
     assert parse_subagents(json.dumps({"subagents": "many"})) == []
     assert parse_subagents("garbage") == []
     assert parse_subagents(None) == []
+
+
+def test_parse_subagents_puts_a_nested_subagent_under_the_one_that_started_it():
+    """The hook lists every depth flat and oldest first; a subagent's own
+    subagent belongs directly below it, one step further in."""
+    from sidebar import parse_subagents
+    raw = json.dumps({"subagents": [
+        {"id": "a1", "type": "general-purpose", "since": 10},
+        {"id": "b1", "type": "Explore", "since": 20},
+        {"id": "a2", "parent": "a1", "type": "claude-code-guide", "since": 30},
+        {"id": "a3", "parent": "a2", "type": "Explore", "since": 40},
+        {"id": "a4", "parent": "a1", "type": "Plan", "since": 50}]})
+    assert [(s["since"], s["depth"]) for s in parse_subagents(raw)] == [
+        (10, 0), (30, 1), (40, 2), (50, 1), (20, 0)]
+
+
+def test_parse_subagents_does_not_indent_under_a_parent_it_cannot_show():
+    """A parent from before the turn, or one the hook never listed, leaves
+    its child at the top rather than indented under nothing."""
+    from sidebar import parse_subagents
+    raw = json.dumps({"subagents": [
+        {"id": "a2", "parent": "gone", "type": "Explore", "since": 30},
+        {"id": "x", "parent": "y", "since": 40}, {"id": "y", "parent": "x", "since": 50}]})
+    assert [(s["since"], s["depth"]) for s in parse_subagents(raw)] == [(30, 0), (40, 0), (50, 0)]
 
 
 def test_parse_blocked_since():
@@ -240,7 +264,7 @@ def test_parse_subagents_carries_name_and_a_short_model():
     raw = json.dumps({"subagents": [{"type": "workflow-subagent", "since": 5,
                                      "name": "read:theirs", "model": "claude-fable-5-1"}]})
     assert parse_subagents(raw) == [{"type": "workflow-subagent", "since": 5, "ended": None,
-                                     "name": "read:theirs", "model": "Fable 5.1"}]
+                                     "name": "read:theirs", "model": "Fable 5.1", "depth": 0}]
 
 
 def test_model_ids_read_the_way_the_statusline_writes_them():

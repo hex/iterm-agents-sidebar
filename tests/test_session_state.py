@@ -154,8 +154,10 @@ def test_running_subagents_are_listed_oldest_first_with_their_type():
                                  {"agent_id": "a2", "agent_type": "general-purpose"}, "working")
     doc["agents"]["a2"] = 50.0
     assert emit_state.subagents(doc) == [
-        {"type": "general-purpose", "since": 50, "ended": None, "name": None, "model": None},
-        {"type": "Explore", "since": 100, "ended": None, "name": None, "model": None}]
+        {"id": "a2", "parent": None, "type": "general-purpose", "since": 50, "ended": None,
+         "name": None, "model": None},
+        {"id": "a1", "parent": None, "type": "Explore", "since": 100, "ended": None,
+         "name": None, "model": None}]
 
 
 def test_a_subagent_without_a_type_is_listed_without_one():
@@ -447,6 +449,31 @@ def test_an_unreadable_meta_file_leaves_the_subagent_unnamed(tmp_path):
                                 lines=["garbage", '{"type":"assistant","message":"x"}'])
     [sub] = emit_state.subagents(emit_state.describe_subagents(_started(), transcript))
     assert (sub["name"], sub["model"]) == (None, None)
+
+
+def test_a_nested_subagent_names_the_agent_that_started_it(tmp_path):
+    """A subagent's own subagent carries parentAgentId in its meta file, and a
+    top-level one has none -- measured on a Fable review on 2026-09-17."""
+    transcript = _session_files(
+        tmp_path, "a2",
+        meta='{"agentType":"claude-code-guide","description":"Verify",'
+             '"parentAgentId":"a1","spawnDepth":2}')
+    (tmp_path / "s1" / "subagents" / "agent-a1.meta.json").write_text(
+        '{"agentType":"general-purpose","description":"Review","spawnDepth":1}')
+    doc = emit_state.apply_event(_started("a1"), "SubagentStart", {"agent_id": "a2"}, "working")
+    doc["agents"]["a2"] = doc["agents"]["a1"] + 1
+    listed = emit_state.subagents(emit_state.describe_subagents(doc, transcript))
+    assert [(s["id"], s["parent"]) for s in listed] == [("a1", None), ("a2", "a1")]
+
+
+def test_a_parent_is_read_even_when_the_name_is_already_known(tmp_path):
+    """The name is read once; a doc written before parents were recorded
+    still has to learn them."""
+    transcript = _session_files(tmp_path, "a2", meta='{"description":"x","parentAgentId":"a1"}')
+    doc = emit_state.apply_event(blank(), "SubagentStart", {"agent_id": "a2"}, "working")
+    doc["agent_info"] = {"a2": {"name": "x", "model": "claude-opus-5"}}
+    [sub] = emit_state.subagents(emit_state.describe_subagents(doc, transcript))
+    assert sub["parent"] == "a1"
 
 
 def test_describing_without_a_transcript_changes_nothing():

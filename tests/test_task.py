@@ -103,3 +103,28 @@ def test_read_note_tolerates_a_missing_or_broken_file(tmp_path):
     assert task.read_note(str(tmp_path / "none.json")) is None
     (tmp_path / "bad.json").write_text("{not json")
     assert task.read_note(str(tmp_path / "bad.json")) is None
+
+
+def _held_lock(path):
+    import fcntl
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fh = open(path, "a")
+    fcntl.flock(fh, fcntl.LOCK_EX)
+    return fh
+
+
+def test_a_report_waits_for_whoever_holds_the_note(tmp_path, monkeypatch, capsys):
+    """Read-then-write without a lock let a late report overwrite a newer
+    note, or bring one back after the session ended."""
+    import threading
+    run(["--session", "s1", "begin", "--title", "t"], tmp_path, monkeypatch, capsys)
+    holder = _held_lock(tmp_path / "tasks" / "s1.lock")
+    worker = threading.Thread(target=task.main,
+                              args=(["--session", "s1", "report", "--activity", "a", "--percent", "40"],))
+    worker.start()
+    worker.join(0.3)
+    assert worker.is_alive() and note(tmp_path)["percent"] is None
+    (tmp_path / "tasks" / "s1.json").unlink()
+    holder.close()
+    worker.join(2)
+    assert not (tmp_path / "tasks" / "s1.json").exists(), "a report must not recreate a removed note"

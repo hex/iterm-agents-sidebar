@@ -564,6 +564,24 @@ def test_the_sweep_also_clears_day_old_task_notes(tmp_path, monkeypatch):
     assert sorted(p.name for p in (tmp_path / "tasks").iterdir()) == ["live.json"]
 
 
+def test_the_sweep_clears_a_note_lock_only_once_its_note_is_gone(tmp_path, monkeypatch):
+    """Taking a lock never touches the file, so a live session's lock looks
+    as old as the session; its note, reported every minute, does not."""
+    import os
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path / "status"))
+    monkeypatch.setattr(sidebar, "TASKS_DIR", str(tmp_path / "tasks"))
+    tasks = tmp_path / "tasks"
+    tasks.mkdir()
+    now = 1_800_000_000
+    for name in ("ended.lock", "ended.json", "live.lock", "never.lock"):
+        (tasks / name).write_text("")
+        os.utime(tasks / name, (now - DAY - 1, now - DAY - 1))
+    (tasks / "live.json").write_text("{}")
+    os.utime(tasks / "live.json", (now - 60, now - 60))
+    sidebar.sweep_status_dir(now)
+    assert sorted(p.name for p in tasks.iterdir()) == ["live.json", "live.lock"]
+
+
 def test_the_sweep_of_a_missing_directory_is_not_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path / "absent"))
     monkeypatch.setattr(sidebar, "TASKS_DIR", str(tmp_path / "absent-too"))
