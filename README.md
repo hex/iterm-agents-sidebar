@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents sidebar docked on the right: a card per session, and the one waiting on a question turning amber">
+
 # Agents sidebar
 
 A custom tool in the iTerm2 Toolbelt that lists every terminal session across
@@ -143,6 +145,12 @@ inside the card under a guide line, their working dots stacked vertically.
 Rows read `t3` for the third tab, `t3.2` for the second pane of a split tab,
 and `w2.t3` once a second window exists. The number is a position you can count
 to, not iTerm2's internal tab id.
+
+Cards sit in the order iTerm2 enumerates windows, tabs and panes, so a card is
+where its terminal is and nothing a session does moves it. Sort cards by name,
+in settings under Rows and off by default, puts the top-level cards in
+alphabetical order instead; teammates stay under their lead and a worktree card
+stays docked to its session either way.
 
 After the model, a bracketed letter gives the session's effort level: `[l]`, `[m]`,
 `[h]`, `[xh]` or `[mx]`, in the colours Claude Code's `/effort` picker uses.
@@ -404,3 +412,9 @@ finds first, possibly a dead port and a white panel. Rename the stale entry
 
 The daemon binds `127.0.0.1` on an OS-assigned port and checks a random
 32-byte token on every request, including the event stream.
+
+`python3 assets/make-banner.py` redraws `assets/banner.svg`, the image at the
+top of this file. It reads the marks and the colours out of `page.html`, so the
+drawing cannot drift from the panel it advertises; I made up the session names
+in it. GitHub plays the animation only from the raw file URL, which is what
+that image points at.
