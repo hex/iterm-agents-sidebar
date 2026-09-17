@@ -102,7 +102,7 @@ def chips(x, baseline, items, fill=DIM, size=12.5):
     return x
 
 
-A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
+A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="100%" '
   f'role="img" aria-label="An iTerm2 window with the Agents sidebar docked on the right: one card '
   f'per session, with the one waiting on a question turning amber">')
 A('  <title>Agents sidebar</title>')
