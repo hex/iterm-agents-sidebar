@@ -1,6 +1,9 @@
 # Accounts in the panel: usage meters and switching
 
 Status: approved 2026-09-15 (R2, 600 s poll floor, account line above the 5-hour bar).
+Superseded on the poll floor: the shipped floor is 180 s
+(`POLL_FLOOR_SECONDS` in `accounts.py`), taken from cswap's own cadence on
+2026-09-16. Read `accounts.py` and `docs/accounts.md` for what runs.
 
 ## The request
 
