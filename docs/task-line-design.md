@@ -85,10 +85,11 @@ the row when a note exists:
 
 ```json
 "task": {"title": "...", "activity": "...", "percent": 35, "done": false,
-         "age": 40}
+         "reported_at": 1789000000}
 ```
 
-`age` is seconds since `ts`, computed at snapshot time. No note, no key. The
+`reported_at` is the note's `ts`; the page works the age out on its own clock
+and ticks it, so the snapshot does not change every rebuild. No note, no key. The
 daemon ignores a note it cannot parse. The existing sweep loop
 (`sweep_status_dir` gains the tasks directory) removes day-old notes.
 

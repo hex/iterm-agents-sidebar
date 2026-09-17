@@ -90,7 +90,9 @@ if [ "${1:-}" = "--statusline" ]; then
     # if this script dies between here and the write below.
     printf '%s' "$current" > "$status_dir/original-statusline"
     tmp=$(mktemp)
-    jq --arg cmd "$bridge" '.statusLine = {type: "command", command: $cmd, refreshInterval: 1}' \
+    # Only the command: the tick rate is cs's to set (its logo pulses on that
+    # timer), and two installers writing it would flip it on each other.
+    jq --arg cmd "$bridge" '.statusLine = ((.statusLine // {}) + {type: "command", command: $cmd})' \
       "$settings" > "$tmp" && mv "$tmp" "$settings"
     echo "statusline bridge -> $bridge"
     echo "        displaced -> ${current:-(none)}"

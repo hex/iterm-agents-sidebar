@@ -317,3 +317,22 @@ def test_the_question_survives_the_next_event_through_the_state_file(tmp_path, m
     emit_state.update("s1", "PermissionRequest", {**ASK, "tool_use_id": "t1"}, "blocked")
     doc = emit_state.update("s1", "Notification", {"notification_type": "permission_prompt"}, "blocked")
     assert doc["question"]["question"] == "Which icon?"
+
+
+def test_a_permission_notification_for_a_tool_that_already_ran_opens_no_gate():
+    """Claude Code sends the permission_prompt Notification some seconds after
+    the prompt opens, on its own clock, so it can land after the tool it was
+    about has been approved and has finished. Traced on 2026-09-17: such a
+    notification keyed a gate on the finished tool, which nothing could ever
+    close, and the session read blocked through five minutes of work."""
+    doc = emit_state.blank_state()
+    doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t1"}, "working")
+    doc = emit_state.apply_event(doc, "PermissionRequest", {**ASK}, "blocked")
+    assert emit_state.aggregate(doc) == "blocked"
+    doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t1"}, "working")
+    assert emit_state.aggregate(doc) == "working"
+    doc = emit_state.apply_event(doc, "Notification", {"notification_type": "permission_prompt"}, "blocked")
+    assert emit_state.aggregate(doc) == "working"
+    doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t2"}, "working")
+    doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t2"}, "working")
+    assert emit_state.aggregate(doc) == "working"

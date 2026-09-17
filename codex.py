@@ -5,7 +5,7 @@
 import json
 import os
 
-from accounts import DAY_SECONDS, pace
+from accounts import DAY_SECONDS, _epoch, pace
 
 SESSIONS_DIR = os.path.expanduser("~/.codex/sessions")
 #: How much of a rollout's end to read; readings repeat every turn, so the last one is near the end.
@@ -24,7 +24,7 @@ def _label(minutes):
     return f"{minutes}-min"
 
 
-def _window(raw, now):
+def _window(raw, now, read_at):
     if not isinstance(raw, dict):
         return None
     used, minutes, resets_at = raw.get("used_percent"), raw.get("window_minutes"), raw.get("resets_at")
@@ -36,21 +36,25 @@ def _window(raw, now):
         # The window has reset since Codex last reported it.
         used, resets_at = 0.0, None
     seconds = minutes * 60
-    # The even-spend mark only means something for windows of a day or more.
-    even = (pace(float(used), resets_at, now, window=seconds)
+    # The even-spend mark only means something for windows of a day or more,
+    # and stands as of the reading, as an account meter's does: worked out at
+    # the rebuild instead it would creep with the clock and change the
+    # snapshot every tick.
+    even = (pace(float(used), resets_at, read_at, window=seconds)
             if resets_at is not None and seconds >= DAY_SECONDS else None)
     return {"label": _label(minutes), "used": float(used), "resets_at": resets_at, "minutes": minutes,
             "pace": even}
 
 
 def _rate_limits(line):
+    """A rollout line -> (its rate_limits, when Codex wrote it), or None."""
     try:
         event = json.loads(line)
     except ValueError:
         return None
     payload = event.get("payload") if isinstance(event, dict) else None
     limits = payload.get("rate_limits") if isinstance(payload, dict) else None
-    return limits if isinstance(limits, dict) else None
+    return (limits, _epoch(event.get("timestamp"))) if isinstance(limits, dict) else None
 
 
 def limits_from_lines(lines, now):
@@ -60,10 +64,13 @@ def limits_from_lines(lines, now):
     resets_at, minutes, pace}, with pace worked out as for account meters. A window whose reset time has passed reads as empty.
     """
     for line in reversed(list(lines)):
-        limits = _rate_limits(line)
-        if limits is None:
+        reading = _rate_limits(line)
+        if reading is None:
             continue
-        windows = [w for w in (_window(limits.get(k), now) for k in ("primary", "secondary")) if w]
+        limits, written_at = reading
+        # An event without a stamp is taken as fresh; there is nothing better to say.
+        read_at = written_at if written_at is not None else now
+        windows = [w for w in (_window(limits.get(k), now, read_at) for k in ("primary", "secondary")) if w]
         if windows:
             return {"windows": sorted(windows, key=lambda w: w["minutes"])}
     return None

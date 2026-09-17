@@ -20,13 +20,17 @@ set -u
 STATUS_DIR="$HOME/.claude/agents-sidebar-status"
 ORIGINAL="$STATUS_DIR/original-statusline"
 
-input=$(cat)
+# Builtins wherever a builtin will do. Traced 2026-09-17 with eight sessions
+# rendering once a second: the bridge's own forks per tick, before the user's
+# statusline ran, were most of ~200 execs a second, each inspected by an
+# endpoint agent, and the machine saturated on that alone.
+IFS= read -r -d '' input
 
 # Publish, but never at the cost of the statusline. An unwritable directory
 # or a full disk must still end with the user's statusline on screen.
 #
 # The payload goes down whole, as it came: the daemon reads the fields it
-# wants. Cheap on purpose. Claude Code runs this once a second in every
+# wants. Cheap on purpose. Claude Code runs this every tick in every
 # session, kills a render that overruns, and a new session shows nothing
 # until one render completes; with eight sessions a jq per render was
 # enough to make every render overrun.
@@ -38,7 +42,7 @@ publish() {
     local pid="$PPID"
     case "$pid" in ''|*[!0-9]*) return 0 ;; esac
     case "$input" in "{"*) ;; *) return 0 ;; esac
-    mkdir -p "$STATUS_DIR" 2>/dev/null || return 0
+    [ -d "$STATUS_DIR" ] || mkdir -p "$STATUS_DIR" 2>/dev/null || return 0
 
     # Written whole and moved into place: the sidebar reads this file on a
     # timer and must never catch a half-written one.
@@ -57,13 +61,14 @@ publish
 # empty file means there was nothing to displace, and the statusline is ours
 # alone to leave blank.
 #
-# Claude Code runs this once a second and kills a render still going when
-# the next tick comes. A statusline that takes most of a second, in eight
+# Claude Code runs this every tick and kills a render still going when the
+# next tick comes. A statusline that takes most of a tick, in eight
 # sessions at once, then never completes, and a new session never gets a
 # line at all. So the line rendered last is printed at once, and the next
 # one is rendered in the background where the kill does not reach it. The
 # line shown is one tick behind, which nobody can see.
 [ -s "$ORIGINAL" ] || exit 0
+IFS= read -r -d '' command < "$ORIGINAL"
 LINE="$STATUS_DIR/$PPID.line"
 LOCK="$STATUS_DIR/$PPID.rendering"
 
@@ -84,7 +89,7 @@ trap '' TERM HUP INT
 # flight every 30 to 60 s, traced live 2026-09-16) leaves it behind, and
 # the next render overwrites it instead of adding one more.
 render_to_line() {
-    printf '%s' "$input" | sh -c "$(cat "$ORIGINAL")" > "$LINE.tmp" 2>/dev/null \
+    printf '%s' "$input" | sh -c "$command" > "$LINE.tmp" 2>/dev/null \
         && mv -f "$LINE.tmp" "$LINE" 2>/dev/null || rm -f "$LINE.tmp" 2>/dev/null
     rmdir "$LOCK" 2>/dev/null
 }
@@ -95,7 +100,8 @@ render_to_line() {
 if [ -s "$LINE" ]; then
     # The last line at once, so this tick completes; then the next line,
     # if no other tick is already rendering it.
-    cat "$LINE"
+    IFS= read -r -d '' line < "$LINE"
+    printf '%s' "$line"
     if mkdir "$LOCK" 2>/dev/null; then
         render_to_line
     elif [ -n "$(find "$LOCK" -maxdepth 0 -mtime +10s 2>/dev/null)" ]; then
@@ -114,6 +120,6 @@ else
     # nothing; the next one will have the line.
     if mkdir "$LOCK" 2>/dev/null; then
         render_to_line
-        [ -s "$LINE" ] && cat "$LINE"
+        if [ -s "$LINE" ]; then IFS= read -r -d '' line < "$LINE"; printf '%s' "$line"; fi
     fi
 fi

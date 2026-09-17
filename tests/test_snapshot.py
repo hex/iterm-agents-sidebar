@@ -157,7 +157,8 @@ def test_agent_rows_carry_state_colour_and_context():
 def test_rows_carry_the_task_the_session_reported():
     """What the session says it is doing, as the daemon read it; a session
     with no note has no key, never an empty one."""
-    task = {"title": "Fix login", "activity": "Reading code", "percent": 35, "done": False, "age": 40}
+    task = {"title": "Fix login", "activity": "Reading code", "percent": 35, "done": False,
+            "reported_at": 1789000000}
     got = snapshot([dict(LIVE[1], task=task)])["groups"][0]["rows"][0]
     assert got["task"] == task
     assert "task" not in snapshot([dict(LIVE[1], task=None)])["groups"][0]["rows"][0]
@@ -380,16 +381,18 @@ def test_no_shells_is_not_reported_at_all():
     assert "shells" not in snapshot([_agent(shells=[])])["groups"][0]["rows"][0]
 
 
-def test_a_session_reports_how_long_it_has_been_up():
-    row = snapshot([_agent(uptime=39636)])["groups"][0]["rows"][0]
-    assert row["uptime"] == 39636
+def test_a_session_reports_when_it_started():
+    """The moment, not the elapsed time: an age would change on every
+    rebuild and push a frame the page has no reason to redraw."""
+    row = snapshot([_agent(started_at=1789638277)])["groups"][0]["rows"][0]
+    assert row["started_at"] == 1789638277
 
 
-def test_a_session_just_started_still_reports_its_uptime():
-    """Zero seconds is a real answer here, unlike zero shells. Falsy checks
-    would drop it and the row would claim not to know.
+def test_a_session_started_at_the_epoch_still_reports_it():
+    """Zero is a real answer here, unlike zero shells. Falsy checks would
+    drop it and the row would claim not to know.
     """
-    assert snapshot([_agent(uptime=0)])["groups"][0]["rows"][0]["uptime"] == 0
+    assert snapshot([_agent(started_at=0)])["groups"][0]["rows"][0]["started_at"] == 0
 
 
 def test_an_unreadable_title_does_not_take_down_the_other_sessions():

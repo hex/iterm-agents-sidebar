@@ -90,6 +90,10 @@ DEFAULT_SETTINGS = {
     "notify_done": True,
     "muted": False,
     "context_threshold": 40,
+    # A session tree at or over either reads as heavy: percent of one core,
+    # and gigabytes resident.
+    "cpu_threshold": 100,
+    "memory_threshold": 2.0,
     "show_model": True,
     "show_branch": True,
     "show_task": True,
@@ -105,6 +109,7 @@ DEFAULT_SETTINGS = {
 
 #: (low, high) for the values that are numbers.
 SETTING_RANGES = {"volume": (0.0, 1.0), "context_threshold": (0, 100),
+                  "cpu_threshold": (25, 1600), "memory_threshold": (0.5, 32.0),
                   # Below 0.8 the 9px metadata stops being readable; above 1.6
                   # a row no longer fits the 250px the Toolbelt gives us.
                   "ui_scale": (0.8, 1.6)}
@@ -625,10 +630,12 @@ def snapshot(sessions):
                 row["working_since"] = session["working_since"]
             if session.get("shells"):
                 row["shells"] = session["shells"]
-            if session.get("uptime") is not None:
-                row["uptime"] = session["uptime"]
+            if session.get("started_at") is not None:
+                row["started_at"] = session["started_at"]
             if session.get("details"):
                 row["details"] = session["details"]
+            if session.get("heavy"):
+                row["heavy"] = session["heavy"]
         if session.get("branch"):
             row["branch"] = session["branch"]
         if kind == "agent" and session.get("claude_session"):
@@ -769,32 +776,6 @@ MODEL = re.compile(r"^\S+\s+(.+?)\s\s")
 SHELL_MARKER = "/.claude/shell-snapshots/"
 
 
-def parse_shells(raw):
-    """`ps -eo pid=,ppid=,args=` -> {parent pid: shells it has open}.
-
-    Counted from the process tree because nothing publishes it: the statusline
-    payload has eighteen fields and none is this, and the transcript records
-    nothing about shells either. Claude Code draws its own "N shells" from
-    memory it never writes down.
-    """
-    counts = {}
-    if not raw:
-        return counts
-    for line in raw.splitlines():
-        parts = line.split(None, 2)
-        if len(parts) < 3 or SHELL_MARKER not in parts[2]:
-            continue
-        try:
-            # Both fields, not just the one we key on: a row whose pid does
-            # not parse is not a ps row, and half of it is not evidence.
-            int(parts[0])
-            parent = int(parts[1])
-        except ValueError:
-            continue
-        counts[parent] = counts.get(parent, 0) + 1
-    return counts
-
-
 def shell_command(args):
     """A Claude Code shell's ps args -> the command it is running, or None.
 
@@ -834,28 +815,24 @@ def shell_label(command):
     return rest
 
 
-def uptime_seconds(etime):
-    """ps ELAPSED -> seconds, or None.
+#: How ps prints `lstart`, a process's start as a calendar stamp in local
+#: time, under the C locale the listing is run in.
+PROCESS_START_FORMAT = "%a %b %d %H:%M:%S %Y"
 
-    Four shapes depending on how long ago it started: MM:SS, HH:MM:SS,
-    D-HH:MM:SS, and DD-HH:MM:SS. Anything else is not a duration.
+
+def process_start(lstart):
+    """ps `lstart` -> POSIX seconds, or None.
+
+    The moment a process began rather than how long ago: an elapsed time
+    grows on every rebuild, and a snapshot that differs each time is pushed
+    and redrawn each time for nothing.
     """
-    if not etime or not etime.strip():
-        return None
-    days, _, clock = etime.strip().rpartition("-")
-    parts = clock.split(":")
-    if len(parts) not in (2, 3):
+    if not lstart or not lstart.strip():
         return None
     try:
-        numbers = [int(part) for part in parts]
-        total = int(days) * 86400 if days else 0
-    except ValueError:
+        return int(time.mktime(time.strptime(lstart.strip(), PROCESS_START_FORMAT)))
+    except (ValueError, OverflowError):
         return None
-    if len(numbers) == 3:
-        total += numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
-    else:
-        total += numbers[0] * 60 + numbers[1]
-    return total
 
 
 #: Claude Code passes a teammate its badge colour and its lead's session id
@@ -870,7 +847,7 @@ OWN_REPORT = "/agents-sidebar/hooks-handlers/task.py"
 
 
 def parse_processes(raw, home=None):
-    """One process listing -> (shell commands by parent pid, uptime by pid,
+    """One process listing -> (shell commands by parent pid, start time by pid,
     teammate colour by pid, lead session id by teammate pid).
 
     All four come off the same ps: running it once per fact per rebuild would
@@ -878,19 +855,19 @@ def parse_processes(raw, home=None):
     differs is not pushed off the row by the part that never does.
     """
     home = os.path.expanduser("~") if home is None else home
-    shells, uptime, colours, parents = {}, {}, {}, {}
+    shells, started, colours, parents = {}, {}, {}, {}
     for line in (raw or "").splitlines():
-        parts = line.split(None, 3)
-        if len(parts) < 4:
+        parts = line.split(None, PROCESS_FIELDS)
+        if len(parts) <= PROCESS_FIELDS:
             continue
-        pid, parent, elapsed, args = parts
+        pid, parent, args = parts[0], parts[1], parts[PROCESS_FIELDS]
         try:
             pid, parent = int(pid), int(parent)
         except ValueError:
             continue
-        seconds = uptime_seconds(elapsed)
-        if seconds is not None:
-            uptime[pid] = seconds
+        began = process_start(" ".join(parts[LSTART]))
+        if began is not None:
+            started[pid] = began
         if SHELL_MARKER in args and OWN_REPORT not in args:
             command = shell_command(args) or UNKNOWN
             shells.setdefault(parent, []).append(
@@ -901,18 +878,105 @@ def parse_processes(raw, home=None):
         parent_session = _AGENT_PARENT.search(args)
         if parent_session:
             parents[pid] = parent_session.group(1)
-    return shells, uptime, colours, parents
+    return shells, started, colours, parents
 
 
-def read_processes():
-    """Shell commands, uptimes, teammate colours and leads, from one listing."""
+#: The one process listing a rebuild takes, and the fields before args. Every
+#: fact read off the process table -- shells, start times, teammates,
+#: foreground jobs -- parses this shape, so it is run once: an exec costs tens
+#: of milliseconds on the event loop, and the endpoint agents inspect each
+#: one. -ww: the command sits at the end of a long line, past any width cap.
+#: lstart is five words, so %cpu and rss are the eleventh and twelfth fields
+#: and args the thirteenth.
+PROCESS_LISTING = ["/bin/ps", "-ww", "-eo", "pid=,ppid=,pgid=,tpgid=,tty=,lstart=,%cpu=,rss=,args="]
+PROCESS_FIELDS = 12
+LSTART = slice(5, 10)
+
+
+def parse_resources(raw):
+    """The process listing -> {pid: (parent pid, %cpu, resident KB)}."""
+    table = {}
+    for line in (raw or "").splitlines():
+        parts = line.split(None, PROCESS_FIELDS)
+        if len(parts) <= PROCESS_FIELDS:
+            continue
+        try:
+            table[int(parts[0])] = (int(parts[1]), float(parts[10]), int(parts[11]))
+        except ValueError:
+            continue
+    return table
+
+
+def heavy_on(cpu, rss_kb, settings):
+    """-> which of "cpu" and "memory" are at or over their thresholds.
+
+    Only the verdict goes to the page: the figures move on every reading, and
+    a snapshot that changes every rebuild is pushed every rebuild.
+    """
+    heavy = []
+    if cpu >= settings["cpu_threshold"]:
+        heavy.append("cpu")
+    if rss_kb >= settings["memory_threshold"] * 1024 * 1024:
+        heavy.append("memory")
+    return heavy
+
+
+#: How long a chip stays after its last heavy reading.
+HEAVY_HOLD_SECONDS = 15
+
+
+def hold_heavy(seen, heavy, pid, now):
+    """-> the kinds `pid` has read heavy within the hold, in heavy_on's order.
+
+    Under load a process pegging a core reads anywhere from a quarter to most
+    of one from one listing to the next, so a session near a threshold would
+    light and clear every refresh. `seen` maps (pid, kind) to its last heavy
+    reading and is updated in place.
+    """
+    for kind in heavy:
+        seen[(pid, kind)] = now
+    return [kind for kind in ("cpu", "memory")
+            if now - seen.get((pid, kind), -HEAVY_HOLD_SECONDS) < HEAVY_HOLD_SECONDS]
+
+
+def forget_heavy(seen, live):
+    """Drop the holds of sessions whose process is no longer listed."""
+    for key in [key for key in seen if key[0] not in live]:
+        del seen[key]
+
+
+def tree_usage(table, root, stop_at):
+    """(%cpu, resident KB) summed over `root` and every process below it.
+
+    A descendant in `stop_at` is another session's card and is left to it,
+    so one busy teammate does not light its lead as well.
+    """
+    children = {}
+    for pid, (parent, _, _) in table.items():
+        children.setdefault(parent, []).append(pid)
+    cpu, rss, pending = 0.0, 0, [root] if root in table else []
+    while pending:
+        pid = pending.pop()
+        cpu += table[pid][1]
+        rss += table[pid][2]
+        pending.extend(child for child in children.get(pid, []) if child not in stop_at)
+    return cpu, rss
+
+
+def read_process_listing():
+    """The process table as text, or "" when ps cannot be run."""
     try:
-        # -ww: the command sits at the end of a long line, past any width cap.
-        out = subprocess.run(["/bin/ps", "-ww", "-eo", "pid=,ppid=,etime=,args="],
-                             capture_output=True, text=True, timeout=5).stdout
+        # The C locale pins lstart's shape whatever iTerm2 was started under.
+        return subprocess.run(PROCESS_LISTING, capture_output=True, text=True,
+                              timeout=5, env={**os.environ, "LC_ALL": "C"}).stdout
     except (OSError, subprocess.SubprocessError):
-        return {}, {}, {}, {}
-    return parse_processes(out)
+        return ""
+
+
+def read_system():
+    """Everything a rebuild learns from outside iTerm2, off one ps and one tmux."""
+    listing = read_process_listing()
+    return parse_processes(listing), read_tmux_panes(listing), parse_resources(listing)
 
 
 #: Programs that run a script: the script names what is running, not them.
@@ -936,7 +1000,7 @@ def foreground_command(args):
 
 
 def parse_foreground(out):
-    """`ps -eo pid=,pgid=,tpgid=,tty=,args=` -> {tty: what its foreground runs}.
+    """The process listing -> {tty: what its foreground runs}.
 
     A terminal's foreground job is its foreground process group; the group's
     leader is the command that was typed. Its children (a vendored binary, a
@@ -944,10 +1008,10 @@ def parse_foreground(out):
     """
     running = {}
     for line in out.splitlines():
-        parts = line.split(None, 4)
-        if len(parts) < 5 or parts[3] in ("??", "-"):
+        parts = line.split(None, PROCESS_FIELDS)
+        if len(parts) <= PROCESS_FIELDS or parts[4] in ("??", "-"):
             continue
-        pid, pgid, tpgid, tty, args = parts
+        pid, _, pgid, tpgid, tty, args = *parts[:5], parts[PROCESS_FIELDS]
         if pid == pgid == tpgid:
             command = foreground_command(args)
             if command:
@@ -972,14 +1036,15 @@ def parse_tmux_panes(out):
 TMUX_PATHS = ("/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux")
 
 
-def read_tmux_panes():
+def read_tmux_panes(listing):
     """{tmux pane number: {job, path}}, or {} without tmux.
 
     iTerm2 cannot see inside a tmux pane: it reports no jobName, and a `path`
     that can belong to another pane of the same tmux window, which gave
     sessions each other's branches and nested teammates under the wrong
-    agent. tmux knows both. One tmux listing and one process listing per
-    rebuild, however many panes there are.
+    agent. tmux knows the pane, and the process listing the rebuild already
+    holds knows what runs on its tty. One tmux listing per rebuild, however
+    many panes there are.
     """
     tmux = next((path for path in TMUX_PATHS if os.path.exists(path)), None)
     if tmux is None:
@@ -988,30 +1053,13 @@ def read_tmux_panes():
         panes = subprocess.run([tmux, "list-panes", "-a", "-F",
                                 "#{pane_id} #{pane_tty} #{pane_current_path}"],
                                capture_output=True, text=True, timeout=3).stdout
-        if not panes:
-            return {}
-        out = subprocess.run(["/bin/ps", "-ww", "-eo", "pid=,pgid=,tpgid=,tty=,args="],
-                             capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
         return {}
-    running = parse_foreground(out)
+    if not panes:
+        return {}
+    running = parse_foreground(listing)
     return {number: {"job": running.get(pane["tty"]), "path": pane["path"]}
             for number, pane in parse_tmux_panes(panes).items()}
-
-
-def read_shells():
-    """Shell counts for every session, from one process listing.
-
-    One subprocess per rebuild rather than one per row: this runs for every
-    session every two seconds, and the per-row version of exactly this
-    reasoning is why git_branch reads .git/HEAD instead of shelling out.
-    """
-    try:
-        out = subprocess.run(["/bin/ps", "-eo", "pid=,ppid=,args="],
-                             capture_output=True, text=True, timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        return {}
-    return parse_shells(out)
 
 
 def _reported_at(raw):
@@ -1171,11 +1219,13 @@ STATUS_DIR = os.path.expanduser("~/.claude/agents-sidebar-status")
 TASKS_DIR = os.path.expanduser("~/.claude/agents-sidebar-tasks")
 
 
-def read_task(session_id, now):
-    """What the session last said it was doing, with the report's age, or None.
+def read_task(session_id):
+    """What the session last said it was doing, and when, or None.
 
-    The note is the session's own claim; the daemon adds only the age, so
-    the page can grey a report nobody refreshed rather than trust it.
+    The note is the session's own claim, stamped by the reporting script;
+    the page works the report's age out from the stamp on its own clock, so
+    it can grey one nobody refreshed without the snapshot changing every
+    tick to say so.
     """
     if not session_id:
         return None
@@ -1186,15 +1236,16 @@ def read_task(session_id, now):
         return None
     if not isinstance(note, dict) or "task" not in note:
         return None
-    ts = note.get("ts") if isinstance(note.get("ts"), (int, float)) else 0
+    ts = note.get("ts")
     return {"title": note.get("title"), "activity": note.get("activity"),
             "percent": note.get("percent") if isinstance(note.get("percent"), int) else None,
-            "done": bool(note.get("done")), "age": max(0, round(now - ts))}
+            "done": bool(note.get("done")),
+            "reported_at": ts if isinstance(ts, (int, float)) else None}
 
 
 #: How old a statusline payload may be and still describe its pid. Claude Code
-#: renders at refreshInterval 1, so a live session rewrites its file every
-#: second; anything this far behind belongs to a process that has stopped
+#: renders every tick, so a live session rewrites its file every
+#: few seconds; anything this far behind belongs to a process that has stopped
 #: rendering or died. macOS reuses pids, and these files outlive the process
 #: they are named for, so without this a recycled pid reads as another
 #: session's context.
@@ -1355,7 +1406,7 @@ def details(payload, field):
 
 
 #: A status file this old was left by a session that has exited; a live one
-#: is rewritten every second.
+#: is rewritten every few seconds.
 STATUS_SWEEP_AFTER = 86400
 #: Every file the bridge has ever written beside a session's payload: the
 #: payload, the rendered line, the render lock, and the temp files of this
@@ -1816,6 +1867,10 @@ class Bridge:
         #: daemon that has never reached iTerm2 reports unfresh rather than
         #: publishing its empty starting list as though it were an answer.
         self.last_ok = None
+        self._rebuilding = False
+        self._rebuild_again = False
+        #: (pid, kind) -> when that session last read heavy, for hold_heavy.
+        self._heavy_seen = {}
         self.trips = ReturnTrips()
         self.notifier_missing_said = False
         self.notices = Notices()
@@ -1828,20 +1883,22 @@ class Bridge:
         return session.session_id if session else None
 
     async def read_sessions(self):
-        shells, uptime, agent_colours, agent_parents = read_processes()
-        tmux_panes = read_tmux_panes()
-        rows = []
+        # Two execs and a walk of the process table: in a thread, or the
+        # heartbeat, the settings sheet and every focus click wait behind them.
+        (shells, started, agent_colours, agent_parents), tmux_panes, resources = \
+            await asyncio.to_thread(read_system)
+        rows, pids = [], []
         for window_index, window in enumerate(self.app.terminal_windows, start=1):
             for tab_index, tab in enumerate(window.tabs, start=1):
                 for pane_index, session in enumerate(tab.sessions, start=1):
-                    values = {}
-                    for name in SESSION_VARIABLES:
-                        try:
-                            values[name] = await session.async_get_variable(name)
-                        except Exception:            # noqa: BLE001
-                            # Unreadable is a real state, not an error to hide.
-                            # classify renders it as "?".
-                            values[name] = None
+                    # Issued together: each is a round trip to iTerm2.
+                    # Unreadable is a real state, not an error to hide;
+                    # classify renders it as "?".
+                    read = await asyncio.gather(
+                        *(session.async_get_variable(name) for name in SESSION_VARIABLES),
+                        return_exceptions=True)
+                    values = {name: None if isinstance(value, BaseException) else value
+                              for name, value in zip(SESSION_VARIABLES, read)}
                     pane = tmux_panes.get(values["tmuxWindowPane"]) or {}
                     # tmux's directory for its own pane over iTerm2's guess.
                     values["path"] = pane.get("path") or values["path"]
@@ -1885,12 +1942,12 @@ class Bridge:
                         "agent_name": marks["agent"],
                         "team": marks["team"],
                         "shells": shells.get(pid, []),
-                        "uptime": uptime.get(pid),
+                        "started_at": started.get(pid),
                         # A teammate wears the colour it was spawned with; a
                         # session wears the one cs gave its directory.
                         "colour": agent_colours.get(pid)
                                   or session_colour(values["path"]),
-                        "task": read_task(parse_session(raw), time.time()),
+                        "task": read_task(parse_session(raw)),
                         # Who spawned this pane, and which Claude session it
                         # is, so a teammate can be nested under its lead.
                         "parent_session": agent_parents.get(pid),
@@ -1898,12 +1955,39 @@ class Bridge:
                         "branch": git_branch(values["path"]),
                         "worktree_of": git_main_worktree(values["path"]),
                     })
+                    pids.append(pid)
+        # After every row is known: a session's tree ends where another's begins.
+        settings, roots, now = load_settings(), set(pids), time.monotonic()
+        forget_heavy(self._heavy_seen, roots)
+        for row, pid in zip(rows, pids):
+            row["heavy"] = hold_heavy(self._heavy_seen, heavy_on(
+                *tree_usage(resources, pid, roots), settings), pid, now)
         return rows
 
     def healthy(self):
         return rebuild_is_fresh(self.last_ok, time.monotonic())
 
     async def rebuild(self):
+        """Read everything and push the result if it changed.
+
+        Asked for while one is under way -- a tab opening fires several
+        layout events -- it only marks that the running one should go round
+        once more, so a burst costs two readings, not one each.
+        """
+        if self._rebuilding:
+            self._rebuild_again = True
+            return
+        self._rebuilding = True
+        try:
+            while True:
+                self._rebuild_again = False
+                await self._rebuild_once()
+                if not self._rebuild_again:
+                    return
+        finally:
+            self._rebuilding = False
+
+    async def _rebuild_once(self):
         await self.app.async_refresh()
         self.latest = snapshot(await self.read_sessions())
         self.latest["version"] = version()

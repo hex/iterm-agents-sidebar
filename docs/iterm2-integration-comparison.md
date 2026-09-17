@@ -54,6 +54,8 @@ and being first-party, so it survives iTerm2 upgrades without a daemon.
 
 ## Decision
 
-Keep ours. Theirs is a status dot; ours is the reason to look. Two things
-worth borrowing later: the `working` hold while background tasks run, and
-Workgroups, which are a general iTerm2 feature we could enter from a card.
+Keep ours. Theirs is a status dot; ours is the reason to look. One thing
+borrowed since: the `working` hold while background tasks run. Workgroups
+were looked at on 2026-09-17 and skipped: the Python API has no workgroup
+calls, only the menu items reach one, and a pane layout around a session is
+what cs already arranges with tmux.

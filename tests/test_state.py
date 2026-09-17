@@ -322,20 +322,21 @@ def test_read_task_reports_the_note_with_its_age(tmp_path, monkeypatch):
     (tmp_path / "abc.json").write_text(json.dumps({
         "task": "t1", "title": "Fix login", "activity": "Reading code",
         "percent": 35, "done": False, "ts": 1789000000}))
-    assert read_task("abc", now=1789000040) == {
-        "title": "Fix login", "activity": "Reading code", "percent": 35, "done": False, "age": 40}
+    assert read_task("abc") == {
+        "title": "Fix login", "activity": "Reading code", "percent": 35, "done": False,
+        "reported_at": 1789000000}
 
 
 def test_read_task_of_a_session_without_a_note_or_with_a_broken_one(tmp_path, monkeypatch):
     from sidebar import read_task
     monkeypatch.setattr(sidebar, "TASKS_DIR", str(tmp_path))
-    assert read_task("none", now=1) is None
-    assert read_task(None, now=1) is None
+    assert read_task("none") is None
+    assert read_task(None) is None
     (tmp_path / "bad.json").write_text("{nope")
-    assert read_task("bad", now=1) is None
+    assert read_task("bad") is None
     (tmp_path / "half.json").write_text('{"task": "t", "title": "x"}')
-    assert read_task("half", now=1789000000) == {
-        "title": "x", "activity": None, "percent": None, "done": False, "age": 1789000000}
+    assert read_task("half") == {
+        "title": "x", "activity": None, "percent": None, "done": False, "reported_at": None}
 
 
 def test_parse_question():
