@@ -22,7 +22,9 @@ POINTER_FILL, POINTER_EDGE = "#1c1c1e", "#ffffff"
 SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 MONO = "ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace"
 
-WX, WY, WW, WH = 88, 40, 1360, 534
+# The window nearly fills the frame: what is left is room for its shadow,
+# because the transparent margin reads as a white border on GitHub.
+WX, WY, WW, WH = 16, 12, 1504, 578
 BAR = 44
 PANEL_W = 430
 PX = WX + WW - PANEL_W
@@ -108,7 +110,7 @@ A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="100%" '
 A('  <title>Agents sidebar</title>')
 A(f'''  <defs>
     <filter id="drop" x="-6%" y="-14%" width="112%" height="140%">
-      <feDropShadow dx="0" dy="14" stdDeviation="22" flood-color="#1c1c1e" flood-opacity="0.20"/>
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#1c1c1e" flood-opacity="0.22"/>
     </filter>
     <pattern id="tickmask" width="9" height="5" patternUnits="userSpaceOnUse">
       <rect width="5" height="5" fill="#ffffff"/>
@@ -283,7 +285,7 @@ y = WY + BAR + 30
 head(y, "AGENTS")
 
 # A session at work, its own report under its name, and a teammate below it.
-c1 = y + 14
+c1 = y + 20
 card(c1, 114)
 working_dots(c1 + 20, "#e8833a")
 text(TEXT_X, c1 + 31, "atlas", fill=FG, size=15, weight=600)
@@ -307,7 +309,7 @@ for i in range(3):
 text(CARD_X + 78, t1 + 22, "reviewer", fill=DIM, size=13)
 
 # The session that needs you: beat one turns the whole card amber.
-c2 = t1 + 36
+c2 = t1 + 42
 card(c2, 80)
 A(f'  <g opacity="0">{cycle("opacity", "0;0;1;1;0;0", "0;0.22;0.28;0.66;0.74;1")}'
   f'<rect x="{CARD_X}" y="{c2}" width="{CARD_W}" height="80" rx="10" fill="{BLOCKED_BG}" '
@@ -320,7 +322,7 @@ badge(c2 + 14, "WAITING", filled=True,
       animation=cycle("opacity", "0;0;1;1;0;0", "0;0.22;0.28;0.66;0.74;1"))
 
 # One finished, and one whose tree is eating the machine.
-c3 = c2 + 86
+c3 = c2 + 94
 card(c3, 80)
 swatch(c3 + 20, "#8e8e93")
 text(TEXT_X, c3 + 31, "ember", fill=FG, size=15, weight=600)
@@ -334,7 +336,7 @@ A('  </g>')
 badge(c3 + 14, "IDLE")
 
 # The plain terminals, under their own heading.
-s1 = c3 + 80
+s1 = c3 + 88
 head(s1 + 26, "SESSIONS")
 card(s1 + 36, 50)
 swatch(s1 + 55, None, hollow=True)
