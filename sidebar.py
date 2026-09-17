@@ -6,6 +6,7 @@ above is what iTerm2 parses to pick an interpreter -- it resolves
 `iterm2env-3.10` from it -- so do not drop the version.
 """
 import asyncio
+import datetime
 import hmac
 import json
 import os
@@ -1162,7 +1163,7 @@ def _epoch(value):
 
 
 def parse_subagents(raw):
-    """The claudeState payload -> the running subagents: [{type, since}].
+    """The claudeState payload -> the subagents as a tree: [{type, since, depth, ...}].
 
     An entry that is not an object is dropped; a field that is not what it
     should be becomes None rather than taking the entry down with it.
@@ -1174,10 +1175,40 @@ def parse_subagents(raw):
     if not isinstance(listed, list):
         return []
     text = lambda value: value if isinstance(value, str) and value else None
+    items = [item for item in listed if isinstance(item, dict)]
     return [{"type": text(item.get("type")), "since": _epoch(item.get("since")),
              "ended": _epoch(item.get("ended")),
-             "name": text(item.get("name")), "model": short_model(item.get("model"))}
-            for item in listed if isinstance(item, dict)]
+             "name": text(item.get("name")), "model": short_model(item.get("model")),
+             "depth": depth}
+            for item, depth in _subagent_tree(items, text)]
+
+
+def _subagent_tree(items, text):
+    """Flat subagents, oldest first -> [(item, depth)] with each one's own
+    subagents directly below it.
+
+    A parent that is not in the list makes its child a top-level entry, and
+    entries caught in a parent loop are kept at the top after the rest.
+    """
+    ids = {text(item.get("id")) for item in items} - {None}
+    children = {}
+    for item in items:
+        parent = text(item.get("parent"))
+        children.setdefault(parent if parent in ids else None, []).append(item)
+    ordered, placed = [], set()
+
+    def place(item, depth):
+        placed.add(id(item))
+        ordered.append((item, depth))
+        own_id = text(item.get("id"))
+        for child in children.get(own_id, []) if own_id else []:
+            if id(child) not in placed:
+                place(child, depth + 1)
+
+    for item in children.get(None, []):
+        place(item, 0)
+    ordered += [(item, 0) for item in items if id(item) not in placed]
+    return ordered
 
 
 def short_model(model_id):
@@ -1217,6 +1248,112 @@ def parse_working_since(raw):
         return _epoch(json.loads(raw).get("working_since"))
     except (ValueError, TypeError, AttributeError):
         return None
+
+
+#: Where the codex plugin keeps its jobs: one directory per workspace, each
+#: with a state.json listing that workspace's last fifty jobs.
+CODEX_JOBS_DIR = os.path.expanduser("~/.claude/plugins/data/codex-openai-codex/state")
+
+
+def _iso_epoch(value):
+    """An ISO 8601 time such as 2026-09-17T15:00:01.000Z -> epoch s, or None.
+
+    Python 3.10, which iTerm2 runs this under, does not read a trailing Z."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return round(datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return None
+
+
+def parse_codex_state(raw):
+    """A codex plugin state.json -> its jobs: [{id, session, kind, status,
+    phase, pid, since, ended}].
+
+    Prompts, results and rendered reviews stay behind: they are the bulk of
+    the file and nothing on a card needs them. A file of another version is
+    skipped rather than guessed at.
+    """
+    try:
+        doc = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(doc, dict) or doc.get("version") != 1 or not isinstance(doc.get("jobs"), list):
+        return []
+    text = lambda value: value if isinstance(value, str) and value else None
+    jobs = []
+    for item in doc["jobs"]:
+        if not isinstance(item, dict) or not (text(item.get("id")) and text(item.get("sessionId"))
+                                              and text(item.get("status"))):
+            continue
+        pid = item.get("pid")
+        jobs.append({"id": item["id"], "session": item["sessionId"], "kind": text(item.get("kindLabel")),
+                     "status": item["status"], "phase": text(item.get("phase")),
+                     "pid": pid if isinstance(pid, int) and not isinstance(pid, bool) else None,
+                     "since": _iso_epoch(item.get("startedAt")) or _iso_epoch(item.get("createdAt")),
+                     "ended": _iso_epoch(item.get("completedAt"))})
+    return jobs
+
+
+def codex_job_rows(jobs, session, turn_started, live_pids):
+    """The session's Codex jobs as subagent entries, oldest first.
+
+    A job is running while its status says so and its process, when it has
+    one yet, is alive: a companion that died mid-job never writes its end.
+    A job that ended is kept only when it ended after the latest prompt, as
+    a finished subagent is.
+    """
+    listed = []
+    for job in jobs:
+        if job["session"] != session:
+            continue
+        active = job["status"] in ("queued", "running")
+        running = active and (job["pid"] is None or job["pid"] in live_pids)
+        ended_this_turn = (not active and turn_started is not None
+                           and job["ended"] is not None and job["ended"] >= turn_started)
+        if not (running or ended_this_turn):
+            continue
+        listed.append({"id": job["id"], "parent": None, "type": job["kind"], "since": job["since"],
+                       "ended": None if running else job["ended"], "name": None, "model": None,
+                       "provider": "codex", "phase": job["phase"]})
+    return sorted(listed, key=lambda row: row["since"] or 0)
+
+
+def merge_codex_rows(subagents, codex_rows):
+    """Subagents as a tree plus the Codex rows, each placed at the top level
+    before the first top-level subagent that started after it."""
+    merged = list(subagents)
+    for row in codex_rows:
+        at = next((i for i, sub in enumerate(merged)
+                   if sub["depth"] == 0 and (sub["since"] or 0) > (row["since"] or 0)), len(merged))
+        merged.insert(at, {**row, "depth": 0})
+    return merged
+
+
+def parse_turn_started(raw):
+    """The claudeState payload -> when its latest prompt arrived, or None."""
+    try:
+        return _epoch(json.loads(raw).get("turn_started"))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def read_codex_jobs():
+    """Every job in every workspace the codex plugin has kept. [] without it."""
+    try:
+        with os.scandir(CODEX_JOBS_DIR) as it:
+            stores = [os.path.join(e.path, "state.json") for e in it if e.is_dir()]
+    except OSError:
+        return []
+    jobs = []
+    for path in stores:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                jobs += parse_codex_state(fh.read())
+        except OSError:
+            continue
+    return jobs
 
 
 def parse_model(status):
@@ -1468,13 +1605,18 @@ def sweep_status_dir(now):
         except OSError:
             pass
     # A task note outlives its session the same way; a day-old one is nobody's.
+    # Its lock goes with it, but only once no fresh note stands beside it:
+    # taking a lock never touches the file, so a live session's lock is old.
     try:
         with os.scandir(TASKS_DIR) as it:
-            notes = [(e.name, e.stat().st_mtime) for e in it if e.name.endswith(".json")]
+            found = [(e.name, e.stat().st_mtime) for e in it]
     except OSError:
         return
-    for name, mtime in notes:
-        if now - mtime > STATUS_SWEEP_AFTER:
+    fresh = {name[:-len(".json")] for name, mtime in found
+             if name.endswith(".json") and now - mtime <= STATUS_SWEEP_AFTER}
+    for name, mtime in found:
+        stem, ext = os.path.splitext(name)
+        if ext in (".json", ".lock") and now - mtime > STATUS_SWEEP_AFTER and stem not in fresh:
             try:
                 os.remove(os.path.join(TASKS_DIR, name))
             except OSError:
@@ -1914,6 +2056,7 @@ class Bridge:
         # heartbeat, the settings sheet and every focus click wait behind them.
         (shells, started, agent_colours, agent_parents), tmux_panes, resources = \
             await asyncio.to_thread(read_system)
+        codex_jobs = await asyncio.to_thread(read_codex_jobs)
         rows, pids = [], []
         for window_index, window in enumerate(self.app.terminal_windows, start=1):
             for tab_index, tab in enumerate(window.tabs, start=1):
@@ -1956,7 +2099,12 @@ class Bridge:
                         "provider": provider,
                         "agent_state": parse_state(raw),
                         "agents": parse_agents(raw),
-                        "subagents": parse_subagents(raw),
+                        # A Codex job a Claude session started through the
+                        # codex plugin runs outside its process tree, so the
+                        # plugin's own job store is the only place it shows.
+                        "subagents": merge_codex_rows(parse_subagents(raw), codex_job_rows(
+                            codex_jobs, parse_session(raw), parse_turn_started(raw), resources)
+                            if provider == "claude" else []),
                         "blocked_since": parse_blocked_since(raw),
                         "question": parse_question(raw),
                         "working_since": parse_working_since(raw),

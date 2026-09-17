@@ -108,7 +108,7 @@ def live_agents(doc):
 
 
 def subagents(doc):
-    """The running subagents, oldest first: [{type, since}].
+    """The subagents of this turn, oldest first: [{id, parent, type, since, ...}].
 
     SubagentStart names what kind of agent it is, never what it was asked to
     do; the task description travels on a tool event with no agent id, and
@@ -119,7 +119,8 @@ def subagents(doc):
     listed = [(since, agent_id, None) for agent_id, since in (doc.get("agents") or {}).items()]
     listed += [(done["since"], agent_id, done["ended"])
                for agent_id, done in (doc.get("finished") or {}).items()]
-    return [{"type": types.get(agent_id) or None, "since": round(since),
+    return [{"id": agent_id, "parent": (info.get(agent_id) or {}).get("parent"),
+             "type": types.get(agent_id) or None, "since": round(since),
              "ended": round(ended) if ended is not None else None,
              "name": (info.get(agent_id) or {}).get("name"),
              "model": (info.get(agent_id) or {}).get("model")}
@@ -145,13 +146,18 @@ def _subagent_file(transcript_path, agent_id, suffix):
     return found[0] if found else direct
 
 
-def _subagent_name(path):
+def _subagent_meta(path):
+    """A subagent's meta file as {name, parent}, or None while it is unreadable.
+
+    parentAgentId is there only for a subagent another subagent started."""
     try:
         with open(path, encoding="utf-8") as fh:
-            name = json.load(fh).get("description")
+            meta = json.load(fh)
+        name, parent = meta.get("description"), meta.get("parentAgentId")
     except (OSError, ValueError, AttributeError):
         return None
-    return name if isinstance(name, str) and name else None
+    return {"name": name if isinstance(name, str) and name else None,
+            "parent": parent if isinstance(parent, str) and parent else None}
 
 
 def _subagent_model(path):
@@ -177,15 +183,20 @@ def describe_subagents(doc, transcript_path):
     SubagentStart names only the agent's type. Its description (a workflow
     agent's label) is in the meta file, written in the same second as the
     event and so possibly not there yet, and its model appears with its first
-    reply. Whatever is still missing is looked for again on the next event.
+    reply. The meta file also names the agent that started a nested one.
+    Whatever is still missing is looked for again on the next event.
     """
     if not transcript_path:
         return doc
     info = dict(doc.get("agent_info") or {})
     for agent_id in [*(doc.get("agents") or {}), *(doc.get("finished") or {})]:
         known = dict(info.get(agent_id) or {})
-        if not known.get("name"):
-            known["name"] = _subagent_name(_subagent_file(transcript_path, agent_id, ".meta.json"))
+        if not known.get("name") or "parent" not in known:
+            meta = _subagent_meta(_subagent_file(transcript_path, agent_id, ".meta.json"))
+            if meta:
+                known.update(meta)
+            else:
+                known.setdefault("name", None)
         if not known.get("model"):
             known["model"] = _subagent_model(_subagent_file(transcript_path, agent_id, ".jsonl"))
         info[agent_id] = known
@@ -231,6 +242,12 @@ def working_since(doc):
     if aggregate(doc) != "working" or not isinstance(started, (int, float)):
         return None
     return round(started)
+
+
+def turn_started(doc):
+    """When the latest prompt arrived (epoch s), working or not, or None."""
+    started = doc.get("turn_started")
+    return round(started) if isinstance(started, (int, float)) else None
 
 
 def aggregate(doc):
@@ -451,10 +468,14 @@ def read_note(session_id):
 
 
 def clear_note(session_id):
+    """Remove the session's task note, under the lock task.py holds while it
+    writes, so a report in flight cannot bring the note back."""
     if not session_id:
         return
     try:
-        os.remove(os.path.join(TASKS_DIR, f"{session_id}.json"))
+        with open(os.path.join(TASKS_DIR, f"{session_id}.lock"), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            os.remove(os.path.join(TASKS_DIR, f"{session_id}.json"))
     except OSError:
         pass
 
@@ -667,6 +688,7 @@ def published(doc, pid, payload, codex, now):
     value = {"state": aggregate(doc), "pid": pid, "session": payload.get("session_id"),
              "agents": live_agents(doc), "subagents": subagents(doc),
              "blocked_since": blocked_since(doc), "working_since": working_since(doc),
+             "turn_started": turn_started(doc),
              "question": doc.get("question") if doc.get("gates") else None,
              "ts": round(now)}
     if codex:

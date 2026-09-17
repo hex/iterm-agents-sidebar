@@ -12,7 +12,7 @@ request, but the panel fetches the page only once, when it connects, so a UI
 change needs the script restarted from the Scripts menu. The new run takes a
 port the OS picks, and the panel follows the re-registered URL.
 
-The daemon binds `127.0.0.1` and checks a random 32-byte token on every
+The daemon binds `127.0.0.1` and checks a token of 24 random bytes on every
 request, including the event stream. Focus, send and close are the only three
 things the panel can do to a session, and no endpoint runs arbitrary code.
 

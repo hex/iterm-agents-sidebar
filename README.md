@@ -75,7 +75,10 @@ card wears the OpenAI mark instead of the Claude one, and has no teammates and
 no background-shell line.
 
 Teammates nest inside the card. Running subagents get a row each, with the
-model they reply with and how long they have run. Background shells fold into
+model they reply with and how long they have run. A subagent started by another
+subagent sits one step in, under the one that started it. A Codex job started
+through the codex plugin (a rescue or a review) gets a row too, with its phase.
+Background shells fold into
 one line ("2 commands running") that opens on a click, and clicking a shell
 shows the whole command with a Copy button.
 
