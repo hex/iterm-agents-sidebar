@@ -12,12 +12,20 @@ dependencies beyond the standard library.
 ## Install
 
 ```sh
+git clone https://github.com/hex/iterm-agents-sidebar.git
+cd iterm-agents-sidebar
 ./install.sh
 ```
 
-That writes a small stub into `~/Library/Application Support/iTerm2/Scripts/AutoLaunch/`
-which loads `sidebar.py` from this repo. Editing `sidebar.py` or `page.html`
-needs no reinstall.
+The clone is the install: the script writes a small stub into
+`~/Library/Application Support/iTerm2/Scripts/AutoLaunch/` which loads
+`sidebar.py` from the checkout, so keep the directory where it is. Editing
+`sidebar.py` or `page.html` needs no reinstall, and `git pull` updates it.
+
+A release number reads `YYYY.MM.BUILD`, and the last part counts the releases
+of that month: `2026.09.1`, `2026.09.2`, then `2026.10.1`. The number sits in `VERSION`,
+in the plugin manifest, at the foot of the panel's settings, and on a `v` tag
+in this repository. `./release.sh "summary"` cuts the next one.
 
 The daemon re-reads `page.html` on every request, but the Toolbelt panel only
 fetches the page once, when it connects. To see a UI change, restart the script
@@ -123,7 +131,10 @@ card amber with a WAITING badge, and nothing else on the panel uses that
 colour. A session at rest carries a grey IDLE outline, with a faint light sweeping
 through the word every two seconds (none when macOS reduces motion). One whose turn has been
 working for 20 minutes or more gets a warm `long 25m` outline, since it may
-have stalled; the hook stamps when your prompt started the turn. Its teammates sit
+have stalled; the hook stamps when your prompt started the turn. A session whose
+turn has ended while a background shell, subagent, workflow or monitor it started
+still runs stays working, since that task's end wakes it; a background command
+that never ends holds it working until your next prompt. Its teammates sit
 inside the card under a guide line, their working dots stacked vertically.
 
 Rows read `t3` for the third tab, `t3.2` for the second pane of a split tab,
@@ -186,6 +197,14 @@ lead's own session id comes from its statusline payload, so the panel needs
 the statusline bridge to make that match. It wears the badge colour Claude
 Code gave it, read off the same command line's `--agent-color`, which is the
 only place that colour is kept, and takes the name Claude Code calls it by.
+
+A session running in a linked git worktree of another open session's repo
+(a cs feature session in `<repo>@worktree`, say) keeps a card of its own,
+placed right after that session's card and tied to it by a short line
+across the gap, and is named by its feature, the part after the `@`, since
+the branch has its own chip; a worktree directory without an `@` is named by
+its branch. When the main session is not open it stays where it is under its
+own name.
 
 Under its name, an agent shows what it says it is doing: a task title, then
 `Reading code · 40s`, then a row of ticks, green as far along as it says it
@@ -342,7 +361,7 @@ manual smoke test against a live iTerm2 instead.
 
 ## Notes
 
-The tool identifier `com.hex.agents-sidebar` is permanent. `iterm2.tool`
+The tool identifier `com.hexul.agents-sidebar` is permanent. `iterm2.tool`
 exposes only `async_register_web_view_tool` and no way to unregister, so an identifier
 stays in the Toolbelt once anything registers it. Re-registering it with a new
 URL does work, which is why the daemon can take an ephemeral port and still

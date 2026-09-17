@@ -105,6 +105,34 @@
   li.line.card:has(> button.row:hover) { background: var(--card-hover); }
   li.line.card > button.row { border-radius: 7px; }
   li.line.card > button.row:hover { background: none; }
+  /* A session in a linked worktree of the card above: its own card, docked
+     under that one with no gap and a dashed seam, so the pair reads as one
+     object holding two sessions, washed lightly in the main session's
+     colour. The seam is the elastic part: a dashed line drawn across the
+     card's top edge, straight at rest, and plucked like a string whenever
+     the pair moves, so it bows a few pixels and rings back flat. It is
+     drawn (paintSeams) rather than being a border, since a border cannot
+     bend. */
+  li.line.card:has(+ li.line.card.worktree) {
+    margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+  }
+  li.line.card.worktree {
+    margin-top: -1px; border-top-color: transparent;
+    border-top-left-radius: 0; border-top-right-radius: 0;
+  }
+  li.line.card.worktree > svg.seam {
+    position: absolute; z-index: 1; overflow: visible; pointer-events: none;
+    left: 0; top: -1px; width: 100%; height: 1px; color: var(--card-border);
+  }
+  /* A light wash of the colour of the session it belongs to; its own colour
+     stays on its mark and the band. A session without a colour leaves the
+     card plain. */
+  li.line.card.worktree[style*="--family"] {
+    background: color-mix(in srgb, var(--family) 4%, var(--card));
+  }
+  li.line.card.worktree[style*="--family"]:has(> button.row:hover) {
+    background: color-mix(in srgb, var(--family) 7%, var(--card-hover));
+  }
   /* The one exception: amber across the whole card and a heavier edge all
      round, visible without reading a word. The extra weight is an inset ring
      rather than a wider border, so the card keeps its size and nothing shifts
@@ -745,6 +773,11 @@
     font: 600 9px/1 -apple-system, sans-serif; letter-spacing: .1em;
     text-transform: uppercase; color: var(--dim); margin-top: 2px;
   }
+  .set-version {
+    font: 11px/1.2 -apple-system, sans-serif; color: var(--dim);
+    margin-top: 10px; padding-top: 8px;
+    border-top: 1px dotted color-mix(in srgb, var(--fg) 16%, transparent);
+  }
 
   /* A switch, not a checkbox: its state is legible without reading a label. */
   .step {
@@ -1062,7 +1095,7 @@ function syncBreathe(el) {
 const STALE_AFTER_MS = 9000;
 // Below this there is room to spare and nothing to decide.
 // Overridden by the stored setting once it loads.
-const CONTEXT_SPEAKS_AT = 70;
+const CONTEXT_SPEAKS_AT = 40;
 const speaksAt = () => SETTINGS?.context_threshold ?? CONTEXT_SPEAKS_AT;
 
 // Everything in the panel is sized in px off one stylesheet, so one zoom on
@@ -1587,10 +1620,13 @@ function animateRows(before) {
 
   // Beat two. Cards hold their old height through the fade, then ease to the
   // new one, clipped so a growing card never shows what has not arrived yet.
+  // A worktree card's seam lies on and above its top edge, where overflow
+  // would cut it, so that card is clipped by a shape open at the top.
   for (const {li, from, to} of resizing) {
-    li.style.overflow = "clip";
+    const clip = li.classList.contains("worktree") ? "clipPath" : "overflow";
+    li.style[clip] = clip === "clipPath" ? "inset(-16px 0 0 0 round 0 0 8px 8px)" : "clip";
     li.animate([{height: from + "px"}, {height: to + "px"}], {...MOVE, delay: settleAt, fill: "backwards"})
-      .finished.finally(() => { li.style.overflow = ""; });
+      .finished.finally(() => { li.style[clip] = ""; });
   }
   for (const {li, dy} of moving) {
     li.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}],
@@ -1599,6 +1635,14 @@ function animateRows(before) {
   for (const {el, dy} of lineMoves) {
     el.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}],
                {...MOVE, delay: settleAt, fill: "backwards"});
+  }
+
+  // The elastic seam: a docked worktree card whose pair moved, resized or
+  // arrived has its dashed seam plucked.
+  const stirred = new Set([...moving, ...resizing].map(m => m.li).concat(entering));
+  for (const li of cards) {
+    if (!li.classList.contains("worktree")) continue;
+    if (stirred.has(li) || stirred.has(li.previousElementSibling)) pluck(li);
   }
 
   // Beat three.
@@ -1613,7 +1657,34 @@ function render(snapshot) {
   paintQueue(snapshot);
   paintBudget(snapshot);
   fitMeta();
+  paintSeams();
   animateRows(before);
+}
+
+// The dashed seam between a docked worktree card and the card it hangs
+// from: a line across the card's top edge, bowed by `sag` pixels at its
+// middle. Zero is the resting line, which looks like a dashed border.
+function paintSeam(li, sag) {
+  const svg = li.querySelector(":scope > svg.seam");
+  if (!svg) return;
+  const width = li.clientWidth + 2;                         // border to border
+  svg.innerHTML = `<path d="M-1 .5 Q ${width / 2 - 1} ${.5 + sag * 2} ${width - 1} .5" fill="none" ` +
+                  `stroke="currentColor" stroke-width="1" stroke-dasharray="4 3"/>`;
+}
+function paintSeams() {
+  for (const li of document.querySelectorAll("li.card.worktree")) if (!li.dataset.plucked) paintSeam(li, 0);
+}
+// Plucked: displaced and let go, ringing down to flat in about half a second.
+function pluck(li) {
+  const began = performance.now(), LASTS = 560, REACH = 7;
+  li.dataset.plucked = "1";
+  (function frame(now) {
+    const t = Math.min(1, (now - began) / LASTS);
+    if (!li.isConnected) return;
+    if (t >= 1) { delete li.dataset.plucked; paintSeam(li, 0); return; }
+    paintSeam(li, REACH * Math.exp(-5.5 * t) * Math.cos(15 * t));
+    requestAnimationFrame(frame);
+  })(began);
 }
 
 // The session's own account of its work. Self-reported, so the age is
@@ -2085,7 +2156,7 @@ function fitMeta() {
     if (line.scrollWidth > line.clientWidth) branch.hidden = true;
   }
 }
-window.addEventListener("resize", fitMeta);
+window.addEventListener("resize", () => { fitMeta(); paintSeams(); });
 
 // The indented block inside a card that holds its teammates, subagents and
 // shells, made on first use.
@@ -2158,6 +2229,17 @@ function paint(snapshot) {
       if (li !== card) {
         li.className = "line card";
         li.dataset.key = row.session_id;
+        // Tied to the card just above only when that card is the session
+        // whose repo this worktree belongs to; anything else in between and
+        // the line would join the wrong two.
+        if (SESSION_COLOURS[row.colour]) li.dataset.hue = SESSION_COLOURS[row.colour];
+        if (row.worktree_of && card && card.dataset.key === row.worktree_of) {
+          li.classList.add("worktree");
+          if (card.dataset.hue) li.style.setProperty("--family", card.dataset.hue);
+          if (SESSION_COLOURS[row.colour]) li.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+          li.append(document.createElementNS("http://www.w3.org/2000/svg", "svg"));
+          li.lastChild.setAttribute("class", "seam");
+        }
         card = li;
       }
       const b = document.createElement("button");
@@ -2607,6 +2689,12 @@ function settingsBody() {
     }
     box.append(line);
   }
+  // The release, at the foot where a person looking for it looks; a
+  // checkout with none says so rather than inventing one.
+  const rel = document.createElement("div");
+  rel.className = "set-version";
+  rel.textContent = LATEST?.version ? "Agents " + LATEST.version : "Agents, unreleased checkout";
+  box.append(rel);
 }
 
 function push(change) {

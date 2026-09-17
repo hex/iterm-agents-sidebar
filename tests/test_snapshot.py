@@ -546,3 +546,52 @@ def test_a_blocked_row_carries_what_it_is_asking():
     assert snapshot([row])["groups"][0]["rows"][0]["question"] == asked
     quiet = dict(LIVE[1], agent_state="working", question=None)
     assert "question" not in snapshot([quiet])["groups"][0]["rows"][0]
+
+
+MAIN = {"session_id": "atlas", "window_id": WINDOW, "tab_id": "60",
+        "window_index": 1, "tab_index": 4, "pane_index": 1,
+        "path": "/Users/x/.claude-sessions/atlas",
+        "auto_name": "✳ atlas", "job_name": None, "branch": "main"}
+LINKED = {"session_id": "atlas-wt", "window_id": WINDOW, "tab_id": "61",
+          "window_index": 1, "tab_index": 5, "pane_index": 1,
+          "path": "/Users/x/.claude-sessions/atlas@worktree",
+          "auto_name": "✳ atlas@worktree", "job_name": None,
+          "branch": "cs/worktree", "worktree_of": "/Users/x/.claude-sessions/atlas"}
+OTHER = {"session_id": "beacon", "window_id": WINDOW, "tab_id": "62",
+         "window_index": 1, "tab_index": 6, "pane_index": 1,
+         "path": "/Users/x/.claude-sessions/beacon",
+         "auto_name": "✳ beacon", "job_name": None, "branch": "main"}
+
+
+def test_a_worktree_session_follows_the_session_whose_repo_it_is_and_is_named_by_its_feature():
+    """Asked on 2026-09-16 about a cs feature session in `<repo>@worktree`: not a
+    teammate, "it should stay under the main session like a different
+    session but maybe add a visual connection line between them". Named
+    by the feature, the part after the `@` in cs's directory name: "we are
+    only interested in the feature name which is worktree, the branch is
+    already there". So: its own card, right after the main one, tied to it."""
+    rows = snapshot([MAIN, OTHER, LINKED])["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [
+        ("atlas", 0), ("worktree", 0), ("beacon", 0)]
+    assert rows[1]["worktree_of"] == "atlas"
+    assert "worktree_of" not in rows[0]
+
+
+def test_a_worktree_session_waits_for_the_main_session_teammates():
+    rows = snapshot([TEAM[0], OTHER, TEAM[1],
+                     dict(LINKED, worktree_of=TEAM[0]["path"])])["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [
+        ("fignity", 0), ("review-351", 1), ("worktree", 0), ("beacon", 0)]
+
+
+def test_a_worktree_session_in_a_plain_directory_is_named_by_its_branch():
+    """No `@` to read a feature from: the branch is the next best name."""
+    plain = dict(LINKED, path="/Users/x/src/atlas-wt", auto_name="✳ atlas-wt")
+    rows = snapshot([MAIN, plain])["groups"][0]["rows"]
+    assert rows[1]["label"] == "cs/worktree"
+
+
+def test_a_worktree_session_whose_main_session_is_not_open_keeps_its_place_and_name():
+    rows = snapshot([OTHER, LINKED])["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["beacon", "atlas@worktree"]
+    assert "worktree_of" not in rows[1]

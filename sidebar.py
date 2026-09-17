@@ -64,6 +64,18 @@ ACCOUNT_OPS = ("add", "switch", "rename", "read")
 #: per-origin goes with it.
 SETTINGS_FILE = Path.home() / ".claude" / "agents-sidebar-settings.json"
 
+#: The release number, YYYY.MM.BUILD, written by release.sh. Nothing else
+#: carries it: the plugin manifest and the panel both read from here.
+VERSION_FILE = Path(__file__).resolve().parent / "VERSION"
+
+
+def version(path=None):
+    """-> the release number, or None for a checkout that has none."""
+    try:
+        return (path or VERSION_FILE).read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None
+
 #: The daemon owns the shape. A key the page posts that is not here is a
 #: version mismatch, not a new setting.
 DEFAULT_SETTINGS = {
@@ -77,7 +89,7 @@ DEFAULT_SETTINGS = {
     "notify_blocked": True,
     "notify_done": True,
     "muted": False,
-    "context_threshold": 70,
+    "context_threshold": 40,
     "show_model": True,
     "show_branch": True,
     "show_task": True,
@@ -146,7 +158,7 @@ def save_settings(changes, path=None):
 
 #: Permanent. iterm2.tool exposes no unregister, so a tool identifier used
 #: once sits in the Toolbelt forever.
-TOOL_IDENTIFIER = "com.hex.agents-sidebar"
+TOOL_IDENTIFIER = "com.hexul.agents-sidebar"
 TOOL_DISPLAY_NAME = "Agents"
 
 #: Clicking a notice brings iTerm2 forward. Which tab it lands on is whichever
@@ -497,6 +509,8 @@ def snapshot(sessions):
     families = {}
     teammates = []          # (lead's claude session id, name) per row, in row order
     leads = {}              # claude session id -> its row
+    by_path = {}            # an agent's directory -> its row, first one wins
+    worktrees = []          # (row, main worktree path, own path) for linked worktrees
 
     rows = {"agent": [], "shell": []}
     for session in sessions:
@@ -621,6 +635,10 @@ def snapshot(sessions):
             leads[session["claude_session"]] = row
         if kind == "agent" and session.get("parent_session"):
             row["_lead"] = teammates[-1]
+        if kind == "agent" and not child and session.get("path"):
+            by_path.setdefault(session["path"], row)
+            if session.get("worktree_of"):
+                worktrees.append((row, session["worktree_of"], session["path"]))
         if kind == "agent" and home:
             families.setdefault(home, []).append(row)
         else:
@@ -645,6 +663,27 @@ def snapshot(sessions):
         row["depth"] = 1
         at = rows["agent"].index(lead) + 1
         while at < len(rows["agent"]) and rows["agent"][at]["depth"]:
+            at += 1
+        rows["agent"].insert(at, row)
+
+    # A session in a linked worktree of another session's repo is its own
+    # card, placed right after that session and everything nested in it, and
+    # named by its feature: cs names the directory `<repo>@<feature>`, and
+    # the branch already has its own chip. A directory without an `@` is
+    # named by its branch. One whose main session is not open stays where it
+    # is under its own name.
+    for row, main_path, path in worktrees:
+        main = by_path.get(main_path)
+        if main is None or main is row or row not in rows["agent"]:
+            continue
+        rows["agent"].remove(row)
+        row["worktree_of"] = main["session_id"]
+        feature = Path(path).name.partition("@")[2]
+        if feature or row.get("branch"):
+            row["label"] = feature or row["branch"]
+        at = rows["agent"].index(main) + 1
+        while at < len(rows["agent"]) and (rows["agent"][at]["depth"]
+                                           or rows["agent"][at].get("worktree_of") == main["session_id"]):
             at += 1
         rows["agent"].insert(at, row)
 
@@ -1430,6 +1469,36 @@ def git_branch(path):
     return None
 
 
+def git_main_worktree(path):
+    """The main worktree a linked worktree belongs to, or None.
+
+    A linked worktree's `.git` is a file naming `<main>/.git/worktrees/<name>`.
+    The main worktree, a submodule and a plain directory all answer None:
+    only a session in a linked worktree has a session to be tied to.
+    """
+    if not path:
+        return None
+    here = Path(path)
+    for folder in [here, *here.parents]:
+        marker = folder / ".git"
+        if not marker.exists():
+            continue
+        if not marker.is_file():
+            return None
+        try:
+            pointer = marker.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if not pointer.startswith("gitdir:"):
+            return None
+        gitdir = Path(pointer.split(":", 1)[1].strip())
+        # <main>/.git/worktrees/<name>
+        if gitdir.parent.name != "worktrees" or gitdir.parent.parent.name != ".git":
+            return None
+        return str(gitdir.parent.parent.parent.resolve())
+    return None
+
+
 def session_colour(path):
     """A cs session directory -> the colour the user gave it, or None.
 
@@ -1827,6 +1896,7 @@ class Bridge:
                         "parent_session": agent_parents.get(pid),
                         "claude_session": status["session"],
                         "branch": git_branch(values["path"]),
+                        "worktree_of": git_main_worktree(values["path"]),
                     })
         return rows
 
@@ -1836,6 +1906,7 @@ class Bridge:
     async def rebuild(self):
         await self.app.async_refresh()
         self.latest = snapshot(await self.read_sessions())
+        self.latest["version"] = version()
         if self.meters is not None:
             self.latest["accounts"] = self.meters.snapshot()
         # A few file reads; kept off the loop like every other disk or Keychain read.
