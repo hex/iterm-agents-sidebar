@@ -22,7 +22,9 @@ not guesswork:
     PostToolUse                            -> working, closes its own gate
     PostToolUseFailure, PermissionDenied   -> closes its own gate
     Notification type=idle_prompt          -> the parent is done
-    Stop (stop_hook_active false)          -> the parent is done
+    Stop (stop_hook_active false)          -> the parent is done, and its
+                                              background_tasks list replaces
+                                              what is held in flight
     Stop (stop_hook_active TRUE)           -> ignored, see below
     PreCompact                             -> working
     SessionStart                           -> the parent is done
@@ -30,7 +32,8 @@ not guesswork:
     SessionEnd                             -> cleared
 
     a gate open                            -> blocked
-    else parent working or a child alive   -> working
+    else parent working, a child alive,
+         or a background task in flight    -> working
     else                                   -> idle
 
 A Stop hook that itself triggers Stop arrives with stop_hook_active true. The
@@ -241,7 +244,7 @@ def aggregate(doc):
     """
     if doc.get("gates"):
         return "blocked"
-    if doc.get("parent_active") or live_agents(doc):
+    if doc.get("parent_active") or live_agents(doc) or doc.get("background"):
         return "working"
     return "idle"
 
@@ -262,7 +265,8 @@ def apply_event(doc, event, payload, said):
            "last_tool": doc.get("last_tool"),
            "turn_started": doc.get("turn_started"),
            "reminded": doc.get("reminded") or 0,
-           "question": doc.get("question")}
+           "question": doc.get("question"),
+           "background": list(doc.get("background") or [])}
     now = round(time.time(), 3)
 
     if event == "UserPromptSubmit":
@@ -316,6 +320,13 @@ def apply_event(doc, event, payload, said):
         # The parent's own turn ended. Its children may well outlive it, which
         # is why this is one input to aggregate and not the answer.
         doc["parent_active"] = False
+        # Nor are its background tasks over: a Stop while any run is a pause,
+        # and the task's end wakes the session for another turn. Stop lists the
+        # whole in-flight set each time, and nothing fires when one task ends,
+        # so the list is replaced, never added to.
+        if event == "Stop":
+            doc["background"] = [{"type": t.get("type"), "description": t.get("description")}
+                                 for t in payload.get("background_tasks") or []]
         # Nothing runs while a permission prompt is open, so a turn that
         # reached its end had none pending. This is the bound on a gate nothing
         # could correlate, and it has to be this tight: waiting for the next
@@ -728,6 +739,7 @@ def main():
                                  "_tool_use_id": payload.get("tool_use_id"),
                                  "_tool_name": payload.get("tool_name"),
                                  "_keys": sorted(payload),
+                                 "_background": len(payload.get("background_tasks") or []),
                                  "_agents": agents}) + "\n")
     except OSError:
         pass

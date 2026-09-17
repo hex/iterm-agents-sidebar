@@ -168,3 +168,14 @@ def test_notices_are_on_by_default_and_each_moment_can_be_turned_off(tmp_path):
     save_settings({"notify_done": False}, store)
     assert load_settings(store)["notify_done"] is False
     assert load_settings(store)["notify_blocked"] is True
+
+
+# -------------------------------------------------------------------- version
+
+def test_the_version_is_the_file_s_first_line(tmp_path):
+    (tmp_path / "VERSION").write_text("2026.09.3\n")
+    assert sidebar.version(tmp_path / "VERSION") == "2026.09.3"
+
+
+def test_no_version_file_means_no_version(tmp_path):
+    assert sidebar.version(tmp_path / "VERSION") is None

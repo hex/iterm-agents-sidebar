@@ -344,3 +344,24 @@ def test_parse_question():
     assert parse_question(json.dumps({"question": asked})) == asked
     assert parse_question(json.dumps({"question": None})) is None
     assert parse_question("not json") is None
+
+
+def test_git_main_worktree_names_the_repo_a_linked_worktree_belongs_to(tmp_path):
+    """A cs feature session runs in `<repo>@worktree`, a linked worktree of
+    the session's repo. The panel ties the two cards, so it needs the main
+    worktree's path from the linked one, and nothing from the main one."""
+    import subprocess
+    from sidebar import git_main_worktree
+    repo = tmp_path / "atlas"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+                    "commit", "-q", "--allow-empty", "-m", "x"], cwd=repo, check=True)
+    linked = tmp_path / "atlas@worktree"
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "cs/worktree", str(linked)],
+                   cwd=repo, check=True)
+    assert git_main_worktree(str(linked)) == str(repo.resolve())
+    assert git_main_worktree(str(linked / "sub")) == str(repo.resolve())
+    assert git_main_worktree(str(repo)) is None
+    assert git_main_worktree("/tmp") is None
+    assert git_main_worktree(None) is None

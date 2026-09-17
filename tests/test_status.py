@@ -486,11 +486,15 @@ def test_a_render_killed_outright_leaves_nothing_the_next_render_does_not_reuse(
                               stderr=subprocess.DEVNULL, env=env, start_new_session=True)
     bridge.stdin.write(payload.encode())
     bridge.stdin.close()
-    time.sleep(2)
-    os.killpg(bridge.pid, signal.SIGKILL)
-    bridge.wait(timeout=5)
     pid = os.getpid()
     lock = d / f"{pid}.rendering"
+    # Kill once the render is under way, not after a fixed pause: at load 100
+    # the bridge had not opened its temp file two seconds in.
+    deadline = time.monotonic() + 10
+    while not (d / f"{pid}.line.tmp").exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    os.killpg(bridge.pid, signal.SIGKILL)
+    bridge.wait(timeout=5)
     assert lock.is_dir(), sorted(p.name for p in d.iterdir())
     assert (d / f"{pid}.line.tmp").exists(), sorted(p.name for p in d.iterdir())
     old = time.time() - 15

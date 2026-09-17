@@ -4,7 +4,7 @@ The panel posts a macOS notice when a session asks a question or finishes a
 turn (shipped 2026-09-16 through a copy of terminal-notifier). This design
 replaces that sender with one of our own so the notice can carry the
 question's options as buttons and a reply field, and so a click lands on the
-exact session. Approved by Alex on 2026-09-16.
+exact session. Approved on 2026-09-16.
 
 ## What the user sees
 

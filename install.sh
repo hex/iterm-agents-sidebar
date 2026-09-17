@@ -29,6 +29,7 @@ STUB
 
 echo "installed stub -> $stub"
 echo "        loading -> $repo/sidebar.py"
+echo "        release -> $(cat "$repo/VERSION" 2>/dev/null || echo "none, unreleased checkout")"
 
 env="$HOME/Library/Application Support/iTerm2/iterm2env-3.10/versions/3.10.19/bin/python3"
 if [ -x "$env" ]; then
@@ -138,7 +139,8 @@ if ! command -v swiftc >/dev/null 2>&1; then
 else
   icon="$repo/assets/notifier-icon.png"
   source="$repo/assets/notifier.swift"
-  stamp=$(shasum -a 256 "$source" "$icon" | cut -d' ' -f1 | tr '\n' ' ')
+  bundle_id="com.hexul.agents-sidebar.notifier"
+  stamp="$(shasum -a 256 "$source" "$icon" | cut -d' ' -f1 | tr '\n' ' ')$bundle_id"
   if [ "$(cat "$notifier_dest/Contents/Resources/agents-sidebar-source.sha256" 2>/dev/null)" = "$stamp" ]; then
     echo "notifier bundle -> $notifier_dest (unchanged)"
   else
@@ -167,7 +169,7 @@ else
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>com.hex.agents-sidebar.notifier</string>
+  <key>CFBundleIdentifier</key><string>$bundle_id</string>
   <key>CFBundleName</key><string>Agents</string>
   <key>CFBundleDisplayName</key><string>Agents</string>
   <key>CFBundleExecutable</key><string>agents-notifier</string>

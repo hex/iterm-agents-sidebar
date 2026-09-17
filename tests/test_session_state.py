@@ -549,3 +549,68 @@ def test_a_turn_clock_survives_being_read_back_from_disk(tmp_path, monkeypatch):
     monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
     emit_state.update("s1", "UserPromptSubmit", {}, "working")
     assert isinstance(emit_state.read_state("s1")["turn_started"], float)
+
+
+# ------------------------------------------------------- background tasks
+
+SHELL_TASK = {"id": "task-001", "type": "shell", "status": "running",
+              "description": "tail logs", "command": "tail -f /var/log/syslog"}
+
+
+def test_a_turn_still_ends_working_while_a_background_task_runs():
+    """Stop arrives when the model pauses, which it does while a background
+    shell, workflow or monitor it started is still going: the task's end
+    wakes it for another turn. The Stop payload lists what is in flight.
+    """
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [SHELL_TASK]}, "idle"),
+    ])
+    assert emit_state.aggregate(doc) == "working"
+
+
+def test_the_next_stop_with_nothing_in_flight_is_idle():
+    """Nothing fires when a background task ends; its end wakes the session,
+    and that turn's Stop says what is left. So each Stop replaces the list.
+    """
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [SHELL_TASK]}, "idle"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": []}, "idle"),
+    ])
+    assert emit_state.aggregate(doc) == "idle"
+
+
+def test_a_new_prompt_forgets_background_tasks():
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [SHELL_TASK]}, "idle"),
+        ("UserPromptSubmit", {"prompt": "again"}, "working"),
+        ("Stop", {"stop_hook_active": False}, "idle"),
+    ])
+    assert emit_state.aggregate(doc) == "idle"
+
+
+def test_a_subagent_stop_does_not_hold_the_parent_for_the_parent_s_tasks():
+    """SubagentStop carries the parent session's list too, but a child ending
+    says nothing about the parent's turn; only the parent's own Stop does.
+    """
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("SubagentStart", {"agent_id": "a1"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": []}, "idle"),
+        ("SubagentStop", {"agent_id": "a1", "background_tasks": [SHELL_TASK]}, None),
+    ])
+    assert emit_state.aggregate(doc) == "idle"
+
+
+def test_an_idle_prompt_notice_does_not_end_a_background_hold():
+    """The idle_prompt Notification comes a minute into a wait and carries no
+    task list; only a Stop knows what is in flight.
+    """
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [SHELL_TASK]}, "idle"),
+        ("Notification", {"notification_type": "idle_prompt"}, "idle"),
+    ])
+    assert emit_state.aggregate(doc) == "working"
