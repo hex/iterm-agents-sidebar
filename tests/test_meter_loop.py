@@ -74,7 +74,8 @@ def test_an_unreadable_store_is_reported_not_rebuilt(world):
     meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
                            world["claude_json"])
     meters.tick(now=1000)
-    assert meters.snapshot() == {"active": None, "accounts": [], "error": "store is not valid JSON"}
+    assert meters.snapshot() == {"active": None, "accounts": [], "error": "store is not valid JSON",
+                                 "last_switch": None, "next_switch": None}
     assert Path(world["store"]).read_text() == "{ torn"
 
 
@@ -147,3 +148,50 @@ def test_renaming_an_account_the_store_does_not_have_is_refused(world):
                            world["claude_json"])
     with pytest.raises(ValueError, match="no stored account acct-99"):
         meters.rename("acct-99", "ghost")
+
+
+def _reading(five, now):
+    return {"usage": {"five_hour": {"used": five, "resets_at": now + 9000}, "seven_day": None, "models": []},
+            "fetched_at": now, "tried_at": now, "outcome": "ok", "interval": 300,
+            "next_at": now + 9000, "earlier_usage": None, "earlier_at": None}
+
+
+def _meters_with_readings(world, tmp_path, active_five):
+    from accounts import login_item
+    write_secret(SCRATCH_SERVICE, world["live"], _credential("live"))
+    ids = [a["id"] for a in world["accounts"]]
+    write_secret(SCRATCH_SERVICE, login_item(ids[1]), json.dumps({"accountUuid": "uuid-other"}))
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"], claude_dir=str(claude_dir))
+    meters.states = {ids[0]: _reading(active_five, 1000), ids[1]: _reading(5.0, 1000)}
+    return meters
+
+
+def test_a_pass_with_switching_off_leaves_a_full_account_alone(world, tmp_path):
+    meters = _meters_with_readings(world, tmp_path, active_five=95.0)
+    assert meters.tick(now=1000) == []
+    assert load_store(world["store"])[1].get("needsLogin") is None
+
+
+def test_a_pass_with_switching_on_tries_the_switch_and_reports_a_refusal(world, tmp_path):
+    meters = _meters_with_readings(world, tmp_path, active_five=95.0)
+    events = meters.tick(now=1000, auto=True)
+    assert events == [{"kind": "refused", "why": "log in to home again"}]
+    assert load_store(world["store"])[1]["needsLogin"] is True
+    assert meters.tick(now=1030, auto=True) == [{"kind": "blocked", "why": "every account is full"}]
+    assert meters.tick(now=1060, auto=True) == [], "said once, not every pass"
+
+
+def test_a_pass_with_switching_on_leaves_a_roomy_account_alone(world, tmp_path):
+    meters = _meters_with_readings(world, tmp_path, active_five=40.0)
+    assert meters.tick(now=1000, auto=True) == []
+
+
+def test_an_unreadable_store_decides_nothing_with_switching_on(world):
+    Path(world["store"]).write_text("{ torn")
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"])
+    assert meters.tick(now=1000, auto=True) == []
+    assert meters.snapshot()["error"] == "store is not valid JSON"

@@ -93,7 +93,7 @@ def test_one_process_listing_serves_shells_start_times_and_foreground_jobs(monke
 
     monkeypatch.setattr(sidebar.subprocess, "run", fake_run)
     monkeypatch.setattr(sidebar, "TMUX_PATHS", (str(tmux),))
-    (shells, started, _, _), panes, _ = sidebar.read_system()
+    (shells, started, _, _), panes, _, _ = sidebar.read_system()
     assert ran.count("/bin/ps") == 1
     assert shells == {5001: [{"label": "ls", "command": "ls"}]}
     assert started[5001] == 1789638277

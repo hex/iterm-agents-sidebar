@@ -369,3 +369,58 @@ def test_clearing_a_note_waits_for_a_report_in_progress(tmp_path, monkeypatch):
     holder.close()
     worker.join(2)
     assert not (tmp_path / "s1.json").exists()
+
+
+def _value(subagents):
+    return {"state": "working", "pid": 100, "session": "s-1", "agents": subagents,
+            "subagents": [{"id": f"a{n}", "type": "workflow-subagent", "name": f"verify:refute:file{n}.cs",
+                           "since": 1789732485, "ended": None, "model": "claude-opus-5"}
+                          for n in range(subagents)],
+            "blocked_since": None, "working_since": 1789732000, "turn_started": 1789732000,
+            "question": None, "ts": 1789733000}
+
+
+def test_a_small_state_travels_whole_in_the_variable(tmp_path):
+    import json
+    value = _value(2)
+    sent = emit_state.carried(value, "s-1", directory=str(tmp_path))
+    assert json.loads(sent) == value
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_large_state_leaves_its_detail_on_disk_and_sends_the_rest(tmp_path):
+    """A workflow's hundred subagents made a 28 KB variable on every event."""
+    import base64, json
+    value = _value(117)
+    sent = emit_state.carried(value, "s-1", directory=str(tmp_path))
+    assert len(base64.b64encode(sent.encode())) <= emit_state.VARIABLE_CEILING
+    envelope = json.loads(sent)
+    assert envelope == {"state": "working", "pid": 100, "session": "s-1", "agents": 117,
+                        "blocked_since": None, "working_since": 1789732000,
+                        "turn_started": 1789732000, "ts": 1789733000, "detail": True}
+    assert json.loads((tmp_path / "s-1.published").read_text()) == value
+
+
+def test_a_large_state_that_cannot_be_stored_says_its_detail_is_missing(tmp_path):
+    import json
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("")
+    envelope = json.loads(emit_state.carried(_value(117), "s-1", directory=str(blocked)))
+    assert envelope["detail"] is False and envelope["state"] == "working"
+    assert "subagents" not in envelope
+
+
+def test_a_long_question_is_clipped_and_its_options_keep_their_places():
+    """The answer is sent as the option's number, so no option may be dropped."""
+    ask = {"tool_name": "AskUserQuestion", "tool_input": {"questions": [{
+        "header": "H" * 100, "question": "Q" * 1000, "multiSelect": False,
+        "options": [{"label": "A" * 200}, {"label": "Rows"}, {"label": "B" * 200}]}]}}
+    got = emit_state.question_from(ask)
+    assert got["question"] == "Q" * 299 + "…"
+    assert got["header"] == "H" * 39 + "…"
+    assert got["options"] == ["A" * 59 + "…", "Rows", "B" * 59 + "…"]
+
+
+def test_a_long_command_is_clipped_in_the_summary():
+    got = emit_state.question_from({"tool_name": "Bash", "tool_input": {"command": "x" * 5000}})
+    assert got == {"tool": "Bash", "summary": "x" * 199 + "…"}

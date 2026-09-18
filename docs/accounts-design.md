@@ -161,8 +161,8 @@ A new `accounts.py` beside `sidebar.py`, split like the existing code:
 
 The snapshot gains one top-level `accounts` object; rows stay as they are.
 
-Not built: auto-switching near a limit. cswap's `auto` keeps doing that if it is
-on, and the panel reflects the result.
+Switching near a limit without a click is its own design:
+`superpowers/specs/2026-09-18-account-autoswitch-design.md`.
 
 ## Pace, one definition
 

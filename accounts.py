@@ -225,6 +225,195 @@ def read_now_states(states, now):
     return out
 
 
+#: Automatic switching. At 90 rather than 95 a running Claude Code, which
+#: takes about half a minute to pick a new login up from the Keychain, still
+#: has an account that answers while it does.
+SWITCH_THRESHOLD = 90
+SWITCH_MARGIN_POINTS = 10
+TIE_POINTS = 5
+SWITCH_COOLDOWN_SECONDS = 300
+PICKUP_SECONDS = 60
+PROJECTION_HORIZON_SECONDS = 600
+RESET_NEAR_SECONDS = 600
+RATE_MIN_SECONDS = 60
+FULL = 100
+
+
+def _windows(usage):
+    """(name, window) for each window a reading holds, under the names a person reads."""
+    named = [("5-hour", usage.get("five_hour")), ("weekly", usage.get("seven_day"))]
+    named += [(m["name"], m) for m in usage.get("models") or []]
+    return [(name, window) for name, window in named if window]
+
+
+def binding(usage, now):
+    """The fullest window of a reading: {figure, window, resets_at}, or None.
+
+    None too when any window's reset has passed since the reading: the figures
+    describe a window that no longer exists, and only a new reading says what
+    the account holds now.
+    """
+    windows = _windows(usage or {})
+    if not windows or any(w["resets_at"] is not None and w["resets_at"] <= now for _, w in windows):
+        return None
+    name, window = max(windows, key=lambda pair: pair[1]["used"])
+    return {"figure": window["used"], "window": name, "resets_at": window["resets_at"]}
+
+
+def burn_rates(earlier_usage, earlier_at, usage, fetched_at):
+    """Points a second each window rose between two readings of the same window."""
+    if not earlier_usage or earlier_at is None or fetched_at - earlier_at < RATE_MIN_SECONDS:
+        return {}
+    before = dict(_windows(earlier_usage))
+    rates = {}
+    for name, window in _windows(usage):
+        was = before.get(name)
+        if was is None or was["resets_at"] != window["resets_at"]:
+            continue
+        rates[name] = max(0.0, (window["used"] - was["used"]) / (fetched_at - earlier_at))
+    return rates
+
+
+def runs_out(usage, rates):
+    """The first window to reach 100 at its rate: {window, seconds from the reading}, or None.
+
+    A window that resets before it fills does not run out; the reading's own
+    time, `usage["fetched_at"]`, is what its reset is measured from.
+    """
+    fetched_at = usage.get("fetched_at")
+    soonest = None
+    for name, window in _windows(usage):
+        left = FULL - window["used"]
+        rate = rates.get(name, 0.0)
+        if left > 0 and rate <= 0:
+            continue
+        seconds = max(0.0, left / rate) if left > 0 else 0.0
+        resets_at = window["resets_at"]
+        if fetched_at is not None and resets_at is not None and fetched_at + seconds >= resets_at:
+            continue
+        if soonest is None or seconds < soonest["seconds"]:
+            soonest = {"window": name, "seconds": seconds}
+    return soonest
+
+
+ACTIVE_READING_MAX_AGE_SECONDS = ACTIVE_CEILING_SECONDS + 30
+STAY = {"act": "stay"}
+
+
+def _why(mine, out, age):
+    if mine["figure"] >= SWITCH_THRESHOLD or out is None:
+        return f"{mine['window']} at {mine['figure']:.0f}%"
+    minutes = max(1, round((out["seconds"] - age) / 60))
+    return f"{out['window']} on course for 100% in {minutes} min"
+
+
+def switch_decision(active_id, states, accounts, now, last_switch=None):
+    """What the daemon should do about the active account now.
+
+    {"act": "stay"}, {"act": "read", account_id} when a figure the decision
+    rests on is too old to act on, {"act": "switch", account_id, why}, or
+    {"act": "blocked", why} when the account should be left and nothing
+    emptier exists.
+    """
+    state = states.get(active_id) or {}
+    fetched = state.get("fetched_at")
+    if state.get("outcome") != "ok" or fetched is None or now - fetched > ACTIVE_READING_MAX_AGE_SECONDS:
+        return STAY
+    mine = binding(state["usage"], now)
+    if mine is None:
+        return {"act": "read", "account_id": active_id}
+    since = now - last_switch["at"] if last_switch else None
+    if since is not None and since < PICKUP_SECONDS:
+        return STAY
+    age = now - fetched
+    rates = burn_rates(state.get("earlier_usage"), state.get("earlier_at"), state["usage"], fetched)
+    out = runs_out(dict(state["usage"], fetched_at=fetched), rates)
+    emergency = out is not None and out["seconds"] - age <= PICKUP_SECONDS
+    on_course = out is not None and out["seconds"] - age <= PROJECTION_HORIZON_SECONDS
+    returns_soon = mine["resets_at"] is not None and mine["resets_at"] - now <= RESET_NEAR_SECONDS
+    if not (on_course or (mine["figure"] >= SWITCH_THRESHOLD and not returns_soon)):
+        return STAY
+    if not emergency and since is not None and since < SWITCH_COOLDOWN_SECONDS:
+        return STAY
+
+    candidates, passed_over = [], False
+    for account in accounts:
+        other = states.get(account["id"]) or {}
+        if account["id"] == active_id or account.get("needsLogin") or other.get("usage") is None:
+            continue
+        theirs = binding(other["usage"], now)
+        if theirs is None or now - other["fetched_at"] > POLL_FLOOR_SECONDS:
+            held = other.get("outcome") == "rate_limited" and other.get("next_at", 0) > now
+            if held or now - other.get("tried_at", 0) < POLL_FLOOR_SECONDS:
+                passed_over = True
+                continue
+            return {"act": "read", "account_id": account["id"]}
+        candidates.append((account["id"], theirs))
+
+    target = _target(mine, candidates, emergency)
+    if target is None:
+        if any(c[1]["figure"] < mine["figure"] for c in candidates):
+            return STAY
+        why = "the other accounts cannot be read" if passed_over else "every account is full"
+        return {"act": "blocked", "why": why}
+    return {"act": "switch", "account_id": target, "why": _why(mine, out, age)}
+
+
+def _target(mine, candidates, emergency):
+    """The account id a switch from `mine` would go to, or None when none fits.
+
+    Ordinarily a target sits under the threshold and a margin under the active
+    account; in an emergency anything emptier will do. The emptiest wins, and
+    near-equal ones go to whichever resets sooner, so quota about to expire is
+    spent first.
+    """
+    if emergency:
+        fit = [c for c in candidates if c[1]["figure"] < mine["figure"]]
+    else:
+        fit = [c for c in candidates if c[1]["figure"] < SWITCH_THRESHOLD
+               and c[1]["figure"] <= mine["figure"] - SWITCH_MARGIN_POINTS]
+    if not fit:
+        return None
+    lowest = min(c[1]["figure"] for c in fit)
+    tied = [c for c in fit if c[1]["figure"] - lowest <= TIE_POINTS]
+    return min(tied, key=lambda c: (c[1]["resets_at"] is None, c[1]["resets_at"] or 0, c[1]["figure"]))[0]
+
+
+#: Within this many points of the threshold a switch counts as near.
+NEAR_POINTS = 10
+
+
+def switch_outlook(active_id, states, accounts, now):
+    """Where a switch would go now, and whether one is near: {to, near, why}, or None.
+
+    The same ranking as `switch_decision`, without its gates: it says what the
+    panel can expect, not what the daemon is about to do. `to` is None when no
+    stored account fits; `why` names the window that makes a switch near.
+    """
+    state = states.get(active_id) or {}
+    fetched = state.get("fetched_at")
+    if state.get("outcome") != "ok" or fetched is None:
+        return None
+    mine = binding(state["usage"], now)
+    if mine is None:
+        return None
+    age = now - fetched
+    rates = burn_rates(state.get("earlier_usage"), state.get("earlier_at"), state["usage"], fetched)
+    out = runs_out(dict(state["usage"], fetched_at=fetched), rates)
+    on_course = out is not None and out["seconds"] - age <= PROJECTION_HORIZON_SECONDS
+    near = on_course or mine["figure"] >= SWITCH_THRESHOLD - NEAR_POINTS
+    candidates = []
+    for account in accounts:
+        other = states.get(account["id"]) or {}
+        if account["id"] == active_id or account.get("needsLogin") or other.get("usage") is None:
+            continue
+        theirs = binding(other["usage"], now)
+        if theirs is not None:
+            candidates.append((account["id"], theirs))
+    return {"to": _target(mine, candidates, emergency=False), "near": near,
+            "why": _why(mine, out, age) if near else None}
+
+
 def needs_refresh(expires_at_ms, active, now):
     """Whether the panel should spend a stored refresh token now.
 
@@ -824,7 +1013,10 @@ def record(state, outcome, usage, now, active=False, jitter=JITTER):
                          reset_at=next_reset(usage, now) if fresh and usage else None, jitter=jitter)
     return {"interval": schedule["interval"], "next_at": schedule["at"], "outcome": outcome,
             "usage": usage if fresh else previous["usage"],
-            "fetched_at": now if fresh else previous["fetched_at"]}
+            "fetched_at": now if fresh else previous["fetched_at"],
+            "earlier_usage": previous["usage"] if fresh else previous.get("earlier_usage"),
+            "earlier_at": previous["fetched_at"] if fresh else previous.get("earlier_at"),
+            "tried_at": now}
 
 
 def _with_pace(window, fetched_at):
@@ -832,13 +1024,15 @@ def _with_pace(window, fetched_at):
                 if window["resets_at"] is not None else None)
 
 
-def meters_snapshot(accounts, states, active_id, error=None, emails=None):
+def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_switch=None,
+                    next_switch=None):
     """What the panel receives about accounts: names, which is active, figures and pace.
 
     Pace is worked out here from the reading's own time, so the snapshot only
     changes when a reading does. Names are aliases, else the email from
     `emails` (id -> email), else "Account N" from the id, which stays put when
-    another account is removed.
+    another account is removed. `last_switch` is the loop's record of the
+    latest switch and `next_switch` its outlook; the panel gets targets by name.
     """
     emails = emails or {}
     shaped = []
@@ -857,7 +1051,18 @@ def meters_snapshot(accounts, states, active_id, error=None, emails=None):
             "seven_day": _with_pace(weekly, fetched) if weekly else None,
             "models": [_with_pace(m, fetched) for m in usage.get("models", [])],
         })
-    return {"active": active_id, "accounts": shaped, "error": error}
+    shown = None
+    if last_switch:
+        target = next((a for a in accounts if a["id"] == last_switch["to"]), {"id": last_switch["to"]})
+        shown = {"at": last_switch["at"], "to": _name(target, emails.get(target["id"])),
+                 "why": last_switch["why"], "auto": last_switch["auto"]}
+    outlook = None
+    if next_switch:
+        to = next_switch["to"]
+        target = next((a for a in accounts if a["id"] == to), {"id": to}) if to else None
+        outlook = dict(next_switch, to=_name(target, emails.get(to)) if target else None)
+    return {"active": active_id, "accounts": shaped, "error": error, "last_switch": shown,
+            "next_switch": outlook}
 
 
 def _store_lock(store_path):
@@ -913,13 +1118,55 @@ class AccountMeters:
         self._snapshot = meters_snapshot([], {}, None)
         #: The background loop and a reading started by Add run in threads.
         self._one_at_a_time = threading.Lock()
+        #: The latest switch, by hand or not: {at, from, to, why, auto}.
+        self.last_switch = None
+        #: The blocked or refused event last reported, so it is said once.
+        self._said = None
 
     def snapshot(self):
         return self._snapshot
 
-    def tick(self, now):
+    def tick(self, now, auto=False):
+        """Read what is due; with `auto`, leave a full account. -> what happened, for the log."""
         with self._one_at_a_time:
             self._tick(now)
+            return self._decide(now) if auto else []
+
+    def _decide(self, now):
+        try:
+            accounts = load_store(self.store_path)
+        except StoreError:
+            return []
+        active = account_for(accounts, _live_login(self.claude_json))
+        if active is None or len(accounts) < 2:
+            return []
+        decision = switch_decision(active["id"], self.states, accounts, now, self.last_switch)
+        for _ in accounts:
+            if decision["act"] != "read":
+                break
+            self.states[decision["account_id"]] = dict(self.states.get(decision["account_id"]) or {}, next_at=0)
+            self._tick(now)
+            decision = switch_decision(active["id"], self.states, load_store(self.store_path), now,
+                                       self.last_switch)
+        if decision["act"] == "switch":
+            try:
+                result = self._switch_locked(decision["account_id"], now, why=decision["why"], auto=True)
+            except SwitchRefused as refusal:
+                return self._once({"kind": "refused", "why": str(refusal)})
+            self._said = None
+            self._tick(now)
+            return [{"kind": "switched", "name": result["name"], "why": decision["why"]}]
+        if decision["act"] == "blocked":
+            return self._once({"kind": "blocked", "why": decision["why"]})
+        self._said = None
+        return []
+
+    def _once(self, event):
+        """An event the first time it is true, nothing while it stays true."""
+        if event == self._said:
+            return []
+        self._said = event
+        return [event]
 
     def _tick(self, now):
         try:
@@ -952,8 +1199,10 @@ class AccountMeters:
                 outcome, usage = self._read_inactive(account["id"], now)
             self.states[account["id"]] = record(self.states.get(account["id"]), outcome, usage, now,
                                                 active=account is active)
+        outlook = switch_outlook(active["id"], self.states, accounts, now) if active else None
         self._snapshot = meters_snapshot(load_store(self.store_path), self.states,
-                                         active["id"] if active else None, emails=self.emails)
+                                         active["id"] if active else None, emails=self.emails,
+                                         last_switch=self.last_switch, next_switch=outlook)
 
     def read_now(self, now):
         """Read every account now, except one read within the last three minutes."""
@@ -972,14 +1221,20 @@ class AccountMeters:
     def switch(self, account_id, now):
         """Make a stored account the login every session uses. Raises SwitchRefused."""
         with self._one_at_a_time:
-            stored = load_store(self.store_path)
-            plan = plan_switch(stored, account_id, _live_login(self.claude_json), self.claude_dir,
-                               self.claude_json, claude_dir_resolved=os.path.realpath(self.claude_dir))
-            run_switch(plan, self.store_path, self.service, self.live_item, self.claude_json, now)
-            # Read the new active account at once, through Claude Code's token this time.
-            self.states.pop(account_id, None)
-            target = next(a for a in stored if a["id"] == account_id)
-            return {"id": account_id, "name": _name(target, self.emails.get(account_id))}
+            return self._switch_locked(account_id, now, why=None, auto=False)
+
+    def _switch_locked(self, account_id, now, why, auto):
+        stored = load_store(self.store_path)
+        outgoing = account_for(stored, _live_login(self.claude_json))
+        plan = plan_switch(stored, account_id, _live_login(self.claude_json), self.claude_dir,
+                           self.claude_json, claude_dir_resolved=os.path.realpath(self.claude_dir))
+        run_switch(plan, self.store_path, self.service, self.live_item, self.claude_json, now)
+        # Read the new active account at once, through Claude Code's token this time.
+        self.states.pop(account_id, None)
+        self.last_switch = {"at": now, "from": outgoing["id"] if outgoing else None,
+                            "to": account_id, "why": why, "auto": auto}
+        target = next(a for a in stored if a["id"] == account_id)
+        return {"id": account_id, "name": _name(target, self.emails.get(account_id))}
 
     def rename(self, account_id, text):
         """Give a stored account a nickname; empty text clears it. Raises ValueError."""

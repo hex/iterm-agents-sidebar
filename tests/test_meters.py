@@ -36,7 +36,21 @@ def test_record_keeps_a_first_good_reading_and_waits_the_floor():
     account (cswap's measurement), and one every three minutes leaves room
     for cswap and for a reading asked for by hand."""
     assert record(None, "ok", USAGE, now=0, jitter=0) == {
-        "interval": 180, "next_at": 180, "outcome": "ok", "usage": USAGE, "fetched_at": 0}
+        "interval": 180, "next_at": 180, "outcome": "ok", "usage": USAGE, "fetched_at": 0,
+        "earlier_usage": None, "earlier_at": None, "tried_at": 0}
+
+
+def test_record_keeps_the_reading_before_this_one_and_when_it_tried():
+    first = record(None, "ok", USAGE, now=0, jitter=0)
+    second = record(first, "ok", moved(USAGE, 2), now=180, jitter=0)
+    assert (second["earlier_usage"], second["earlier_at"], second["tried_at"]) == (USAGE, 0, 180)
+
+
+def test_a_failed_reading_keeps_both_readings_and_moves_only_the_attempt():
+    first = record(None, "ok", USAGE, now=0, jitter=0)
+    second = record(first, "ok", moved(USAGE, 2), now=180, jitter=0)
+    third = record(second, "failed", None, now=400, jitter=0)
+    assert (third["earlier_at"], third["fetched_at"], third["tried_at"]) == (0, 180, 400)
 
 
 def test_a_window_that_moved_pulls_the_next_reading_in():
@@ -73,7 +87,8 @@ def test_jitter_spreads_readings_so_two_pollers_do_not_line_up():
 def test_record_keeps_the_last_good_reading_through_a_failure():
     good = record(None, "ok", USAGE, now=0, jitter=0)
     assert record(good, "failed", None, now=180, jitter=0) == {
-        "interval": 270, "next_at": 450, "outcome": "failed", "usage": USAGE, "fetched_at": 0}
+        "interval": 270, "next_at": 450, "outcome": "failed", "usage": USAGE, "fetched_at": 0,
+        "earlier_usage": None, "earlier_at": None, "tried_at": 180}
 
 
 def test_record_holds_off_an_hour_after_a_429():
@@ -130,4 +145,24 @@ def test_meters_snapshot_of_an_account_never_read_has_no_figures():
 
 def test_meters_snapshot_says_why_when_the_store_cannot_be_read():
     assert meters_snapshot([], {}, active_id=None, error="store is not valid JSON") == {
-        "active": None, "accounts": [], "error": "store is not valid JSON"}
+        "active": None, "accounts": [], "error": "store is not valid JSON", "last_switch": None,
+        "next_switch": None}
+
+
+def test_the_snapshot_names_the_last_switch():
+    last = {"at": 500, "from": "acct-1", "to": "acct-2", "why": "Fable at 98%", "auto": True}
+    snap = meters_snapshot([A1, A2], {}, active_id="acct-2", emails={"acct-2": "bob@example.com"},
+                           last_switch=last)
+    assert snap["last_switch"] == {"at": 500, "to": "bob@example.com", "why": "Fable at 98%", "auto": True}
+
+
+def test_the_snapshot_names_where_the_next_switch_would_go():
+    snap = meters_snapshot([A1, A2], {}, active_id="acct-1", emails={"acct-2": "bob@example.com"},
+                           next_switch={"to": "acct-2", "near": True, "why": "Fable at 86%"})
+    assert snap["next_switch"] == {"to": "bob@example.com", "near": True, "why": "Fable at 86%"}
+
+
+def test_the_snapshot_carries_a_switch_with_nowhere_to_go():
+    snap = meters_snapshot([A1], {}, active_id="acct-1",
+                           next_switch={"to": None, "near": True, "why": "5-hour at 96%"})
+    assert snap["next_switch"] == {"to": None, "near": True, "why": "5-hour at 96%"}

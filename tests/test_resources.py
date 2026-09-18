@@ -120,3 +120,49 @@ def test_a_session_that_is_gone_is_forgotten():
     sidebar.hold_heavy(seen, ["cpu"], 7, now=0)
     sidebar.forget_heavy(seen, live={8})
     assert seen == {}
+
+
+def test_the_listing_names_each_process_by_its_program():
+    names = sidebar.parse_commands(PS)
+    assert names[111] == "node"
+    assert names[110] == "npm"
+    assert names[100] == "claude"
+
+
+def test_a_tree_names_what_uses_the_most_of_each():
+    table, names = sidebar.parse_resources(PS), sidebar.parse_commands(PS)
+    # Under 100, node burns the CPU (90.0) and claude holds the memory (300000 KB).
+    assert sidebar.tree_hogs(table, names, 100, stop_at={100, 200, 300}) == {
+        "cpu": "node", "memory": "claude"}
+
+
+def test_a_tree_that_is_gone_names_nothing():
+    table, names = sidebar.parse_resources(PS), sidebar.parse_commands(PS)
+    assert sidebar.tree_hogs(table, names, 4242, stop_at=set()) == {}
+
+
+def test_a_heavy_kind_carries_a_round_figure_and_its_hog():
+    # 187.4 % of a core and 3.27 GB resident, both held heavy.
+    usage = sidebar.usage_shown(["cpu", "memory"], 187.4, int(3.27 * 1024 * 1024),
+                                {"cpu": "node", "memory": "claude"})
+    assert usage == {"cpu": {"percent": 190, "top": "node"},
+                     "memory": {"gb": 3.3, "top": "claude"}}
+
+
+def test_a_kind_that_is_not_heavy_carries_no_figure():
+    """The figures move on every reading; only a heavy session pays for that."""
+    usage = sidebar.usage_shown(["memory"], 187.4, int(3.27 * 1024 * 1024), {"memory": "claude"})
+    assert usage == {"memory": {"gb": 3.3, "top": "claude"}}
+    assert sidebar.usage_shown([], 187.4, 100, {}) == {}
+
+
+def test_a_heavy_session_carries_its_figures_into_the_snapshot():
+    base = {"session_id": "s0", "window_id": "w", "tab_id": "t",
+            "window_index": 0, "tab_index": 0, "pane_index": 0,
+            "path": "/Users/x/.claude-sessions/demo", "auto_name": "demo",
+            "session_name": "cs: demo", "job_name": None, "agent_state": "working"}
+    usage = {"memory": {"gb": 3.3, "top": "node"}}
+    heavy = sidebar.snapshot([dict(base, heavy=["memory"], usage=usage)])["groups"][0]["rows"][0]
+    light = sidebar.snapshot([dict(base, heavy=[], usage={})])["groups"][0]["rows"][0]
+    assert heavy["usage"] == usage
+    assert "usage" not in light

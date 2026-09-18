@@ -30,7 +30,7 @@ class Quiet:
 def bridge(monkeypatch, readings):
     def read_system():
         readings.append(1)
-        return ({}, {}, {}, {}), {}, {}
+        return ({}, {}, {}, {}), {}, {}, {}
     monkeypatch.setattr(sidebar, "read_system", read_system)
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
@@ -47,7 +47,7 @@ def test_the_process_listing_is_read_off_the_event_loop(monkeypatch):
             seen.append("on the loop")
         except RuntimeError:
             seen.append("in a thread")
-        return ({}, {}, {}, {}), {}, {}
+        return ({}, {}, {}, {}), {}, {}, {}
     monkeypatch.setattr(sidebar, "read_system", read_system)
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())

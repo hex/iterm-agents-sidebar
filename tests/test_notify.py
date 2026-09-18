@@ -10,7 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sidebar
-from sidebar import notify_argv, notify_response, notify_wanted, response_target, Notices
+from sidebar import (notify_argv, notify_response, notify_wanted, response_target, Notices,
+                     switch_log_line, switch_notice_argv)
 
 APP = Path("/tmp/example.app")
 EXE = str(APP / "Contents" / "MacOS" / "agents-notifier")
@@ -275,3 +276,18 @@ def test_a_trailing_newline_is_typed_as_its_own_enter():
     assert keystrokes("2") == ["2"]
     assert keystrokes("\n") == ["\r"]
     assert keystrokes("") == []
+
+
+def test_an_automatic_switch_posts_one_plain_notice_under_its_own_id():
+    assert switch_notice_argv("/Apps/Agents.app", "bob@example.com", "Fable at 98%") == [
+        "/Apps/Agents.app/Contents/MacOS/agents-notifier", "post", "--id", "account-switch",
+        "--title", "Switched to bob@example.com", "--body", "Fable at 98%"]
+
+
+def test_each_account_event_reads_as_one_log_line():
+    assert switch_log_line({"kind": "switched", "name": "bob@example.com", "why": "Fable at 98%"}) == \
+        "auto-switch -> bob@example.com (Fable at 98%)"
+    assert switch_log_line({"kind": "blocked", "why": "every account is full"}) == \
+        "auto-switch: nowhere to go, every account is full"
+    assert switch_log_line({"kind": "refused", "why": "log in to home again"}) == \
+        "auto-switch refused: log in to home again"
