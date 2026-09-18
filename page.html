@@ -2680,7 +2680,7 @@ function paint(snapshot) {
         const failed = codex && done && ["failed", "cancelled"].includes(sub.phase);
         const dots = Object.assign(document.createElement("span"), {className: done ? "busy" : "busy down"});
         if (failed) dots.innerHTML = "";
-        else if (done) { dots.innerHTML = ""; dots.append(Object.assign(metaIcon("check"), {className: "mi done-mark"})); }
+        else if (done) { dots.innerHTML = ""; const mark = metaIcon("check"); mark.classList.add("done-mark"); dots.append(mark); }
         else dots.innerHTML = "<i></i><i></i><i></i>";
         if (done) sb.classList.add("finished");
         if (sub.depth) sb.style.setProperty("--depth", sub.depth);
