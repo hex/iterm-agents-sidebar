@@ -388,8 +388,8 @@ def notify_wanted(kind, session_id, active, app_active):
     return not (session_id == active and app_active is True)
 
 
-def classify(path, auto_name, agent_state=None):
-    """One session's cwd, title and reported state -> (kind, label).
+def classify(path, auto_name, agent_state=None, agent_job=False):
+    """One session's cwd, title, reported state and foreground job -> (kind, label).
 
     Pure. `kind` is "agent" or "shell"; `label` is what the row shows.
 
@@ -408,10 +408,11 @@ def classify(path, auto_name, agent_state=None):
         label = resolved.name
 
     marked = bool(auto_name) and auto_name.startswith(AGENT_TITLE_MARKER)
-    # Union, not either alone: a session running inside tmux loses the marker
-    # to tmux but still reports state, and an agent that has not reported yet
-    # still carries the marker.
-    if marked or agent_state:
+    # Union, not any one alone: a session running inside tmux loses the marker
+    # to tmux but still reports state, an agent that has not reported yet
+    # still carries the marker, and a Codex TUI has neither until its first
+    # prompt, when the process itself is the only evidence there is.
+    if marked or agent_state or agent_job:
         # A cwd says where a terminal is standing, not which session it is:
         # one session cd'd into another session's directory and took its name.
         # The marked title survives any cd, so prefer it when it is there.
@@ -544,7 +545,7 @@ def snapshot(sessions, sort_by_name=False):
     rows = {"agent": [], "shell": []}
     for session in sessions:
         kind, label = classify(session.get("path"), session.get("auto_name"),
-                               session.get("agent_state"))
+                               session.get("agent_state"), session.get("agent_job"))
         resolved = Path(session["path"]) if session.get("path") else None
         # A family is one tab, not one directory. Two cs sessions open on the
         # same repo share a directory and nothing else, and keying on the
@@ -721,6 +722,7 @@ def snapshot(sessions, sort_by_name=False):
     if sort_by_name:
         for kind in rows:
             rows[kind] = by_name(rows[kind])
+    mark_busy_teammates(rows["agent"])
 
     groups = [
         {"name": "AGENTS", "rows": rows["agent"]},
@@ -728,6 +730,21 @@ def snapshot(sessions, sort_by_name=False):
     ]
     # A header over nothing reads as breakage, and costs a row of a narrow panel.
     return {"groups": [group for group in groups if group["rows"]]}
+
+
+def mark_busy_teammates(rows):
+    """Give each lead the number of its teammates that are working. -> None.
+
+    A teammate is its own session in its own pane with its own state, so a
+    lead reads idle while work goes on under it. The count is the honest
+    middle: the lead still says what its own pane is doing.
+    """
+    lead = None
+    for row in rows:
+        if not row.get("depth"):
+            lead = row
+        elif lead is not None and row.get("state") == "working":
+            lead["busy_kids"] = lead.get("busy_kids", 0) + 1
 
 
 #: States the hooks can actually establish. "unknown" is reader-derived, not
@@ -1023,7 +1040,12 @@ def foreground_command(args):
         return None
     name = os.path.basename(words[0])
     if INTERPRETERS.match(name) and len(words) > 1 and not words[1].startswith("-"):
-        return os.path.basename(words[1])
+        words, name = words[1:], os.path.basename(words[1])
+    # A Codex subcommand is a job, not a person's session: `codex exec` and
+    # `codex app-server` say so in the name, so only the bare TUI reads as
+    # Codex itself.
+    if name == "codex" and len(words) > 1 and not words[1].startswith("-"):
+        return f"codex {words[1]}"
     return name
 
 
@@ -2073,8 +2095,17 @@ class Bridge:
                     # tmux's directory for its own pane over iTerm2's guess.
                     values["path"] = pane.get("path") or values["path"]
                     raw, provider = agent_variable(values["user.claudeState"], values["user.codexState"])
+                    # Codex opens its session at the first prompt, so a TUI
+                    # waiting at its prompt has published nothing. The
+                    # foreground job is then the only evidence that a person
+                    # is sitting in front of an agent; a pane that has
+                    # published state is left to speak for itself.
+                    job = values["jobName"] or pane.get("job")
+                    codex_tui = provider is None and job == "codex"
+                    if codex_tui:
+                        provider = "openai"
                     pid = parse_pid(raw)
-                    if provider == "openai":
+                    if provider == "openai" and raw:
                         # Codex has no statusline: the hook names the model and
                         # the rollout has the rest.
                         published = parse_codex(raw)
@@ -2095,7 +2126,8 @@ class Bridge:
                         "path": values["path"],
                         "auto_name": values["autoName"],
                         "session_name": values["name"],
-                        "job_name": values["jobName"] or pane.get("job"),
+                        "job_name": job,
+                        "agent_job": codex_tui,
                         "provider": provider,
                         "agent_state": parse_state(raw),
                         "agents": parse_agents(raw),
