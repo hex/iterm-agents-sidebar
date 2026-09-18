@@ -441,6 +441,20 @@ def test_a_render_outlives_the_term_of_the_bridge_and_its_group(tmp_path):
     assert [p.read_text() for p in lines] == ["landed"]
 
 
+def eventually(predicate, timeout=10):
+    """The bridge answers before its render finishes, by design. A test that
+    asserts what the render produced waits for it rather than assuming the
+    tick was still holding it.
+    """
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.05)
+    return False
+
+
 def test_a_stale_lock_does_not_freeze_the_line(tmp_path):
     """A render that died without cleaning up leaves its lock. Once a line
     exists the fast path never looked at the lock's age, so the line stayed
@@ -460,8 +474,8 @@ def test_a_stale_lock_does_not_freeze_the_line(tmp_path):
     os.utime(lock, (0, 0))
     payload = '{"context_window":{"used_percentage":1}}'
     subprocess.run([str(script)], input=payload, env=env, capture_output=True, text=True, timeout=10)
-    assert (d / f"{pid}.line").read_text() == "fresh"
-    assert not lock.exists()
+    assert eventually(lambda: (d / f"{pid}.line").read_text() == "fresh")
+    assert eventually(lambda: not lock.exists())
 
 
 def test_a_render_killed_outright_leaves_nothing_the_next_render_does_not_reuse(tmp_path):
@@ -633,5 +647,82 @@ def test_a_tick_with_a_line_to_show_forks_only_the_lock_the_move_and_the_render(
                          capture_output=True, text=True, timeout=10)
     assert run.stdout == "last", run.stderr
     assert (d / f"{pid}.json").read_text() == payload
-    assert (d / f"{pid}.line").read_text() == "fresh"
+    assert eventually(lambda: (d / f"{pid}.line").read_text() == "fresh")
 
+
+def test_the_render_keeps_a_living_parent(tmp_path):
+    """cs-statusline chooses its light or dark palette by walking its parent
+    pids up to the tmux server. A render put in a background job is orphaned
+    to launchd the moment the bridge exits, fails that walk, and paints the
+    dark palette against a light terminal.
+
+    Tried on 2026-09-18 for the faster tick backgrounding buys, and reverted
+    the same day when the statusline came back dark. This is the test that
+    was missing: the render runs as the bridge's own work, and its parent is
+    alive to be walked.
+    """
+    import os
+    import subprocess
+    env = dict(os.environ, HOME=str(tmp_path))
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    seen = d / "parent-of-render"
+    # The whole chain, because one link proves nothing: a backgrounded render
+    # keeps a living subshell over it, and the break is the link above that,
+    # where the bridge has gone. Asked of the process table rather than of
+    # $PPID, which bash fixes at startup and never updates on a reparent, and
+    # asked after a pause, since the orphaning happens when the bridge exits.
+    (d / "original-statusline").write_text(
+        "cat > /dev/null; sleep 1; p=$$; chain=''\n"
+        "while [ -n \"$p\" ] && [ \"$p\" -gt 1 ]; do\n"
+        "  chain=\"$chain $p\"\n"
+        "  p=$(ps -o ppid= -p \"$p\" | tr -d ' ')\n"
+        "done\n"
+        f"printf '%s' \"$chain\" > {seen}\n"
+        "printf 'line'\n")
+    script = Path(__file__).resolve().parent.parent / "plugin" / "statusline-bridge.sh"
+    payload = '{"context_window":{"used_percentage":1}}'
+    # Warm: a line already exists, which is the branch that was backgrounded.
+    (d / f"{os.getpid()}.line").write_text("stale")
+    subprocess.run([str(script)], input=payload, env=env,
+                   capture_output=True, text=True, timeout=20)
+    assert eventually(lambda: seen.exists() and seen.read_text().strip())
+    chain = [int(pid) for pid in seen.read_text().split()]
+    # cs-statusline walks up to the tmux server. Here the test process stands
+    # in for it: reach it and the walk that picks the palette succeeds.
+    assert os.getpid() in chain, (
+        f"the render was orphaned -- its ancestors were {chain}, which never "
+        f"reach {os.getpid()}. cs-statusline will paint the dark palette.")
+
+
+def test_a_render_outlives_the_kill_of_the_bridge_and_its_group(tmp_path):
+    """Traced live on Claude Code 2.1.276, 2026-09-18: a statusline run still
+    going about two seconds after it began is SIGKILLed, process group and
+    all. The bridge ignores TERM but nothing ignores KILL, so a render slower
+    than that died with the bridge, its line never landed, and the lock it
+    left stopped every other render for ten seconds -- the line went 24 and
+    39 seconds without a refresh on an idle machine, 4 renders of 12 lost.
+
+    The render therefore runs in a process group of its own. The kill takes
+    the bridge; the render finishes, lands its line and gives the lock back.
+    """
+    import os
+    import signal
+    import subprocess
+    import time
+    env = dict(os.environ, HOME=str(tmp_path))
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text("cat > /dev/null; sleep 1.5; printf 'landed'")
+    script = Path(__file__).resolve().parent.parent / "plugin" / "statusline-bridge.sh"
+    bridge = subprocess.Popen([str(script)], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.PIPE, env=env, start_new_session=True)
+    bridge.stdin.write(b'{"context_window":{"used_percentage":1}}')
+    bridge.stdin.close()
+    assert eventually(lambda: list(d.glob("*.rendering")))
+    time.sleep(0.3)
+    os.killpg(bridge.pid, signal.SIGKILL)
+    bridge.wait(timeout=20)
+    assert eventually(lambda: [p.read_text() for p in d.glob("*.line")] == ["landed"])
+    assert eventually(lambda: not list(d.glob("*.rendering")))
+    assert bridge.stderr.read() == b""

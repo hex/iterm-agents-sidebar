@@ -638,3 +638,32 @@ def test_sorting_by_name_survives_a_nested_row_with_nothing_above_it():
     With no card above it to belong to, it sorts as a card of its own."""
     assert [r["label"] for r in by_name([{"label": "orphan", "depth": 1},
                                          {"label": "atlas", "depth": 0}])] == ["atlas", "orphan"]
+
+
+def test_a_codex_terminal_is_a_card_with_its_provider_and_no_state():
+    """Before its first prompt a Codex TUI has published nothing, so the card
+    says which agent it is and claims nothing about what it is doing."""
+    groups = snapshot([{
+        "session_id": "0D3E6F55-0000-4000-8000-000000000001",
+        "window_id": WINDOW, "tab_id": "9",
+        "window_index": 1, "tab_index": 2, "pane_index": 1,
+        "path": "/Users/x/work/repo", "auto_name": "zsh", "job_name": "codex",
+        "agent_job": True, "provider": "openai",
+    }])["groups"]
+    [group] = [g for g in groups if g["rows"]]
+    [row] = group["rows"]
+    assert group["name"] == "AGENTS"
+    assert (row["label"], row["provider"]) == ("repo", "openai")
+    assert "state" not in row and "job" not in row
+
+
+def test_a_lead_counts_the_teammates_working_under_it():
+    """A teammate runs in its own pane with its own state, so a lead can read
+    idle while work goes on under it. The count says so without the lead
+    claiming to be working itself."""
+    from sidebar import mark_busy_teammates
+    rows = [{"depth": 0, "state": "idle"}, {"depth": 1, "state": "working"},
+            {"depth": 1, "state": "idle"}, {"depth": 0, "state": "working"},
+            {"depth": 1, "state": "working"}, {"depth": 0, "state": "idle"}]
+    mark_busy_teammates(rows)
+    assert [r.get("busy_kids") for r in rows] == [1, None, None, 1, None, None]

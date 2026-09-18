@@ -72,9 +72,13 @@ The line below carries the branch, the model with its effort letter (`[l]`,
 `[m]`, `[h]`, `[xh]`, `[mx]`), the context percentage, and a `CPU` or `Mem`
 chip when the session's process tree is using a lot of the machine. A Codex
 card wears the OpenAI mark instead of the Claude one, and has no teammates and
-no background-shell line.
+no background-shell line. Codex opens its session at your first prompt, so
+until then its card shows the name, the branch and a `Codex` mark, and no
+state.
 
-Teammates nest inside the card. Running subagents get a row each, with the
+Teammates nest inside the card, and while one of them is working the lead's
+line carries the busy dots and a count, since a teammate runs in its own pane
+and the lead's own badge stays about the lead. Running subagents get a row each, with the
 model they reply with and how long they have run. A subagent started by another
 subagent sits one step in, under the one that started it. A Codex job started
 through the codex plugin (a rescue or a review) gets a row too, with its phase.
@@ -125,7 +129,8 @@ click.
 - [docs/usage.md](docs/usage.md): what every part of a card means
 - [docs/accounts.md](docs/accounts.md): accounts, switching, the meters
 - [docs/integrations.md](docs/integrations.md): the two opt-in installs
-- [docs/troubleshooting.md](docs/troubleshooting.md): `STALE`, `?`, a white panel
+- [docs/troubleshooting.md](docs/troubleshooting.md): `STALE`, `?`, a white panel,
+  tracing the statusline bridge
 - [docs/development.md](docs/development.md): how it works, tests, releases
 
 The panel would rather show nothing than a believable wrong answer. Every row

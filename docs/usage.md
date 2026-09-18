@@ -6,7 +6,9 @@ you need on day one.
 ## Which group a session lands in
 
 A session running Claude Code or Codex, or sitting in a `cs` session
-directory, goes in `AGENTS`. Everything else goes in `SESSIONS`.
+directory, goes in `AGENTS`. Everything else goes in `SESSIONS`. A Codex
+terminal counts from the moment it opens, which the panel reads from the
+foreground process, since Codex itself says nothing until the first prompt.
 
 Rows read `t3` for the third tab, `t3.2` for the second pane of a split tab,
 and `w2.t3` once there is a second window. The number is a position you can

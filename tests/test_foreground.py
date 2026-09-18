@@ -98,3 +98,14 @@ def test_one_process_listing_serves_shells_start_times_and_foreground_jobs(monke
     assert shells == {5001: [{"label": "ls", "command": "ls"}]}
     assert started[5001] == 1789638277
     assert panes == {170: {"job": "codex", "path": "/Users/x/atlas"}}
+
+
+def test_a_codex_subcommand_names_itself_so_only_the_tui_reads_as_codex():
+    """`codex exec` and `codex app-server` are not a person's session: the
+    panel shows a card for the interactive TUI alone."""
+    from sidebar import foreground_command
+    node = "/Users/x/.nvm/versions/node/v25.1.0/bin/node /Users/x/.nvm/versions/node/v25.1.0/bin/codex"
+    assert foreground_command(node) == "codex"
+    assert foreground_command(node + " exec 'reply ok'") == "codex exec"
+    assert foreground_command(node + " app-server") == "codex app-server"
+    assert foreground_command(node + " --model gpt-6-astra") == "codex"

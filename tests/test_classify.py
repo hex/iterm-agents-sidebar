@@ -140,3 +140,12 @@ def test_a_plain_shell_is_named_by_its_path_with_home_as_tilde():
     which is also the name of the agent card above it.
     """
     assert classify(str(Path.home() / "src" / "acme"), "zsh") == ("shell", "~/src/acme")
+
+
+def test_a_terminal_running_codex_is_an_agent_before_it_reports():
+    """Codex creates its session at the first prompt, so a TUI sitting at its
+    prompt publishes nothing; the process is still evidence enough for a card,
+    and the state badge stays away until a hook speaks. Measured on
+    codex-cli 0.155 on 2026-09-18."""
+    assert classify("/Users/x/work/repo", "zsh", None, agent_job=True) == ("agent", "repo")
+    assert classify("/Users/x/work/repo", "zsh", None) == ("shell", "/Users/x/work/repo")
