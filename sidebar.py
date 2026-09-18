@@ -89,6 +89,8 @@ DEFAULT_SETTINGS = {
     "notify": True,
     "notify_blocked": True,
     "notify_done": True,
+    # Leave an account that is filling up, without being asked.
+    "auto_switch": False,
     "muted": False,
     "context_threshold": 40,
     # A session tree at or over either reads as heavy: percent of one core,
@@ -187,6 +189,24 @@ NOTIFY_MESSAGES = {
     "blocked": "is asking a question",
     "done": "finished a turn",
 }
+
+#: One standing notice for account switches: a second switch replaces the first.
+SWITCH_NOTICE_ID = "account-switch"
+
+
+def switch_notice_argv(app, name, why):
+    """agents-notifier's argv for an account the daemon switched to on its own."""
+    exe = str(Path(app) / "Contents" / "MacOS" / "agents-notifier")
+    return [exe, "post", "--id", SWITCH_NOTICE_ID, "--title", f"Switched to {name}", "--body", why]
+
+
+def switch_log_line(event):
+    """One account event from the meter loop, as the log says it."""
+    if event["kind"] == "switched":
+        return f"auto-switch -> {event['name']} ({event['why']})"
+    if event["kind"] == "blocked":
+        return f"auto-switch: nowhere to go, {event['why']}"
+    return f"auto-switch refused: {event['why']}"
 
 #: macOS shows no more buttons than this on a notice.
 NOTICE_BUTTONS = 4
@@ -661,6 +681,8 @@ def snapshot(sessions, sort_by_name=False):
                 row["details"] = session["details"]
             if session.get("heavy"):
                 row["heavy"] = session["heavy"]
+            if session.get("usage"):
+                row["usage"] = session["usage"]
         if session.get("branch"):
             row["branch"] = session["branch"]
         if kind == "agent" and session.get("claude_session"):
@@ -952,6 +974,20 @@ def parse_resources(raw):
     return table
 
 
+def parse_commands(raw):
+    """The process listing -> {pid: the program it runs, without its path}."""
+    names = {}
+    for line in (raw or "").splitlines():
+        parts = line.split(None, PROCESS_FIELDS)
+        if len(parts) <= PROCESS_FIELDS:
+            continue
+        try:
+            names[int(parts[0])] = os.path.basename(parts[PROCESS_FIELDS].split()[0])
+        except ValueError:
+            continue
+    return names
+
+
 def heavy_on(cpu, rss_kb, settings):
     """-> which of "cpu" and "memory" are at or over their thresholds.
 
@@ -964,6 +1000,20 @@ def heavy_on(cpu, rss_kb, settings):
     if rss_kb >= settings["memory_threshold"] * 1024 * 1024:
         heavy.append("memory")
     return heavy
+
+
+def usage_shown(heavy, cpu, rss_kb, hogs):
+    """-> the figure and the hungriest program for each kind in `heavy`.
+
+    Rounded to ten percent and a tenth of a gigabyte, and only for a kind that
+    reads heavy, so a light session's snapshot holds still between readings.
+    """
+    usage = {}
+    if "cpu" in heavy:
+        usage["cpu"] = {"percent": int(round(cpu, -1)), "top": hogs.get("cpu")}
+    if "memory" in heavy:
+        usage["memory"] = {"gb": round(rss_kb / 1024 / 1024, 1), "top": hogs.get("memory")}
+    return usage
 
 
 #: How long a chip stays after its last heavy reading.
@@ -996,16 +1046,34 @@ def tree_usage(table, root, stop_at):
     A descendant in `stop_at` is another session's card and is left to it,
     so one busy teammate does not light its lead as well.
     """
+    cpu, rss = 0.0, 0
+    for pid in tree_pids(table, root, stop_at):
+        cpu += table[pid][1]
+        rss += table[pid][2]
+    return cpu, rss
+
+
+def tree_pids(table, root, stop_at):
+    """`root` and every process below it, down to but not into `stop_at`."""
     children = {}
     for pid, (parent, _, _) in table.items():
         children.setdefault(parent, []).append(pid)
-    cpu, rss, pending = 0.0, 0, [root] if root in table else []
+    pids, pending = [], [root] if root in table else []
     while pending:
         pid = pending.pop()
-        cpu += table[pid][1]
-        rss += table[pid][2]
+        pids.append(pid)
         pending.extend(child for child in children.get(pid, []) if child not in stop_at)
-    return cpu, rss
+    return pids
+
+
+def tree_hogs(table, names, root, stop_at):
+    """-> {"cpu": program, "memory": program}: what in `root`'s tree uses the
+    most of each. Empty when the tree is gone."""
+    pids = tree_pids(table, root, stop_at)
+    if not pids:
+        return {}
+    return {"cpu": names.get(max(pids, key=lambda pid: table[pid][1])),
+            "memory": names.get(max(pids, key=lambda pid: table[pid][2]))}
 
 
 def read_process_listing():
@@ -1021,7 +1089,8 @@ def read_process_listing():
 def read_system():
     """Everything a rebuild learns from outside iTerm2, off one ps and one tmux."""
     listing = read_process_listing()
-    return parse_processes(listing), read_tmux_panes(listing), parse_resources(listing)
+    return (parse_processes(listing), read_tmux_panes(listing), parse_resources(listing),
+            parse_commands(listing))
 
 
 #: Programs that run a script: the script names what is running, not them.
@@ -1118,6 +1187,77 @@ def _reported_at(raw):
     except (ValueError, TypeError, KeyError):
         return None
     return ts if isinstance(ts, (int, float)) else None
+
+
+def stale_state_entries(entries, now, live):
+    """Names among (name, mtime) pairs that a session long gone left behind.
+
+    A session's files share its id as their stem: the document, its lock, the
+    filed detail, and a temp file a killed hook never renamed. They go
+    together or not at all, and not while the session has a card or wrote
+    anything lately: taking the lock never touches it, so a live session's
+    lock is old, and one that sat idle overnight has an old document too.
+    """
+    stem = lambda name: name.split(".", 1)[0]
+    fresh = {stem(name) for name, mtime in entries if now - mtime <= STATUS_SWEEP_AFTER}
+    return [name for name, _ in entries if stem(name) not in fresh and stem(name) not in live]
+
+
+def sweep_state_dir(now, live, directory):
+    """Remove what dead sessions left in the hook's state directory.
+
+    The directory is named by the caller: a test that sweeps with a time of
+    its own must never be one forgotten patch away from the real one.
+    """
+    try:
+        with os.scandir(directory) as it:
+            found = [(e.name, e.stat().st_mtime) for e in it if e.is_file()]
+    except OSError:
+        return
+    for name in stale_state_entries(found, now, live):
+        try:
+            os.remove(os.path.join(directory, name))
+        except OSError:
+            pass
+
+
+#: Where the hook files a published state too large for the session variable.
+HOOK_STATE_DIR = os.path.expanduser("~/.claude/agents-sidebar-subagents")
+#: A session id as a file name: any program in a pane can set its variable,
+#: so the id is checked before it names a path.
+_SESSION_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def with_detail(raw, directory=None):
+    """The session variable -> the whole published state, as JSON text.
+
+    A variable that says `detail: true` left its subagents and its question in
+    a file under the session id. A file as new as the variable is the whole
+    state and replaces it. An older one lost a race with a later event: its
+    subagents still stand, its question may have been answered since and is
+    dropped. No readable file leaves the variable as it came.
+    """
+    try:
+        envelope = json.loads(raw)
+    except (ValueError, TypeError):
+        return raw
+    if not isinstance(envelope, dict) or envelope.get("detail") is not True:
+        return raw
+    session = envelope.get("session")
+    if not isinstance(session, str) or not _SESSION_FILE.match(session):
+        return raw
+    try:
+        with open(os.path.join(directory or HOOK_STATE_DIR, session + ".published"),
+                  encoding="utf-8") as fh:
+            whole = json.load(fh)
+    except (OSError, ValueError):
+        return raw
+    if not isinstance(whole, dict):
+        return raw
+    stamp = lambda doc: doc.get("ts") if isinstance(doc.get("ts"), (int, float)) else 0
+    if stamp(whole) >= stamp(envelope):
+        return json.dumps(whole)
+    return json.dumps(dict(envelope, subagents=whole.get("subagents")))
 
 
 def agent_variable(claude_raw, codex_raw):
@@ -2062,6 +2202,8 @@ class Bridge:
         self._rebuild_again = False
         #: (pid, kind) -> when that session last read heavy, for hold_heavy.
         self._heavy_seen = {}
+        #: The hook session ids that have a card, which the state sweep spares.
+        self.live_sessions = set()
         self.trips = ReturnTrips()
         self.notifier_missing_said = False
         self.notices = Notices()
@@ -2076,10 +2218,10 @@ class Bridge:
     async def read_sessions(self):
         # Two execs and a walk of the process table: in a thread, or the
         # heartbeat, the settings sheet and every focus click wait behind them.
-        (shells, started, agent_colours, agent_parents), tmux_panes, resources = \
+        (shells, started, agent_colours, agent_parents), tmux_panes, resources, commands = \
             await asyncio.to_thread(read_system)
         codex_jobs = await asyncio.to_thread(read_codex_jobs)
-        rows, pids = [], []
+        rows, pids, live_sessions = [], [], set()
         for window_index, window in enumerate(self.app.terminal_windows, start=1):
             for tab_index, tab in enumerate(window.tabs, start=1):
                 for pane_index, session in enumerate(tab.sessions, start=1):
@@ -2095,6 +2237,8 @@ class Bridge:
                     # tmux's directory for its own pane over iTerm2's guess.
                     values["path"] = pane.get("path") or values["path"]
                     raw, provider = agent_variable(values["user.claudeState"], values["user.codexState"])
+                    raw = with_detail(raw)
+                    live_sessions.add(parse_session(raw))
                     # Codex opens its session at the first prompt, so a TUI
                     # waiting at its prompt has published nothing. The
                     # foreground job is then the only evidence that a person
@@ -2164,11 +2308,14 @@ class Bridge:
                     })
                     pids.append(pid)
         # After every row is known: a session's tree ends where another's begins.
+        self.live_sessions = live_sessions - {None}
         settings, roots, now = load_settings(), set(pids), time.monotonic()
         forget_heavy(self._heavy_seen, roots)
         for row, pid in zip(rows, pids):
-            row["heavy"] = hold_heavy(self._heavy_seen, heavy_on(
-                *tree_usage(resources, pid, roots), settings), pid, now)
+            cpu, rss_kb = tree_usage(resources, pid, roots)
+            row["heavy"] = hold_heavy(self._heavy_seen, heavy_on(cpu, rss_kb, settings), pid, now)
+            row["usage"] = usage_shown(row["heavy"], cpu, rss_kb,
+                                       tree_hogs(resources, commands, pid, roots))
         return rows
 
     def healthy(self):
@@ -2320,6 +2467,26 @@ class Bridge:
         self.log("notice up", session_id[:8], kind, "question" if question else "plain")
         asyncio.ensure_future(self.answer(session_id, poster))
 
+    async def notify_switch(self, name, why):
+        """Say that the daemon changed the login, since nobody clicked anything.
+
+        The sender takes its notice down when it exits, so it is left running
+        and reaped when the notice is dismissed.
+        """
+        argv = switch_notice_argv(NOTIFIER_APP, name, why)
+        if not load_settings()["notify"] or not os.access(argv[0], os.X_OK):
+            return
+        try:
+            poster = await asyncio.create_subprocess_exec(
+                *argv,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL)
+        except OSError as error:
+            self.log(f"notify switch: {error!r}")
+            return
+        asyncio.ensure_future(poster.wait())
+
     async def answer(self, session_id, poster):
         """Read the sender's lines and act on each, for whichever notice.
 
@@ -2398,7 +2565,12 @@ class Bridge:
         """
         while True:
             try:
-                await asyncio.to_thread(self.meters.tick, time.time())
+                auto = load_settings()["auto_switch"]
+                events = await asyncio.to_thread(self.meters.tick, time.time(), auto)
+                for event in events:
+                    self.log(switch_log_line(event))
+                    if event["kind"] == "switched":
+                        await self.notify_switch(event["name"], event["why"])
             except Exception as error:               # noqa: BLE001
                 print(f"sidebar: account meters failed: {error!r}", flush=True)
             await asyncio.sleep(ACCOUNT_TICK_SECONDS)
@@ -2408,6 +2580,10 @@ class Bridge:
         while True:
             try:
                 await asyncio.to_thread(sweep_status_dir, time.time())
+                # Not before a rebuild has said which sessions have a card.
+                if self.healthy():
+                    await asyncio.to_thread(sweep_state_dir, time.time(),
+                                            set(self.live_sessions), HOOK_STATE_DIR)
             except Exception as error:               # noqa: BLE001
                 print(f"sidebar: status sweep failed: {error!r}", flush=True)
             await asyncio.sleep(ACCOUNT_TICK_SECONDS)

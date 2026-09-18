@@ -75,6 +75,14 @@ tools are waiting on you, and a session's state comes from that record, not
 from the last event that fired. It has to, because a parent and all its
 subagents write to the same terminal. Only the tool that opened a gate closes it, or your next prompt does.
 
+The state reaches the daemon as an iTerm2 user variable, written to the pane on
+every hook event. The hook keeps it under 4096 bytes of base64. A state past
+that, which a workflow with dozens of subagents produces, goes whole into
+`~/.claude/agents-sidebar-subagents/<session id>.published`, and the variable
+carries the state, the ids and the times with `detail: true`. The daemon reads
+the file back on each rebuild. If the hook can't write the file, the variable says
+`detail: false` and the card shows its state without its subagents.
+
 A session whose working directory or job iTerm2 can't report shows `?` instead
 of a guess.
 

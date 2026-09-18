@@ -179,3 +179,7 @@ def test_the_version_is_the_file_s_first_line(tmp_path):
 
 def test_no_version_file_means_no_version(tmp_path):
     assert sidebar.version(tmp_path / "VERSION") is None
+
+
+def test_switching_accounts_automatically_is_off_until_asked_for():
+    assert DEFAULT_SETTINGS["auto_switch"] is False

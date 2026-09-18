@@ -70,7 +70,9 @@ five minutes reads `stale`, and a finished one reads `Done`.
 
 The line below carries the branch, the model with its effort letter (`[l]`,
 `[m]`, `[h]`, `[xh]`, `[mx]`), the context percentage, and a `CPU` or `Mem`
-chip when the session's process tree is using a lot of the machine. A Codex
+chip when the session's process tree is using a lot of the machine. While a
+chip shows, the hover card adds a `CPU` or `Memory` row with the figure and the
+name of the program using the most of it. A Codex
 card wears the OpenAI mark instead of the Claude one, and has no teammates and
 no background-shell line. Codex opens its session at your first prompt, so
 until then its card shows the name, the branch and a `Codex` mark, and no
@@ -82,6 +84,9 @@ and the lead's own badge stays about the lead. Running subagents get a row each,
 model they reply with and how long they have run. A subagent started by another
 subagent sits one step in, under the one that started it. A Codex job started
 through the codex plugin (a rescue or a review) gets a row too, with its phase.
+A finished subagent keeps its row until your next prompt. Past three of them,
+they fold into one line ("30 finished") that opens on a click, and the ones
+still running stay in sight.
 Background shells fold into
 one line ("2 commands running") that opens on a click, and clicking a shell
 shows the whole command with a Copy button.
@@ -105,6 +110,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 | Show macOS notifications, for questions and finished turns | On |
 | Sounds, for questions and finished turns | On |
 | Bring a blocked session forward, and go back once it resumes | Off, then on |
+| Auto-switch, above the accounts: leave before a limit for the account with the most room | Off |
 | Sort cards by name, instead of the terminals' own order | Off |
 | CPU heavy at | 100%, one full core |
 | Memory heavy at | 2 GB |

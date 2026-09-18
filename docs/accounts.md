@@ -55,6 +55,31 @@ works. Then it swaps Claude Code's credential and the account in
 `~/.claude.json` while holding Claude Code's own locks. If a step fails after a
 write, the panel puts the old login back and says so.
 
+Under the active account's bars, one line says where the last switch went, why,
+and how long ago. A chip marks a switch the panel made on its own.
+
+## Switching on its own
+
+Off by default. The **Auto-switch** control above the accounts lets the panel
+leave the active account before a limit stops your sessions. It moves when the account's
+fullest window, the 5-hour, the weekly or the Fable limit, reaches 90%, or when
+the rate it is filling at would reach 100% within ten minutes. It waits instead
+when that window resets within ten minutes and would not fill first.
+
+It picks the account with the most room, at least ten points better and under
+90% itself; near-equal accounts are split by whichever resets sooner. A reading
+older than three minutes is taken again before the switch. Automatic switches
+are at least five minutes apart, except that an account already at 100% is left
+at once. When every account is full it stays put and says so once in the
+daemon log.
+
+While a switch is near, a line under the control says where it would go and
+why (`switching soon to spare · Fable at 86%`), or that nowhere fits.
+
+Each switch posts a macOS notice with the reason and writes a line to
+`~/.claude/agents-sidebar-status/daemon.log`. Run this or `cswap auto`, not
+both: two engines would trade the login between them.
+
 ## How often it reads
 
 The panel reads usage at most every 3 minutes per account

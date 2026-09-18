@@ -267,6 +267,13 @@ def test_a_session_end_leaves_nothing_behind(tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == []
 
 
+def test_a_session_end_takes_the_filed_detail_with_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    (tmp_path / "s1.published").write_text("{}")
+    emit_state.clear_state("s1")
+    assert sorted(p.name for p in tmp_path.iterdir()) == []
+
+
 def test_a_gate_is_closed_by_the_tool_the_prompt_was_for():
     """PermissionRequest carries tool_name and tool_input but NOT tool_use_id --
     measured across 13 real gates on 2026-09-08. The id is on the PreToolUse

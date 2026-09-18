@@ -203,6 +203,17 @@ def describe_subagents(doc, transcript_path):
     return {**doc, "agent_info": info}
 
 
+#: The most of each part of a question the state carries. A notice shows less
+#: than this, and an agent can write a question of any length.
+QUESTION_LIMIT, HEADER_LIMIT, OPTION_LIMIT, SUMMARY_LIMIT = 300, 40, 60, 200
+
+
+def clip(text, limit):
+    """`text` as a string of at most `limit` characters, the last an ellipsis when cut."""
+    text = str(text)
+    return text if len(text) <= limit else text[:limit - 1] + "\u2026"
+
+
 def question_from(payload):
     """What a permission gate is asking, from its PermissionRequest payload.
 
@@ -221,13 +232,16 @@ def question_from(payload):
         if not questions:
             return None
         first = questions[0]
-        return {"header": first.get("header") or "",
-                "question": first.get("question") or "",
-                "options": [o.get("label") or "" for o in first.get("options") or []],
+        # Every option keeps its place: the answer is sent as its number.
+        return {"header": clip(first.get("header") or "", HEADER_LIMIT),
+                "question": clip(first.get("question") or "", QUESTION_LIMIT),
+                "options": [clip(o.get("label") or "", OPTION_LIMIT)
+                            for o in first.get("options") or []],
                 "multi": bool(first.get("multiSelect")),
                 "more": len(questions) - 1}
     summary = given.get("command") or given.get("file_path") or given.get("path") or ""
-    return {"tool": tool, "summary": str(summary).strip().splitlines()[0] if summary else ""}
+    return {"tool": tool,
+            "summary": clip(str(summary).strip().splitlines()[0], SUMMARY_LIMIT) if summary else ""}
 
 
 def blocked_since(doc):
@@ -529,7 +543,8 @@ def clear_state(session_id):
     """
     if not session_id:
         return
-    for path in (_state_path(session_id), _state_path(session_id) + ".lock"):
+    for path in (_state_path(session_id), _state_path(session_id) + ".lock",
+                 _published_path(session_id)):
         try:
             os.remove(path)
         except OSError:
@@ -697,6 +712,47 @@ def published(doc, pid, payload, codex, now):
     return value
 
 
+#: The most base64 the session variable may carry. Every hook event writes
+#: the variable to the pane's tty, and a workflow's hundred subagents made it
+#: 28 KB a time, from dozens of agents at once; past this the detail goes to
+#: a file beside the state document and the variable says only that.
+VARIABLE_CEILING = 4096
+#: What the variable leaves behind when it is over the ceiling.
+DETAIL_FIELDS = ("subagents", "question")
+
+
+def _published_path(session_id, directory=None):
+    return os.path.join(directory or STATE_DIR, session_id + ".published")
+
+
+def carried(value, session_id, directory=None):
+    """The published value -> the JSON text the variable carries.
+
+    Whole when it fits. Otherwise the whole value is stored for the daemon to
+    read, replaced by rename so it is never read half written, and the
+    variable carries the rest with `detail: true`. When it cannot be stored
+    the variable says `detail: false`: a card without its subagents, rather
+    than a state that never arrives.
+    """
+    whole = json.dumps(value)
+    if len(base64.b64encode(whole.encode())) <= VARIABLE_CEILING:
+        return whole
+    envelope = {key: item for key, item in value.items() if key not in DETAIL_FIELDS}
+    try:
+        if not session_id:
+            raise OSError("no session to file the detail under")
+        path = _published_path(session_id, directory)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        temp = path + f".{os.getpid()}.tmp"
+        with open(temp, "w", encoding="utf-8") as fh:
+            fh.write(whole)
+        os.replace(temp, path)
+        envelope["detail"] = True
+    except OSError:
+        envelope["detail"] = False
+    return json.dumps(envelope)
+
+
 def nested_agent(environ, codex):
     """Whether this hook belongs to an agent running inside another's tool.
 
@@ -787,7 +843,7 @@ def main():
     elif state == "":
         emit("", variable=variable)
     else:
-        emit(json.dumps(published(doc, pid, payload, codex, time.time())), tty, variable)
+        emit(carried(published(doc, pid, payload, codex, time.time()), session_id), tty, variable)
 
     # The task line: what the agent should be told about reporting its work.
     context = whisper(event, payload, read_note(session_id), time.time(), doc.get("reminded") or 0,

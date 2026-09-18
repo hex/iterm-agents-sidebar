@@ -24,6 +24,8 @@ PAIRS = [
     # The report's live words are green; the ticks beside them are a graphic
     # and need no ratio, but the words do.
     ("--lit-ink", "--card"),
+    # The refused-switch line, on the strip's ground.
+    ("--warn", "--bg"),
 ]
 
 
