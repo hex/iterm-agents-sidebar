@@ -56,12 +56,16 @@ only; iTerm2 keeps the other combinations for itself.
 
 ### What a card says
 
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Four cards: one amber with a WAITING badge, one at work with a report and ticks, one grey with an IDLE outline, and one at work for 25 minutes with a warm long badge">
+
 | State | How it looks |
 | --- | --- |
 | Waiting on you | The whole card amber, with a WAITING badge |
 | Working | Dark name, working dots |
 | Idle | Grey name, IDLE outline |
 | Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
+
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each part joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job and the background shells">
 
 Under the name, an agent reports its own task: a title, then
 `Reading code · 40s`, then ticks for how far it says it has got. The
@@ -121,18 +125,19 @@ The banner can answer for you, so a session in another tab doesn't wait.
 
 ### Settings
 
-| Setting | Default |
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: a card each for sounds, notifications, focus and the rows, every setting with its default">
+
+The gear opens the drawer; every setting is there with its default, as above.
+The sliders have limits the picture doesn't show:
+
+| Setting | Range |
 | --- | --- |
-| Show macOS notifications, for questions and finished turns | On |
-| Sounds, for questions and finished turns | On |
-| Bring a blocked session forward, and go back once it resumes | Off, then on |
-| Auto-switch, above the accounts: leave before a limit for the account with the most room | Off |
-| Sort cards by name, instead of the terminals' own order | Off |
-| Provider badge, saying whether a card runs Claude Code, Codex or omp: a tag by the name, an icon in the corner, cards grouped by provider, or off | Tag by the name |
-| CPU heavy at | 100%, one full core |
-| Memory heavy at | 2 GB |
-| Show task, with its activity, age and ticks | On |
-| Show subagents, show background shells, start expanded | On, on, off |
+| Warn above, the context figure a row starts to show | 0 to 100% |
+| CPU heavy at | 25 to 400%, of one core |
+| Memory heavy at | 0.5 to 8 GB |
+| Text size | 0.8 to 1.6 times the size as designed |
+
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, the Auto-switch control, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, Codex's own limits, and the bar with the cost, reload and the gear">
 
 The foot lists the sessions waiting on you, oldest first, and under them your
 Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
@@ -142,6 +147,8 @@ session log. See [docs/accounts.md](docs/accounts.md).
 
 The bar at the bottom shows what the running sessions report having spent at
 API prices, how many sessions report it, and two buttons: reload and the gear.
+
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/menu.svg" width="100%" alt="An idle card with its right-click menu open: /compact, /rotate, /clear, then Close">
 
 Right-click an agent row, or press Shift+F10 on a selected one, for
 `/compact`, `/rotate`, `/clear` and Close. Close and `/clear` ask for a second
