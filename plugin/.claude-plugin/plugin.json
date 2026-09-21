@@ -1,9 +1,10 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "agents-sidebar",
-  "version": "2026.09.12",
+  "version": "2026.09.13",
   "description": "Publishes Claude session state to iTerm2 for the Agents sidebar",
   "author": {
     "name": "hex"
-  }
+  },
+  "license": "MIT"
 }

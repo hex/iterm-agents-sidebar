@@ -3,10 +3,13 @@
 """The marks and the colours are read out of page.html, so the drawing cannot
 drift from the panel it advertises. Session names are invented.
 """
-import pathlib, re, sys
+import os, pathlib, re, sys
 
 PAGE = pathlib.Path(__file__).resolve().parent.parent / "page.html"
-W, H = 1536, 614
+#: The README banner is wide and short. BANNER_H=864 draws the same window
+#: taller, 16:9, for a place that crops anything wider (a social post's
+#: preview); the panel flows from the top, so the extra height is floor.
+W, H = 1536, int(os.environ.get("BANNER_H", 708))
 CYCLE = "11s"
 
 # The panel's dark-theme tokens, from page.html: it follows macOS appearance,
@@ -24,7 +27,7 @@ MONO = "ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace"
 
 # The window nearly fills the frame: what is left is room for its shadow,
 # because the transparent margin reads as a white border on GitHub.
-WX, WY, WW, WH = 16, 12, 1504, 578
+WX, WY, WW, WH = 16, 12, 1504, H - 36
 BAR = 44
 PANEL_W = 430
 PX = WX + WW - PANEL_W
@@ -38,11 +41,11 @@ def marks():
     """The icon paths page.html draws, by name, with the viewBox they assume."""
     page = PAGE.read_text()
     found = {}
-    for name in ("branch", "clock", "computer", "cpu"):
+    for name in ("branch", "clock", "computer", "cpu", "model", "gauge"):
         m = re.search(r"^  %s: '(.+)',?$" % name, page, re.M)
         if m:
             found[name] = (m.group(1), 256)
-    for name in ("claude", "openai"):
+    for name in ("claude", "openai", "omp"):
         m = re.search(r"^  %s: '(.+)',$" % name, page, re.M)
         if m:
             found[name] = (m.group(1), 24)
@@ -76,8 +79,27 @@ def cycle(attr, values, key_times, **kw):
 
 #: Rendered widths at 12.5px in the sans face, measured in Chrome with canvas
 #: measureText. A per-character guess put the middots visibly off-centre.
+#: Widths below are measured in Chrome, as MEASURED is: names at 600 15px, tag
+#: words at 600 11px.
+#: The agents a card can run, as page.html's AGENT_KINDS and its dark-theme
+#: --ink tokens have them: (name on the tag, glyph colour, the words' ink).
+AGENTS = {"claude": ("Claude", "#d97757", "#e08f75"), "openai": ("Codex", "#10a37f", "#3bb496"),
+          "omp": ("omp", "#6d5ae6", "#9f92ee")}
+TAG_TEXT = {"Claude": 38.2, "Codex": 34.6, "omp": 23.9}
+NAME_W = {"atlas": 34.6, "beacon": 52.7, "ember": 46.1, "harbor": 47.8}
+
+
+def tag(name, baseline, kind):
+    """The pill after a session's name that says which agent runs in it."""
+    word, colour, ink = AGENTS[kind]
+    x, w = TEXT_X + NAME_W[name] + 9, 10 + 4 + TAG_TEXT[word] + 12
+    A(f'  <rect x="{x}" y="{baseline-13}" width="{w:.1f}" height="17" rx="5" fill="{colour}" opacity="0.16"/>')
+    mark(kind, x + 5, baseline - 10, 11, colour)
+    text(x + 19, baseline - 0.5, word, fill=ink, size=11, weight=600)
+
+
 MEASURED = {"main": 28.0, "Fable 5.1": 51.2, "feat/cache": 61.7, "gpt-6-astra": 68.5,
-            "CPU": 26.0, "Writing tests": 74.2}
+            "CPU": 26.0, "Writing tests": 74.2, "gpt-5.6-luna": 74.0, "31%": 25.1}
 DOT_W, DOT_GAP = 3.7, 7
 
 
@@ -289,6 +311,7 @@ c1 = y + 20
 card(c1, 114)
 working_dots(c1 + 20, "#e8833a")
 text(TEXT_X, c1 + 31, "atlas", fill=FG, size=15, weight=600)
+tag("atlas", c1 + 31, "claude")
 text(TEXT_X, c1 + 52, "Refactor the token parser", fill=DIM, size=12.5)
 text(TEXT_X, c1 + 72, "Writing tests", fill=LIT_INK, size=12.5)
 x = middot(TEXT_X + width_of("Writing tests", 12.5), c1 + 72)
@@ -298,7 +321,7 @@ A(f'  <g mask="url(#tick)">'
   f'<rect x="{TEXT_X}" y="{c1+80}" width="330" height="5" fill="{FG}" opacity="0.16"/>'
   f'<rect x="{TEXT_X}" y="{c1+80}" width="150" height="5" fill="{LIT}">'
   f'{cycle("width", "150;150;270;270", "0;0.60;0.78;1")}</rect></g>')
-chips(TEXT_X, c1 + 102, [("branch", "main", None), ("claude", "Fable 5.1", None)])
+chips(TEXT_X, c1 + 102, [("branch", "main", None), ("model", "Fable 5.1", None)])
 
 t1 = c1 + 114
 A(f'  <path d="M{CARD_X+36} {t1} v13 h11" fill="none" stroke="{RULE}" stroke-width="1.5"/>')
@@ -316,8 +339,9 @@ A(f'  <g opacity="0">{cycle("opacity", "0;0;1;1;0;0", "0;0.22;0.28;0.66;0.74;1")
   f'stroke="{BLOCKED_BORDER}" stroke-width="3"/></g>')
 working_dots(c2 + 20, "#2a9d8f")
 text(TEXT_X, c2 + 31, "beacon", fill=FG, size=15, weight=600)
+tag("beacon", c2 + 31, "claude")
 text(TEXT_X, c2 + 52, "Pick the cache store", fill=DIM, size=12.5)
-chips(TEXT_X, c2 + 69, [("branch", "feat/cache", None), ("claude", "Fable 5.1", None)])
+chips(TEXT_X, c2 + 69, [("branch", "feat/cache", None), ("model", "Fable 5.1", None)])
 badge(c2 + 14, "WAITING", filled=True,
       animation=cycle("opacity", "0;0;1;1;0;0", "0;0.22;0.28;0.66;0.74;1"))
 
@@ -326,8 +350,9 @@ c3 = c2 + 94
 card(c3, 80)
 swatch(c3 + 20, "#8e8e93")
 text(TEXT_X, c3 + 31, "ember", fill=FG, size=15, weight=600)
+tag("ember", c3 + 31, "openai")
 text(TEXT_X, c3 + 52, "Done", fill=LIT_INK, size=12.5, weight=600)
-x = chips(TEXT_X, c3 + 69, [("branch", "main", None), ("openai", "gpt-6-astra", None)])
+x = chips(TEXT_X, c3 + 69, [("branch", "main", None), ("model", "gpt-6-astra", None)])
 A(f'  <g opacity="0">{cycle("opacity", "0;0;1;1", "0;0.32;0.40;1")}')
 x = middot(x, c3 + 69)
 mark("cpu", x, c3 + 58, 13, ALERT)
@@ -335,8 +360,25 @@ text(x + 17, c3 + 69, "CPU", fill=ALERT, size=12.5)
 A('  </g>')
 badge(c3 + 14, "IDLE")
 
+# An omp session: its state and its name come off its tab title, the rest
+# from omp's own files. What the running tool is for sits under the name.
+c4 = c3 + 94
+card(c4, 100)
+working_dots(c4 + 20, "#c4508f")
+text(TEXT_X, c4 + 31, "harbor", fill=FG, size=15, weight=600)
+tag("harbor", c4 + 31, "omp")
+text(TEXT_X, c4 + 52, "Move the crawler to a container", fill=DIM, size=12.5)
+text(TEXT_X, c4 + 72, "Check the nightly crawl finished", fill=LIT_INK, size=12.5)
+x = chips(TEXT_X, c4 + 89, [("branch", "main", None), ("model", "gpt-5.6-luna", None)])
+text(x + 5, c4 + 89, "[", fill=DIM, size=12.5, family=MONO)
+text(x + 12, c4 + 89, "h", fill="#929efa", size=12.5, weight=600, family=MONO)
+text(x + 20, c4 + 89, "]", fill=DIM, size=12.5, family=MONO)
+x = middot(x + 27, c4 + 89)
+mark("gauge", x, c4 + 78, 13, DIM)
+text(x + 17, c4 + 89, "31%", fill=DIM, size=12.5)
+
 # The plain terminals, under their own heading.
-s1 = c3 + 88
+s1 = c4 + 108
 head(s1 + 26, "SESSIONS")
 card(s1 + 36, 50)
 swatch(s1 + 55, None, hollow=True)
@@ -346,7 +388,7 @@ text(TEXT_X, s1 + 75, "vite dev", fill=DIM, size=11.5, family=MONO)
 # The foot: what the day cost, and how many sessions are open.
 rule_y = WY + WH - 34
 A(f'  <line x1="{PX+14}" y1="{rule_y}" x2="{PX+PANEL_W-14}" y2="{rule_y}" stroke="{RULE}"/>')
-text(PX + 24, rule_y + 22, "$4.82  ·  5 sessions", fill=DIM, size=12, family=MONO)
+text(PX + 24, rule_y + 22, "$4.82  ·  6 sessions", fill=DIM, size=12, family=MONO)
 print(f"sessions card bottom {s1 + 86}, foot rule {rule_y}", file=sys.stderr)
 
 # The pointer arrives on the waiting card and clicks it: the terminal follows.
