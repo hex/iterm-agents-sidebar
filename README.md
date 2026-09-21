@@ -98,7 +98,8 @@ and the lead's own badge stays about the lead. Running subagents get a row each,
 model they reply with and how long they have run. A subagent started by another
 subagent sits one step in, under the one that started it. A Codex job started
 through the codex plugin (a rescue or a review) gets a row too, with its phase.
-A finished subagent keeps its row until your next prompt. Past three of them,
+A finished subagent keeps its row until your next prompt, and one still
+running in the background stays through it. Past three of them,
 they fold into one line ("30 finished") that opens on a click, and the ones
 still running stay in sight.
 Background shells fold into
