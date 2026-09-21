@@ -3152,7 +3152,6 @@ const SETTING_ROWS = [
   {k: "sound_blocked",label: "When a session is blocked", needs: "sound"},
   {k: "sound_done",   label: "When one finishes", needs: "sound"},
   {k: "volume",       label: "Volume", range: [0, 1, .05], needs: "sound", pct: true},
-  {k: "muted",        label: "Mute everything"},
   {head: "Notifications"},
   {k: "notify",       label: "Show macOS notifications", master: true},
   {k: "notify_blocked", label: "When a session asks a question", needs: "notify"},
@@ -3445,7 +3444,7 @@ addEventListener("pointerdown", () => {
 }, {once: false});
 
 function tone(steps, gain) {
-  if (!audio || !SETTINGS || SETTINGS.muted || !SETTINGS.sound) return;
+  if (!audio || !SETTINGS || !SETTINGS.sound) return;
   const level = gain * (SETTINGS.volume ?? .4);
   steps.forEach(([hz, at, len], i) => {
     const osc = audio.createOscillator();

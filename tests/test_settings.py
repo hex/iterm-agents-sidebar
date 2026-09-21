@@ -19,15 +19,15 @@ def test_missing_file_yields_the_defaults(tmp_path):
 
 def test_a_saved_setting_survives_a_reload(tmp_path):
     store = tmp_path / "settings.json"
-    save_settings({"volume": 0.9, "muted": True}, store)
+    save_settings({"volume": 0.9, "sort_by_name": True}, store)
     reloaded = load_settings(store)
-    assert reloaded["volume"] == 0.9 and reloaded["muted"] is True
+    assert reloaded["volume"] == 0.9 and reloaded["sort_by_name"] is True
 
 
 def test_saving_one_key_keeps_the_rest(tmp_path):
     store = tmp_path / "settings.json"
     save_settings({"volume": 0.2}, store)
-    save_settings({"muted": True}, store)
+    save_settings({"sort_by_name": True}, store)
     assert load_settings(store)["volume"] == 0.2
 
 
@@ -72,9 +72,9 @@ def test_get_settings_returns_json(tmp_path):
 
 def test_post_settings_persists_and_returns_the_result(tmp_path):
     server, store = _server(tmp_path)
-    status, _, body = server.handle("POST", "/settings?token=t", b'{"muted": true}')
-    assert status == 200 and json.loads(body)["muted"] is True
-    assert load_settings(store)["muted"] is True
+    status, _, body = server.handle("POST", "/settings?token=t", b'{"sort_by_name": true}')
+    assert status == 200 and json.loads(body)["sort_by_name"] is True
+    assert load_settings(store)["sort_by_name"] is True
 
 
 def test_settings_need_the_token_like_everything_else(tmp_path):
@@ -199,3 +199,11 @@ def test_a_way_of_marking_the_agent_that_is_not_one_of_them_is_refused():
     """Refused as a number that is not one is: the default stands."""
     for junk in ("stripe", "", None, 3, True, ["tag"]):
         assert sidebar._clean({"provider_mark": junk})["provider_mark"] == "tag"
+
+
+def test_a_stored_muted_flag_is_ignored(tmp_path):
+    """Mute everything was a second off switch for sounds; a file that still
+    carries it loads without it."""
+    store = tmp_path / "settings.json"
+    store.write_text(json.dumps({"muted": True}))
+    assert "muted" not in load_settings(store)
