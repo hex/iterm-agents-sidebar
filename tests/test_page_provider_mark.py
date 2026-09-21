@@ -58,3 +58,10 @@ def test_the_choice_menu_is_as_wide_as_its_words():
     track, which then shrinks to that share of the words and clips them."""
     pick = re.search(r"\n  \.pick \{(.*?)\}", PAGE, re.S).group(1)
     assert "max-width" not in pick and "%" not in pick.split("border:")[0]
+
+
+def test_a_subagents_model_wears_the_mark_of_the_agent_it_runs_under():
+    """An omp subagent's model is no Claude model; the mark is its card's."""
+    chip = re.search(r"if \(sub\.model && SETTINGS\?\.show_model !== false\) \{(.*?)\n        \}", PAGE, re.S).group(1)
+    assert 'providerIcon("claude"' not in chip
+    assert "providerIcon(agentKindOf(row), agentKind(row).name)" in chip

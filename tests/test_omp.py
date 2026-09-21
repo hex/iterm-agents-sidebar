@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import omp
 
 
-UNKNOWN = {"model": None, "effort": None, "context": None, "cost": None, "doing": None, "jobs": []}
+UNKNOWN = {"model": None, "effort": None, "context": None, "cost": None, "doing": None, "jobs": [], "agents": []}
 
 
 def entry(kind, **fields):
@@ -321,3 +321,111 @@ def test_a_job_record_that_is_not_one_is_passed_over(tmp_path):
         entry("custom_message", customType="async-result", details={"jobs": "bg_1"}),
     ])
     assert omp.read_session(crumbs, "ttys008")["jobs"] == ["make watch"]
+
+
+def spawned(at, *agents):
+    """The result of a `task` call: every subagent under `progress`, and only
+    the first of them under `async`."""
+    return entry("message", timestamp=at, message={
+        "role": "toolResult", "toolName": "task", "toolCallId": "c9", "details": {
+            "results": [], "totalDurationMs": 2,
+            "progress": [{"index": i, "id": name, "agent": kind, "status": "pending"}
+                         for i, (name, kind) in enumerate(agents)],
+            "async": {"state": "running", "jobId": agents[0][0], "type": "task"}}})
+
+
+def test_subagents_omp_spawned_are_agents_and_not_commands(tmp_path):
+    crumbs, _ = terminal(tmp_path, "ttys008", [
+        spawned("2026-09-21T12:18:43.470Z", ("DocsReview", "scout"), ("SafetyReview", "reviewer")),
+    ])
+    told = omp.read_session(crumbs, "ttys008")
+    assert told["jobs"] == []
+    assert told["agents"] == [
+        {"id": "DocsReview", "type": "scout", "since": 1789993123.47, "ended": None, "model": None, "effort": None},
+        {"id": "SafetyReview", "type": "reviewer", "since": 1789993123.47, "ended": None, "model": None, "effort": None},
+    ]
+
+
+def hub_tasks(at, *tasks):
+    return entry("message", timestamp=at, message={"role": "toolResult", "toolName": "hub", "details": {
+        "op": "wait", "jobs": [{"id": name, "type": "task", "status": status, "label": name, "durationMs": ran,
+                                "resolvedModel": f"{model}:{effort}", "resolvedModelIdentity": model,
+                                "resolvedThinkingLevel": effort}
+                               for name, status, ran, model, effort in tasks]}})
+
+
+def test_the_hub_names_a_subagents_model_and_says_when_it_is_done(tmp_path):
+    crumbs, session = terminal(tmp_path, "ttys008", [
+        spawned("2026-09-21T12:18:43.470Z", ("DocsReview", "scout"), ("SafetyReview", "reviewer")),
+        hub_tasks("2026-09-21T12:19:14.000Z", ("DocsReview", "running", 31000, "openai-codex/gpt-5.6-luna", "medium"),
+                  ("SafetyReview", "running", 31000, "openai-codex/gpt-6-astra", "high")),
+    ])
+    told = omp.read_session(crumbs, "ttys008")
+    assert told["jobs"] == []
+    assert [(a["id"], a["model"], a["effort"], a["ended"]) for a in told["agents"]] == [
+        ("DocsReview", "gpt-5.6-luna", "medium", None), ("SafetyReview", "gpt-6-astra", "high", None)]
+    with session.open("a") as f:
+        f.write(hub_tasks("2026-09-21T12:19:54.000Z",
+                          ("DocsReview", "completed", 71000, "openai-codex/gpt-5.6-luna", "medium")) + "\n")
+    told = omp.read_session(crumbs, "ttys008")
+    assert [(a["id"], a["since"], a["ended"]) for a in told["agents"]] == [
+        ("DocsReview", 1789993123.47, 1789993194.0), ("SafetyReview", 1789993123.47, None)]
+
+
+def test_a_subagent_first_heard_of_from_the_hub_started_when_the_hub_says(tmp_path):
+    crumbs, _ = terminal(tmp_path, "ttys008", [
+        hub_tasks("2026-09-21T12:19:14.000Z", ("DocsReview", "running", 31000, "openai-codex/gpt-5.6-luna", "medium")),
+    ])
+    told = omp.read_session(crumbs, "ttys008")
+    assert told["jobs"] == []
+    assert told["agents"] == [{"id": "DocsReview", "type": None, "since": 1789993123.0, "ended": None,
+                               "model": "gpt-5.6-luna", "effort": "medium"}]
+
+
+def delivered(at, name):
+    return entry("custom_message", timestamp=at, customType="async-result", display=True,
+                 details={"jobs": [{"jobId": name, "type": "task", "label": name, "durationMs": 133168}]})
+
+
+def test_a_subagent_whose_result_was_delivered_has_ended(tmp_path):
+    crumbs, _ = terminal(tmp_path, "ttys008", [
+        spawned("2026-09-21T12:18:43.470Z", ("SafetyReview", "reviewer")),
+        delivered("2026-09-21T12:21:03.000Z", "SafetyReview"),
+    ])
+    assert [(a["id"], a["ended"]) for a in omp.read_session(crumbs, "ttys008")["agents"]] == [
+        ("SafetyReview", 1789993263.0)]
+
+
+def test_finished_subagents_leave_at_the_next_prompt_and_running_ones_stay(tmp_path):
+    crumbs, _ = terminal(tmp_path, "ttys008", [
+        spawned("2026-09-21T12:18:43.470Z", ("DocsReview", "scout"), ("SafetyReview", "reviewer")),
+        delivered("2026-09-21T12:21:03.000Z", "DocsReview"),
+        entry("message", message={"role": "user", "content": [{"type": "text", "text": "and now the tests"}]}),
+    ])
+    assert [a["id"] for a in omp.read_session(crumbs, "ttys008")["agents"]] == ["SafetyReview"]
+
+
+def test_a_subagent_that_ended_at_no_stated_time_still_ended(tmp_path):
+    crumbs, _ = terminal(tmp_path, "ttys008", [
+        spawned("2026-09-21T12:18:43.470Z", ("DocsReview", "scout")),
+        delivered(None, "DocsReview"),
+    ])
+    assert omp.read_session(crumbs, "ttys008")["agents"][0]["ended"] == 1789993123.47
+
+
+def test_a_subagent_the_hub_lists_as_not_yet_started_has_not_ended(tmp_path):
+    crumbs, _ = terminal(tmp_path, "ttys008", [
+        spawned("2026-09-21T12:18:43.470Z", ("DocsReview", "scout")),
+        hub_tasks("2026-09-21T12:18:44.000Z", ("DocsReview", "pending", 0, "openai-codex/gpt-5.6-luna", "medium")),
+    ])
+    assert omp.read_session(crumbs, "ttys008")["agents"][0]["ended"] is None
+
+
+def test_a_word_said_to_omp_mid_turn_leaves_the_finished_subagents_in_sight(tmp_path):
+    crumbs, _ = terminal(tmp_path, "ttys008", [
+        spawned("2026-09-21T12:18:43.470Z", ("DocsReview", "scout")),
+        delivered("2026-09-21T12:21:03.000Z", "DocsReview"),
+        entry("message", message={"role": "user", "steering": True, "attribution": "user",
+                                  "content": [{"type": "text", "text": "use the staging host"}]}),
+    ])
+    assert [a["id"] for a in omp.read_session(crumbs, "ttys008")["agents"]] == ["DocsReview"]

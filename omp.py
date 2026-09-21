@@ -3,6 +3,7 @@
 # ABOUTME: Local files only: omp's own session log, found through the terminal it runs on.
 """omp files each session as a JSONL log and notes, per terminal, which log
 the omp on that terminal is writing."""
+import datetime
 import json
 import math
 import os
@@ -73,6 +74,52 @@ def _text(value):
     return value if isinstance(value, str) and value else None
 
 
+def _epoch(stamp):
+    """An entry's `timestamp` (2026-09-21T12:18:43.470Z) as seconds, or None."""
+    try:
+        return datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, ValueError):
+        return None
+
+
+def _note_agents(facts, entry, message, told):
+    """What a tool result says of the subagents omp has spawned.
+
+    A `task` result lists every subagent it spawned under `progress`, while
+    its `async` names the first alone. `facts["agents"]` is {subagent id:
+    what is known of it}, in the order they were spawned.
+    """
+    if message.get("toolName") != "task" or not isinstance(told.get("progress"), list):
+        return
+    for spawned in told["progress"]:
+        if isinstance(spawned, dict) and _text(spawned.get("id")):
+            facts["agents"][spawned["id"]] = {
+                "id": spawned["id"], "type": _text(spawned.get("agent")), "since": _epoch(entry.get("timestamp")),
+                "ended": None, "model": None, "effort": None}
+
+
+def _ended(agent, now):
+    # An end with no time to it is still an end: a subagent left without one
+    # would read as running for good.
+    return now if now is not None else agent["since"] or 0
+
+
+def _note_hub_agent(facts, job, now):
+    """What the hub says of one subagent: its model, and whether it still runs.
+
+    The hub gives how long a job has run, which dates one no `task` result
+    was seen for. The model comes as `provider/model`.
+    """
+    ran = job.get("durationMs")
+    began = now - ran / 1000 if now is not None and isinstance(ran, (int, float)) and not isinstance(ran, bool) else None
+    agent = facts["agents"].setdefault(job["id"], {"id": job["id"], "type": None, "since": began, "ended": None,
+                                                   "model": None, "effort": None})
+    agent["model"] = (_text(job.get("resolvedModelIdentity")) or "").partition("/")[2] or agent["model"]
+    agent["effort"] = _text(job.get("resolvedThinkingLevel")) or agent["effort"]
+    if job.get("status") in ("completed", "failed", "cancelled") and agent["ended"] is None:
+        agent["ended"] = _ended(agent, now)
+
+
 def _note_jobs(facts, entry):
     """What one log entry says of the commands omp has running in the background.
 
@@ -91,13 +138,17 @@ def _note_jobs(facts, entry):
         command = facts["commands"].pop(message.get("toolCallId"), None) \
             if isinstance(message.get("toolCallId"), str) else None
         told = message.get("details") if isinstance(message.get("details"), dict) else {}
+        _note_agents(facts, entry, message, told)
         started = told.get("async")
-        if isinstance(started, dict) and started.get("state") == "running" and _text(started.get("jobId")):
+        if isinstance(started, dict) and started.get("state") == "running" and _text(started.get("jobId")) \
+                and started.get("type") != "task":
             facts["jobs"][started["jobId"]] = command or started["jobId"]
         for job in told["jobs"] if message.get("toolName") == "hub" and isinstance(told.get("jobs"), list) else []:
             if not isinstance(job, dict) or not _text(job.get("id")):
                 continue
-            if job.get("status") == "running":
+            if job.get("type") == "task":
+                _note_hub_agent(facts, job, _epoch(entry.get("timestamp")))
+            elif job.get("status") == "running":
                 facts["jobs"].setdefault(job["id"], _text(job.get("label")) or job["id"])
             else:
                 facts["jobs"].pop(job["id"], None)
@@ -105,6 +156,9 @@ def _note_jobs(facts, entry):
         for job in details["jobs"] if isinstance(details.get("jobs"), list) else []:
             if isinstance(job, dict) and isinstance(job.get("jobId"), str):
                 facts["jobs"].pop(job["jobId"], None)
+                agent = facts["agents"].get(job["jobId"])
+                if agent and agent["ended"] is None:
+                    agent["ended"] = _ended(agent, _epoch(entry.get("timestamp")))
 
 
 def fold(facts, lines):
@@ -116,7 +170,8 @@ def fold(facts, lines):
     choice as `provider/model`, and one made for another role (a small model
     for titles, say) is not the session's.
     """
-    facts = dict(facts, jobs=dict(facts["jobs"]), commands=dict(facts["commands"]))
+    facts = dict(facts, jobs=dict(facts["jobs"]), commands=dict(facts["commands"]),
+                 agents={name: dict(agent) for name, agent in facts["agents"].items()})
     for line in lines:
         try:
             entry = json.loads(line)
@@ -126,7 +181,12 @@ def fold(facts, lines):
             continue
         kind, message = entry.get("type"), entry.get("message")
         _note_jobs(facts, entry)
-        if kind == "message" and isinstance(message, dict) and message.get("role") == "assistant":
+        if kind == "message" and isinstance(message, dict) and message.get("role") == "user" \
+                and not message.get("steering"):
+            # A finished subagent stays in sight until the next prompt; a
+            # word said to omp mid-turn is marked as steering, and is none.
+            facts["agents"] = {name: agent for name, agent in facts["agents"].items() if agent["ended"] is None}
+        elif kind == "message" and isinstance(message, dict) and message.get("role") == "assistant":
             if _text(message.get("model")):
                 facts["model"], facts["provider"] = message["model"], _text(message.get("provider"))
             snapshot = message.get("contextSnapshot")
@@ -152,7 +212,7 @@ def fold(facts, lines):
 
 
 NOTHING_KNOWN = {"model": None, "provider": None, "effort": None, "prompt_tokens": None, "cost": None,
-                 "doing": None, "jobs": {}, "commands": {}}
+                 "doing": None, "jobs": {}, "commands": {}, "agents": {}}
 #: {session log: (where the next reading starts, what is known so far)}. A log
 #: runs to megabytes and is read every rebuild, so only what omp has added
 #: since is read; a terminal has one log at a time, so this stays small.
@@ -227,7 +287,8 @@ def _shown(facts, models_db):
     context = min(100, round(100 * tokens / window)) if window and tokens is not None else None
     cost = round(facts["cost"], 2) if facts["cost"] is not None else None
     return {"model": facts["model"], "effort": facts["effort"], "context": context, "cost": cost,
-            "doing": facts["doing"], "jobs": list(facts["jobs"].values())}
+            "doing": facts["doing"], "jobs": list(facts["jobs"].values()),
+            "agents": list(facts["agents"].values())}
 
 
 def read_session(terminals_dir, tty, models_db=MODELS_DB):
