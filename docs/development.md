@@ -124,14 +124,34 @@ whether the panel's helpers weigh on the machine, more than CPU time does. The
 daemon execs `ps` and `tmux` once per rebuild, in a thread. The statusline
 bridge execs four times per render.
 
-## The banner
+## The figures
 
 ```sh
 python3 assets/make-banner.py
 BANNER_H=864 python3 assets/make-banner.py /tmp/banner-16x9.svg   # a taller cut, for a post
+for f in card-states card-anatomy foot settings menu; do python3 assets/make-$f.py; done
 ```
 
-It redraws `assets/banner.svg`, the image at the top of the README, reading the
-marks and colours from `page.html` so the drawing can't drift from the real
-panel. I made the session names up. Any new label needs its width
-measured and added to `MEASURED` in that script, because that table places the middots. GitHub plays the animation only from the raw file URL.
+Each script redraws one SVG the README shows. The marks come from `page.html`
+through `assets/panel_draw.py`; the colours are the page's dark-theme tokens,
+copied into that module, so a token change there needs a change here. `make-settings.py` reads its rows out of `SETTING_ROWS` and its
+defaults out of `sidebar.py`; `make-menu.py` reads its items out of
+`HOUSEKEEPING`. I made the session names up.
+
+`tests/test_figures.py` holds each committed SVG to what its script draws, and
+the settings and menu figures to the page's own lists. A changed page fails
+the test until you redraw the figure.
+
+A new label on a middot line needs its width measured in Chrome
+(`canvas.measureText`, 12.5px in the system face) and added to `MEASURED` in
+`panel_draw.py`, because that table places the middots. The mono face needs
+no table. GitHub plays the banner's animation only from the raw file URL.
+
+To see a figure as GitHub will, render it with headless Chrome rather than
+`qlmanage`, which scales the viewBox wrong:
+
+```sh
+printf '<img src="file://%s" width=880>' "$PWD/assets/foot.svg" > /tmp/f.html
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu \
+  --force-device-scale-factor=2 --window-size=880,484 --screenshot=/tmp/foot.png file:///tmp/f.html
+```

@@ -3,27 +3,14 @@
 """The marks and the colours are read out of page.html, so the drawing cannot
 drift from the panel it advertises. Session names are invented.
 """
-import os, pathlib, re, sys
+import os, pathlib, sys
+from panel_draw import *  # noqa: F401,F403
 
-PAGE = pathlib.Path(__file__).resolve().parent.parent / "page.html"
 #: The README banner is wide and short. BANNER_H=864 draws the same window
 #: taller, 16:9, for a place that crops anything wider (a social post's
 #: preview); the panel flows from the top, so the extra height is floor.
 W, H = 1536, int(os.environ.get("BANNER_H", 708))
 CYCLE = "11s"
-
-# The panel's dark-theme tokens, from page.html: it follows macOS appearance,
-# so beside a dark terminal it is dark too.
-BG, FG, DIM, RULE = "#1c1c1e", "#f2f2f7", "#98989d", "#3a3a3c"
-CARD, CARD_BORDER = "#2c2c2e", "#3a3a3c"
-BLOCKED_BG, BLOCKED_BORDER, BADGE_INK = "#3a2500", "#ff9f0a", "#3a2500"
-LIT, LIT_INK, ALERT = "#8ec07c", "#8ec07c", "#fb8b5e"
-TERM_BG, TERM_FG, TERM_DIM = "#141416", "#e5e5ea", "#8e8e93"
-CLAUDE_MARK = "#d97757"
-POINTER_FILL, POINTER_EDGE = "#1c1c1e", "#ffffff"
-
-SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
-MONO = "ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace"
 
 # The window nearly fills the frame: what is left is room for its shadow,
 # because the transparent margin reads as a white border on GitHub.
@@ -33,97 +20,12 @@ PANEL_W = 430
 PX = WX + WW - PANEL_W
 CARD_X, CARD_W = PX + 14, PANEL_W - 28
 
-out = []
-A = out.append
-
-
-def marks():
-    """The icon paths page.html draws, by name, with the viewBox they assume."""
-    page = PAGE.read_text()
-    found = {}
-    for name in ("branch", "clock", "computer", "cpu", "model", "gauge"):
-        m = re.search(r"^  %s: '(.+)',?$" % name, page, re.M)
-        if m:
-            found[name] = (m.group(1), 256)
-    for name in ("claude", "openai", "omp"):
-        m = re.search(r"^  %s: '(.+)',$" % name, page, re.M)
-        if m:
-            found[name] = (m.group(1), 24)
-    return found
-
-
-MARK = marks()
-
-
-def esc(t):
-    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-def text(x, y, s, fill=FG, size=13, weight=400, family=SANS, extra=""):
-    A(f'  <text x="{x}" y="{y}" fill="{fill}" font-size="{size}" font-weight="{weight}" '
-      f'font-family="{family}"{extra}>{esc(s)}</text>')
-
-
-def mark(name, x, y, size, fill):
-    """One of the panel's own marks, its top-left at (x, y)."""
-    path, box = MARK[name]
-    A(f'  <g transform="translate({x},{y}) scale({size/box:.4f})" fill="{fill}">{path}</g>')
-
 
 def cycle(attr, values, key_times, **kw):
     """One SMIL animation over the whole loop, so every beat stays in step."""
     bits = " ".join(f'{k.replace("_", "-")}="{v}"' for k, v in kw.items())
     return (f'<animate attributeName="{attr}" dur="{CYCLE}" repeatCount="indefinite" '
             f'values="{values}" keyTimes="{key_times}" {bits}/>')
-
-
-#: Rendered widths at 12.5px in the sans face, measured in Chrome with canvas
-#: measureText. A per-character guess put the middots visibly off-centre.
-#: Widths below are measured in Chrome, as MEASURED is: names at 600 15px, tag
-#: words at 600 11px.
-#: The agents a card can run, as page.html's AGENT_KINDS and its dark-theme
-#: --ink tokens have them: (name on the tag, glyph colour, the words' ink).
-AGENTS = {"claude": ("Claude", "#d97757", "#e08f75"), "openai": ("Codex", "#10a37f", "#3bb496"),
-          "omp": ("omp", "#6d5ae6", "#9f92ee")}
-TAG_TEXT = {"Claude": 38.2, "Codex": 34.6, "omp": 23.9}
-NAME_W = {"atlas": 34.6, "beacon": 52.7, "ember": 46.1, "harbor": 47.8}
-
-
-def tag(name, baseline, kind):
-    """The pill after a session's name that says which agent runs in it."""
-    word, colour, ink = AGENTS[kind]
-    x, w = TEXT_X + NAME_W[name] + 9, 10 + 4 + TAG_TEXT[word] + 12
-    A(f'  <rect x="{x}" y="{baseline-13}" width="{w:.1f}" height="17" rx="5" fill="{colour}" opacity="0.16"/>')
-    mark(kind, x + 5, baseline - 10, 11, colour)
-    text(x + 19, baseline - 0.5, word, fill=ink, size=11, weight=600)
-
-
-MEASURED = {"main": 28.0, "Fable 5.1": 51.2, "feat/cache": 61.7, "gpt-6-astra": 68.5,
-            "CPU": 26.0, "Writing tests": 74.2, "gpt-5.6-luna": 74.0, "31%": 25.1}
-DOT_W, DOT_GAP = 3.7, 7
-
-
-def width_of(s, size):
-    if size == 12.5 and s in MEASURED:
-        return MEASURED[s]
-    return len(s) * size * 0.55
-
-
-def middot(x, baseline, fill=DIM, size=12.5):
-    """A separator with the same air on both sides. -> where the next item starts."""
-    text(x + DOT_GAP, baseline, "\u00b7", fill=fill, size=size)
-    return x + DOT_GAP + DOT_W + DOT_GAP
-
-
-def chips(x, baseline, items, fill=DIM, size=12.5):
-    """The facts line: a mark and its value, middots between. -> where it ends."""
-    for i, (name, label, colour) in enumerate(items):
-        if i:
-            x = middot(x, baseline, fill, size)
-        mark(name, x, baseline - 11, 13, colour or fill)
-        text(x + 17, baseline, label, fill=colour or fill, size=size)
-        x += 17 + width_of(label, size)
-    return x
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="100%" '
@@ -269,36 +171,12 @@ def head(baseline, name):
     text(PX + 24, baseline, name, fill=DIM, size=11, weight=700, extra=' letter-spacing="1.3"')
 
 
-def card(top, height):
-    A(f'  <rect x="{CARD_X}" y="{top}" width="{CARD_W}" height="{height}" rx="10" fill="{CARD}" '
-      f'stroke="{CARD_BORDER}"/>')
-
-
-def swatch(top, hue, hollow=False):
-    if hollow:
-        A(f'  <rect x="{CARD_X+18}" y="{top}" width="11" height="11" rx="3" fill="none" '
-          f'stroke="{DIM}" stroke-width="1.6"/>')
-    else:
-        A(f'  <rect x="{CARD_X+18}" y="{top}" width="11" height="11" rx="3" fill="{hue}"/>')
-
-
-def working_dots(top, hue):
-    """What a session at work wears where a resting one wears its square."""
-    for i in range(3):
-        A(f'  <circle cx="{CARD_X+19+i*5}" cy="{top+6}" r="2" fill="{hue}">'
-          f'<animate attributeName="opacity" values="0.25;1;0.25" dur="1.4s" '
-          f'begin="{i*0.18:.2f}s" repeatCount="indefinite"/></circle>')
-
-
-def badge(top, word, filled=False, animation=""):
-    w = 70 if len(word) > 4 else 52
-    x = CARD_X + CARD_W - 16 - w
-    fill = BLOCKED_BORDER if filled else "none"
-    ink = BADGE_INK if filled else DIM
-    A(f'  <g>{animation}<rect x="{x}" y="{top}" width="{w}" height="21" rx="4" fill="{fill}" '
-      f'stroke="{"none" if filled else DIM}"/>'
-      f'<text x="{x + w/2}" y="{top+15}" fill="{ink}" font-size="10" font-weight="700" '
-      f'letter-spacing="1" text-anchor="middle" font-family="{SANS}">{word}</text></g>')
+_card, _swatch, _dots, _badge, _tag = card, swatch, working_dots, badge, tag
+card = lambda top, height: _card(CARD_X, CARD_W, top, height)
+swatch = lambda top, hue, hollow=False: _swatch(CARD_X + 18, top, hue, hollow)
+working_dots = lambda top, hue: _dots(CARD_X + 18, top, hue)
+badge = lambda top, word, filled=False, animation="": _badge(CARD_X + CARD_W - 16, top, word, filled, animation)
+tag = lambda name, baseline, kind: _tag(TEXT_X + NAME_W[name] + 9, baseline, kind)
 
 
 TEXT_X = CARD_X + 44
