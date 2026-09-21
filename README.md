@@ -156,3 +156,8 @@ click. A Codex row gets `/compact` and Close, since Codex has no `/rotate` or
 The panel would rather show nothing than a believable wrong answer. Every row
 dims behind a `STALE` banner when the list is no longer known to be true, and a
 session iTerm2 can't report shows `?` rather than a guess.
+
+## Licence
+
+[MIT](LICENSE). The icons are others' work, credited in
+[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).

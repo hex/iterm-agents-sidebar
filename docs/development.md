@@ -121,6 +121,7 @@ bridge execs four times per render.
 
 ```sh
 python3 assets/make-banner.py
+BANNER_H=864 python3 assets/make-banner.py /tmp/banner-16x9.svg   # a taller cut, for a post
 ```
 
 It redraws `assets/banner.svg`, the image at the top of the README, reading the
