@@ -85,7 +85,9 @@ files under `~/.omp`: the model, the effort, the context figure and what the
 session has cost. The name omp gave the session sits under the card's name, and
 while omp works, what it says the running tool is for sits under that. Commands
 omp sent to the background show as running commands do on a Claude Code card.
-The card has no subagents and no task line, and a waiting
+Subagents omp spawns with its `task` tool get a row each, under the name omp
+gave them, with their model and how long they have run. A finished one keeps
+its row until your next prompt. The card has no task line, and a waiting
 question shows as blocked without its text. Inside plain tmux the title never
 reaches iTerm2, so the row stays a plain terminal. omp posts its own
 notifications, so the panel adds none for it.

@@ -2347,7 +2347,7 @@ class Bridge:
                     if titled:
                         provider = "omp"
                     pid = job_pid(values["jobPid"]) if titled else parse_pid(raw)
-                    doing = running = None
+                    doing = running = spawned = None
                     if provider == "openai" and raw:
                         # Codex has no statusline: the hook names the model and
                         # the rollout has the rest.
@@ -2370,6 +2370,10 @@ class Bridge:
                         home = os.path.expanduser("~") + "/"
                         running = [{"label": shell_label(command).replace(home, "~/"), "command": command}
                                    for command in told["jobs"]]
+                        # omp names a subagent itself, and says what kind it is
+                        # where a Claude subagent has its type.
+                        spawned = [{**agent, "name": agent["id"], "provider": "omp", "depth": 0}
+                                   for agent in told["agents"]]
                     else:
                         status = read_status(pid)
                     marks = transcript_marks(status.get("transcript"))
@@ -2391,12 +2395,14 @@ class Bridge:
                         "agent_state": titled or parse_state(raw),
                         "topic": omp_title_topic(values["autoName"]) if titled else None,
                         "doing": doing,
-                        "agents": parse_agents(raw),
+                        "agents": parse_agents(raw) if spawned is None
+                                  else sum(agent["ended"] is None for agent in spawned),
                         # A Codex job a Claude session started through the
                         # codex plugin runs outside its process tree, so the
                         # plugin's own job store is the only place it shows.
-                        "subagents": merge_codex_rows(parse_subagents(raw), codex_job_rows(
-                            codex_jobs, parse_session(raw), parse_turn_started(raw), resources)
+                        "subagents": spawned if spawned is not None else merge_codex_rows(
+                            parse_subagents(raw), codex_job_rows(
+                                codex_jobs, parse_session(raw), parse_turn_started(raw), resources)
                             if provider == "claude" else []),
                         "blocked_since": parse_blocked_since(raw),
                         "question": parse_question(raw),

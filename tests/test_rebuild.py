@@ -243,7 +243,9 @@ def test_an_omp_row_takes_its_model_and_effort_from_omps_session_off_the_loop(mo
         except RuntimeError:
             seen.append((terminals_dir, tty))
         return {"model": "gpt-5.6-luna", "effort": "high", "context": 16, "cost": 1.75,
-                "doing": "Validate shell scripts", "jobs": ["cd /Users/x/atlas && ssh crawler ./force.sh"]}
+                "doing": "Validate shell scripts", "jobs": ["cd /Users/x/atlas && ssh crawler ./force.sh"],
+                "agents": [{"id": "DocsReview", "type": "scout", "since": 1789993123.47, "ended": None,
+                            "model": "gpt-6-astra", "effort": "high"}]}
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar.omp, "read_session", read_session)
     b.app = one_session(OmpSessionOnATerminal())
@@ -255,12 +257,17 @@ def test_an_omp_row_takes_its_model_and_effort_from_omps_session_off_the_loop(mo
     # As a Claude Code shell reads: the command past its setup, whole on hover.
     assert row["shells"] == [{"label": "ssh crawler ./force.sh",
                               "command": "cd /Users/x/atlas && ssh crawler ./force.sh"}]
+    # Named as omp names it, its kind where a Claude subagent has its type.
+    assert row["subagents"] == [{"id": "DocsReview", "name": "DocsReview", "type": "scout", "since": 1789993123.47,
+                                 "ended": None, "model": "gpt-6-astra", "effort": "high",
+                                 "provider": "omp", "depth": 0}]
+    assert row["agents"] == 1
 
 
 def test_an_omp_row_that_has_cost_nothing_yet_reports_no_cost(monkeypatch):
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar.omp, "read_session", lambda *_: {
-        "model": None, "effort": None, "context": None, "cost": None, "doing": None, "jobs": []})
+        "model": None, "effort": None, "context": None, "cost": None, "doing": None, "jobs": [], "agents": []})
     b.app = one_session(OmpSessionOnATerminal())
     [row] = asyncio.run(b.read_sessions())
     assert row["details"] == {}
@@ -276,7 +283,7 @@ def test_an_omp_pane_inside_tmux_is_on_the_terminal_tmux_gave_it(monkeypatch):
         ({}, {}, {}, {}), {72: {"tty": "ttys011", "path": "/Users/x/atlas"}}, {}, {}))
     monkeypatch.setattr(sidebar.omp, "read_session",
                         lambda _, tty: seen.append(tty) or {"model": None, "effort": None,
-                                                            "context": None, "cost": None, "doing": None, "jobs": []})
+                                                            "context": None, "cost": None, "doing": None, "jobs": [], "agents": []})
     b.app = one_session(InTmux())
     asyncio.run(b.read_sessions())
     assert seen == ["ttys011"]
@@ -291,7 +298,7 @@ def test_an_omp_pane_iterm2_names_no_terminal_for_is_on_its_processs_terminal(mo
         ({}, {}, {}, {}), {}, {4242: (1, 0.0, 0, "ttys014")}, {}))
     monkeypatch.setattr(sidebar.omp, "read_session",
                         lambda _, tty: seen.append(tty) or {"model": None, "effort": None,
-                                                            "context": None, "cost": None, "doing": None, "jobs": []})
+                                                            "context": None, "cost": None, "doing": None, "jobs": [], "agents": []})
     b.app = one_session(OmpSessionWithAJob())
     asyncio.run(b.read_sessions())
     assert seen == ["ttys014"]

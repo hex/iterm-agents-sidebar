@@ -91,13 +91,17 @@ from files omp already writes, read and never written:
 | The line under the topic | the `intent` of the tool omp last started, the line omp shows above its own status bar. Shown while omp is working or blocked |
 | Cost | every answer's `usage.cost.total`, added up. omp prices each answer itself |
 | Commands running | a bash result whose `details.async` says a job started, under the command its call gave; the `hub` tool's `jobs` list for each job's status; an `async-result` message for the ones that ended |
+| Subagents | a `task` result's `details.progress`, one entry per subagent with its `id` and `agent` kind (its `details.async` names only the first); the `hub` tool's `jobs` of type `task` for the model, the effort and the status (`completed`, `failed` and `cancelled` end a row; only `running` and `completed` were seen on a subagent); an `async-result` message for the ones whose result omp delivered |
 
 The log runs to megabytes, so the panel reads it from where the last reading
 stopped. omp never deletes a `terminal-sessions` file, so the panel trusts one
 only for a pane whose title says omp is running there.
 
-Not on the card: subagents, the task line and the text of a waiting question.
-The first needs a measured `task` call to build against, and the other two need
+omp also files each subagent its own log, `<subagent id>.jsonl` in a folder
+named after the session log, in the session log's own shapes. The panel does
+not read those, so a subagent row has no context figure, cost or intent line.
+
+Not on the card: the task line and the text of a waiting question. Both need
 an extension inside omp.
 
 A pane that has published state through a hook speaks for itself, so a Claude

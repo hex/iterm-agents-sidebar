@@ -2951,7 +2951,7 @@ function paint(snapshot) {
         }
         if (sub.model && SETTINGS?.show_model !== false) {
           const chip = Object.assign(document.createElement("span"), {className: "mchip model-name"});
-          chip.append(providerIcon("claude", "Claude"),
+          chip.append(providerIcon(agentKindOf(row), agentKind(row).name),
                       Object.assign(document.createElement("span"), {className: "mtext", textContent: sub.model}));
           meta.append(chip);
         }
