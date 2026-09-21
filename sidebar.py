@@ -93,7 +93,6 @@ DEFAULT_SETTINGS = {
     "notify_done": True,
     # Leave an account that is filling up, without being asked.
     "auto_switch": False,
-    "muted": False,
     "context_threshold": 40,
     # A session tree at or over either reads as heavy: percent of one core,
     # and gigabytes resident.

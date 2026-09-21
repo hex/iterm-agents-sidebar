@@ -8,7 +8,7 @@
   </defs>
   <rect width="880" height="565" rx="16" fill="#242426"/>
   <text x="26" y="30" fill="#f2f2f7" font-size="11.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Settings</text>
-  <rect x="24" y="44" width="404" height="145" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <rect x="24" y="44" width="404" height="122" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
   <text x="34" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Play sounds</text>
   <rect x="390" y="52.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="1"/>
   <circle cx="409.5" cy="60.5" r="6.5" fill="#1c1c1e"/>
@@ -27,34 +27,30 @@
   <text x="46" y="148.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Volume</text>
   <text x="418" y="148.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">40%</text>
   <g mask="url(#tick)"><rect x="276" y="142.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="142.5" width="43.2" height="4" fill="#8ec07c"/></g>
-  <line x1="24" y1="158" x2="428" y2="158" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="177.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Mute everything</text>
-  <rect x="390" y="165.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
-  <circle cx="398.5" cy="173.5" r="6.5" fill="#ffffff"/>
-  <rect x="24" y="198" width="404" height="95" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="219" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Show macOS notifications</text>
-  <rect x="390" y="206.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="1"/>
-  <circle cx="409.5" cy="214.5" r="6.5" fill="#1c1c1e"/>
-  <line x1="36" y1="231" x2="36" y2="258" stroke="#3e3e41"/>
-  <line x1="36" y1="244.5" x2="42" y2="244.5" stroke="#3e3e41"/>
-  <text x="46" y="248.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When a session asks a question</text>
-  <rect x="390" y="236.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="244.5" r="6.5" fill="#ffffff"/>
-  <line x1="36" y1="258" x2="36" y2="271.5" stroke="#3e3e41"/>
-  <line x1="36" y1="271.5" x2="42" y2="271.5" stroke="#3e3e41"/>
-  <text x="46" y="275.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When one finishes</text>
-  <rect x="390" y="263.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="271.5" r="6.5" fill="#ffffff"/>
-  <rect x="24" y="302" width="404" height="68" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="323" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Bring a blocked session forward</text>
-  <rect x="390" y="310.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
-  <circle cx="398.5" cy="318.5" r="6.5" fill="#ffffff"/>
-  <line x1="36" y1="335" x2="36" y2="348.5" stroke="#3e3e41"/>
-  <line x1="36" y1="348.5" x2="42" y2="348.5" stroke="#3e3e41"/>
+  <rect x="24" y="175" width="404" height="95" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="196" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Show macOS notifications</text>
+  <rect x="390" y="183.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="1"/>
+  <circle cx="409.5" cy="191.5" r="6.5" fill="#1c1c1e"/>
+  <line x1="36" y1="208" x2="36" y2="235" stroke="#3e3e41"/>
+  <line x1="36" y1="221.5" x2="42" y2="221.5" stroke="#3e3e41"/>
+  <text x="46" y="225.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When a session asks a question</text>
+  <rect x="390" y="213.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="221.5" r="6.5" fill="#ffffff"/>
+  <line x1="36" y1="235" x2="36" y2="248.5" stroke="#3e3e41"/>
+  <line x1="36" y1="248.5" x2="42" y2="248.5" stroke="#3e3e41"/>
+  <text x="46" y="252.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When one finishes</text>
+  <rect x="390" y="240.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="248.5" r="6.5" fill="#ffffff"/>
+  <rect x="24" y="279" width="404" height="68" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="300" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Bring a blocked session forward</text>
+  <rect x="390" y="287.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
+  <circle cx="398.5" cy="295.5" r="6.5" fill="#ffffff"/>
+  <line x1="36" y1="312" x2="36" y2="325.5" stroke="#3e3e41"/>
+  <line x1="36" y1="325.5" x2="42" y2="325.5" stroke="#3e3e41"/>
   <g opacity="0.4">
-  <text x="46" y="352.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Go back once it resumes</text>
-  <rect x="390" y="340.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="348.5" r="6.5" fill="#ffffff"/>
+  <text x="46" y="329.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Go back once it resumes</text>
+  <rect x="390" y="317.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="325.5" r="6.5" fill="#ffffff"/>
   </g>
   <rect x="452" y="44" width="404" height="482" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
   <text x="462" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Rows</text>

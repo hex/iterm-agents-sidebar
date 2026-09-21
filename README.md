@@ -142,8 +142,12 @@ The sliders have limits the picture doesn't show:
 The foot lists the sessions waiting on you, oldest first, and under them your
 Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
 until each resets. Store a login with **Add this account** and you can switch
-between accounts from there. Codex's own limits sit under them, read from its
-session log. See [docs/accounts.md](docs/accounts.md).
+between accounts from there. Auto-switch, off by default, moves the sessions
+to the account with the most room when the active one's fullest window reaches
+90% or is on course to fill within ten minutes; while a switch is near, a line
+says where it would go and why. Codex's own limits sit under them, read from
+its session log: a 5-hour and a weekly window, or weekly alone, depending on
+the plan. See [docs/accounts.md](docs/accounts.md).
 
 The bar at the bottom shows what the running sessions report having spent at
 API prices, how many sessions report it, and two buttons: reload and the gear.
