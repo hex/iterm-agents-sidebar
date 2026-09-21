@@ -3,7 +3,7 @@
 # Agents sidebar
 
 A tool for the iTerm2 Toolbelt that lists every terminal session in every
-window and tab, with the Claude Code and Codex ones at the top, each showing what it's doing and whether it needs you. Click a row to focus that session.
+window and tab, with the Claude Code, Codex and omp ones at the top, each showing what it's doing and whether it needs you. Click a row to focus that session.
 
 ## Install
 
@@ -78,6 +78,18 @@ no background-shell line. Codex opens its session at your first prompt, so
 until then its card shows the name, the branch and a `Codex` mark, and no
 state.
 
+An omp session needs nothing installed. omp writes its state into its own tab
+title: `π >` at your turn, `π !` while an approval or a question waits, and a
+spinner while it works. The panel reads that, and takes the rest from omp's own
+files under `~/.omp`: the model, the effort, the context figure and what the
+session has cost. The name omp gave the session sits under the card's name, and
+while omp works, what it says the running tool is for sits under that. Commands
+omp sent to the background show as running commands do on a Claude Code card.
+The card has no subagents and no task line, and a waiting
+question shows as blocked without its text. Inside plain tmux the title never
+reaches iTerm2, so the row stays a plain terminal. omp posts its own
+notifications, so the panel adds none for it.
+
 Teammates nest inside the card, and while one of them is working the lead's
 line carries the busy dots and a count, since a teammate runs in its own pane
 and the lead's own badge stays about the lead. Running subagents get a row each, with the
@@ -112,6 +124,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 | Bring a blocked session forward, and go back once it resumes | Off, then on |
 | Auto-switch, above the accounts: leave before a limit for the account with the most room | Off |
 | Sort cards by name, instead of the terminals' own order | Off |
+| Provider badge, saying whether a card runs Claude Code, Codex or omp: a tag by the name, an icon in the corner, cards grouped by provider, or off | Tag by the name |
 | CPU heavy at | 100%, one full core |
 | Memory heavy at | 2 GB |
 | Show task, with its activity, age and ticks | On |
@@ -128,7 +141,8 @@ API prices, how many sessions report it, and two buttons: reload and the gear.
 
 Right-click an agent row, or press Shift+F10 on a selected one, for
 `/compact`, `/rotate`, `/clear` and Close. Close and `/clear` ask for a second
-click.
+click. A Codex row gets `/compact` and Close, since Codex has no `/rotate` or
+`/clear`. An omp row gets `/compact`, `/clear` and Close.
 
 ## More
 

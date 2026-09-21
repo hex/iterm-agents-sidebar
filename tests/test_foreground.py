@@ -97,7 +97,7 @@ def test_one_process_listing_serves_shells_start_times_and_foreground_jobs(monke
     assert ran.count("/bin/ps") == 1
     assert shells == {5001: [{"label": "ls", "command": "ls"}]}
     assert started[5001] == 1789638277
-    assert panes == {170: {"job": "codex", "path": "/Users/x/atlas"}}
+    assert panes == {170: {"job": "codex", "path": "/Users/x/atlas", "tty": "ttys000"}}
 
 
 def test_a_codex_subcommand_names_itself_so_only_the_tui_reads_as_codex():

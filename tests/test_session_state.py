@@ -648,3 +648,14 @@ def test_an_idle_prompt_notice_does_not_end_a_background_hold():
         ("Notification", {"notification_type": "idle_prompt"}, "idle"),
     ])
     assert emit_state.aggregate(doc) == "working"
+
+
+def test_a_background_hold_survives_being_read_back_from_disk(tmp_path, monkeypatch):
+    """Each hook is its own process, so what one Stop recorded reaches the
+    next event only through the file."""
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    emit_state.update("s1", "UserPromptSubmit", {"prompt": "go"}, "working")
+    emit_state.update("s1", "Stop", {"stop_hook_active": False, "background_tasks": [SHELL_TASK]}, "idle")
+    doc = emit_state.update("s1", "Notification", {"notification_type": "idle_prompt"}, "idle")
+    assert doc["background"] == [{"type": "shell", "description": "tail logs"}]
+    assert emit_state.aggregate(doc) == "working"

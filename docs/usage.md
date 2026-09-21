@@ -30,6 +30,21 @@ under Rows in settings, switches to alphabetical order. Either way a teammate
 stays under its lead and a worktree card stays docked to its session, because
 each card travels with the rows under it.
 
+## Which agent a card runs
+
+Provider badge, under Rows in settings, picks how a card says whether it runs
+Claude Code, Codex or omp:
+
+| Choice | What you get |
+|---|---|
+| Tag by the name | A small pill after the session name, tinted in the agent's colour, with its glyph and its name. The default |
+| Icon in the corner | The glyph alone in the card's top corner. The state badge moves over for it |
+| Group by provider | Cards gathered under a head for each agent, Claude first. The list no longer follows your tabs. With one agent running there are no heads |
+| Off | The glyph stays before the model name, as the only sign of the agent |
+
+With a tag or a corner mark the glyph leaves the facts line, so a card says it
+once. Sorting by name still applies inside each group.
+
 ## Teammates and worktrees
 
 A teammate sits under the lead that spawned it, wherever it runs, and takes the

@@ -50,6 +50,8 @@ import fcntl
 import glob
 import json
 import os
+import re
+import stat
 import subprocess
 import sys
 import time
@@ -92,7 +94,7 @@ def blank_state():
     """A session nothing is known about: not working, no children, no gates."""
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
             "agent_info": {}, "gates": {}, "last_tool": None, "last_tool_ran": False,
-            "turn_started": None, "reminded": 0, "question": None}
+            "turn_started": None, "reminded": 0, "question": None, "background": []}
 
 
 def live_agents(doc):
@@ -384,6 +386,17 @@ def apply_event(doc, event, payload, said):
     return doc
 
 
+#: What a session id may be: it names files here and in the daemon, and is
+#: typed into the command the agent is handed.
+_SESSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def session_of(payload):
+    """The event's session id, or None when it is not a plain token."""
+    session_id = payload.get("session_id")
+    return session_id if isinstance(session_id, str) and _SESSION.match(session_id) else None
+
+
 def _state_path(session_id):
     return os.path.join(STATE_DIR, session_id)
 
@@ -419,7 +432,8 @@ def read_state(session_id):
             "turn_started": doc.get("turn_started")
                             if isinstance(doc.get("turn_started"), (int, float)) else None,
             "reminded": doc.get("reminded") if isinstance(doc.get("reminded"), (int, float)) else 0,
-            "question": doc.get("question") if isinstance(doc.get("question"), dict) else None}
+            "question": doc.get("question") if isinstance(doc.get("question"), dict) else None,
+            "background": doc.get("background") if isinstance(doc.get("background"), list) else []}
 
 
 def update(session_id, event, payload, said):
@@ -505,7 +519,7 @@ def whisper(event, payload, note, now, reminded, script):
     """
     if payload.get("agent_id") or "/subagents/" in str(payload.get("transcript_path") or ""):
         return None
-    session_id = payload.get("session_id")
+    session_id = session_of(payload)
     if not session_id:
         return None
     bound = f"python3 {script} --session {session_id}"
@@ -648,10 +662,18 @@ def agent_pid(tty, name):
     return pid_named(out, name)
 
 
+def _is_terminal(path):
+    """Whether path is a character device this process may write to."""
+    try:
+        return stat.S_ISCHR(os.stat(path).st_mode) and os.access(path, os.W_OK)
+    except OSError:
+        return False
+
+
 def find_tty():
     """Hooks are setsid'd, so /dev/tty fails. Resolve the real device."""
     env_tty = os.environ.get("TTY")
-    if env_tty and os.access(env_tty, os.W_OK):
+    if env_tty and _is_terminal(env_tty):
         return env_tty
     pid = os.getppid()
     for _ in range(8):
@@ -665,7 +687,7 @@ def find_tty():
         if not out:
             return None
         device = "/dev/" + out[0]
-        if out[0] not in ("??", "-") and os.access(device, os.W_OK):
+        if out[0] not in ("??", "-") and _is_terminal(device):
             return device
         try:
             pid = int(out[-1])
@@ -700,7 +722,7 @@ def published(doc, pid, payload, codex, now):
     (on every Codex payload but SessionEnd) and the rollout the daemon reads
     effort and context from.
     """
-    value = {"state": aggregate(doc), "pid": pid, "session": payload.get("session_id"),
+    value = {"state": aggregate(doc), "pid": pid, "session": session_of(payload),
              "agents": live_agents(doc), "subagents": subagents(doc),
              "blocked_since": blocked_since(doc), "working_since": working_since(doc),
              "turn_started": turn_started(doc),
@@ -776,7 +798,7 @@ def main():
     payload = read_payload()
     state = state_for(event, payload)
 
-    session_id = payload.get("session_id")
+    session_id = session_of(payload)
     if event == "SessionEnd":
         clear_state(session_id)
         clear_note(session_id)

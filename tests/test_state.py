@@ -38,6 +38,21 @@ def test_a_dead_writer_reports_unknown_not_its_last_claim():
     assert parse_state(raw) == "unknown"
 
 
+def test_a_pid_no_process_could_hold_is_unknown():
+    """A pid too large for the kernel is nobody's, so the claim has no writer."""
+    raw = json.dumps({"state": "idle", "pid": 2 ** 31, "ts": 1788774165})
+    assert parse_state(raw) == "unknown"
+    assert parse_state('{"state": "idle", "pid": Infinity}') == "unknown"
+
+
+def test_a_subagent_since_that_is_no_moment_is_dropped():
+    """json.loads accepts NaN and Infinity, and neither is a time."""
+    from sidebar import parse_subagents
+    for since in ("NaN", "Infinity"):
+        raw = '{"subagents": [{"id": "a", "type": "Explore", "since": %s}]}' % since
+        assert parse_subagents(raw)[0]["since"] is None
+
+
 def test_garbage_is_unknown_rather_than_a_guess():
     assert parse_state("not json at all") == "unknown"
     assert parse_state("") is None
@@ -329,6 +344,13 @@ def test_an_unreadable_codex_variable_names_nothing():
     assert parse_codex(None) == {"model": None, "transcript_path": None}
 
 
+def test_a_codex_variable_naming_something_other_than_text_names_nothing():
+    """Any process can write the variable, so a path or model that is not a
+    string is not one."""
+    raw = json.dumps({"model": ["gpt"], "transcript_path": {"a": 1}})
+    assert parse_codex(raw) == {"model": None, "transcript_path": None}
+
+
 def test_parse_session_reads_the_id_the_hook_published():
     from sidebar import parse_session
     assert parse_session('{"state": "working", "pid": 5, "session": "abc-123"}') == "abc-123"
@@ -361,6 +383,18 @@ def test_read_task_of_a_session_without_a_note_or_with_a_broken_one(tmp_path, mo
     (tmp_path / "half.json").write_text('{"task": "t", "title": "x"}')
     assert read_task("half") == {
         "title": "x", "activity": None, "percent": None, "done": False, "reported_at": None}
+
+
+def test_read_task_reads_only_notes_inside_the_tasks_directory(tmp_path, monkeypatch):
+    """The session id comes from a pane variable any process can write, so an
+    id that names a path reads nothing."""
+    from sidebar import read_task
+    tasks = tmp_path / "tasks"
+    tasks.mkdir()
+    monkeypatch.setattr(sidebar, "TASKS_DIR", str(tasks))
+    (tmp_path / "outside.json").write_text('{"task": "t", "title": "elsewhere"}')
+    assert read_task("../outside") is None
+    assert read_task(str(tmp_path / "outside")) is None
 
 
 def test_parse_question():

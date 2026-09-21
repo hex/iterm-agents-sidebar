@@ -7,6 +7,8 @@
     --bg: #f2f2f7; --fg: #1c1c1e; --dim: #6c6c70; --rule: #e5e5ea;
     /* A session is a card on the canvas; the one that needs you turns amber. */
     --card: #ffffff; --card-hover: #f9f9fb; --card-border: #e5e5ea;
+    /* The words of an agent's tag: its colour, deepened until it reads on its own tint. */
+    --ink-claude: #a15840; --ink-openai: #0c795e; --ink-omp: #6655d8;
     --blocked-bg: #fff3dc; --blocked-border: #ff9500; --blocked-text: #7a4100;
     --hot: #2a6fd6; --warn: #a8420a; --warn-bg: #fdf1e7;
     /* Ink on a filled accent (hot, alert, the Switch pill) and on the amber
@@ -39,6 +41,7 @@
     :root {
       --bg: #1c1c1e; --fg: #f2f2f7; --dim: #98989d; --rule: #3a3a3c;
       --card: #2c2c2e; --card-hover: #323236; --card-border: #3a3a3c;
+      --ink-claude: #e08f75; --ink-openai: #3bb496; --ink-omp: #9f92ee;
       --blocked-bg: #3a2500; --blocked-border: #ff9f0a; --blocked-text: #ffd60a;
       --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
       --accent-ink: #1c1c1e; --badge-ink: #3a2500; --switch-bg: #d97757;
@@ -459,6 +462,34 @@
   /* The model's mark is its provider's, in the provider's colour. */
   .model .provider { width: var(--meta-icon); height: var(--meta-icon); flex-shrink: 0; fill: currentColor; }
   .model .provider.claude { fill: #d97757; opacity: 1; }
+  /* Which agent a card runs, after its name: a pill in a tint of the agent's
+     colour. The glyph wears the colour itself; the words wear a deeper ink of
+     it, since the brand orange and green sit near 3:1 on a white card. */
+  .ptag {
+    display: inline-flex; align-items: center; gap: 3px; margin-left: 7px; padding: 2px 6px 2px 4px;
+    border-radius: 5px; vertical-align: 1.5px; letter-spacing: 0;
+    font: 600 10px/1 -apple-system, sans-serif; color: var(--ink, var(--dim));
+    background: color-mix(in srgb, var(--agent) 12%, transparent);
+  }
+  .ptag svg { width: 10px; height: 10px; flex: none; fill: var(--agent); }
+  /* Or alone in the row's top corner, the one place every card has, however
+     many lines it runs to. The name and the state badge move over for it. */
+  button.row > .pcorner {
+    position: absolute; right: 10px; top: 7px; width: 15px; height: 15px; fill: var(--agent);
+  }
+  button.row.cornered { --corner: 22px; }
+  button.row.cornered .label { padding-right: var(--corner); }
+  /* Or as a head over the cards of one agent. */
+  #groups li.phead {
+    display: flex; align-items: center; gap: 5px; margin: 10px 4px 5px; list-style: none;
+  }
+  #groups li.phead:first-child { margin-top: 0; }
+  #groups li.phead svg { width: 11px; height: 11px; fill: var(--agent); }
+  #groups li.phead h3 {
+    margin: 0; font: 700 10px/1 -apple-system, sans-serif; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  #groups li.phead .n { font: 500 10px/1 -apple-system, sans-serif; color: var(--dim); }
 
   /* Silence, plus one exception. The panel is read from the corner of an eye,
      and its only question is "is anything waiting on me". So a row that needs
@@ -565,7 +596,9 @@
      "8" is a different number. Weighted shrinking still took two pixels from
      the model, which is enough for a monospace name to earn its ellipsis. */
   /* Never down to a bare icon, which reads as a branch with no name. */
-  .mchip.branch { flex-shrink: 1; min-width: calc(var(--meta-icon) + 3px + 6ch); }
+  /* Six characters at most: a name shorter than that needs no more room than
+     it has. */
+  .mchip.branch { flex-shrink: 1; min-width: calc(var(--meta-icon) + 3px + var(--floor, 6) * 1ch); }
   .mchip.model-name, .mchip.ctx, .mchip.heavy { flex-shrink: 0; }
   /* A dim middot opens every item after the first; the effort letter belongs
      to its model and gets none. Inside the chip, so it goes with its item. */
@@ -689,13 +722,13 @@
      name's line only: as a flex column it took its width out of the details
      line too, and at larger text sizes that cut the context figure off. */
   .word.blocked { color: var(--badge-ink); background: var(--blocked-border); font-family: -apple-system, sans-serif; }
-  button.row.hot > .word.blocked { position: absolute; top: 6px; right: 10px; }
-  button.row.hot .label { padding-right: 62px; }
+  button.row.hot > .word.blocked { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  button.row.hot .label { padding-right: calc(62px + var(--corner, 0px)); }
   /* Idle is the resting state, so its badge is an outline in the dim ink: it
      says the session is free for a prompt without competing with "waiting". */
   .word.idle { color: var(--dim); box-shadow: inset 0 0 0 .5px var(--dim);
     font-family: -apple-system, sans-serif; font-weight: 600; }
-  button.row.resting > .word.idle { position: absolute; top: 6px; right: 10px; }
+  button.row.resting > .word.idle { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
   /* A highlight sweeps through the letters: the dim ink stays the base and a
      band of light passes over it, towards white in either theme. The page rebuilds rows on every
      update, so each badge starts at the point the clock says the sweep has
@@ -720,13 +753,13 @@
     @keyframes idle-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
     .shell-sum:hover .shimmer { animation: none; background: none; color: inherit; }
   }
-  button.row.resting .label { padding-right: 40px; }
+  button.row.resting .label { padding-right: calc(40px + var(--corner, 0px)); }
   /* A turn that has run long enough to be worth a look: warm outline, no fill,
      so it stays below "waiting", which is the one state that needs you. */
   .word.long { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn);
     font-family: -apple-system, sans-serif; }
-  button.row.long-turn > .word.long { position: absolute; top: 6px; right: 10px; }
-  button.row.long-turn .label { padding-right: 70px; }
+  button.row.long-turn > .word.long { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  button.row.long-turn .label { padding-right: calc(70px + var(--corner, 0px)); }
 
 
   /* Motion belongs to the exception. An earlier build spun the icon on
@@ -894,6 +927,15 @@
     margin-top: 10px; padding-top: 8px;
     border-top: 1px dotted color-mix(in srgb, var(--fg) 16%, transparent);
   }
+
+  /* One of a few words: the system's own menu, dressed as the stepper is. */
+  .pick {
+    height: 24px; padding: 0 6px; border-radius: 7px;
+    border: .5px solid color-mix(in srgb, var(--fg) 16%, transparent);
+    background: color-mix(in srgb, var(--fg) 5%, transparent);
+    color: var(--fg); font: 500 11px/1 -apple-system, sans-serif;
+  }
+  .pick:focus-visible { outline: 2px solid var(--hot); outline-offset: 1px; }
 
   /* A switch, not a checkbox: its state is legible without reading a label. */
   .step {
@@ -1332,10 +1374,13 @@ function act(sessionId, verb, text) {
 // a session mid-turn lands in the middle of whatever it is doing, and on a
 // session with room to spare there is nothing to fix.
 const typed = cmd => row => act(row.session_id, "send", cmd + "\n");
+// A command is typed as it stands, so each names the agents that have it.
 const HOUSEKEEPING = [
-  {label: "/compact", hint: "summarise the conversation and keep working", run: typed("/compact")},
-  {label: "/rotate", hint: "hand off to a fresh conversation", run: typed("/rotate")},
-  {label: "/clear", hint: "discard the conversation", destructive: true, run: typed("/clear")},
+  {label: "/compact", hint: "summarise the conversation and keep working",
+   agents: ["claude", "openai", "omp"], run: typed("/compact")},
+  {label: "/rotate", hint: "hand off to a fresh conversation", agents: ["claude"], run: typed("/rotate")},
+  {label: "/clear", hint: "discard the conversation", destructive: true,
+   agents: ["claude", "omp"], run: typed("/clear")},
 ];
 // Every row can be closed, agent or not: it is the pane that goes.
 const CLOSE = {label: "Close", hint: "close this pane", destructive: true,
@@ -1623,7 +1668,9 @@ function menuFor(row, group) {
   // The menu was once gated on idle and a high context figure, which meant
   // the control was missing at the moment you went looking for it. A shell
   // has no conversation to compact, so it gets Close alone.
-  const items = group.name === "AGENTS" ? [...HOUSEKEEPING, CLOSE] : [CLOSE];
+  const items = group.name === "AGENTS"
+    ? [...HOUSEKEEPING.filter(item => item.agents.includes(row.provider || "claude")), CLOSE]
+    : [CLOSE];
 
   const menu = document.createElement("div");
   menu.hidden = true;
@@ -1960,6 +2007,22 @@ function taskLine(task) {
     spoken.push(`about ${pct}% done`);
   }
   line.dataset.spoken = `task ${task.title || ""}: ${spoken.join(", ")}`;
+  return line;
+}
+
+// What the agent itself calls the session and what it says it is on, in the
+// task line's place and style. Both are read live off the agent, so the line
+// has no age and no estimate.
+function topicLine(topic, doing) {
+  const line = Object.assign(document.createElement("span"), {className: "task"});
+  const el = (cls, text) => Object.assign(document.createElement("span"), {className: cls, textContent: text, title: text});
+  if (topic) line.append(el("task-title", topic));
+  if (doing) {
+    const status = Object.assign(document.createElement("span"), {className: "task-status"});
+    status.append(el("task-activity", doing));
+    line.append(status);
+  }
+  line.dataset.spoken = [topic && `about ${topic}`, doing && `doing ${doing}`].filter(Boolean).join(", ");
   return line;
 }
 
@@ -2353,6 +2416,41 @@ function paintSessionBudget(strip, reporting) {
 const PROVIDER_ICONS = {
   claude: '<path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/>',
   openai: '<path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/>',
+  omp: '<path d="M3 5h18v2.6H3zM7 7.6h2.6V19H7zM14.4 7.6H17V19h-2.6z"/>',
+};
+
+// The mark for an agent that has none of its own.
+const PLAIN_MARK = '<circle cx="12" cy="12" r="5"/>';
+
+// Every agent a card can run: what to call it, and the colour its glyph takes
+// where the card says which agent it is. Claude is the agent of a row that
+// names none.
+const AGENT_KINDS = {
+  claude: {name: "Claude", colour: "#d97757"},
+  openai: {name: "Codex", colour: "#10a37f"},
+  omp: {name: "omp", colour: "#6d5ae6"},
+};
+const agentKindOf = row => row.provider || "claude";
+const agentKind = row => AGENT_KINDS[agentKindOf(row)] || {name: agentKindOf(row), colour: "currentColor"};
+// How a card says which agent it is: "tag", "corner", "groups" or "off".
+const agentMark = () => SETTINGS?.provider_mark ?? "tag";
+
+// A sub-head over the cards of one agent, for a list gathered by agent.
+function agentHead(row, count) {
+  const head = Object.assign(document.createElement("li"), {className: "phead"});
+  head.style.setProperty("--agent", agentKind(row).colour);
+  head.append(providerIcon(agentKindOf(row), ""),
+              Object.assign(document.createElement("h3"), {textContent: agentKind(row).name}),
+              Object.assign(document.createElement("span"), {className: "n", textContent: count}));
+  head.firstChild.setAttribute("aria-hidden", "true");
+  return head;
+}
+
+// What to call an agent's program on a row that has no model to name: the
+// mark's own label, then the program.
+const PROGRAMS = {
+  openai: {mark: "OpenAI", name: "Codex"},
+  omp: {mark: "omp", name: "omp"},
 };
 
 function providerIcon(kind, label) {
@@ -2361,7 +2459,7 @@ function providerIcon(kind, label) {
   svg.setAttribute("class", `provider ${kind}`);
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", label);
-  svg.innerHTML = PROVIDER_ICONS[kind];
+  svg.innerHTML = PROVIDER_ICONS[kind] || PLAIN_MARK;
   return svg;
 }
 
@@ -2431,10 +2529,10 @@ function paintCost(reporting) {
     const n = costs.length;
     const spent = Object.assign(document.createElement("span"), {className: "mchip"});
     spent.append(metaIcon("cost"), document.createTextNode(`$${total.toFixed(2)}`));
-    spent.title = "Cost so far of the running Claude Code sessions, at API prices";
+    spent.title = "Cost so far of the running sessions that report one, at API prices";
     const count = Object.assign(document.createElement("span"), {className: "mchip"});
     count.append(metaIcon("shells"), document.createTextNode(`${n} session${n === 1 ? "" : "s"}`));
-    count.title = `${n} Claude Code session${n === 1 ? " reports" : "s report"} a cost`;
+    count.title = `${n} session${n === 1 ? " reports" : "s report"} a cost`;
     cost.append(spent, count);
     cost.setAttribute("aria-label", `$${total.toFixed(2)} spent at API prices across ${n} session${n === 1 ? "" : "s"}`);
   }
@@ -2612,11 +2710,31 @@ function paint(snapshot) {
       label.className = "label";
       label.append(row.label);
       stack.append(label);
+      // Which agent this is, said once per card: a tag after the name or a
+      // mark in the row's corner. The glyph then leaves the facts line.
+      const marked = group.name === "AGENTS" && !row.depth ? agentMark() : "off";
+      if (marked === "tag" || marked === "corner") {
+        b.style.setProperty("--agent", agentKind(row).colour);
+        const glyph = providerIcon(agentKindOf(row), "");
+        glyph.setAttribute("aria-hidden", "true");
+        if (marked === "tag") {
+          const tag = Object.assign(document.createElement("span"), {className: "ptag"});
+          if (AGENT_KINDS[agentKindOf(row)]) tag.style.setProperty("--ink", `var(--ink-${agentKindOf(row)})`);
+          tag.append(glyph, agentKind(row).name);
+          label.append(tag);
+        } else {
+          glyph.classList.add("pcorner");
+          b.classList.add("cornered");
+          b.append(glyph);
+        }
+      }
 
       // What the session says it is doing, as it wrote it: a title, then
       // the rough percent, the activity and how old the report is.
       if (row.task && SETTINGS?.show_task !== false) {
         stack.append(taskLine(row.task));
+      } else if ((row.topic || row.doing) && SETTINGS?.show_task !== false) {
+        stack.append(topicLine(row.topic, row.doing));
       }
 
       // Branch then model, on one line under the name: both describe the
@@ -2629,11 +2747,14 @@ function paint(snapshot) {
         const chip = document.createElement("span");
         chip.className = "mchip";
         chip.classList.add(kind === "branch" ? "branch" : kind === "title" ? "title" : "model-name");
+        if (kind === "branch") chip.style.setProperty("--floor", Math.min(value.length, 6));
         const text = Object.assign(document.createElement("span"),
                                    {className: "mtext",
                                     textContent: kind === "title" ? shortTitle(value) : value});
         // The model's mark is its provider's; a tab title wears a computer.
-        if (kind === "model") chip.append(providerIcon(row.provider || "claude", row.provider === "openai" ? "OpenAI" : "Claude"));
+        if (kind === "model" && (marked === "off" || marked === "groups")) {
+          chip.append(providerIcon(agentKindOf(row), agentKind(row).name));
+        }
         else chip.append(metaIcon(kind === "title" ? "computer" : kind));
         chip.append(text);
         chip.title = value;
@@ -2664,13 +2785,14 @@ function paint(snapshot) {
         meta.append(chip);
       }
       // A Codex terminal that has not run a turn yet has no model to carry
-      // the OpenAI mark, and the card would then say nothing about which
-      // agent it is. The mark names the program instead.
-      if (row.provider === "openai" && !row.model) {
+      // its mark, and an omp row never has one; the card would then say
+      // nothing about which agent it is. The mark names the program instead.
+      const program = PROGRAMS[row.provider];
+      if (program && !row.model && marked !== "tag") {
         const chip = Object.assign(document.createElement("span"), {className: "mchip model-name"});
-        chip.append(providerIcon("openai", "OpenAI"),
-                    Object.assign(document.createElement("span"), {className: "mtext", textContent: "Codex"}));
-        chip.dataset.spoken = "Codex";
+        chip.append(providerIcon(row.provider, program.mark),
+                    Object.assign(document.createElement("span"), {className: "mtext", textContent: program.name}));
+        chip.dataset.spoken = program.name;
         meta.append(chip);
       }
       // Context reads on this line and not the one above. It is a fact about
@@ -2738,7 +2860,7 @@ function paint(snapshot) {
       // One label for the whole button: a label on a span inside it is
       // never read, so the task and the facts line are spoken from here.
       b.setAttribute("aria-label",
-                     [row.label, row.provider === "openai" ? "Codex" : null, row.position, said,
+                     [row.label, group.name === "AGENTS" ? agentKind(row).name : null, row.position, said,
                       b.classList.contains("long-turn")
                         ? `running for ${duration(Date.now() / 1000 - row.working_since)}, may be stuck` : null,
                       typeof row.context === "number" ? row.context + "% context" : null,
@@ -2769,6 +2891,14 @@ function paint(snapshot) {
       }
       li.append(b);
       if (menu) li.append(menu);
+      // Gathered by agent, the daemon sends each agent's cards together; a
+      // head opens each run, and a list of one agent needs none.
+      if (group.name === "AGENTS" && agentMark() === "groups" && !row.worktree_of
+          && new Set(group.rows.map(agentKindOf)).size > 1
+          && agentKindOf(row) !== ul.dataset.lastAgent) {
+        ul.dataset.lastAgent = agentKindOf(row);
+        ul.append(agentHead(row, group.rows.filter(r => !r.depth && agentKindOf(r) === agentKindOf(row)).length));
+      }
       ul.append(li);
 
       // Subagents run inside their parent's process with no terminal of their
@@ -3004,6 +3134,8 @@ const SETTING_ROWS = [
   {k: "cpu_threshold", label: "CPU heavy at", range: [25, 400, 25], pct: true},
   {k: "memory_threshold", label: "Memory heavy at", range: [0.5, 8, 0.5], unit: " GB"},
   {k: "sort_by_name", label: "Sort cards by name"},
+  {k: "provider_mark", label: "Provider badge",
+   choices: [["tag", "Tag by the name"], ["corner", "Icon in the corner"], ["groups", "Group by provider"], ["off", "Off"]]},
   {k: "show_branch",  label: "Branch"},
   {k: "show_task",    label: "Task"},
   {k: "show_task_activity", label: "What it is doing", needs: "show_task"},
@@ -3068,7 +3200,14 @@ function settingRow(row, kind) {
   line.append(name);
   const off = () => !!(row.needs && !SETTINGS[row.needs]);
 
-  if (row.steps) {
+  if (row.choices) {
+    const pick = document.createElement("select");
+    pick.className = "pick";
+    for (const [value, text] of row.choices) pick.append(new Option(text, value));
+    pick.addEventListener("change", () => push({[row.k]: pick.value}));
+    SETTING_SYNC.push(() => { pick.value = SETTINGS[row.k]; pick.disabled = off(); });
+    line.append(pick);
+  } else if (row.steps) {
     // Minus, the value, plus. Nine sizes is few enough to step through and
     // too few to be worth hunting for with a dragged thumb.
     const box = document.createElement("span");

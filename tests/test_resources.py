@@ -25,8 +25,8 @@ PS = """\
 
 def test_the_listing_reads_each_process_parent_cpu_and_memory():
     table = sidebar.parse_resources(PS)
-    assert table[111] == (110, 90.0, 120000)
-    assert table[9] == (1, 0.1, 2000)
+    assert table[111] == (110, 90.0, 120000, "ttys001")
+    assert table[9] == (1, 0.1, 2000, None)
     assert len(table) == 7
 
 
@@ -57,7 +57,7 @@ def test_the_real_listing_reads_this_process():
     """The fixture shape is only worth something if ps prints it."""
     import os
     table = sidebar.parse_resources(sidebar.read_process_listing())
-    parent, cpu, rss = table[os.getpid()]
+    parent, cpu, rss, _ = table[os.getpid()]
     assert parent == os.getppid() and cpu >= 0 and rss > 0
 
 

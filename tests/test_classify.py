@@ -149,3 +149,60 @@ def test_a_terminal_running_codex_is_an_agent_before_it_reports():
     codex-cli 0.155 on 2026-09-18."""
     assert classify("/Users/x/work/repo", "zsh", None, agent_job=True) == ("agent", "repo")
     assert classify("/Users/x/work/repo", "zsh", None) == ("shell", "/Users/x/work/repo")
+
+
+def test_an_omp_title_says_what_the_session_is_doing():
+    """omp writes its state into the title itself: `π > label` at the user's
+    turn, `π ! label` while an approval or a question waits, and a spinner
+    frame between the two while it works (omp 18.2.5,
+    src/utils/title-generator.ts). The working title is a live capture from
+    2026-09-21, its label swapped for a plain one."""
+    from sidebar import omp_title_state
+    assert omp_title_state("π > Fix login") == "idle"
+    assert omp_title_state("π ⠋ Fix login") == "working"
+    assert omp_title_state("π ! Fix login") == "blocked"
+
+
+def test_an_omp_title_without_a_label_still_carries_the_state():
+    from sidebar import omp_title_state
+    assert omp_title_state("π >") == "idle"
+    assert omp_title_state("π !") == "blocked"
+    assert omp_title_state("π ⠹") == "working"
+
+
+def test_the_working_mark_is_whatever_is_not_one_of_the_other_two():
+    """The spinner's frames are a setting, and a host that cannot animate gets
+    a colon, so working is read by elimination."""
+    from sidebar import omp_title_state
+    assert omp_title_state("π : Fix login") == "working"
+    assert omp_title_state("π ◐ Fix login") == "working"
+
+
+def test_an_omp_title_with_its_states_switched_off_is_omp_doing_something_unknown():
+    from sidebar import omp_title_state
+    assert omp_title_state("π: Fix login") == "unknown"
+    assert omp_title_state("π") == "unknown"
+
+
+def test_a_title_that_is_not_omps_says_nothing():
+    from sidebar import omp_title_state
+    assert omp_title_state("✳ iterm-agents-sidebar") is None
+    assert omp_title_state("πthon notes") is None
+    assert omp_title_state("zsh") is None
+    assert omp_title_state("") is None
+    assert omp_title_state(None) is None
+
+
+def test_an_omp_title_names_what_the_session_is_about():
+    from sidebar import omp_title_topic
+    assert omp_title_topic("π > Fix login") == "Fix login"
+    assert omp_title_topic("π ⠋ Fix the login page") == "Fix the login page"
+    assert omp_title_topic("π: Fix login") == "Fix login"
+
+
+def test_an_omp_title_with_no_label_names_nothing():
+    from sidebar import omp_title_topic
+    assert omp_title_topic("π >") is None
+    assert omp_title_topic("π") is None
+    assert omp_title_topic("zsh") is None
+    assert omp_title_topic(None) is None

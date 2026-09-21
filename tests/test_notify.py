@@ -291,3 +291,13 @@ def test_each_account_event_reads_as_one_log_line():
         "auto-switch: nowhere to go, every account is full"
     assert switch_log_line({"kind": "refused", "why": "log in to home again"}) == \
         "auto-switch refused: log in to home again"
+
+
+def test_an_agent_that_posts_its_own_notices_gets_none_from_the_panel():
+    """omp tells the terminal itself when it finishes or asks (its
+    completion.notify and ask.notify settings, on by default), so a second
+    banner for the same moment is noise."""
+    from sidebar import notifies_itself
+    assert notifies_itself({"provider": "omp"}) is True
+    assert notifies_itself({"provider": "openai"}) is False
+    assert notifies_itself({}) is False
