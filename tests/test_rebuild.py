@@ -245,7 +245,8 @@ def test_an_omp_row_takes_its_model_and_effort_from_omps_session_off_the_loop(mo
         return {"model": "gpt-5.6-luna", "effort": "high", "context": 16, "cost": 1.75,
                 "doing": "Validate shell scripts", "jobs": ["cd /Users/x/atlas && ssh crawler ./force.sh"],
                 "agents": [{"id": "DocsReview", "type": "scout", "since": 1789993123.47, "ended": None,
-                            "model": "gpt-6-astra", "effort": "high"}]}
+                            "model": "gpt-6-astra", "effort": "high", "context": 14, "cost": 0.02,
+                            "doing": "Reading README"}]}
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar.omp, "read_session", read_session)
     b.app = one_session(OmpSessionOnATerminal())
@@ -259,8 +260,8 @@ def test_an_omp_row_takes_its_model_and_effort_from_omps_session_off_the_loop(mo
                               "command": "cd /Users/x/atlas && ssh crawler ./force.sh"}]
     # Named as omp names it, its kind where a Claude subagent has its type.
     assert row["subagents"] == [{"id": "DocsReview", "name": "DocsReview", "type": "scout", "since": 1789993123.47,
-                                 "ended": None, "model": "gpt-6-astra", "effort": "high",
-                                 "provider": "omp", "depth": 0}]
+                                 "ended": None, "model": "gpt-6-astra", "effort": "high", "context": 14,
+                                 "cost": 0.02, "doing": "Reading README", "provider": "omp", "depth": 0}]
     assert row["agents"] == 1
 
 

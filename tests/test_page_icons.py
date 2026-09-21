@@ -50,3 +50,10 @@ def test_a_short_branch_is_not_held_wider_than_its_name():
     source = PAGE.read_text(encoding="utf-8")
     assert "min-width: calc(var(--meta-icon) + 3px + var(--floor, 6) * 1ch);" in source
     assert 'if (kind === "branch") chip.style.setProperty("--floor", Math.min(value.length, 6));' in source
+
+
+def test_a_shell_rows_glyph_keeps_the_same_air_from_its_elbow_as_the_dots():
+    """The elbow ran straight into the terminal glyph: the air rule named the
+    dots, the swatch and the tick, and not the glyph a shell row leads with."""
+    rule = re.search(r"\.children button\.row > :is\(([^)]*)\):first-child \{ margin-left: 6px; \}", PAGE.read_text(encoding="utf-8")).group(1)
+    assert ".mi" in [part.strip() for part in rule.split(",")]

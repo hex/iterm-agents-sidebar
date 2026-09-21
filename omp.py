@@ -281,14 +281,44 @@ def context_windows(models_db):
     return windows
 
 
-def _shown(facts, models_db):
+def _figures(facts, models_db):
     window = context_windows(models_db).get((facts["provider"], facts["model"]))
     tokens = facts["prompt_tokens"]
     context = min(100, round(100 * tokens / window)) if window and tokens is not None else None
     cost = round(facts["cost"], 2) if facts["cost"] is not None else None
     return {"model": facts["model"], "effort": facts["effort"], "context": context, "cost": cost,
-            "doing": facts["doing"], "jobs": list(facts["jobs"].values()),
-            "agents": list(facts["agents"].values())}
+            "doing": facts["doing"]}
+
+
+def _shown(facts, models_db, path=None):
+    return {**_figures(facts, models_db), "jobs": list(facts["jobs"].values()),
+            "agents": [_agent_shown(path, agent, models_db) for agent in facts["agents"].values()]}
+
+
+def _folded(path):
+    """What a log says so far, read from where the last reading stopped; None
+    when it cannot be read."""
+    offset, facts = _readings.get(path, (0, NOTHING_KNOWN))
+    try:
+        lines, end, began = _read_from(path, offset)
+    except OSError:
+        _readings.pop(path, None)
+        return None
+    facts = fold(NOTHING_KNOWN if began != offset else facts, lines)
+    _readings[path] = (end, facts)
+    return facts
+
+
+def _agent_shown(session_path, agent, models_db):
+    """A subagent with what its own log adds: omp files one beside the
+    session's, `<session log minus .jsonl>/<subagent id>.jsonl`, in the
+    session log's shapes. The hub's word on model and effort stands where
+    the log has none."""
+    own = _folded(os.path.join(session_path[:-len(".jsonl")], agent["id"] + ".jsonl")) \
+        if session_path and session_path.endswith(".jsonl") and "/" not in agent["id"] else None
+    figures = _figures(own, models_db) if own else _figures(NOTHING_KNOWN, models_db)
+    return {**agent, "model": figures["model"] or agent["model"], "effort": figures["effort"] or agent["effort"],
+            "context": figures["context"], "cost": figures["cost"], "doing": figures["doing"]}
 
 
 def read_session(terminals_dir, tty, models_db=MODELS_DB):
@@ -299,14 +329,5 @@ def read_session(terminals_dir, tty, models_db=MODELS_DB):
     it out, added up, in dollars to the cent.
     """
     path = session_file(terminals_dir, tty)
-    if path is None:
-        return _shown(NOTHING_KNOWN, models_db)
-    offset, facts = _readings.get(path, (0, NOTHING_KNOWN))
-    try:
-        lines, end, began = _read_from(path, offset)
-    except OSError:
-        _readings.pop(path, None)
-        return _shown(NOTHING_KNOWN, models_db)
-    facts = fold(NOTHING_KNOWN if began != offset else facts, lines)
-    _readings[path] = (end, facts)
-    return _shown(facts, models_db)
+    facts = _folded(path) if path is not None else None
+    return _shown(facts, models_db, path) if facts else _shown(NOTHING_KNOWN, models_db)

@@ -182,6 +182,9 @@
        centre of the mark on the row above. */
     --nest: calc(var(--depth, 0) * (var(--elbow) + 6px + var(--mark) / 2));
     padding: 3px var(--row-pad) 3px calc(var(--child-indent) + var(--nest)); min-height: 22px;
+    /* The dots' ink is two pixels in an eight-pixel slot, so the name sits
+       closer than the session's own gap would put it. */
+    gap: 6px;
     /* Where the name's line sits: the row's own top padding plus half a
        14px line. The mark and the elbow both meet it, so a child row that
        grows a second line does not leave them stranded in the middle. */
@@ -203,14 +206,19 @@
   }
   /* A blocked card's 3px edge moves the session's icons 2px in, and its
      own row pays that back; the children do the same. */
-  /* Busy dots and swatches fill their slot to the edge the elbow ends on,
-     so they keep a hair of air; the shell glyph has its own. */
-  .children button.row > :is(.busy, .swatch, .done-mark):first-child { margin-left: 6px; }
+  /* Every child's mark keeps a hair of air from the edge the elbow ends
+     on: the dots, a swatch, a tick and the shell glyph alike. */
+  .children button.row > :is(.busy, .swatch, .done-mark, .mi):first-child { margin-left: 6px; }
   /* A finished subagent: kept in place until the next prompt, and quiet. */
   /* Drawn, not typed: a text tick's ink sits on its baseline, below the
      middle of the slot the elbow points at. */
   .done-mark { display: block; width: var(--mark); height: var(--mark); flex-shrink: 0; fill: var(--lit); }
   .children button.row.finished .stack { opacity: .5; }
+  /* What a subagent is doing, in the activity's face, on its own line. */
+  .children button.row .sub-doing {
+    max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    font: 400 11px/1.3 -apple-system, sans-serif; color: var(--lit-ink);
+  }
   li.line.card.blocked .children button.row { padding-left: calc(var(--child-indent) + var(--nest) - 2px); }
   li.line.card.blocked .children button.row::before { left: calc(var(--child-drop) + var(--nest) - 2px); }
   /* A card's background shells, folded into one line that opens them. */
@@ -241,7 +249,13 @@
   /* A background shell sits under its session like a subagent, marked with
      the terminal glyph where a subagent has its dots, labelled with the
      command in the branch line's face. */
-  .children button.row.bg-shell .mi { width: var(--mark); height: var(--mark); opacity: .55; }
+  /* A shell row is one line, so its elbow meets the middle of the row,
+     where the glyph and the command both are; the glyph is narrower than
+     the dots' slot, so the command sits closer to it. */
+  .children button.row.bg-shell { --name-mid: 13px; gap: 4px; }
+  /* The command's letters sit a hair below the row's middle in this face,
+     so the glyph and the elbow both meet them there, not the middle. */
+  .children button.row.bg-shell .mi { width: var(--mark); height: var(--mark); opacity: .55; margin-top: 2px; }
   .children button.row.bg-shell .label {
     font: 400 10px/1.2 ui-monospace, Menlo, monospace;
     color: var(--fg); opacity: .72;
@@ -2955,12 +2969,29 @@ function paint(snapshot) {
                       Object.assign(document.createElement("span"), {className: "mtext", textContent: sub.model}));
           meta.append(chip);
         }
+        // An omp subagent keeps a log of its own, so its row can say what
+        // the session's card says: context, spend, and while it runs, the
+        // intent of the tool it last started.
+        if (typeof sub.context === "number" && sub.context >= speaksAt()) {
+          const chip = Object.assign(document.createElement("span"),
+                                     {className: "mchip ctx" + (sub.context >= 90 ? " critical" : "")});
+          chip.append(metaIcon("gauge"), document.createTextNode(sub.context + "%"));
+          meta.append(chip);
+        }
+        if (typeof sub.cost === "number" && sub.cost > 0) {
+          meta.append(Object.assign(document.createElement("span"), {className: "mchip", textContent: "$" + sub.cost.toFixed(2)}));
+        }
         if (ran) meta.append(Object.assign(document.createElement("span"), {className: "mchip", textContent: ran}));
+        if (sub.doing && !done && SETTINGS?.show_task !== false) {
+          stack.append(Object.assign(document.createElement("span"),
+                                     {className: "task-activity sub-doing", textContent: sub.doing, title: sub.doing}));
+        }
         if (meta.childElementCount) stack.append(meta);
         sb.append(dots, stack);
         sb.title = sub.name && sub.type ? `${sub.name} (${sub.type})` : title;
         sb.setAttribute("aria-label", [`${codex ? "" : "subagent "}${title} in ${row.label}`, sub.model,
-                                       codex && sub.phase,
+                                       codex && sub.phase, typeof sub.context === "number" && `context ${sub.context}%`,
+                                       sub.doing && !done && `doing ${sub.doing}`,
                                        ran && (failed ? `ended after ${ran}` : done ? `finished after ${ran}` : `running ${ran}`)]
                                        .filter(Boolean).join(", "));
         sb.addEventListener("click", () => act(row.session_id, "focus"));
