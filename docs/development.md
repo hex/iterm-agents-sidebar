@@ -75,6 +75,13 @@ tools are waiting on you, and a session's state comes from that record, not
 from the last event that fired. It has to, because a parent and all its
 subagents write to the same terminal. Only the tool that opened a gate closes it, or your next prompt does.
 
+A subagent leaves the record at its own `SubagentStop`. A prompt clears the
+finished ones and keeps the running ones, because a subagent sent to the
+background runs on through it. One whose stop never arrives would hold the
+session at working, so a turn's `Stop` that lists no subagent among its
+`background_tasks` ends every subagent still marked running. A launch starts
+from none.
+
 The state reaches the daemon as an iTerm2 user variable, written to the pane on
 every hook event. The hook keeps it under 4096 bytes of base64. A state past
 that, which a workflow with dozens of subagents produces, goes whole into

@@ -6,6 +6,7 @@ the emitted state depends on beyond the current event has to live in a file,
 and that file is contended.
 """
 import importlib.util
+import json
 import threading
 from pathlib import Path
 
@@ -177,6 +178,7 @@ def test_a_stopped_subagent_is_no_longer_running():
 def test_a_fresh_turn_forgets_subagent_types_with_the_subagents():
     doc = emit_state.apply_event(blank(), "SubagentStart",
                                  {"agent_id": "a1", "agent_type": "Explore"}, "working")
+    doc = emit_state.apply_event(doc, "SubagentStop", {"agent_id": "a1"}, None)
     doc = emit_state.apply_event(doc, "UserPromptSubmit", {}, "working")
     assert doc["agent_types"] == {}
 
@@ -451,6 +453,17 @@ def test_a_name_and_model_that_are_not_on_disk_yet_are_filled_in_later(tmp_path)
     assert (got["name"], got["model"]) == ("Variant 2", "claude-opus-5")
 
 
+def test_a_first_reply_far_into_the_transcript_still_names_the_model(tmp_path):
+    """A subagent that inherits a long conversation files it ahead of its
+    first reply: seen live at 268 KB, and at 615 KB in the longest on disk."""
+    inherited = json.dumps({"type": "user", "message": {"content": "x" * 50_000}})
+    transcript = _session_files(
+        tmp_path, "a1", meta='{"description":"PR review"}',
+        lines=[inherited] * 14 + ['{"type":"assistant","message":{"model":"claude-opus-5","content":[]}}'])
+    [sub] = emit_state.subagents(emit_state.describe_subagents(_started(), transcript))
+    assert sub["model"] == "claude-opus-5"
+
+
 def test_an_unreadable_meta_file_leaves_the_subagent_unnamed(tmp_path):
     transcript = _session_files(tmp_path, "a1", meta="{not json",
                                 lines=["garbage", '{"type":"assistant","message":"x"}'])
@@ -539,6 +552,19 @@ def test_the_next_prompt_clears_finished_subagents():
     doc = emit_state.apply_event(doc, "SubagentStop", {"agent_id": "a1"}, None)
     doc = emit_state.apply_event(doc, "UserPromptSubmit", {}, "working")
     assert emit_state.subagents(doc) == []
+
+
+def test_a_subagent_still_running_in_the_background_outlives_the_next_prompt(tmp_path):
+    """A subagent sent to the background runs on while the user prompts again:
+    seen live, a prompt emptied the list with two reviewers still at work."""
+    transcript = _session_files(tmp_path, "a1", meta='{"description":"code review"}')
+    doc = emit_state.describe_subagents(_started("a1"), transcript)
+    doc = emit_state.apply_event(doc, "SubagentStart", {"agent_id": "a2", "agent_type": "general-purpose"}, "working")
+    doc = emit_state.apply_event(doc, "SubagentStop", {"agent_id": "a2"}, None)
+    doc = emit_state.apply_event(doc, "UserPromptSubmit", {}, "working")
+    [sub] = emit_state.subagents(doc)
+    assert (sub["name"], sub["type"], sub["ended"]) == ("code review", "workflow-subagent", None)
+    assert list(doc["agent_info"]) == ["a1"] and list(doc["agent_types"]) == ["a1"]
 
 
 def test_a_stop_delivered_twice_finishes_once():
@@ -659,3 +685,38 @@ def test_a_background_hold_survives_being_read_back_from_disk(tmp_path, monkeypa
     doc = emit_state.update("s1", "Notification", {"notification_type": "idle_prompt"}, "idle")
     assert doc["background"] == [{"type": "shell", "description": "tail logs"}]
     assert emit_state.aggregate(doc) == "working"
+
+
+SUBAGENT_TASK = {"type": "subagent", "description": "code review"}
+
+
+def test_a_subagent_whose_end_was_never_reported_ends_with_a_turn_that_lists_none():
+    """Nothing but its own SubagentStop ends a subagent, and a prompt no
+    longer sweeps it away, so one whose stop never came would hold the
+    session at working for good. A turn's Stop lists every subagent still
+    in the background, and a foreground one cannot outlive the turn."""
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("SubagentStart", {"agent_id": "a1", "agent_type": "Explore"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [SHELL_TASK]}, "idle"),
+    ])
+    assert emit_state.live_agents(doc) == 0
+    assert [s["ended"] is not None for s in emit_state.subagents(doc)] == [True]
+
+
+def test_a_turn_that_lists_a_subagent_in_the_background_leaves_the_running_ones_be():
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("SubagentStart", {"agent_id": "a1", "agent_type": "Explore"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [SUBAGENT_TASK]}, "idle"),
+    ])
+    assert emit_state.live_agents(doc) == 1
+
+
+def test_a_stop_that_says_nothing_of_background_tasks_ends_no_subagent():
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("SubagentStart", {"agent_id": "a1", "agent_type": "Explore"}, "working"),
+        ("Stop", {"stop_hook_active": False}, "idle"),
+    ])
+    assert emit_state.live_agents(doc) == 1

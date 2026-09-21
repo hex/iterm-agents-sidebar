@@ -130,7 +130,9 @@ def subagents(doc):
 
 
 #: How far into a subagent's transcript to look for its first reply's model.
-MODEL_SCAN_BYTES = 256 * 1024
+#: One that inherits a long conversation files all of it ahead of that reply:
+#: 615 KB in the longest seen.
+MODEL_SCAN_BYTES = 4 * 1024 * 1024
 
 
 def _subagent_file(transcript_path, agent_id, suffix):
@@ -163,19 +165,27 @@ def _subagent_meta(path):
 
 
 def _subagent_model(path):
+    # The hook runs on every event, so the lines ahead of the reply, which
+    # run to tens of kilobytes each, are passed over without being parsed.
     try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            head = fh.read(MODEL_SCAN_BYTES)
+        with open(path, "rb") as fh:
+            left = MODEL_SCAN_BYTES
+            while left > 0:
+                line = fh.readline(left)
+                if not line:
+                    break
+                left -= len(line)
+                if b'"assistant"' not in line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    model = entry["message"]["model"] if entry.get("type") == "assistant" else None
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    continue
+                if isinstance(model, str) and model:
+                    return model
     except OSError:
         return None
-    for line in head.splitlines():
-        try:
-            entry = json.loads(line)
-            model = entry["message"]["model"] if entry.get("type") == "assistant" else None
-        except (ValueError, TypeError, KeyError, AttributeError):
-            continue
-        if isinstance(model, str) and model:
-            return model
     return None
 
 
@@ -309,10 +319,13 @@ def apply_event(doc, event, payload, said):
         doc["turn_started"] = now
 
     if is_fresh_start(event, payload):
-        doc["agents"] = {}
+        # A subagent sent to the background runs on through the next prompt;
+        # only a launch finds none, since none survives the process.
+        running = doc["agents"] if event == "UserPromptSubmit" else {}
+        doc["agents"] = dict(running)
         doc["finished"] = {}
-        doc["agent_types"] = {}
-        doc["agent_info"] = {}
+        doc["agent_types"] = {k: v for k, v in doc["agent_types"].items() if k in running}
+        doc["agent_info"] = {k: v for k, v in doc["agent_info"].items() if k in running}
         doc["gates"] = {}
         doc["last_tool"] = None
 
@@ -375,6 +388,14 @@ def apply_event(doc, event, payload, said):
         if event == "Stop":
             doc["background"] = [{"type": t.get("type"), "description": t.get("description")}
                                  for t in payload.get("background_tasks") or []]
+            # A subagent in the foreground cannot outlive the turn, and the
+            # list names every one in the background. So a Stop that lists
+            # none ends whichever never reported its own end, which nothing
+            # else would: it would hold the session at working for good.
+            if isinstance(payload.get("background_tasks"), list) \
+                    and not any(t.get("type") == "subagent" for t in doc["background"]):
+                for agent_id in list(doc["agents"]):
+                    doc["finished"][agent_id] = {"since": doc["agents"].pop(agent_id), "ended": now}
         # Nothing runs while a permission prompt is open, so a turn that
         # reached its end had none pending. This is the bound on a gate nothing
         # could correlate, and it has to be this tight: waiting for the next
