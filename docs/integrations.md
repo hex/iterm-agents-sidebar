@@ -98,8 +98,9 @@ stopped. omp never deletes a `terminal-sessions` file, so the panel trusts one
 only for a pane whose title says omp is running there.
 
 omp also files each subagent its own log, `<subagent id>.jsonl` in a folder
-named after the session log, in the session log's own shapes. The panel does
-not read those, so a subagent row has no context figure, cost or intent line.
+named after the session log, in the session log's own shapes. A subagent row
+reads its context, cost and intent line from that log the way the card reads
+its own; the hub's word on the model stands until the log names one.
 
 Not on the card: the task line and the text of a waiting question. Both need
 an extension inside omp.

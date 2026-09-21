@@ -341,8 +341,10 @@ def test_subagents_omp_spawned_are_agents_and_not_commands(tmp_path):
     told = omp.read_session(crumbs, "ttys008")
     assert told["jobs"] == []
     assert told["agents"] == [
-        {"id": "DocsReview", "type": "scout", "since": 1789993123.47, "ended": None, "model": None, "effort": None},
-        {"id": "SafetyReview", "type": "reviewer", "since": 1789993123.47, "ended": None, "model": None, "effort": None},
+        {"id": "DocsReview", "type": "scout", "since": 1789993123.47, "ended": None, "model": None, "effort": None,
+         "context": None, "cost": None, "doing": None},
+        {"id": "SafetyReview", "type": "reviewer", "since": 1789993123.47, "ended": None, "model": None, "effort": None,
+         "context": None, "cost": None, "doing": None},
     ]
 
 
@@ -379,7 +381,7 @@ def test_a_subagent_first_heard_of_from_the_hub_started_when_the_hub_says(tmp_pa
     told = omp.read_session(crumbs, "ttys008")
     assert told["jobs"] == []
     assert told["agents"] == [{"id": "DocsReview", "type": None, "since": 1789993123.0, "ended": None,
-                               "model": "gpt-5.6-luna", "effort": "medium"}]
+                               "model": "gpt-5.6-luna", "effort": "medium", "context": None, "cost": None, "doing": None}]
 
 
 def delivered(at, name):
@@ -429,3 +431,27 @@ def test_a_word_said_to_omp_mid_turn_leaves_the_finished_subagents_in_sight(tmp_
                                   "content": [{"type": "text", "text": "use the staging host"}]}),
     ])
     assert [a["id"] for a in omp.read_session(crumbs, "ttys008")["agents"]] == ["DocsReview"]
+
+
+def test_a_subagents_own_log_gives_its_context_cost_and_intent(tmp_path):
+    """omp files each subagent a log beside the session's, in the session
+    log's shapes: <session log minus .jsonl>/<subagent id>.jsonl."""
+    crumbs, session = terminal(tmp_path, "ttys008", [spawned("2026-09-21T12:18:43.470Z", ("DocsReview", "scout"))])
+    own = session.with_suffix("") / "DocsReview.jsonl"
+    own.parent.mkdir()
+    own.write_text("\n".join([
+        assistant(model="gpt-5.6-luna", provider="openai-codex", contextSnapshot={"promptTokens": 39298},
+                  usage={"cost": {"total": 0.0174}}),
+        starting("read", "Reading README opening deployment context"),
+    ]) + "\n")
+    db = models_db(tmp_path, **{"openai-codex": [{"id": "gpt-5.6-luna", "provider": "openai-codex", "contextWindow": 272000}]})
+    [agent] = omp.read_session(crumbs, "ttys008", db)["agents"]
+    assert (agent["context"], agent["cost"], agent["doing"]) == (14, 0.02, "Reading README opening deployment context")
+    # Its own log names the model before the hub does.
+    assert (agent["model"], agent["effort"]) == ("gpt-5.6-luna", None)
+
+
+def test_a_subagent_with_no_log_yet_keeps_its_unknowns(tmp_path):
+    crumbs, _ = terminal(tmp_path, "ttys008", [spawned("2026-09-21T12:18:43.470Z", ("DocsReview", "scout"))])
+    [agent] = omp.read_session(crumbs, "ttys008")["agents"]
+    assert (agent["context"], agent["cost"], agent["doing"]) == (None, None, None)
