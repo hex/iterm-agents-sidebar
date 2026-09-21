@@ -667,3 +667,63 @@ def test_a_lead_counts_the_teammates_working_under_it():
             {"depth": 1, "state": "working"}, {"depth": 0, "state": "idle"}]
     mark_busy_teammates(rows)
     assert [r.get("busy_kids") for r in rows] == [1, None, None, 1, None, None]
+
+
+def omp_card(state):
+    [row] = [r for g in snapshot([{
+        "session_id": "0D3E6F55-0000-4000-8000-000000000002",
+        "window_id": WINDOW, "tab_id": "9",
+        "window_index": 1, "tab_index": 2, "pane_index": 1,
+        "path": "/Users/x/work/repo", "auto_name": "π > Fix login", "job_name": "bun",
+        "provider": "omp", "agent_state": state, "topic": "Fix login", "doing": "Validate shell scripts",
+    }])["groups"] for r in g["rows"]]
+    return row
+
+
+def test_an_omp_card_says_what_its_session_is_about_and_what_it_is_doing():
+    """omp names each session in its title and states each tool's intent. Both are the
+    agent's live word, not a task note: no age to go stale by, no estimate."""
+    row = omp_card("working")
+    assert (row["topic"], row["doing"]) == ("Fix login", "Validate shell scripts")
+    assert "task" not in row
+
+
+def test_an_omp_card_at_rest_does_not_say_it_is_doing_something():
+    """The last intent stands in omp's log while it waits for the next
+    prompt; on a card that reads as work going on."""
+    row = omp_card("idle")
+    assert row["topic"] == "Fix login" and "doing" not in row
+
+
+def of(provider, base, **changes):
+    return dict(base, provider=provider, agent_state="idle", **changes)
+
+
+def test_grouping_by_agent_gathers_each_agents_cards_and_keeps_their_order():
+    """Claude first, then the others in a fixed order, so a group does not
+    move when a session of another agent opens above it."""
+    third = dict(OTHER, session_id="comet", tab_id="63", tab_index=7,
+                 path="/Users/x/.claude-sessions/comet", auto_name="✳ comet")
+    rows = snapshot([of("omp", OTHER), MAIN, of("openai", third), of("omp", dict(third, session_id="dune",
+                     path="/Users/x/.claude-sessions/dune", auto_name="✳ dune", tab_id="64", tab_index=8))],
+                    group_by_provider=True)["groups"][0]["rows"]
+    assert [(r["label"], r.get("provider", "claude")) for r in rows] == [
+        ("atlas", "claude"), ("comet", "openai"), ("beacon", "omp"), ("dune", "omp")]
+
+
+def test_grouping_by_agent_keeps_a_worktree_docked_to_its_session():
+    rows = snapshot([of("omp", OTHER), MAIN, LINKED], group_by_provider=True)["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["atlas", "worktree", "beacon"]
+
+
+def test_grouping_by_agent_and_sorting_by_name_sort_inside_each_group():
+    zed = dict(OTHER, session_id="zed", tab_id="65", tab_index=9, path="/Users/x/.claude-sessions/zed",
+               auto_name="✳ zed")
+    rows = snapshot([zed, of("omp", OTHER), MAIN], sort_by_name=True,
+                    group_by_provider=True)["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["atlas", "zed", "beacon"]
+
+
+def test_an_agent_the_order_does_not_name_comes_after_the_ones_it_does():
+    rows = snapshot([of("goose", OTHER), MAIN], group_by_provider=True)["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["atlas", "beacon"]

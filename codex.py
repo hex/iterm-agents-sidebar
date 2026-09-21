@@ -4,6 +4,7 @@
 """Codex records its limits in every `token_count` event of a rollout log."""
 import json
 import os
+import stat
 
 from accounts import DAY_SECONDS, _epoch, pace
 
@@ -106,7 +107,12 @@ def newest_rollouts(sessions_dir, count=ROLLOUTS_TO_TRY):
 
 
 def _tail_lines(path):
-    with open(path, "rb") as f:
+    # Opened without blocking and checked once open: a pipe would otherwise
+    # hold the read until a writer came, and a check before the open can be
+    # raced.
+    with open(os.open(path, os.O_RDONLY | os.O_NONBLOCK), "rb") as f:
+        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+            raise OSError(f"{path} is not a regular file")
         f.seek(0, os.SEEK_END)
         f.seek(max(0, f.tell() - TAIL_BYTES))
         return f.read().decode("utf-8", errors="replace").splitlines()

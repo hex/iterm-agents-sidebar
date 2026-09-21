@@ -424,3 +424,27 @@ def test_a_long_question_is_clipped_and_its_options_keep_their_places():
 def test_a_long_command_is_clipped_in_the_summary():
     got = emit_state.question_from({"tool_name": "Bash", "tool_input": {"command": "x" * 5000}})
     assert got == {"tool": "Bash", "summary": "x" * 199 + "…"}
+
+
+def test_a_session_id_is_a_plain_token_or_the_event_has_none():
+    """The id names the state file, the task note and the command the agent is
+    handed, so one that carries a path or a shell word is no id."""
+    session_of = emit_state.session_of
+    assert session_of({"session_id": "0b9c4a52-7d1e-4c55-9a53-2f6f0c1d8e11"}) == "0b9c4a52-7d1e-4c55-9a53-2f6f0c1d8e11"
+    for hostile in ("../outside", "/tmp/outside", "a b; rm -rf x", "", None, 7, ["s1"]):
+        assert session_of({"session_id": hostile}) is None
+    assert session_of({}) is None
+
+
+def test_a_task_reminder_is_never_built_from_an_id_that_is_no_token():
+    payload = {"session_id": "s1; touch /tmp/owned", "prompt": "go"}
+    assert emit_state.whisper("UserPromptSubmit", payload, None, 1789000000, 0, "/x/task.py") is None
+
+
+def test_a_tty_named_by_the_environment_must_be_a_terminal(tmp_path, monkeypatch):
+    """The escape is written to whatever this returns, so a $TTY naming an
+    ordinary writable file would have it overwritten."""
+    target = tmp_path / "notes.txt"
+    target.write_text("keep me")
+    monkeypatch.setenv("TTY", str(target))
+    assert emit_state.find_tty() != str(target)

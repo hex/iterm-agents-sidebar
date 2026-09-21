@@ -61,3 +61,44 @@ cp ~/.codex/hooks.json.before-agents-sidebar ~/.codex/hooks.json
 ```
 
 See `docs/codex-rows-design.md` for what a Codex card reads and from where.
+
+## omp
+
+Nothing to install, and nothing to undo. omp has no shell hooks to register. It
+does write its state into the tab title, and the panel reads that title from
+iTerm2's `autoName`, the same variable that carries Claude Code's marker.
+
+| Title | The card says |
+|---|---|
+| `π > label` | idle |
+| `π ! label` | blocked: an approval or a question waits |
+| `π ⠋ label`, or any other mark | working |
+| `π: label`, or `π` alone | omp, state unknown (title states are off) |
+
+The format is omp's own (`src/utils/title-generator.ts` in omp 18.2.5), and a
+later omp can change it. If omp rows stop showing a state, check the title
+first. An extension that calls `setTitle()` replaces the title whole, and the
+row then reads as a plain terminal.
+
+The title carries the state and the session's name. The rest of the card comes
+from files omp already writes, read and never written:
+
+| On the card | Read from |
+|---|---|
+| Uptime, CPU and memory | the pane's foreground job, iTerm2's `jobPid`. `ps` calls omp `bun`, so no name match finds it |
+| Model and effort | the session log. `~/.omp/agent/terminal-sessions/<tty>` names the log the omp on that terminal is writing |
+| Context % | the last answer's `contextSnapshot.promptTokens` against the model's `contextWindow` in `~/.omp/agent/models.db`. A model with a dearer long-context tier counts against that tier's `inputThreshold`, as omp does. With omp's `extendedContext` on, omp's own window is larger and the card reads high |
+| The line under the topic | the `intent` of the tool omp last started, the line omp shows above its own status bar. Shown while omp is working or blocked |
+| Cost | every answer's `usage.cost.total`, added up. omp prices each answer itself |
+| Commands running | a bash result whose `details.async` says a job started, under the command its call gave; the `hub` tool's `jobs` list for each job's status; an `async-result` message for the ones that ended |
+
+The log runs to megabytes, so the panel reads it from where the last reading
+stopped. omp never deletes a `terminal-sessions` file, so the panel trusts one
+only for a pane whose title says omp is running there.
+
+Not on the card: subagents, the task line and the text of a waiting question.
+The first needs a measured `task` call to build against, and the other two need
+an extension inside omp.
+
+A pane that has published state through a hook speaks for itself, so a Claude
+Code or Codex session whose title happens to start with `π` keeps its own row.

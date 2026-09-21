@@ -9,6 +9,7 @@ import asyncio
 import datetime
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import accounts  # noqa: E402
 import codex  # noqa: E402
+import omp  # noqa: E402
 
 #: Where the `cs` tool keeps its managed sessions. A terminal sitting anywhere
 #: under here is an agent session even when nothing in the title says so.
@@ -111,6 +113,8 @@ DEFAULT_SETTINGS = {
     "expand_shells": False,
     # A multiplier on the stylesheet's own sizes, so 1.0 means "as designed".
     "ui_scale": 1.0,
+    # How a card says which agent runs in it, beyond the glyph on its facts line.
+    "provider_mark": "tag",
 }
 
 #: (low, high) for the values that are numbers.
@@ -119,6 +123,10 @@ SETTING_RANGES = {"volume": (0.0, 1.0), "context_threshold": (0, 100),
                   # Below 0.8 the 9px metadata stops being readable; above 1.6
                   # a row no longer fits the 250px the Toolbelt gives us.
                   "ui_scale": (0.8, 1.6)}
+
+
+#: The values a setting that is one of a few words can take.
+SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off")}
 
 
 def _clean(settings):
@@ -130,6 +138,9 @@ def _clean(settings):
         value = settings[key]
         if isinstance(default, bool):
             out[key] = bool(value)
+        elif key in SETTING_CHOICES:
+            if isinstance(value, str) and value in SETTING_CHOICES[key]:
+                out[key] = value
         else:
             try:
                 value = type(default)(value)
@@ -393,6 +404,11 @@ def row_label(snapshot, session_id):
     return row.get("label", "") if row else ""
 
 
+def notifies_itself(row):
+    """Whether the row's agent already tells the terminal about its own moments."""
+    return row.get("provider") == "omp"
+
+
 def notify_wanted(kind, session_id, active, app_active):
     """Whether a notice is worth posting, given what you are looking at.
 
@@ -441,6 +457,46 @@ def classify(path, auto_name, agent_state=None, agent_job=False):
     # the path from home. The basename alone repeats the agent card above
     # it when both stand in the same directory.
     return ("shell", tilde_path(resolved) if resolved else label)
+
+
+#: omp opens every title with its brand, then one mark for the state, then
+#: the session's label: `π > label`, `π ! label`, `π <spinner frame> label`.
+OMP_TITLE_BRAND = "\u03c0"
+OMP_TITLE_MARKS = {">": "idle", "!": "blocked"}
+
+
+def omp_title_state(auto_name):
+    """An omp pane's title -> "idle", "working", "blocked" or "unknown"; None
+    when the title is not omp's.
+
+    The title is the only thing omp publishes without an extension loaded into
+    it. Working is whatever mark is not one of the other two: the spinner's
+    frames are a setting, and a terminal that cannot animate gets a colon.
+    "unknown" is omp with its title states switched off (`π: label`, or the
+    brand alone).
+    """
+    if not auto_name:
+        return None
+    brand, _, rest = auto_name.partition(" ")
+    if brand == OMP_TITLE_BRAND + ":" or auto_name == OMP_TITLE_BRAND:
+        return "unknown"
+    if brand != OMP_TITLE_BRAND or not rest:
+        return None
+    return OMP_TITLE_MARKS.get(rest.split(" ", 1)[0], "working")
+
+
+def omp_title_topic(auto_name):
+    """An omp title -> the name omp gave the session, or None when it gave none.
+
+    The word after the brand is the state mark, whatever glyph it is; with
+    title states off the brand's own colon stands there instead.
+    """
+    if omp_title_state(auto_name) is None:
+        return None
+    brand, _, rest = auto_name.partition(" ")
+    if brand == OMP_TITLE_BRAND:
+        rest = rest.partition(" ")[2]
+    return rest.strip() or None
 
 
 def tilde_path(path):
@@ -511,11 +567,11 @@ def position(session, panes_in_tab, many_windows):
     return where
 
 
-def by_name(rows):
-    """Top-level cards in name order, each with everything nested in it.
+def _blocks(rows):
+    """Rows -> each top-level card with everything nested in it.
 
     A card's block is its own row plus the teammates indented under it and
-    the worktree cards docked to it; sorting the rows flat would put an
+    the worktree cards docked to it; moving the rows flat would put an
     indent under whatever row happened to land above it.
     """
     blocks = []
@@ -524,11 +580,29 @@ def by_name(rows):
             blocks[-1].append(row)
         else:
             blocks.append([row])
-    blocks.sort(key=lambda block: block[0]["label"].casefold())
+    return blocks
+
+
+def by_name(rows):
+    """Top-level cards in name order, each with everything nested in it."""
+    blocks = sorted(_blocks(rows), key=lambda block: block[0]["label"].casefold())
     return [row for block in blocks for row in block]
 
 
-def snapshot(sessions, sort_by_name=False):
+#: The order agents' groups take. Fixed, so a group stays put when a session
+#: of another agent opens above it; an agent not named here comes after.
+PROVIDER_ORDER = ("claude", "openai", "omp")
+
+
+def by_provider(rows):
+    """Top-level cards gathered by agent, each group in the order it had."""
+    def place(block):
+        provider = block[0].get("provider") or "claude"
+        return PROVIDER_ORDER.index(provider) if provider in PROVIDER_ORDER else len(PROVIDER_ORDER)
+    return [row for block in sorted(_blocks(rows), key=place) for row in block]
+
+
+def snapshot(sessions, sort_by_name=False, group_by_provider=False):
     """Raw session dicts -> the payload the page renders.
 
     Agents first, then everything else. Order within a group is the order
@@ -661,6 +735,12 @@ def snapshot(sessions, sort_by_name=False):
                 row["model"] = session["model"]
             if session.get("effort"):
                 row["effort"] = session["effort"]
+            if session.get("topic"):
+                row["topic"] = session["topic"]
+            # At rest the agent's last stated intent still stands, and on a
+            # card that would read as work going on.
+            if session.get("doing") and session.get("agent_state") in ("working", "blocked"):
+                row["doing"] = session["doing"]
             # Not nested under the branch: a session whose HEAD cannot be read
             # still has however many subagents it has.
             if session.get("agents"):
@@ -744,6 +824,8 @@ def snapshot(sessions, sort_by_name=False):
     if sort_by_name:
         for kind in rows:
             rows[kind] = by_name(rows[kind])
+    if group_by_provider:
+        rows["agent"] = by_provider(rows["agent"])
     mark_busy_teammates(rows["agent"])
 
     groups = [
@@ -802,7 +884,7 @@ def parse_state(raw):
         payload = json.loads(raw)
         state = payload["state"]
         pid = int(payload["pid"])
-    except (ValueError, TypeError, KeyError):
+    except (ValueError, TypeError, KeyError, OverflowError):
         return "unknown"
 
     if state not in STATES:
@@ -813,7 +895,7 @@ def parse_state(raw):
         return "unknown"
     try:
         os.kill(pid, 0)          # signal 0 tests existence, sends nothing
-    except (ProcessLookupError, ValueError):
+    except (ProcessLookupError, ValueError, OverflowError):
         return "unknown"
     except PermissionError:
         pass                     # alive, just not ours to signal
@@ -961,14 +1043,15 @@ LSTART = slice(5, 10)
 
 
 def parse_resources(raw):
-    """The process listing -> {pid: (parent pid, %cpu, resident KB)}."""
+    """The process listing -> {pid: (parent pid, %cpu, resident KB, tty or None)}."""
     table = {}
     for line in (raw or "").splitlines():
         parts = line.split(None, PROCESS_FIELDS)
         if len(parts) <= PROCESS_FIELDS:
             continue
         try:
-            table[int(parts[0])] = (int(parts[1]), float(parts[10]), int(parts[11]))
+            table[int(parts[0])] = (int(parts[1]), float(parts[10]), int(parts[11]),
+                                    None if parts[4] in ("??", "-") else parts[4])
         except ValueError:
             continue
     return table
@@ -1056,7 +1139,7 @@ def tree_usage(table, root, stop_at):
 def tree_pids(table, root, stop_at):
     """`root` and every process below it, down to but not into `stop_at`."""
     children = {}
-    for pid, (parent, _, _) in table.items():
+    for pid, (parent, *_) in table.items():
         children.setdefault(parent, []).append(pid)
     pids, pending = [], [root] if root in table else []
     while pending:
@@ -1156,7 +1239,7 @@ TMUX_PATHS = ("/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux")
 
 
 def read_tmux_panes(listing):
-    """{tmux pane number: {job, path}}, or {} without tmux.
+    """{tmux pane number: {job, path, tty}}, or {} without tmux.
 
     iTerm2 cannot see inside a tmux pane: it reports no jobName, and a `path`
     that can belong to another pane of the same tmux window, which gave
@@ -1177,7 +1260,7 @@ def read_tmux_panes(listing):
     if not panes:
         return {}
     running = parse_foreground(listing)
-    return {number: {"job": running.get(pane["tty"]), "path": pane["path"]}
+    return {number: {"job": running.get(pane["tty"]), "path": pane["path"], "tty": pane["tty"]}
             for number, pane in parse_tmux_panes(panes).items()}
 
 
@@ -1286,7 +1369,16 @@ def parse_codex(raw):
         payload = None
     if not isinstance(payload, dict):
         payload = {}
-    return {"model": payload.get("model"), "transcript_path": payload.get("transcript_path")}
+    def text(value):
+        return value if isinstance(value, str) else None
+    return {"model": text(payload.get("model")), "transcript_path": text(payload.get("transcript_path"))}
+
+
+def job_pid(value):
+    """iTerm2's jobPid for a pane -> the pid of its foreground job, or None."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value > 0 else None
 
 
 def parse_pid(raw):
@@ -1319,7 +1411,7 @@ def parse_agents(raw):
 
 def _epoch(value):
     """A JSON number of seconds, or None. bool is an int to Python; not here."""
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
         return round(value)
     return None
 
@@ -1553,7 +1645,7 @@ def read_task(session_id):
     it can grey one nobody refreshed without the snapshot changing every
     tick to say so.
     """
-    if not session_id:
+    if not isinstance(session_id, str) or not _SESSION_FILE.match(session_id):
         return None
     try:
         with open(os.path.join(TASKS_DIR, f"{session_id}.json"), encoding="utf-8") as fh:
@@ -2079,8 +2171,9 @@ ACCOUNT_TICK_SECONDS = 30
 POLL_SECONDS = 2
 
 #: Variables Bridge reads per session. `path` and `autoName` drive classify;
-#: `jobName` is display only, and only on shell rows.
-SESSION_VARIABLES = ("path", "autoName", "jobName", "name", "tmuxWindowPane",
+#: `jobName` is display only, and only on shell rows; `jobPid` and `tty` are
+#: an omp row's process and terminal, since omp publishes neither.
+SESSION_VARIABLES = ("path", "autoName", "jobName", "jobPid", "tty", "name", "tmuxWindowPane",
                      # Written by the plugin hook (Claude Code and Codex) and by claude-status.
                      "user.claudeState", "user.codexState", "user.claudeStatus")
 
@@ -2248,13 +2341,35 @@ class Bridge:
                     codex_tui = provider is None and job == "codex"
                     if codex_tui:
                         provider = "openai"
-                    pid = parse_pid(raw)
+                    # omp reports through no hook: its title is its only word,
+                    # and a pane that did publish state speaks for itself.
+                    titled = omp_title_state(values["autoName"]) if provider is None else None
+                    if titled:
+                        provider = "omp"
+                    pid = job_pid(values["jobPid"]) if titled else parse_pid(raw)
+                    doing = running = None
                     if provider == "openai" and raw:
                         # Codex has no statusline: the hook names the model and
                         # the rollout has the rest.
                         published = parse_codex(raw)
                         status = dict(parse_status(None), model=published["model"],
-                                      **codex.read_session(published["transcript_path"]))
+                                      **await asyncio.to_thread(codex.read_session,
+                                                                published["transcript_path"]))
+                    elif titled:
+                        # tmux's terminal for its own pane over iTerm2's,
+                        # which has none for a pane tmux drives.
+                        told = await asyncio.to_thread(
+                            omp.read_session, omp.TERMINALS_DIR,
+                            pane.get("tty") or (resources.get(pid) or (None,) * 4)[3] or values["tty"])
+                        status = dict(parse_status(None), model=told["model"], effort=told["effort"],
+                                      context=told["context"],
+                                      details={} if told["cost"] is None else {"cost": told["cost"]})
+                        doing = told["doing"]
+                        # omp runs its background commands itself, under no
+                        # marker a process listing could match; its log names them.
+                        home = os.path.expanduser("~") + "/"
+                        running = [{"label": shell_label(command).replace(home, "~/"), "command": command}
+                                   for command in told["jobs"]]
                     else:
                         status = read_status(pid)
                     marks = transcript_marks(status.get("transcript"))
@@ -2273,7 +2388,9 @@ class Bridge:
                         "job_name": job,
                         "agent_job": codex_tui,
                         "provider": provider,
-                        "agent_state": parse_state(raw),
+                        "agent_state": titled or parse_state(raw),
+                        "topic": omp_title_topic(values["autoName"]) if titled else None,
+                        "doing": doing,
                         "agents": parse_agents(raw),
                         # A Codex job a Claude session started through the
                         # codex plugin runs outside its process tree, so the
@@ -2292,7 +2409,7 @@ class Bridge:
                         # snapshot is the pure unit that the tests pin down.
                         "agent_name": marks["agent"],
                         "team": marks["team"],
-                        "shells": shells.get(pid, []),
+                        "shells": shells.get(pid, []) if running is None else running,
                         "started_at": started.get(pid),
                         # A teammate wears the colour it was spawned with; a
                         # session wears the one cs gave its directory.
@@ -2343,8 +2460,9 @@ class Bridge:
 
     async def _rebuild_once(self):
         await self.app.async_refresh()
-        self.latest = snapshot(await self.read_sessions(),
-                               load_settings()["sort_by_name"])
+        settings = load_settings()
+        self.latest = snapshot(await self.read_sessions(), settings["sort_by_name"],
+                               settings["provider_mark"] == "groups")
         self.latest["version"] = version()
         if self.meters is not None:
             self.latest["accounts"] = self.meters.snapshot()
@@ -2444,6 +2562,8 @@ class Bridge:
             self.notices.clear(session_id)
             return
         row = find_row(self.latest, session_id) or {}
+        if notifies_itself(row):
+            return
         question = row.get("question")
         argv = notify_argv(NOTIFIER_APP, session_id, row.get("label", ""), kind, question)
         if argv is None:
@@ -2588,15 +2708,18 @@ class Bridge:
                 print(f"sidebar: status sweep failed: {error!r}", flush=True)
             await asyncio.sleep(ACCOUNT_TICK_SECONDS)
 
+    async def rebuild_or_report(self):
+        try:
+            await self.rebuild()
+        except Exception as error:               # noqa: BLE001
+            # Reaches iTerm2's log via the webview "logger" handler is not
+            # available here, so print -- the Script Console shows it.
+            print(f"sidebar: rebuild failed: {error!r}", flush=True)
+
     async def poll(self):
         while True:
             await asyncio.sleep(POLL_SECONDS)
-            try:
-                await self.rebuild()
-            except Exception as error:               # noqa: BLE001
-                # Reaches iTerm2's log via the webview "logger" handler is not
-                # available here, so print -- the Script Console shows it.
-                print(f"sidebar: rebuild failed: {error!r}", flush=True)
+            await self.rebuild_or_report()
 
 
 async def main(connection):
@@ -2622,7 +2745,7 @@ async def main(connection):
     bridge.app = await iterm2.async_get_app(connection)
 
     port = await server.start()
-    await bridge.rebuild()
+    await bridge.rebuild_or_report()
     await bridge.sweep_notices()
 
     await iterm2.tool.async_register_web_view_tool(

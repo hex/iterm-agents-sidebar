@@ -148,6 +148,19 @@ def test_a_rollout_that_cannot_be_read_reads_as_unknown(tmp_path):
     assert read_session(None) == {"effort": None, "context": None}
 
 
+def test_a_rollout_path_that_is_no_ordinary_file_is_not_opened(tmp_path):
+    """The path arrives in a pane variable any process can write. Opening a
+    pipe waits for a writer that never comes, and the panel waits with it."""
+    import threading
+    pipe = tmp_path / "rollout.jsonl"
+    os.mkfifo(pipe)
+    read = []
+    reader = threading.Thread(target=lambda: read.append(read_session(str(pipe))), daemon=True)
+    reader.start()
+    reader.join(timeout=2)
+    assert read == [{"effort": None, "context": None}]
+
+
 def test_a_session_is_read_from_its_rollout_file(tmp_path):
     rollout = tmp_path / "rollout-2026-09-15T16-33-01-x.jsonl"
     rollout.write_text("\n".join([TURN_CONTEXT, TOKEN_COUNT]) + "\n")
