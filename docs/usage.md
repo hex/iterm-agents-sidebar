@@ -105,8 +105,17 @@ When the last shell ends, the line stays for a few seconds, dimmed, as
 "1 command finished", so a run of short commands doesn't grow and shrink the
 card each time. A shell whose command the panel can't parse shows `?`.
 
-## The cost figure
+## Updating
 
-The coin in the bar adds up what the running Claude Code sessions report having
-spent, at API prices. That figure is what those sessions report, not a bill. The
-terminal mark beside it counts how many sessions report anything at all.
+The bar's left end names the release the panel runs. Once a day, and once at
+start, the daemon lists the tags on the public mirror; when one is newer, the
+line adds `2026.09.20 available` and an Update button. Pressing it pulls that
+release into the checkout the daemon runs from, runs `install.sh` again and
+restarts the daemon. The port changes with the restart, so the panel goes
+blank: reopen it from View > Toolbelt > Agents. A pull the checkout cannot
+fast-forward, or an install that fails, leaves the daemon as it was and puts
+the tool's last line beside the button; the whole message is in the daemon's
+log under Scripts > Manage > Console.
+
+A card whose agent asks a question while it sits below the visible list
+scrolls into view. One already on screen stays put.

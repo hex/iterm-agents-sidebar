@@ -260,3 +260,29 @@ def test_notify_dispatches_the_moment_as_its_text(tmp_path):
         b'{"session_id": "abc", "verb": "notify", "text": "blocked"}')
     assert status == 200
     assert calls == [("abc", "notify", "blocked")]
+
+
+def update_server(tmp_path, result):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda *a: None, update_fn=lambda: result)
+
+
+def test_an_update_that_took_says_so(tmp_path):
+    status, _, body = update_server(tmp_path, (True, "")).handle("POST", f"/update?token={TOKEN}", b"")
+    assert (status, json.loads(body)) == (200, {"ok": True})
+
+
+def test_an_update_that_failed_carries_the_text_the_panel_shows(tmp_path):
+    server = update_server(tmp_path, (False, "fatal: Not possible to fast-forward, aborting.\n"))
+    status, _, body = server.handle("POST", f"/update?token={TOKEN}", b"")
+    assert (status, json.loads(body)) == (409, {"error": "fatal: Not possible to fast-forward, aborting.\n"})
+
+
+def test_an_update_needs_the_token(tmp_path):
+    assert update_server(tmp_path, (True, "")).handle("POST", "/update", b"")[0] == 403
+
+
+def test_a_daemon_without_an_updater_refuses_the_request(tmp_path):
+    assert build(tmp_path).handle("POST", f"/update?token={TOKEN}", b"")[0] == 400

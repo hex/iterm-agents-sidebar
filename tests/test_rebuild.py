@@ -303,3 +303,18 @@ def test_an_omp_pane_iterm2_names_no_terminal_for_is_on_its_processs_terminal(mo
     b.app = one_session(OmpSessionWithAJob())
     asyncio.run(b.read_sessions())
     assert seen == ["ttys014"]
+
+
+def test_a_newer_mirror_release_rides_every_snapshot_and_an_absent_one_leaves_no_key(monkeypatch):
+    """`latest` is rebuilt from scratch each cycle, so the offer has to be
+    copied in every time; and a panel that is current sees no key at all,
+    rather than a null to interpret."""
+    monkeypatch.setattr(sidebar, "read_system", lambda: (({}, {}, {}, {}), {}, {}, {}))
+    monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
+    b = sidebar.Bridge(None, Quiet())
+    b.app = NoWindows()
+    asyncio.run(b.rebuild())
+    assert "update" not in b.latest
+    b.update = "2026.09.20"
+    asyncio.run(b.rebuild())
+    assert b.latest["update"] == "2026.09.20"

@@ -509,7 +509,7 @@
      and its only question is "is anything waiting on me". So a row that needs
      nothing is quiet, and every channel that carries weight -- contrast, a
      coloured spine, a word, motion -- is spent on the rows that do. */
-  button.row { position: relative; color: var(--dim); }
+  button.row { position: relative; color: var(--dim); scroll-margin-block: 16px; }
   button.row.hot { color: var(--fg); }
   /* Blocked is the only state that wants you, so its name carries weight -- a
      row you can pick out without reading the badge. */
@@ -809,15 +809,25 @@
     background: var(--bg);
   }
   #bar .tools { display: flex; gap: 2px; margin-left: auto; }
-  /* What Claude Code says the running sessions have spent, priced at API
-     rates: on a subscription it is a measure of use, not a bill. */
-  #cost {
-    display: flex; align-items: center; gap: 5px; min-width: 0;
+  /* The release this panel runs, and the one it could: the bar says nothing
+     more than the number until the mirror has a newer one. */
+  #release {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
     font: 400 10px/1 ui-monospace, Menlo, monospace; color: var(--dim);
-    font-variant-numeric: tabular-nums;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
   }
-  #cost .mchip { cursor: default; }
-  #cost .mchip ~ .mchip::before { content: "\00b7"; margin-right: 2px; opacity: .6; }
+  #release .take { flex: none; }
+  #release .take {
+    width: auto; height: 18px; padding: 0 7px; border-radius: 5px;
+    font: 500 10px/1 -apple-system, sans-serif; color: #fff;
+    background: color-mix(in srgb, AccentColor 92%, #000);
+  }
+  #release .take:hover { color: #fff; background: AccentColor; }
+  #release .take:disabled { opacity: .5; }
+  /* git's or install.sh's own words, one line of them: the rest is in the
+     daemon's log. */
+  #release .refused { color: var(--alert); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   /* The list is the only thing that scrolls: the account meters and the bar
      are the panel's fixed foot, and a foot that scrolls away takes the
      numbers you are watching with it. */
@@ -937,11 +947,6 @@
   .set-kids > div > .set.child:first-child { padding-top: 2px; }
   .set-kids > div > .set.child:last-child { padding-bottom: 8px; }
   h2.set-name { padding: 0 0 2px; }
-  .set-version {
-    font: 11px/1.2 -apple-system, sans-serif; color: var(--dim);
-    margin-top: 10px; padding-top: 8px;
-    border-top: 1px dotted color-mix(in srgb, var(--fg) 16%, transparent);
-  }
 
   /* One of a few words: the system's own menu, dressed as the stepper is. */
   .pick {
@@ -1268,7 +1273,7 @@
 <div id="scrim" hidden></div>
 <div id="settings" hidden></div>
 <div id="bar">
-  <div id="cost" hidden></div>
+  <div id="release"></div>
   <div class="tools">
   <button id="reload" type="button" aria-label="Reload the panel" title="Reload the panel">
     <svg class="mi" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></svg>
@@ -2530,27 +2535,6 @@ function paintBudget(snapshot) {
   if (snapshot.codex?.windows?.length) paintCodex(strip, snapshot.codex);
 
   strip.hidden = strip.childElementCount === 0;
-  paintCost(reporting);
-}
-
-// The bar's left half: what the sessions have spent, and how many say so.
-function paintCost(reporting) {
-  const cost = document.getElementById("cost");
-  cost.replaceChildren();
-  const costs = reporting.filter(d => d.cost != null);
-  cost.hidden = !costs.length;
-  if (costs.length) {
-    const total = costs.reduce((sum, d) => sum + d.cost, 0);
-    const n = costs.length;
-    const spent = Object.assign(document.createElement("span"), {className: "mchip"});
-    spent.append(metaIcon("cost"), document.createTextNode(`$${total.toFixed(2)}`));
-    spent.title = "Cost so far of the running sessions that report one, at API prices";
-    const count = Object.assign(document.createElement("span"), {className: "mchip"});
-    count.append(metaIcon("shells"), document.createTextNode(`${n} session${n === 1 ? "" : "s"}`));
-    count.title = `${n} session${n === 1 ? " reports" : "s report"} a cost`;
-    cost.append(spent, count);
-    cost.setAttribute("aria-label", `$${total.toFixed(2)} spent at API prices across ${n} session${n === 1 ? "" : "s"}`);
-  }
 }
 
 // A line that cannot fit even with its branch at two characters drops the
@@ -3353,24 +3337,59 @@ function settingsBody() {
       card.append(kids.kids);
     }
   }
-  // The release, at the foot where a person looking for it looks.
-  const rel = document.createElement("div");
-  rel.className = "set-version";
-  box.append(rel);
   syncSettings();
-  paintVersion();
 }
 
 function syncSettings() {
   for (const sync of SETTING_SYNC) sync();
 }
 
-// The settings box is built before the first snapshot arrives and rebuilt
-// only when a setting changes, so the release line is painted on its own
-// from each snapshot. A checkout with none says so rather than inventing one.
+// The bar's left half: the release this panel runs, and, only while the
+// mirror has a newer one, that number and the button that takes it. The line
+// is rebuilt only when what it would say changes, so a click's state outlives
+// the repaint two seconds later.
+let releaseShown = null;
+let releaseState = null;   // null, "taking", "restarting", or the refusal text
 function paintVersion() {
-  const rel = document.querySelector("#settings .set-version");
-  if (rel) rel.textContent = LATEST.version ? "Agents " + LATEST.version : "Agents, unreleased checkout";
+  const key = `${LATEST.version}|${LATEST.update}|${releaseState}`;
+  if (key === releaseShown) return;
+  releaseShown = key;
+  const bar = document.getElementById("release");
+  bar.replaceChildren();
+  bar.append(LATEST.version || "unreleased checkout");
+  if (!LATEST.update) return;
+  if (releaseState === "restarting") {
+    bar.append(" · restarting, reopen the panel");
+    return;
+  }
+  const refused = releaseState && releaseState !== "taking";
+  if (refused) {
+    // The refusal takes the words' place: the bar has one line, and the
+    // button beside it says what was refused.
+    const line = releaseState.trim().split("\n").pop();
+    bar.append(" · ", Object.assign(document.createElement("span"),
+                                   {className: "refused", textContent: line, title: releaseState}));
+  } else {
+    bar.append(` · ${LATEST.update} available`);
+  }
+  const take = Object.assign(document.createElement("button"), {className: "take", type: "button"});
+  take.textContent = releaseState === "taking" ? "Updating…" : "Update";
+  take.disabled = releaseState === "taking";
+  take.title = `Pull release ${LATEST.update} into this checkout, run install.sh and restart the daemon`;
+  take.addEventListener("click", takeRelease);
+  bar.append(take);
+}
+
+function takeRelease() {
+  releaseState = "taking";
+  paintVersion();
+  fetch(`/update?token=${encodeURIComponent(TOKEN)}`, {method: "POST"})
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      releaseState = r.ok ? "restarting" : (body.error || `update failed (${r.status})`);
+    })
+    .catch(err => { releaseState = String(err); })
+    .then(paintVersion);
 }
 
 function push(change) {
@@ -3495,6 +3514,7 @@ function announce(snapshot) {
       const turn = turnStarts.get(id);
       const newTurn = state === "working" && turn !== undefined && turn !== announcedTurns.get(id);
       const turnDone = state === "idle" && before === "working" && turn !== announcedTurns.get(id);
+      if (state === "blocked") revealAfterPaint(id);
       if (state === "blocked" && SETTINGS?.sound_blocked) soundBlocked();
       else if (state === "idle" && before === "working" && SETTINGS?.sound_done) soundDone();
       // The banner reaches you in another application, where no sound or
@@ -3521,6 +3541,19 @@ function announce(snapshot) {
     }
   }
   lastStates = now;
+}
+
+// A question asked off the bottom of the list is a question you do not see.
+// After the paint that draws the card hot, bring it to the nearest edge;
+// a card already on screen stays where it is.
+function revealAfterPaint(id) {
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`[data-session-id="${CSS.escape(id)}"]`);
+    const list = document.getElementById("groups");
+    if (!card || !list) return;
+    const c = card.getBoundingClientRect(), l = list.getBoundingClientRect();
+    if (c.top < l.top || c.bottom > l.bottom) card.scrollIntoView({block: "nearest", behavior: "smooth"});
+  });
 }
 
 const events = new EventSource(`/events?token=${encodeURIComponent(TOKEN)}`);
