@@ -39,11 +39,17 @@ echo "installed stub -> $stub"
 echo "        loading -> $repo/sidebar.py"
 echo "        release -> $(cat "$repo/VERSION" 2>/dev/null || echo "none, unreleased checkout")"
 
-env="$HOME/Library/Application Support/iTerm2/iterm2env-3.10/versions/3.10.19/bin/python3"
-if [ -x "$env" ]; then
-  echo "runtime  -> $("$env" --version)"
+# iTerm2 keeps its Python in a uv venv under ~/.config since 3.5.x, and in
+# iterm2env under Application Support before that. Either serves python3.10.
+runtime=""
+for candidate in "$HOME/.config/iterm2/AppSupport/uv/venvs/3.10/bin/python" \
+                 "$HOME/Library/Application Support/iTerm2/iterm2env-3.10/versions"/3.10.*/bin/python3; do
+  if [ -x "$candidate" ]; then runtime="$candidate"; break; fi
+done
+if [ -n "$runtime" ]; then
+  echo "runtime  -> $("$runtime" --version) ($runtime)"
 else
-  echo "warning: iterm2env-3.10 not found. iTerm2 will offer to download it." >&2
+  echo "warning: no iTerm2 Python 3.10 runtime found. iTerm2 will offer to download it when the script first runs." >&2
 fi
 
 echo
