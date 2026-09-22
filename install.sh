@@ -21,6 +21,19 @@ done
 autolaunch="$HOME/Library/Application Support/iTerm2/Scripts/AutoLaunch"
 stub="$autolaunch/agents_sidebar.py"
 
+# One line per component, the details gathered under Next and Undo at the end.
+# Colour only on a terminal: a log or a curl | bash transcript stays plain.
+if [ -t 1 ]; then green=$'\e[32m'; yellow=$'\e[33m'; dim=$'\e[2m'; off=$'\e[0m'; else green=""; yellow=""; dim=""; off=""; fi
+tilde() { printf '%s' "${1/#$HOME/~}"; }
+line() { printf '  %s %s%-11s%s %s\n' "$1" "$dim" "$2" "$off" "$3"; }
+ok()   { line "${green}✓${off}" "$1" "$2"; }
+skip() { line "${dim}-${off}" "$1" "$2"; }
+warn() { line "${yellow}!${off}" "$1" "$2" >&2; }
+more() { printf '    %s%s%s\n' "$dim" "$1" "$off"; }
+next=(); undo=()
+
+printf '\n%sAgents sidebar%s %s\n\n' "$off" "$dim" "$(cat "$repo/VERSION" 2>/dev/null || echo "unreleased checkout")$off"
+
 # iTerm2 makes this folder the first time you create a Python script; on a
 # machine that never has, it reads what we put there just the same.
 mkdir -p "$autolaunch"
@@ -35,9 +48,8 @@ import runpy
 runpy.run_path("$repo/sidebar.py", run_name="__main__")
 STUB
 
-echo "installed stub -> $stub"
-echo "        loading -> $repo/sidebar.py"
-echo "        release -> $(cat "$repo/VERSION" 2>/dev/null || echo "none, unreleased checkout")"
+ok script "$(tilde "$stub")"
+more "loads $(tilde "$repo")/sidebar.py"
 
 # iTerm2 keeps its Python in a uv venv under ~/.config since 3.5.x, and in
 # iterm2env under Application Support before that. Either serves python3.10.
@@ -47,15 +59,13 @@ for candidate in "$HOME/.config/iterm2/AppSupport/uv/venvs/3.10/bin/python" \
   if [ -x "$candidate" ]; then runtime="$candidate"; break; fi
 done
 if [ -n "$runtime" ]; then
-  echo "runtime  -> $("$runtime" --version) ($runtime)"
+  case "$runtime" in */uv/*) where="iTerm2's uv venv" ;; *) where="iterm2env" ;; esac
+  ok runtime "$("$runtime" --version), $where"
 else
-  echo "warning: no iTerm2 Python 3.10 runtime found. iTerm2 will offer to download it when the script first runs." >&2
+  warn runtime "no iTerm2 Python 3.10 found; iTerm2 offers to download it when the script first runs"
 fi
-
-echo
-echo "Start it now without restarting iTerm2:"
-echo "  Scripts > AutoLaunch > agents_sidebar"
-echo "Then open the Toolbelt: View > Toolbelt > Agents (or Show Toolbelt, cmd-B)."
+next+=("Start it:   Scripts > AutoLaunch > agents_sidebar"
+       "Open it:    View > Toolbelt > Agents (cmd-B shows the Toolbelt)")
 
 # The state hook ships as a Claude Code plugin, NOT as an edit to
 # ~/.claude/settings.json. Eight council providers agreed there is no safe way
@@ -68,9 +78,9 @@ if [ -d "$repo/plugin" ]; then
   mkdir -p "$plugin_dir"
   # --exclude keeps __pycache__ out; the tests import the handler directly.
   (cd "$repo/plugin" && /usr/bin/tar cf - --exclude __pycache__ .) | (cd "$plugin_dir" && tar xf -)
-  echo "installed plugin -> $plugin_dir"
-  echo "        state hook loads next session, or run /reload-plugins now"
-  echo "        uninstall:  claude plugin disable agents-sidebar@skills-dir"
+  ok hook "$(tilde "$plugin_dir")"
+  next+=("Hooks load in sessions started from now on; /reload-plugins for a running one.")
+  undo+=("hook        claude plugin disable agents-sidebar@skills-dir")
 fi
 
 # The context figure on a card comes only from the statusline payload, so
@@ -90,7 +100,7 @@ except ValueError:
 print(settings.get("statusLine", {}).get("command", ""), end="")' "$settings")
 
   if [ "$current" = "$bridge" ]; then
-    echo "statusline bridge already installed"
+    ok statusline "already installed"
   else
     backup="$settings.before-agents-sidebar"
     cp "$settings" "$backup"
@@ -110,13 +120,12 @@ with open(path, "w") as out:
     json.dump(settings, out, indent=2)
     out.write("\n")
 PY
-    echo "statusline bridge -> $bridge"
-    echo "        displaced -> ${current:-(none)}"
-    echo "        saved to  -> $status_dir/original-statusline"
-    echo "        backup    -> $backup"
+    ok statusline "bridge set in $(tilde "$settings")"
+    [ -n "$current" ] && more "your statusline, $current, runs inside it; kept in $(tilde "$status_dir")/original-statusline"
   fi
-  echo "        takes effect in sessions started from now on"
-  echo "        undo:  cp \"$settings.before-agents-sidebar\" \"$settings\"; or ./install.sh --no-statusline next time"
+  undo+=("statusline  cp $(tilde "$settings").before-agents-sidebar $(tilde "$settings")   (or --no-statusline next time)")
+else
+  skip statusline "left alone (--no-statusline)"
 fi
 
 # Codex sessions as panel rows: on when Codex is here (its directory or its
@@ -136,18 +145,21 @@ if [ "$codex" = 1 ]; then
   [ -f "$codex_hooks" ] && [ ! -f "$codex_hooks.before-agents-sidebar" ] \
     && cp "$codex_hooks" "$codex_hooks.before-agents-sidebar"
   bash "$repo/codex-hooks.sh" "$codex_hooks" "$plugin_dir/hooks-handlers/emit-state.py"
-  echo "codex hooks -> $codex_hooks"
   # Codex's sandbox writes only inside the workspace, so the task note the
   # agent keeps about its own work needs its directory opened up.
   tasks_dir="$HOME/.claude/agents-sidebar-tasks"
   mkdir -p "$tasks_dir"
-  if python3 "$repo/codex-sandbox.py" "$HOME/.codex/config.toml" "$tasks_dir"; then
-    echo "codex sandbox -> $tasks_dir writable (config.toml [sandbox_workspace_write])"
+  if python3 "$repo/codex-sandbox.py" "$HOME/.codex/config.toml" "$tasks_dir" 2>"$tasks_dir/.sandbox.err"; then
+    ok codex "hooks and sandbox in ~/.codex"
   else
-    echo "        the task line will not reach Codex cards until it is" >&2
+    ok codex "hooks in ~/.codex"
+    warn codex "sandbox not opened, so the task line will not reach Codex cards: $(tr '\n' ' ' < "$tasks_dir/.sandbox.err")"
   fi
-  echo "        Codex asks once to trust the hooks; takes effect in sessions started from now on"
-  [ -f "$codex_hooks.before-agents-sidebar" ] && echo "        undo:  cp \"$codex_hooks.before-agents-sidebar\" \"$codex_hooks\"; or ./install.sh --no-codex next time"
+  rm -f "$tasks_dir/.sandbox.err"
+  next+=("Codex asks once to trust its hooks.")
+  [ -f "$codex_hooks.before-agents-sidebar" ] && undo+=("codex       cp $(tilde "$codex_hooks").before-agents-sidebar $(tilde "$codex_hooks")   (or --no-codex next time)")
+else
+  skip codex "not here"
 fi
 
 # The macOS notice for a finished turn or a question. A notification wears its
@@ -161,21 +173,21 @@ fi
 # permission again, and this script runs after every plugin edit.
 notifier_dest="$HOME/.local/share/agents-sidebar/Agents.app"
 if ! command -v swiftc >/dev/null 2>&1; then
-  echo "notifications off: swiftc not found (xcode-select --install), then re-run ./install.sh"
+  warn notifier "off: swiftc not found; xcode-select --install, then ./install.sh again"
 else
   icon="$repo/assets/notifier-icon.png"
   source="$repo/assets/notifier.swift"
   bundle_id="com.hexul.agents-sidebar.notifier"
   stamp="$(shasum -a 256 "$source" "$icon" | cut -d' ' -f1 | tr '\n' ' ')$bundle_id"
   if [ "$(cat "$notifier_dest/Contents/Resources/agents-sidebar-source.sha256" 2>/dev/null)" = "$stamp" ]; then
-    echo "notifier bundle -> $notifier_dest (unchanged)"
+    ok notifier "$(tilde "$notifier_dest"), unchanged"
   else
     stage="$notifier_dest.staging.$$"; iconset="$notifier_dest.$$.iconset"
     rm -rf "$stage" "$iconset"
     mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources" "$iconset"
     if ! swiftc -O -o "$stage/Contents/MacOS/agents-notifier" "$source" 2>"$stage.log"; then
-      echo "warning: the notifier did not compile; keeping what is installed" >&2
-      sed 's/^/        /' "$stage.log" >&2
+      warn notifier "did not compile; keeping what is installed"
+      sed 's/^/      /' "$stage.log" >&2
       rm -rf "$stage" "$stage.log" "$iconset"
     else
       rm -f "$stage.log"
@@ -217,12 +229,19 @@ PLIST
         rm -rf "$notifier_dest"
         mv "$stage" "$notifier_dest"
         /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$notifier_dest" >/dev/null 2>&1 || true
-        echo "notifier bundle -> $notifier_dest"
-        echo "        macOS asks once to allow notifications from Agents"
+        ok notifier "$(tilde "$notifier_dest")"
+        next+=("macOS asks once to allow notifications from Agents.")
       else
         rm -rf "$stage"
-        echo "warning: the assembled notifier does not run here; keeping what is installed" >&2
+        warn notifier "the assembled bundle does not run here; keeping what is installed"
       fi
     fi
   fi
+fi
+
+printf '\nNext\n'
+for item in "${next[@]}"; do printf '  %s\n' "$item"; done
+if [ ${#undo[@]} -gt 0 ]; then
+  printf '\nUndo\n'
+  for item in "${undo[@]}"; do printf '  %s\n' "$item"; done
 fi

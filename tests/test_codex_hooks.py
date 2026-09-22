@@ -87,3 +87,21 @@ def test_a_file_that_already_says_it_is_not_rewritten(tmp_path):
     stamp = hooks.stat().st_mtime_ns
     register(hooks)
     assert hooks.stat().st_mtime_ns == stamp
+
+
+def test_remove_takes_only_our_entries_out(tmp_path):
+    hooks = tmp_path / "hooks.json"
+    hooks.write_text(json.dumps(HERDR))
+    register(hooks)
+    removed = subprocess.run(["bash", str(SCRIPT), "--remove", str(hooks), HANDLER],
+                             capture_output=True, text=True)
+    assert removed.returncode == 0
+    assert commands(hooks) == {"SessionStart": ["bash '/Users/jane/.codex/herdr-agent-state.sh' session"]}
+
+
+def test_remove_on_a_file_without_us_changes_nothing(tmp_path):
+    hooks = tmp_path / "hooks.json"
+    hooks.write_text(json.dumps(HERDR))
+    before = hooks.read_text()
+    subprocess.run(["bash", str(SCRIPT), "--remove", str(hooks), HANDLER], capture_output=True)
+    assert hooks.read_text() == before
