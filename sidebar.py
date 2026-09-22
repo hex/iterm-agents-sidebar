@@ -773,8 +773,14 @@ def snapshot(sessions, sort_by_name=False, group_by_provider=False):
             row["_lead"] = teammates[-1]
         if kind == "agent" and not child and session.get("path"):
             by_path.setdefault(session["path"], row)
-            if session.get("worktree_of"):
-                worktrees.append((row, session["worktree_of"], session["path"]))
+            # Git names the main worktree; failing that, cs's own naming
+            # does: `<base>@<feature>` beside a session directory `<base>`
+            # is that project, whatever the shell's path or the checkout
+            # says. Beside it only: a `<base>` in another folder is another
+            # project.
+            main_path = session.get("worktree_of") or sibling_base(session["path"])
+            if main_path:
+                worktrees.append((row, main_path, session["path"]))
         if kind == "agent" and home:
             families.setdefault(home, []).append(row)
         else:
@@ -1953,6 +1959,15 @@ def git_branch(path):
         # Detached: HEAD holds the commit itself, so show enough to recognise.
         return ref[:7] if ref else None
     return None
+
+
+def sibling_base(path):
+    """`<dir>/<base>@<feature>` -> `<dir>/<base>`, or None for any other name."""
+    if not path:
+        return None
+    here = Path(path)
+    base = here.name.partition("@")[0]
+    return str(here.with_name(base)) if "@" in here.name and base else None
 
 
 def git_main_worktree(path):
