@@ -30,7 +30,7 @@ def marks():
     page = PAGE.read_text()
     found = {}
     for name in ("branch", "clock", "computer", "cpu", "model", "gauge", "shells",
-                 "switch", "warning", "check", "memory", "reload", "gear", "cost"):
+                 "switch", "warning", "check", "tasks", "memory", "reload", "gear", "cost"):
         m = re.search(r"^  %s: '(.+)',?$" % name, page, re.M)
         if m:
             found[name] = (m.group(1), 256)

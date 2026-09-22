@@ -747,6 +747,8 @@ def snapshot(sessions, sort_by_name=False, group_by_provider=False):
                 row["agents"] = session["agents"]
             if session.get("subagents"):
                 row["subagents"] = session["subagents"]
+            if session.get("tasks"):
+                row["tasks"] = session["tasks"]
             if session.get("blocked_since") is not None:
                 row["blocked_since"] = session["blocked_since"]
             if session.get("question"):
@@ -1314,11 +1316,12 @@ _SESSION_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 def with_detail(raw, directory=None):
     """The session variable -> the whole published state, as JSON text.
 
-    A variable that says `detail: true` left its subagents and its question in
-    a file under the session id. A file as new as the variable is the whole
-    state and replaces it. An older one lost a race with a later event: its
-    subagents still stand, its question may have been answered since and is
-    dropped. No readable file leaves the variable as it came.
+    A variable that says `detail: true` left its subagents, its tasks and its
+    question in a file under the session id. A file as new as the variable is
+    the whole state and replaces it. An older one lost a race with a later
+    event: its subagents and tasks still stand, its question may have been
+    answered since and is dropped. No readable file leaves the variable as it
+    came.
     """
     try:
         envelope = json.loads(raw)
@@ -1340,7 +1343,7 @@ def with_detail(raw, directory=None):
     stamp = lambda doc: doc.get("ts") if isinstance(doc.get("ts"), (int, float)) else 0
     if stamp(whole) >= stamp(envelope):
         return json.dumps(whole)
-    return json.dumps(dict(envelope, subagents=whole.get("subagents")))
+    return json.dumps(dict(envelope, subagents=whole.get("subagents"), tasks=whole.get("tasks")))
 
 
 def agent_variable(claude_raw, codex_raw):
@@ -1494,6 +1497,15 @@ def parse_question(raw):
     except (ValueError, TypeError, AttributeError):
         return None
     return asked if isinstance(asked, dict) else None
+
+
+def parse_tasks(raw):
+    """The claudeState payload -> its open tasks: [{id, status, subject, doing}]."""
+    try:
+        listed = json.loads(raw).get("tasks")
+    except (ValueError, TypeError, AttributeError):
+        return []
+    return listed if isinstance(listed, list) else []
 
 
 def parse_working_since(raw):
@@ -2430,6 +2442,7 @@ class Bridge:
                             if provider == "claude" else []),
                         "blocked_since": parse_blocked_since(raw),
                         "question": parse_question(raw),
+                        "tasks": parse_tasks(raw),
                         "working_since": parse_working_since(raw),
                         "context": status["context"],
                         "model": status["model"],

@@ -77,7 +77,7 @@ scrolls into view; one already on screen stays put.
 | Idle | Grey name, IDLE outline |
 | Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each part joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job and the background shells">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each part joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">
 
 Under the name, an agent reports its own task: a title, then
 `Reading code · 40s`, then ticks for how far it says it has got. The
@@ -119,6 +119,9 @@ A finished subagent keeps its row until your next prompt, and one still
 running in the background stays through it. Past three of them,
 they fold into one line ("30 finished") that opens on a click, and the ones
 still running stay in sight.
+A session's open tasks, the checklist it keeps
+with TaskCreate, fold into one line ("6 tasks · 1 in progress") that opens
+to a row per task, the running ones with the dots and what is being done.
 Background shells fold into
 one line ("2 commands running") that opens on a click, and clicking a shell
 shows the whole command with a Copy button.

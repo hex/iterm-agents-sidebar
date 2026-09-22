@@ -727,3 +727,11 @@ def test_grouping_by_agent_and_sorting_by_name_sort_inside_each_group():
 def test_an_agent_the_order_does_not_name_comes_after_the_ones_it_does():
     rows = snapshot([of("goose", OTHER), MAIN], group_by_provider=True)["groups"][0]["rows"]
     assert [r["label"] for r in rows] == ["atlas", "beacon"]
+
+
+def test_agent_rows_carry_their_open_tasks_only_when_there_are_some():
+    tasks = [{"id": "3", "status": "pending", "subject": "Registry flags", "doing": ""}]
+    got = snapshot([dict(LIVE[1], agent_state="working", tasks=tasks)])["groups"][0]["rows"][0]
+    assert got["tasks"] == tasks
+    bare = snapshot([dict(LIVE[1], agent_state="working", tasks=[])])["groups"][0]["rows"][0]
+    assert "tasks" not in bare

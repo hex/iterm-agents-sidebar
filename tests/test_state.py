@@ -424,3 +424,12 @@ def test_git_main_worktree_names_the_repo_a_linked_worktree_belongs_to(tmp_path)
     assert git_main_worktree(str(repo)) is None
     assert git_main_worktree("/tmp") is None
     assert git_main_worktree(None) is None
+
+
+def test_parse_tasks():
+    from sidebar import parse_tasks
+    tasks = [{"id": "3", "status": "in_progress", "subject": "Registry flags", "doing": "Building"}]
+    assert parse_tasks(json.dumps({"tasks": tasks})) == tasks
+    assert parse_tasks(json.dumps({"tasks": "six"})) == []
+    assert parse_tasks(json.dumps({})) == []
+    assert parse_tasks("not json") == []

@@ -99,6 +99,16 @@ and red, and that would make being nearly done look like a warning.
 
 `docs/task-line-design.md` has the hook cadence and the note format.
 
+## Tasks
+
+Claude Code keeps a session's task list under `~/.claude/tasks/<list>/`, one
+file per task, named by `CLAUDE_CODE_TASK_LIST_ID` or `session-` plus the
+first eight characters of the session id. The hook reads the list on every
+event, since the tool calls that change it are the events, and hands the
+panel the pending and running items; a list is never pruned, so completed
+ones never show. A subject is clipped to 240 characters and the whole of
+what the panel got sits in the row's tooltip. Codex keeps no task list.
+
 ## Background shells
 
 When the last shell ends, the line stays for a few seconds, dimmed, as

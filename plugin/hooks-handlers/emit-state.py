@@ -740,12 +740,67 @@ def emit(value, target=None, variable="claudeState"):
         pass
 
 
+#: Where Claude Code keeps a session's task list: one file per task under
+#: the list's name. A list is never pruned, so it is read for what is open.
+TASKS_DIR = os.path.expanduser("~/.claude/tasks")
+#: A list name is a directory name here, so it is held to the same shape as
+#: a session id.
+_TASK_LIST = _SESSION
+#: The most of a task's subject the panel is handed: one real list had
+#: subjects over a thousand characters, and a card shows one line.
+SUBJECT_MAX = 240
+
+
+def task_list_of(environ, session_id):
+    """The name of the session's task list, or None without a session.
+
+    cs names it after the session (CLAUDE_CODE_TASK_LIST_ID); a bare session
+    writes to session-<first 8 hex of its id> (checked against five lists on
+    2026-09-22).
+    """
+    named = environ.get("CLAUDE_CODE_TASK_LIST_ID")
+    if named:
+        return named if _TASK_LIST.match(named) else None
+    return f"session-{session_id[:8]}" if session_id else None
+
+
+def open_tasks(directory):
+    """The list's pending and running tasks, oldest first:
+    [{id, status, subject, doing}].
+
+    A file that cannot be read is skipped: Claude Code writes them beside a
+    running hook, and a task list is never worth a session's state.
+    """
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return []
+    items = []
+    for name in names:
+        stem, dot, ext = name.partition(".")
+        if ext != "json" or not stem.isdigit():
+            continue
+        try:
+            with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                task = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(task, dict) or task.get("status") not in ("pending", "in_progress"):
+            continue
+        subject = str(task.get("subject") or "")
+        if len(subject) > SUBJECT_MAX:
+            subject = subject[:SUBJECT_MAX - 1] + "…"
+        items.append((int(stem), {"id": stem, "status": task["status"], "subject": subject,
+                                  "doing": str(task.get("activeForm") or "")}))
+    return [item for _, item in sorted(items, key=lambda pair: pair[0])]
+
+
 def published(doc, pid, payload, codex, now):
     """The JSON the session variable carries, from the folded state document.
 
     Codex has no statusline to bridge, so its variable also carries the model
     (on every Codex payload but SessionEnd) and the rollout the daemon reads
-    effort and context from.
+    effort and context from. A Claude session's carries its open tasks.
     """
     value = {"state": aggregate(doc), "pid": pid, "session": session_of(payload),
              "agents": live_agents(doc), "subagents": subagents(doc),
@@ -756,6 +811,11 @@ def published(doc, pid, payload, codex, now):
     if codex:
         value["model"] = payload.get("model")
         value["transcript_path"] = payload.get("transcript_path")
+    else:
+        # Codex keeps no task list; a Claude session's is read whole on
+        # every event, since the tool calls that change it are the events.
+        listed = task_list_of(os.environ, value["session"])
+        value["tasks"] = open_tasks(os.path.join(TASKS_DIR, listed)) if listed else []
     return value
 
 
@@ -768,7 +828,7 @@ def published(doc, pid, payload, codex, now):
 #: a file beside the state document and the variable says only that.
 VARIABLE_CEILING = 512
 #: What the variable leaves behind when it is over the ceiling.
-DETAIL_FIELDS = ("subagents", "question")
+DETAIL_FIELDS = ("subagents", "question", "tasks")
 
 
 def _published_path(session_id, directory=None):

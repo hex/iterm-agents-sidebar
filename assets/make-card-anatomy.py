@@ -3,7 +3,7 @@
 import pathlib, sys
 from panel_draw import *  # noqa: F401,F403
 
-W, H = 880, 436
+W, H = 880, 462
 CX, CW, CT = 24, 404, 22
 TX = CX + 44
 LX = CX + CW + 40   # where the leaders' words start
@@ -46,7 +46,7 @@ note = NOTES.add
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
   f'aria-label="One card, each of its parts joined by a line to what it means: the name and the agent, '
   f'the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, '
-  f'running and finished subagents, a Codex job and the background shells">')
+  f'running and finished subagents, a Codex job, the open tasks and the background shells">')
 A('  <title>What a card carries</title>')
 A(f'''  <defs>
     <pattern id="tickmask" width="9" height="5" patternUnits="userSpaceOnUse">
@@ -134,8 +134,18 @@ text(CX + 66, ry + 17, "Codex review", fill=DIM, size=13, weight=500)
 meta(CX + 66, ry + 31, [("openai", "reviewing", None), (None, "5m", None)])
 note(CX + 66 + width_of("Codex review", 13) + 16, ry + 13, "A Codex job the session started, with its phase")
 
+# The session's open tasks, folded into one line.
+ty = ry + 44
+A(f'  <line x1="{CX+10}" y1="{ty}" x2="{CX+CW-10}" y2="{ty}" stroke="{CARD_BORDER}" '
+  f'stroke-dasharray="1 2"/>')
+mark("tasks", CX + 12, ty + 8, 10, DIM)
+text(CX + 28, ty + 17, "4", fill=FG, size=11, weight=500)
+text(CX + 28 + width_of("4 ", 11), ty + 17, "tasks · 1 in progress", fill=DIM, size=11)
+text(CX + CW - 18, ty + 18, "›", fill=DIM, size=13)
+note(CX + 28 + width_of("4 tasks · 1 in progress", 11) + 16, ty + 13, "Its open tasks, folded; a click lists them")
+
 # Background shells, folded into one line and opened.
-sy = ry + 44
+sy = ty + 26
 A(f'  <line x1="{CX+10}" y1="{sy}" x2="{CX+CW-10}" y2="{sy}" stroke="{CARD_BORDER}" '
   f'stroke-dasharray="1 2"/>')
 mark("shells", CX + 12, sy + 8, 10, DIM)
