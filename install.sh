@@ -8,14 +8,22 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+statusline=1; codex=auto
+for arg in "$@"; do
+  case "$arg" in
+    --no-statusline) statusline=0 ;;
+    --statusline) statusline=1 ;;
+    --codex) codex=1 ;;
+    --no-codex) codex=0 ;;
+    *) echo "usage: ./install.sh [--no-statusline] [--codex | --no-codex]" >&2; exit 1 ;;
+  esac
+done
 autolaunch="$HOME/Library/Application Support/iTerm2/Scripts/AutoLaunch"
 stub="$autolaunch/agents_sidebar.py"
 
-if [ ! -d "$autolaunch" ]; then
-  echo "error: $autolaunch does not exist." >&2
-  echo "Open iTerm2 > Scripts > Manage > New Python Script once to create it." >&2
-  exit 1
-fi
+# iTerm2 makes this folder the first time you create a Python script; on a
+# machine that never has, it reads what we put there just the same.
+mkdir -p "$autolaunch"
 
 # The shebang is what iTerm2 parses to choose an interpreter: it resolves
 # iterm2env-3.10 from "python3.10". Both files carry it.
@@ -59,27 +67,21 @@ if [ -d "$repo/plugin" ]; then
   echo "        uninstall:  claude plugin disable agents-sidebar@skills-dir"
 fi
 
-# The statusline bridge is opt-in, and deliberately not part of a plain
-# install. It is the one piece that must edit ~/.claude/settings.json, which
-# the note above rules out for everything else: cs rewrites that file from a
-# template, so `cs -statusline enable` will silently displace the bridge and
-# freeze the context figure. Reversible, and never done without asking.
-#
-# It buys the only context percentage that agrees with the one Claude Code
-# draws. That payload is the sole place the context-window SIZE is published --
-# the "[1m]" suffix is stripped from the model id before the request goes out,
-# so 143k tokens is 14% of one window or 71% of another and the transcript
-# cannot say which.
-if [ "${1:-}" = "--statusline" ]; then
+# The context figure on a card comes only from the statusline payload, so
+# the bridge goes in by default; --no-statusline keeps settings.json untouched.
+if [ "$statusline" = 1 ]; then
   settings="$HOME/.claude/settings.json"
   status_dir="$HOME/.claude/agents-sidebar-status"
   bridge="$repo/plugin/statusline-bridge.sh"
+  mkdir -p "$status_dir" "$(dirname "$settings")"
+  [ -f "$settings" ] || printf '{}\n' > "$settings"
 
-  command -v jq >/dev/null 2>&1 || { echo "error: --statusline needs jq." >&2; exit 1; }
-  [ -f "$settings" ] || { echo "error: $settings not found." >&2; exit 1; }
-
-  current=$(jq -r '.statusLine.command // ""' "$settings")
-  mkdir -p "$status_dir"
+  current=$(python3 -c 'import json, sys
+try:
+    settings = json.load(open(sys.argv[1]))
+except ValueError:
+    sys.exit("error: " + sys.argv[1] + " is not valid JSON; left unchanged.")
+print(settings.get("statusLine", {}).get("command", ""), end="")' "$settings")
 
   if [ "$current" = "$bridge" ]; then
     echo "statusline bridge already installed"
@@ -89,41 +91,57 @@ if [ "${1:-}" = "--statusline" ]; then
     # Saved before the swap, so the displaced statusline is recoverable even
     # if this script dies between here and the write below.
     printf '%s' "$current" > "$status_dir/original-statusline"
-    tmp=$(mktemp)
     # Only the command: the tick rate is cs's to set (its logo pulses on that
     # timer), and two installers writing it would flip it on each other.
-    jq --arg cmd "$bridge" '.statusLine = ((.statusLine // {}) + {type: "command", command: $cmd})' \
-      "$settings" > "$tmp" && mv "$tmp" "$settings"
+    python3 - "$settings" "$bridge" <<'PY'
+import json, sys
+path, bridge = sys.argv[1], sys.argv[2]
+settings = json.load(open(path))
+line = settings.get("statusLine") or {}
+line.update({"type": "command", "command": bridge})
+settings["statusLine"] = line
+with open(path, "w") as out:
+    json.dump(settings, out, indent=2)
+    out.write("\n")
+PY
     echo "statusline bridge -> $bridge"
     echo "        displaced -> ${current:-(none)}"
     echo "        saved to  -> $status_dir/original-statusline"
     echo "        backup    -> $backup"
   fi
   echo "        takes effect in sessions started from now on"
-  echo "        undo:  cp \"$settings.before-agents-sidebar\" \"$settings\""
+  echo "        undo:  cp \"$settings.before-agents-sidebar\" \"$settings\"; or ./install.sh --no-statusline next time"
 fi
 
-# Codex sessions as panel rows are opt-in, for the same reason as the bridge:
-# ~/.codex/hooks.json is shared (herdr registers its own entries there), so it
-# is edited only when asked. The hooks run the installed copy of the handler.
-if [ "${1:-}" = "--codex" ]; then
+# Codex sessions as panel rows: on when Codex is here (its directory or its
+# binary), so a machine without it sees nothing about it. --codex insists and
+# fails loudly instead; --no-codex leaves Codex's files alone. Two files
+# change: ~/.codex/hooks.json, which other tools write too (herdr registers
+# its own entries there), so only our entries move; and config.toml, where
+# Codex's sandbox learns the task directory. Codex asks once to trust the hooks.
+if [ "$codex" = auto ]; then
+  if [ -d "$HOME/.codex" ] || command -v codex >/dev/null 2>&1; then codex=1; else codex=0; fi
+fi
+if [ "$codex" = 1 ]; then
   codex_hooks="$HOME/.codex/hooks.json"
-  [ -d "$HOME/.codex" ] || { echo "error: ~/.codex not found; is Codex installed?" >&2; exit 1; }
-  [ -f "$codex_hooks" ] && cp "$codex_hooks" "$codex_hooks.before-agents-sidebar"
+  mkdir -p "$HOME/.codex"
+  # The first copy is the one worth keeping: a re-run must not replace the
+  # file as it was before us with the file as we left it.
+  [ -f "$codex_hooks" ] && [ ! -f "$codex_hooks.before-agents-sidebar" ] \
+    && cp "$codex_hooks" "$codex_hooks.before-agents-sidebar"
   bash "$repo/codex-hooks.sh" "$codex_hooks" "$plugin_dir/hooks-handlers/emit-state.py"
   echo "codex hooks -> $codex_hooks"
   # Codex's sandbox writes only inside the workspace, so the task note the
-  # agent keeps about its own work needs its directory opened up. Appended
-  # once; a config that already names the directory is left alone.
-  codex_config="$HOME/.codex/config.toml"
+  # agent keeps about its own work needs its directory opened up.
   tasks_dir="$HOME/.claude/agents-sidebar-tasks"
   mkdir -p "$tasks_dir"
-  if ! grep -qs "agents-sidebar-tasks" "$codex_config"; then
-    printf '\n[sandbox_workspace_write]\nwritable_roots = ["%s"]\n' "$tasks_dir" >> "$codex_config"
+  if python3 "$repo/codex-sandbox.py" "$HOME/.codex/config.toml" "$tasks_dir"; then
     echo "codex sandbox -> $tasks_dir writable (config.toml [sandbox_workspace_write])"
+  else
+    echo "        the task line will not reach Codex cards until it is" >&2
   fi
-  echo "        Codex asks once to trust them; takes effect in sessions started from now on"
-  [ -f "$codex_hooks.before-agents-sidebar" ] && echo "        undo:  cp \"$codex_hooks.before-agents-sidebar\" \"$codex_hooks\""
+  echo "        Codex asks once to trust the hooks; takes effect in sessions started from now on"
+  [ -f "$codex_hooks.before-agents-sidebar" ] && echo "        undo:  cp \"$codex_hooks.before-agents-sidebar\" \"$codex_hooks\"; or ./install.sh --no-codex next time"
 fi
 
 # The macOS notice for a finished turn or a question. A notification wears its

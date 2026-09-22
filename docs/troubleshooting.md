@@ -6,7 +6,7 @@
 | A row shows `?` for its directory or job | iTerm2 can't report that one session | Nothing; one session costs its own row, not the list |
 | The panel is white and nothing loads | Two tool identifiers named "Agents", and the menu opened the dead one | Rename the stale entry, below |
 | Codex cards stop appearing | A herdr update rewrote `~/.codex/hooks.json` | `./install.sh --codex` |
-| Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | `./install.sh --statusline` |
+| Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | `./install.sh` |
 
 ## The white panel
 

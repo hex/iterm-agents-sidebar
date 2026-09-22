@@ -65,3 +65,25 @@ def test_an_unreadable_hooks_file_is_left_alone(tmp_path):
     assert result.returncode != 0
     assert hooks.read_text() == "{not json"
     assert "left unchanged" in result.stderr
+
+
+def test_only_our_command_leaves_a_mixed_entry(tmp_path):
+    """An entry that holds another tool's command beside an old copy of ours
+    keeps the other tool's."""
+    hooks = tmp_path / "hooks.json"
+    hooks.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+        {"command": "bash '/Users/jane/.codex/herdr-agent-state.sh' stop", "timeout": 10, "type": "command"},
+        {"command": f"python3 '{HANDLER}' Stop --codex", "timeout": 5, "type": "command"}]}]}}))
+    assert register(hooks).returncode == 0
+    assert commands(hooks)["Stop"] == [
+        "bash '/Users/jane/.codex/herdr-agent-state.sh' stop",
+        f"python3 '{HANDLER}' Stop --codex"]
+
+
+def test_a_file_that_already_says_it_is_not_rewritten(tmp_path):
+    hooks = tmp_path / "hooks.json"
+    hooks.write_text(json.dumps(HERDR))
+    register(hooks)
+    stamp = hooks.stat().st_mtime_ns
+    register(hooks)
+    assert hooks.stat().st_mtime_ns == stamp

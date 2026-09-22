@@ -1,7 +1,8 @@
 # Integrations
 
-What `./install.sh --statusline` and `./install.sh --codex` change, and how to
-undo them. The README has the short version.
+What `./install.sh` changes outside its own files, the statusline bridge and
+the Codex hooks, and how to undo them. Each has an opt-out, `--no-statusline`
+and `--no-codex`. The README has the short version.
 
 ## The statusline bridge
 
@@ -11,7 +12,7 @@ from the model id before a request goes out, so 143k tokens can be 14% of one
 window or 71% of another, and nothing in the transcript says which. Reading
 that payload is the only way to show the same percentage Claude Code shows.
 
-`--statusline` points `statusLine.command` in `~/.claude/settings.json` at
+The install points `statusLine.command` in `~/.claude/settings.json` at
 `plugin/statusline-bridge.sh`. The bridge publishes the payload to
 `~/.claude/agents-sidebar-status/<claude pid>.json`, then renders the
 statusline that was there before. It sets `CS_STATUSLINE_PARENT` to the claude
@@ -29,7 +30,7 @@ settings file to `settings.json.before-agents-sidebar`.
 
 `cs` rewrites `settings.json` from a template, so `cs -statusline enable`
 replaces the bridge. The statusline keeps working, but the context figure
-stops updating. Run `./install.sh --statusline` again to put it back.
+stops updating. Run `./install.sh` again to put it back.
 
 To undo:
 
@@ -39,25 +40,32 @@ cp ~/.claude/settings.json.before-agents-sidebar ~/.claude/settings.json
 
 ## Codex hooks
 
-`--codex` registers the state hook, run with `--codex`, in
-`~/.codex/hooks.json` for seven Codex events. Codex asks once to trust the new
-hooks, and sessions started after that report. It also adds
-`~/.claude/agents-sidebar-tasks` to `[sandbox_workspace_write] writable_roots`
-in `~/.codex/config.toml`, because Codex writes only inside its workspace and
-the task line lives in that directory.
+When `~/.codex` or a `codex` binary exists, the install registers the state
+hook, run with `--codex`, in `~/.codex/hooks.json` for seven Codex events.
+Codex asks once to trust the new hooks, and sessions started after that
+report. It also adds `~/.claude/agents-sidebar-tasks` to
+`[sandbox_workspace_write] writable_roots` in `~/.codex/config.toml`, because
+Codex writes only inside its workspace and the task line lives in that
+directory. `codex-sandbox.py` makes that edit: it creates the table or the key
+when absent and appends to a one-line array, and leaves an array laid out over
+several lines alone with a message, so add the directory by hand then.
+`--codex` insists and fails when Codex is missing; `--no-codex` skips both
+files.
 
 A `codex exec` that a Claude session runs as a tool reports nothing. It shares
 the Claude pane, and the card stays the Claude session's.
 
 Entries other tools put in `hooks.json` (herdr registers its own) stay where
-they are, and the install first copies the file to
-`hooks.json.before-agents-sidebar`. A herdr update can rewrite the file, so run
-`./install.sh --codex` again if Codex cards stop showing up.
+they are, and the first install copies each file to
+`hooks.json.before-agents-sidebar` and `config.toml.before-agents-sidebar`; a
+re-run keeps those first copies. A herdr update can rewrite the hooks file, so
+run `./install.sh` again if Codex cards stop showing up.
 
 To undo:
 
 ```sh
 cp ~/.codex/hooks.json.before-agents-sidebar ~/.codex/hooks.json
+cp ~/.codex/config.toml.before-agents-sidebar ~/.codex/config.toml
 ```
 
 See `docs/codex-rows-design.md` for what a Codex card reads and from where.

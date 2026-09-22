@@ -862,11 +862,12 @@
     border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
     display: flex; flex-direction: column; gap: 9px;
   }
-  /* With the drawer open the bar loses its side margins, or the scrim shows
-     through them and the bar reads as a box floating in a dark frame. */
+  /* With the drawer open the bar loses its margins, or the scrim shows
+     through them: a dark frame at the sides, a dark band between the
+     drawer's last line and the bar. */
   body:has(#settings:not([hidden])) #bar {
     background: color-mix(in srgb, var(--fg) 4%, var(--bg));
-    margin-inline: 0; padding-inline: 8px;
+    margin: 0; padding-inline: 8px;
   }
   /* While the drawer is open the list behind it is dimmed and inert: a
      click there closes the drawer rather than reaching a row. */
