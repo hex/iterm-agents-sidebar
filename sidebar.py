@@ -2726,6 +2726,9 @@ class Bridge:
         that follows is made here directly.
         """
         if op == "read":
+            # The reload button: a person asking for fresh figures wants a
+            # fresh answer about releases too, not tomorrow's.
+            self.check_release()
             return self.meters.read_now(time.time())
         if op == "add":
             result = self.meters.add(time.time())
@@ -2781,15 +2784,23 @@ class Bridge:
             await asyncio.sleep(POLL_SECONDS)
             await self.rebuild_or_report()
 
+    def check_release(self):
+        """Ask the mirror once, off the loop, and put the answer where the next
+        page connect and the next rebuild both find it. A check that cannot
+        answer offers nothing."""
+        self.update = update.offer(update.check(), version())
+        if self.update:
+            print(f"sidebar: release {self.update} is on the mirror", flush=True)
+            self.latest["update"] = self.update
+        else:
+            self.latest.pop("update", None)
+
     async def watch_releases(self):
         """Once at start, then daily: is there a newer release on the mirror?
-        A check that cannot answer offers nothing and asks again tomorrow.
+        The reload button asks in between.
         """
         while True:
-            newest = await asyncio.to_thread(update.check)
-            self.update = update.offer(newest, version())
-            if self.update:
-                print(f"sidebar: release {self.update} is on the mirror", flush=True)
+            await asyncio.to_thread(self.check_release)
             await self.rebuild_or_report()
             await asyncio.sleep(RELEASE_CHECK_SECONDS)
 

@@ -120,8 +120,9 @@ card each time. A shell whose command the panel can't parse shows `?`.
 
 ## Updating
 
-The bar's left end names the release the panel runs. Once a day, and once at
-start, the daemon lists the tags on the public mirror; when one is newer, the
+The bar's left end names the release the panel runs. Once a day, once at
+start, and on every press of the reload button, the daemon lists the tags on
+the public mirror; when one is newer, the
 line adds `2026.09.20 available` and an Update button. Pressing it pulls that
 release into the checkout the daemon runs from, runs `install.sh` again and
 restarts the daemon. The port changes with the restart, so the panel goes

@@ -318,3 +318,22 @@ def test_a_newer_mirror_release_rides_every_snapshot_and_an_absent_one_leaves_no
     b.update = "2026.09.20"
     asyncio.run(b.rebuild())
     assert b.latest["update"] == "2026.09.20"
+
+
+def test_the_refresh_button_asks_the_mirror_for_a_release_too(monkeypatch):
+    """Asked 2026-09-22: a daily check is too slow when a friend has just
+    been told a release is out. The reload button's account read now also
+    checks the mirror, and the reloaded page sees the offer at once."""
+    class Meters:
+        def read_now(self, now):
+            return {"accounts": []}
+    b = sidebar.Bridge(None, Quiet(), Meters())
+    b.latest = {"groups": []}
+    monkeypatch.setattr(sidebar.update, "check", lambda: "2027.01.1")
+    monkeypatch.setattr(sidebar, "version", lambda: "2026.09.28")
+    b.account_op("read", {})
+    assert b.update == "2027.01.1"
+    assert b.latest["update"] == "2027.01.1"
+    monkeypatch.setattr(sidebar.update, "check", lambda: None)
+    b.account_op("read", {})
+    assert b.update is None and "update" not in b.latest
