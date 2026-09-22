@@ -54,8 +54,11 @@ A session in a linked git worktree of another open session's repo (a cs feature
 session in `<repo>@worktree`, for example) keeps its own card, right after that
 session's card and tied to it by a short line across the gap. Its name is the
 feature, the part after the `@`, since the branch has its own chip. A worktree
-directory without an `@` takes its branch as its name. When the main session is
-not open, the card stays put, under its own name.
+directory without an `@` takes its branch as its name. A directory named
+`<base>@<feature>` beside a session directory `<base>` docks there by name
+alone, when git cannot tie the two (a symlinked home, a main shell parked in a
+subdirectory). When the main session is not open, the card stays put, under
+its own name.
 
 ## Banners
 

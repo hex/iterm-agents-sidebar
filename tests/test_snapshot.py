@@ -735,3 +735,20 @@ def test_agent_rows_carry_their_open_tasks_only_when_there_are_some():
     assert got["tasks"] == tasks
     bare = snapshot([dict(LIVE[1], agent_state="working", tasks=[])])["groups"][0]["rows"][0]
     assert "tasks" not in bare
+
+
+def test_a_session_named_base_at_feature_follows_the_base_session_by_name_when_git_says_nothing():
+    """Seen 2026-09-22 on another machine: `freya` and `freya@s3` side by side
+    as strangers, because the worktree's `.git` did not resolve to the path
+    the `freya` shell reported. The cs name says which project it is: a
+    directory `<base>@<feature>` beside a session directory `<base>` docks
+    there, and only there -- a `<base>` in another folder is another project."""
+    by_name = dict(LINKED, worktree_of=None)
+    rows = snapshot([MAIN, OTHER, by_name])["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [
+        ("atlas", 0), ("worktree", 0), ("beacon", 0)]
+    assert rows[1]["worktree_of"] == "atlas"
+    elsewhere = dict(MAIN, path="/Users/x/other/atlas", session_id="atlas-2")
+    rows = snapshot([elsewhere, by_name])["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["atlas", "atlas@worktree"]
+    assert "worktree_of" not in rows[1]
