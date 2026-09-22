@@ -601,6 +601,10 @@
   .task .task-activity { color: var(--lit-ink); }
   .task.stale > span { opacity: .7; }
   .task .task-done { color: var(--sev-ok); font-weight: 600; }
+  .task .task-done .mi {
+    display: inline-block; width: var(--meta-icon); height: var(--meta-icon);
+    vertical-align: -1px; margin-right: 3px; opacity: 1; fill: currentColor;
+  }
   /* The ellipsis goes on the text, not the chip. A chip is a flex box, and
      text-overflow does nothing for the loose text inside a flex box -- the
      text was simply cut, "cs/unity-studi" with no sign anything was missing. */
@@ -2007,7 +2011,10 @@ function taskLine(task) {
   const status = el("task-status", "");
   const spoken = [];
   if (task.done) {
-    status.append(el("task-done", "Done"));
+    // A tick before the word: the one report that is a result, not a claim.
+    const done = el("task-done", "");
+    done.append(metaIcon("check"), document.createTextNode("Done"));
+    status.append(done);
     spoken.push("Done");
   } else {
     if (task.activity && on("show_task_activity")) {
