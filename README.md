@@ -150,7 +150,7 @@ The sliders have limits the picture doesn't show:
 
 The foot lists the sessions waiting on you, oldest first, and under them your
 Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
-until each resets. Store a login with **Add this account** and you can switch
+until each resets. Store a login with **Add <your email>** and you can switch
 between accounts from there. Auto-switch, off by default, moves the sessions
 to the account with the most room when the active one's fullest window reaches
 90% or is on course to fill within ten minutes; while a switch is near, a line
