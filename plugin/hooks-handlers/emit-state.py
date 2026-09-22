@@ -729,9 +729,13 @@ def emit(value, target=None, variable="claudeState"):
         seq = f"\033Ptmux;\033\033]1337;SetUserVar={variable}={encoded}\033\033\\\033\\"
     else:
         seq = f"\033]1337;SetUserVar={variable}={encoded}\033\\"
+    # One write call, unbuffered: two would give the tty a seam to split on.
     try:
-        with open(target, "w") as tty:
-            tty.write(seq)
+        fd = os.open(target, os.O_WRONLY | os.O_NOCTTY)
+        try:
+            os.write(fd, seq.encode())
+        finally:
+            os.close(fd)
     except OSError:
         pass
 
@@ -756,10 +760,13 @@ def published(doc, pid, payload, codex, now):
 
 
 #: The most base64 the session variable may carry. Every hook event writes
-#: the variable to the pane's tty, and a workflow's hundred subagents made it
-#: 28 KB a time, from dozens of agents at once; past this the detail goes to
+#: the variable to the pane's tty, the same tty Claude Code is redrawing its
+#: status line on, and a write the tty cannot take whole lands in pieces: the
+#: escape is cut and the rest of the base64 prints as text after the status
+#: line (seen 2026-09-22 with five subagents, under the old 4 KB ceiling).
+#: A bare state is about 260 bytes of base64; one subagent fits, more go to
 #: a file beside the state document and the variable says only that.
-VARIABLE_CEILING = 4096
+VARIABLE_CEILING = 512
 #: What the variable leaves behind when it is over the ceiling.
 DETAIL_FIELDS = ("subagents", "question")
 

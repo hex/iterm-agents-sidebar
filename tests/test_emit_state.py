@@ -382,10 +382,20 @@ def _value(subagents):
 
 def test_a_small_state_travels_whole_in_the_variable(tmp_path):
     import json
-    value = _value(2)
+    value = _value(1)
     sent = emit_state.carried(value, "s-1", directory=str(tmp_path))
     assert json.loads(sent) == value
     assert list(tmp_path.iterdir()) == []
+
+
+def test_two_subagents_already_go_to_disk(tmp_path):
+    """The variable is written to the tty Claude Code is drawing on; a write
+    the tty takes in pieces prints its tail as text. 632 bytes of base64
+    for two subagents is over the line; one, at 444, is under it."""
+    import json
+    sent = emit_state.carried(_value(2), "s-1", directory=str(tmp_path))
+    assert json.loads(sent)["detail"] is True and "subagents" not in json.loads(sent)
+    assert json.loads((tmp_path / "s-1.published").read_text()) == _value(2)
 
 
 def test_a_large_state_leaves_its_detail_on_disk_and_sends_the_rest(tmp_path):
