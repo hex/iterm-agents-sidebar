@@ -100,8 +100,11 @@ session at working, so a turn's `Stop` that lists no subagent among its
 from none.
 
 The state reaches the daemon as an iTerm2 user variable, written to the pane on
-every hook event. The hook keeps it under 4096 bytes of base64. A state past
-that, which a workflow with dozens of subagents produces, goes whole into
+every hook event, in one unbuffered write. The hook keeps it under 512 bytes
+of base64: the pane's tty is the one Claude Code draws its status line on, and
+a write the tty takes in pieces is cut mid-escape, with the rest of the base64
+printed after the status line. A bare state is about 260 bytes and one
+subagent fits; a state past the line goes whole into
 `~/.claude/agents-sidebar-subagents/<session id>.published`, and the variable
 carries the state, the ids and the times with `detail: true`. The daemon reads
 the file back on each rebuild. If the hook can't write the file, the variable says
