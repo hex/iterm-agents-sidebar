@@ -75,9 +75,12 @@ y += 84
 hairline(y)
 text(IX + IW - 28, y + 17, "Auto-switch", fill=DIM, size=10.5, extra=' text-anchor="end"')
 switch(IX + IW - 20, y + 8, True)
-text(IX + IW, y + 33, "switching soon to spare · Fable at 91%", fill=DIM, size=10.5, extra=' text-anchor="end"')
+# The chip that stands while a switch is near, in the alert colour; the
+# reason is its tooltip, so the figure names only the target.
+A(f'  <rect x="{IX}" y="{y + 5}" width="82" height="15" rx="5" fill="{ALERT}" fill-opacity="0.12"/>')
+text(IX + 6, y + 16, "→ spare soon", fill=ALERT, size=10, weight=600)
 note(IX + IW + 12, y + 14, "Auto-switch: leave an account before a limit stops it")
-note(IX + IW + 12, y + 30, "While a switch is near: where it would go, and why")
+note(IX + IW + 12, y + 30, "While a switch is near: where it would go; hover for why")
 
 ay = y + 48
 mark("claude", IX, ay + 1, 12, CLAUDE_MARK)

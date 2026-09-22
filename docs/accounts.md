@@ -74,8 +74,9 @@ are at least five minutes apart, except that an account already at 100% is left
 at once. When every account is full it stays put and says so once in the
 daemon log.
 
-While a switch is near, a line under the control says where it would go and
-why (`switching soon to spare · Fable at 86%`), or that nowhere fits.
+While a switch is near, a chip beside the control names where it would go
+(`→ spare soon`), or says `nowhere to go`; point at it for the reason
+(`Fable at 86%`, or a window on course for 100%).
 
 Each switch posts a macOS notice with the reason and writes a line to
 `~/.claude/agents-sidebar-status/daemon.log`. Run this or `cswap auto`, not
