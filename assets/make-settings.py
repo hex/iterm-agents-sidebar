@@ -151,10 +151,6 @@ for col, x in ((left, COLS[0]), (right, COLS[1])):
     y = 44
     for title, master, kids in col:
         y += sheet_card(x, y, title, master, kids) + 9
-# The sheet's version line, in the words the page uses for a checkout that
-# is not a release: a release number here would date the figure.
-text(GUT + 2, H - 14, "Agents, unreleased checkout", fill=DIM, size=11)
-
 A('</svg>')
 pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
              pathlib.Path(__file__).resolve().parent / "settings.svg").write_text("\n".join(out) + "\n")

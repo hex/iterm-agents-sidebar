@@ -53,7 +53,7 @@ def switch(x, y, on, w=20, h=12):
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
   f'aria-label="The panel\'s foot: two sessions waiting, the Auto-switch control, the active account\'s '
   f'5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, '
-  f'Codex\'s own limits, and the bar with the cost, reload and the gear">')
+  f'Codex\'s own limits, and the bar with the release, reload and the gear">')
 A('  <title>The foot of the panel</title>')
 A(f'  <rect width="{W}" height="{H}" rx="16" fill="{BG}"/>')
 A(f'  <rect x="{PX}" y="0" width="{PW}" height="{H}" fill="{BG}"/>')
@@ -137,14 +137,16 @@ note(IX + IW + 12, cy + 7, "Codex's limits, read from its session log")
 # The bar.
 by = cy + 62
 hairline(by)
-mark("cost", IX, by + 7, 10, DIM)
-mono(IX + 13, by + 16, "$4.82")
-mono(IX + 50, by + 16, "·", size=10, fill=DIM)
-mark("shells", IX + 62, by + 7, 10, DIM)
-mono(IX + 75, by + 16, "4 sessions")
+# The release line as the panel draws it the day after a release: the one it
+# runs, the one it could, and the button that takes it.
+mono(IX, by + 16, "2026.09.19")
+mono(IX + 63, by + 16, "·", size=10, fill=DIM)
+mono(IX + 70, by + 16, "2026.09.20 available")
+A(f'  <rect x="{IX + 194}" y="{by + 5}" width="42" height="18" rx="5" fill="{ACCENT}"/>')
+text(IX + 215, by + 17, "Update", fill="#ffffff", size=10, weight=500, extra=' text-anchor="middle"')
 mark("reload", IX + IW - 46, by + 5, 14, DIM)
 mark("gear", IX + IW - 18, by + 5, 14, DIM)
-note(IX + IW + 12, by + 12, "What the sessions report spending, and how many report it")
+note(IX + IW + 12, by + 12, "The release running, and the one on the mirror until it is taken")
 
 NOTES.draw()
 A('</svg>')

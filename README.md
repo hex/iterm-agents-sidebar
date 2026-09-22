@@ -12,9 +12,10 @@ curl -fsSL https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/get.s
 ```
 
 That clones the repository to `~/.local/share/agents-sidebar/src` and runs
-`install.sh` there; run the same line again to update. Or clone it anywhere
-yourself and run `./install.sh`: the clone is the install, so leave it in
-place and update it with `git pull`. It needs nothing else: one iTerm2 Basic
+`install.sh` there. The bar at the foot names the release you run and, once
+a newer one is out, offers it with an Update button; the same line again does
+the same thing. Or clone it anywhere yourself and run `./install.sh`: the
+clone is the install, so leave it in place and update it with `git pull`. It needs nothing else: one iTerm2 Basic
 script, no pip, no virtualenv, nothing beyond the standard library.
 
 1. Scripts, AutoLaunch, `agents_sidebar` starts it without restarting iTerm2.
@@ -58,6 +59,9 @@ its sound and banner style.
 
 Click an empty part of the panel first to give it keyboard focus. Arrow keys
 only; iTerm2 keeps the other combinations for itself.
+
+A card whose agent asks a question while it sits past the edge of the list
+scrolls into view; one already on screen stays put.
 
 ### What a card says
 
@@ -142,7 +146,7 @@ The sliders have limits the picture doesn't show:
 | Memory heavy at | 0.5 to 8 GB |
 | Text size | 0.8 to 1.6 times the size as designed |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, the Auto-switch control, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, Codex's own limits, and the bar with the cost, reload and the gear">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, the Auto-switch control, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, Codex's own limits, and the bar with the release, reload and the gear">
 
 The foot lists the sessions waiting on you, oldest first, and under them your
 Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
@@ -154,8 +158,12 @@ says where it would go and why. Codex's own limits sit under them, read from
 its session log: a 5-hour and a weekly window, or weekly alone, depending on
 the plan. See [docs/accounts.md](docs/accounts.md).
 
-The bar at the bottom shows what the running sessions report having spent at
-API prices, how many sessions report it, and two buttons: reload and the gear.
+The bar at the bottom names the release you run, and two buttons: reload and
+the gear. Once a day the daemon lists the releases on GitHub; when one is
+newer, the bar adds its number and an Update button. Pressing it pulls that
+release, runs `install.sh` and restarts the daemon, after which the panel
+needs reopening from View > Toolbelt. See
+[docs/usage.md](docs/usage.md#updating).
 
 <img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/menu.svg" width="100%" alt="An idle card with its right-click menu open: /compact, /rotate, /clear, then Close">
 

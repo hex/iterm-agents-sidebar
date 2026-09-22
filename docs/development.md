@@ -19,8 +19,24 @@ things the panel can do to a session, and no endpoint runs arbitrary code.
 
 ## Releases
 
-The version sits in `VERSION`, in the plugin manifest, at the foot of the
-settings and on a `v` tag. `./release.sh "summary"` bumps it, runs the tests
+The version sits in `VERSION`, in the plugin manifest, at the left of the bar
+and on a `v` tag. `update.py` compares that file with the mirror's tags once
+a day and, on request, fast-forwards the checkout and re-execs the daemon.
+
+To see an update take without touching your own install, clone the mirror
+at the previous tag and run it under a spare `HOME`; `install.sh` writes only
+there, and the clone's `VERSION` moves to the newest tag:
+
+```sh
+git clone -q https://github.com/hex/iterm-agents-sidebar.git /tmp/clone
+git -C /tmp/clone reset -q --hard v2026.09.18
+HOME=/tmp/fakehome python3 -c 'import sys; sys.path.insert(0, "."); import update
+print(update.take("/tmp/clone"))'
+```
+
+A checkout whose `main` is not the mirror's, this one included, refuses the
+pull, and that refusal is what the bar shows: pressing Update here tests the
+failure path only. `./release.sh "summary"` bumps it, runs the tests
 on main and again on the public tree, and pushes one squashed commit to the
 mirror. `RELEASE_SCRUB="word word"` fails the release if the public tree
 contains any of those words.

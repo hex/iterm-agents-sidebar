@@ -127,3 +127,38 @@ async def test_a_slow_account_op_does_not_hold_up_other_requests(tmp_path):
     assert status == 200
     assert took < 0.5, f"the page waited {took:.2f}s behind the switch"
     assert await switching == 200
+
+
+async def update_over_http(tmp_path, result):
+    """-> (response status, restarts requested) for one POST /update."""
+    page = tmp_path / "page.html"
+    page.write_text("<h1>agents</h1>")
+    restarts = []
+    sidebar = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: PAYLOAD,
+                      action_fn=lambda *a: None, update_fn=lambda: result)
+    server = Server(sidebar, restart_fn=lambda: restarts.append(True))
+    port = await server.start()
+
+    def post():
+        request = urllib.request.Request(f"http://127.0.0.1:{port}/update?token={TOKEN}", data=b"", method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return response.status
+        except urllib.error.HTTPError as refused:
+            return refused.code
+
+    status = await asyncio.to_thread(post)
+    await asyncio.sleep(0.05)
+    return status, len(restarts)
+
+
+@pytest.mark.asyncio
+async def test_a_taken_update_restarts_the_daemon_after_answering(tmp_path):
+    """The answer has to reach the page before the process goes: the page
+    says "restarting, reopen the panel" from it."""
+    assert await update_over_http(tmp_path, (True, "")) == (200, 1)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_update_leaves_the_daemon_running(tmp_path):
+    assert await update_over_http(tmp_path, (False, "fatal: no network\n")) == (409, 0)

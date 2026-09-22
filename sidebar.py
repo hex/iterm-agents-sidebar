@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import accounts  # noqa: E402
 import codex  # noqa: E402
 import omp  # noqa: E402
+import update  # noqa: E402
 
 #: Where the `cs` tool keeps its managed sessions. A terminal sitting anywhere
 #: under here is an agent session even when nothing in the title says so.
@@ -2088,13 +2089,15 @@ class Sidebar:
     """
 
     def __init__(self, token, page_path, snapshot_fn, action_fn,
-                 settings_path=None, accounts_fn=None):
+                 settings_path=None, accounts_fn=None, update_fn=None):
         self.token = token
         self.page_path = Path(page_path)
         self.snapshot_fn = snapshot_fn
         self.action_fn = action_fn
         self.settings_path = settings_path
         self.accounts_fn = accounts_fn
+        #: () -> (ok, text): takes the release the panel was offered.
+        self.update_fn = update_fn
 
     def authorized(self, target):
         supplied = parse_qs(urlsplit(target).query).get("token", [""])[0]
@@ -2120,6 +2123,16 @@ class Sidebar:
             return self._action(body)
         if method == "POST" and path == "/accounts":
             return self._accounts(body)
+        if method == "POST" and path == "/update":
+            if self.update_fn is None:
+                return self._json(400, {"error": "this daemon cannot update itself"})
+            ok, text = self.update_fn()
+            if ok:
+                return self._json(200, {"ok": True})
+            # The text is git's or install.sh's own: the panel shows its last
+            # line, the console the whole of it.
+            print(f"sidebar: update refused:\n{text}", flush=True)
+            return self._json(409, {"error": text})
 
         # Read the page from disk per request, so editing it needs no restart.
         return (200, "text/html; charset=utf-8", self.page_path.read_bytes())
@@ -2168,6 +2181,8 @@ HEARTBEAT_SECONDS = 4
 #: its own poll interval; this only bounds how late a due reading starts.
 ACCOUNT_TICK_SECONDS = 30
 POLL_SECONDS = 2
+#: How often the mirror is asked for a newer release.
+RELEASE_CHECK_SECONDS = 24 * 60 * 60
 
 #: Variables Bridge reads per session. `path` and `autoName` drive classify;
 #: `jobName` is display only, and only on shell rows; `jobPid` and `tty` are
@@ -2182,9 +2197,12 @@ class Server:
     thing handle cannot express: a response that never ends (SSE).
     """
 
-    def __init__(self, sidebar, health_fn=lambda: True):
+    def __init__(self, sidebar, health_fn=lambda: True, restart_fn=lambda: None):
         self.sidebar = sidebar
         self.subscribers = set()
+        #: Runs once a taken update has been answered; the process does not
+        #: come back from it.
+        self.restart_fn = restart_fn
         #: Whether the data behind a heartbeat is current. Late-bound the same
         #: way snapshot_fn is: Bridge needs the Server, so it cannot exist yet.
         self.health_fn = health_fn
@@ -2239,9 +2257,11 @@ class Server:
             writer.close()
             return
 
-        if urlsplit(target).path == "/accounts":
+        path = urlsplit(target).path
+        if path in ("/accounts", "/update"):
             # Account ops wait on the Keychain, Claude Code's locks and the
-            # network, for seconds; off the loop, the heartbeat keeps going.
+            # network, for seconds, and an update on a pull and install.sh;
+            # off the loop, the heartbeat keeps going.
             status, content_type, payload = await asyncio.to_thread(
                 self.sidebar.handle, method, target, body)
         else:
@@ -2253,6 +2273,9 @@ class Server:
                      f"Connection: close\r\n\r\n".encode() + payload)
         await writer.drain()
         writer.close()
+        # Only once the answer is on the wire: the page says "restarting" from it.
+        if path == "/update" and status == 200:
+            self.restart_fn()
 
     async def _heartbeat(self):
         while True:
@@ -2298,6 +2321,8 @@ class Bridge:
         self.live_sessions = set()
         self.trips = ReturnTrips()
         self.notifier_missing_said = False
+        #: The mirror release newer than this checkout, or None; set by watch_releases.
+        self.update = None
         self.notices = Notices()
 
     def active_session_id(self):
@@ -2469,6 +2494,8 @@ class Bridge:
         self.latest = snapshot(await self.read_sessions(), settings["sort_by_name"],
                                settings["provider_mark"] == "groups")
         self.latest["version"] = version()
+        if self.update:
+            self.latest["update"] = self.update
         if self.meters is not None:
             self.latest["accounts"] = self.meters.snapshot()
         # A few file reads; kept off the loop like every other disk or Keychain read.
@@ -2726,6 +2753,18 @@ class Bridge:
             await asyncio.sleep(POLL_SECONDS)
             await self.rebuild_or_report()
 
+    async def watch_releases(self):
+        """Once at start, then daily: is there a newer release on the mirror?
+        A check that cannot answer offers nothing and asks again tomorrow.
+        """
+        while True:
+            newest = await asyncio.to_thread(update.check)
+            self.update = update.offer(newest, version())
+            if self.update:
+                print(f"sidebar: release {self.update} is on the mirror", flush=True)
+            await self.rebuild_or_report()
+            await asyncio.sleep(RELEASE_CHECK_SECONDS)
+
 
 async def main(connection):
     import iterm2
@@ -2744,8 +2783,9 @@ async def main(connection):
         action_fn=lambda session_id, verb, text: asyncio.ensure_future(
             bridge.act(session_id, verb, text)),
         accounts_fn=lambda op, request: bridge.account_op(op, request),
+        update_fn=lambda: update.take(here),
     )
-    server = Server(sidebar, health_fn=lambda: bridge.healthy())
+    server = Server(sidebar, health_fn=lambda: bridge.healthy(), restart_fn=restart)
     bridge = Bridge(connection, server, meters)
     bridge.app = await iterm2.async_get_app(connection)
 
@@ -2762,6 +2802,17 @@ async def main(connection):
     asyncio.ensure_future(bridge.poll())
     asyncio.ensure_future(bridge.watch_accounts())
     asyncio.ensure_future(bridge.sweep_status())
+    asyncio.ensure_future(bridge.watch_releases())
+
+
+def restart():
+    """Replace this process with a fresh start of the same script, so the
+    checkout just pulled is what runs. iTerm2 started this one through its
+    AutoLaunch stub and relaunches nothing on its own; the stub is argv[0], so
+    the same command brings the new code up under the same wrapper.
+    """
+    print("sidebar: restarting on the new release", flush=True)
+    os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
 if __name__ == "__main__":
