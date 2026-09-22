@@ -4,6 +4,7 @@ Every case here comes from the hook trace captured 2026-09-07 in
 ~/.claude/agents-sidebar-events.jsonl across five real sessions.
 """
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -458,3 +459,63 @@ def test_a_tty_named_by_the_environment_must_be_a_terminal(tmp_path, monkeypatch
     target.write_text("keep me")
     monkeypatch.setenv("TTY", str(target))
     assert emit_state.find_tty() != str(target)
+
+
+def _task(directory, number, status, subject, doing=""):
+    (directory / f"{number}.json").write_text(json.dumps(
+        {"id": str(number), "subject": subject, "description": "", "activeForm": doing,
+         "owner": "", "status": status, "blocks": [], "blockedBy": []}))
+
+
+def test_a_task_list_is_named_by_the_environment_or_the_session():
+    """cs names a session's list after the session; a bare Claude Code
+    session writes to session-<first 8 hex of its id> (checked against 5
+    lists in ~/.claude/tasks on 2026-09-22)."""
+    assert emit_state.task_list_of({"CLAUDE_CODE_TASK_LIST_ID": "my-project"},
+                                   "0b9c4a52-7d1e-4c55-9a53-2f6f0c1d8e11") == "my-project"
+    assert emit_state.task_list_of({}, "0b9c4a52-7d1e-4c55-9a53-2f6f0c1d8e11") == "session-0b9c4a52"
+    assert emit_state.task_list_of({}, None) is None
+    assert emit_state.task_list_of({"CLAUDE_CODE_TASK_LIST_ID": "../x"}, "0b9c4a52-7d1e") is None
+
+
+def test_open_tasks_are_the_pending_and_running_items_in_id_order(tmp_path):
+    """A list is never pruned (one real list held 555 completed items against
+    6 open), so completed items are left behind; a half-written file is
+    skipped rather than costing the session its state."""
+    _task(tmp_path, 10, "completed", "old")
+    _task(tmp_path, 12, "pending", "Region editor: smoke test")
+    _task(tmp_path, 3, "in_progress", "Registry flags", doing="Building the registry")
+    (tmp_path / "13.json").write_text("{not json")
+    (tmp_path / ".highwatermark").write_text("13")
+    assert emit_state.open_tasks(str(tmp_path)) == [
+        {"id": "3", "status": "in_progress", "subject": "Registry flags", "doing": "Building the registry"},
+        {"id": "12", "status": "pending", "subject": "Region editor: smoke test", "doing": ""},
+    ]
+    assert emit_state.open_tasks(str(tmp_path / "missing")) == []
+
+
+def test_a_task_subject_is_clipped(tmp_path):
+    _task(tmp_path, 1, "pending", "x" * 1034)
+    assert emit_state.open_tasks(str(tmp_path))[0]["subject"] == "x" * 239 + "…"
+
+
+def test_the_published_state_carries_the_open_tasks_and_files_them_past_the_ceiling(tmp_path, monkeypatch):
+    """Several tasks never fit the 512-byte variable, so they travel in the
+    detail file with the subagents."""
+    lists = tmp_path / "tasks"; (lists / "session-abc12345").mkdir(parents=True)
+    for n in range(1, 7):
+        _task(lists / "session-abc12345", n, "pending", f"Item number {n} with a subject of some length")
+    monkeypatch.setattr(emit_state, "TASKS_DIR", str(lists))
+    monkeypatch.delenv("CLAUDE_CODE_TASK_LIST_ID", raising=False)
+    value = emit_state.published({}, 701, {"session_id": "abc12345-0000-4000-8000-000000000000"},
+                                 codex=False, now=1789000000)
+    assert [t["id"] for t in value["tasks"]] == ["1", "2", "3", "4", "5", "6"]
+    envelope = json.loads(emit_state.carried(value, "abc12345-0000-4000-8000-000000000000", str(tmp_path / "state")))
+    assert envelope["detail"] is True and "tasks" not in envelope
+    whole = json.loads((tmp_path / "state" / "abc12345-0000-4000-8000-000000000000.published").read_text())
+    assert whole["tasks"] == value["tasks"]
+
+
+def test_a_codex_session_publishes_no_tasks():
+    value = emit_state.published({}, 701, {"session_id": "abc-123", "model": "gpt-5"}, codex=True, now=1789000000)
+    assert "tasks" not in value

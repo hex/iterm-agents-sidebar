@@ -1,13 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 436" width="880" role="img" aria-label="One card, each of its parts joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job and the background shells">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 462" width="880" role="img" aria-label="One card, each of its parts joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">
   <title>What a card carries</title>
   <defs>
     <pattern id="tickmask" width="9" height="5" patternUnits="userSpaceOnUse">
       <rect width="5" height="5" fill="#ffffff"/>
     </pattern>
-    <mask id="tick"><rect width="880" height="436" fill="url(#tickmask)"/></mask>
+    <mask id="tick"><rect width="880" height="462" fill="url(#tickmask)"/></mask>
   </defs>
-  <rect width="880" height="436" rx="16" fill="#1c1c1e"/>
-  <rect x="24" y="22" width="404" height="392" rx="10" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <rect width="880" height="462" rx="16" fill="#1c1c1e"/>
+  <rect x="24" y="22" width="404" height="418" rx="10" fill="#2c2c2e" stroke="#3a3a3c"/>
   <circle cx="43" cy="48" r="2" fill="#e8833a"><animate attributeName="opacity" values="0.25;1;0.25" dur="1.4s" begin="0.00s" repeatCount="indefinite"/></circle>
   <circle cx="48" cy="48" r="2" fill="#e8833a"><animate attributeName="opacity" values="0.25;1;0.25" dur="1.4s" begin="0.18s" repeatCount="indefinite"/></circle>
   <circle cx="53" cy="48" r="2" fill="#e8833a"><animate attributeName="opacity" values="0.25;1;0.25" dur="1.4s" begin="0.36s" repeatCount="indefinite"/></circle>
@@ -85,16 +85,21 @@
   <text x="160.18" y="319" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.6">·</text>
   <text x="170.18" y="319" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">5m</text>
   <line x1="34" y1="332" x2="418" y2="332" stroke="#3a3a3c" stroke-dasharray="1 2"/>
-  <g transform="translate(36,340) scale(0.0391)" fill="#98989d"><path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/></g>
-  <text x="52" y="349" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">2 commands running</text>
-  <text x="410" y="350" fill="#98989d" font-size="13" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" transform="rotate(90 413 345)">›</text>
-  <path d="M41 354 v37" fill="none" stroke="#3a3a3c" stroke-width="1"/>
-  <path d="M41 369 h8" fill="none" stroke="#3a3a3c" stroke-width="1"/>
-  <path d="M41 391 h8" fill="none" stroke="#3a3a3c" stroke-width="1"/>
-  <g transform="translate(53,363) scale(0.0430)" fill="#98989d"><path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/></g>
-  <text x="69" y="372" fill="#f2f2f7" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.72">npm run dev</text>
-  <g transform="translate(53,385) scale(0.0430)" fill="#98989d"><path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/></g>
-  <text x="69" y="394" fill="#f2f2f7" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.72">pytest -x tests/</text>
+  <g transform="translate(36,340) scale(0.0391)" fill="#98989d"><path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></g>
+  <text x="52" y="349" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">4</text>
+  <text x="64.1" y="349" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">tasks · 1 in progress</text>
+  <text x="410" y="350" fill="#98989d" font-size="13" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">›</text>
+  <line x1="34" y1="358" x2="418" y2="358" stroke="#3a3a3c" stroke-dasharray="1 2"/>
+  <g transform="translate(36,366) scale(0.0391)" fill="#98989d"><path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/></g>
+  <text x="52" y="375" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">2 commands running</text>
+  <text x="410" y="376" fill="#98989d" font-size="13" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" transform="rotate(90 413 371)">›</text>
+  <path d="M41 380 v37" fill="none" stroke="#3a3a3c" stroke-width="1"/>
+  <path d="M41 395 h8" fill="none" stroke="#3a3a3c" stroke-width="1"/>
+  <path d="M41 417 h8" fill="none" stroke="#3a3a3c" stroke-width="1"/>
+  <g transform="translate(53,389) scale(0.0430)" fill="#98989d"><path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/></g>
+  <text x="69" y="398" fill="#f2f2f7" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.72">npm run dev</text>
+  <g transform="translate(53,411) scale(0.0430)" fill="#98989d"><path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/></g>
+  <text x="69" y="420" fill="#f2f2f7" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.72">pytest -x tests/</text>
   <line x1="185.6" y1="48" x2="460" y2="48" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
   <text x="468" y="52" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">The session's name, and which agent runs in it</text>
   <line x1="253.875" y1="70" x2="460" y2="70" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
@@ -115,8 +120,10 @@
   <text x="468" y="269" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">A finished one, kept until your next prompt</text>
   <line x1="191.8" y1="301" x2="460" y2="301" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
   <text x="468" y="305" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">A Codex job the session started, with its phase</text>
-  <line x1="176.9" y1="345" x2="460" y2="345" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="468" y="349" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Background shells, folded; a click opens them</text>
-  <line x1="181.32" y1="391" x2="460" y2="391" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="468" y="395" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">A command; a click shows the whole of it, with Copy</text>
+  <line x1="207.15" y1="345" x2="460" y2="345" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="468" y="349" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Its open tasks, folded; a click lists them</text>
+  <line x1="176.9" y1="371" x2="460" y2="371" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="468" y="375" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Background shells, folded; a click opens them</text>
+  <line x1="181.32" y1="417" x2="460" y2="417" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="468" y="421" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">A command; a click shows the whole of it, with Copy</text>
 </svg>
