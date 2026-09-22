@@ -1175,8 +1175,11 @@
   #budget .autosw .sw::after { top: 1.5px; left: 1.5px; width: 9px; height: 9px; }
   #budget .autosw .sw[aria-checked="true"]::after { transform: translateX(8px); }
   /* Where the next switch would go, under the control that would make it. */
-  #budget .autosw-next { margin: -6px 0 8px; font-size: 10.5px; line-height: 14px; color: var(--dim);
-    text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The provider pill's shape, in the alert colour: a tinted fill and bold
+     mixed-case text, no outline. */
+  #budget .autosw .next-chip { margin-right: auto; padding: 2px 6px; border-radius: 5px; cursor: default;
+    font: 600 10px/1 -apple-system, sans-serif; color: var(--sev-crit);
+    background: color-mix(in srgb, var(--sev-crit) 12%, transparent); }
   /* The last switch, by hand or the daemon's, on one line under the active
      account: where the sessions went, why after a middot, a chip when the
      daemon did it, and how long ago. The reason gives way first when the
@@ -2357,22 +2360,26 @@ function autoSwitchRow() {
   return row;
 }
 
-// One line, only while a switch is near: where it would go, and why. At
-// rest the row says nothing, since an outlook nobody acts on is noise.
-function nextSwitchLine(next) {
+// A chip, only while a switch is near: where it would go, in the alert
+// colour, with the reason as its tooltip. At rest the row carries nothing,
+// since an outlook nobody acts on is noise; and a sentence here ran off the
+// panel's edge with the reason, so the chip keeps the name and gives the
+// rest on hover.
+function nextSwitchChip(next) {
   if (!SETTINGS?.auto_switch || !next?.near) return null;
-  const line = Object.assign(document.createElement("div"), {className: "autosw-next"});
-  line.textContent = next.to ? `switching soon to ${next.to} \u00b7 ${next.why}` : `nowhere to go \u00b7 ${next.why}`;
-  line.title = `${next.why}; switches at 90% or when a window is on course for 100%`;
-  return line;
+  const chip = Object.assign(document.createElement("span"), {className: "next-chip",
+    textContent: next.to ? `\u2192 ${next.to} soon` : "nowhere to go"});
+  chip.title = `${next.why}; switches at 90% or when a window is on course for 100%`;
+  return chip;
 }
 
 function paintAccounts(strip, store) {
   const active = store.accounts.find(a => a.active);
   if (store.accounts.length > 1) {
-    strip.append(autoSwitchRow());
-    const next = nextSwitchLine(store.next_switch);
-    if (next) strip.append(next);
+    const row = autoSwitchRow();
+    const next = nextSwitchChip(store.next_switch);
+    if (next) row.prepend(next);
+    strip.append(row);
   }
   const head = Object.assign(document.createElement("div"), {className: "acct-line"});
   head.append(providerIcon("claude", "Claude"), active ? accountName(active, "acct-name")
