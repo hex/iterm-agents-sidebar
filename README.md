@@ -39,7 +39,10 @@ hook. Without Codex, nothing of that happens.
 
 Through the one-liner, a flag goes after `bash -s --`. See
 [docs/integrations.md](docs/integrations.md) for the detail and how to undo
-any of it.
+any of it. `./uninstall.sh` takes it out again: the script, the hook,
+your own statusline back, our entries out of Codex's hooks, the notifier,
+and the panel's settings, state and account store with the Keychain items
+behind it. It leaves the checkout and the `.before-agents-sidebar` backups.
 
 Notifications need `swiftc`, from the Xcode Command Line Tools
 (`xcode-select --install`). Without it the panel works as usual and posts

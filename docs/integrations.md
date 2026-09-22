@@ -1,7 +1,8 @@
 # Integrations
 
 What `./install.sh` changes outside its own files, the statusline bridge and
-the Codex hooks, and how to undo them. Each has an opt-out, `--no-statusline`
+the Codex hooks, and how to undo them. `./uninstall.sh` undoes everything at
+once, the panel's own data included. Each has an opt-out, `--no-statusline`
 and `--no-codex`. The README has the short version.
 
 ## The statusline bridge
