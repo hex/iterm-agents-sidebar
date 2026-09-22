@@ -16,7 +16,8 @@ until the reset. If no session sends statusline data, the panel hides those line
 
 ## Adding an account
 
-1. Click **Add this account** to store the login Claude Code is using now.
+1. Click **Add <your email>** to store the login Claude Code is using now. The
+   button names that login; without one it reads **Log in to Claude Code first**.
 2. The panel copies its credential into its own Keychain item
    (`agents-sidebar-accounts`) and lists the account in
    `~/.config/agents-sidebar/accounts.json`. The email stays in the Keychain

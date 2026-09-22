@@ -75,7 +75,7 @@ def test_an_unreadable_store_is_reported_not_rebuilt(world):
                            world["claude_json"])
     meters.tick(now=1000)
     assert meters.snapshot() == {"active": None, "accounts": [], "error": "store is not valid JSON",
-                                 "last_switch": None, "next_switch": None}
+                                 "last_switch": None, "next_switch": None, "live": None}
     assert Path(world["store"]).read_text() == "{ torn"
 
 
@@ -195,3 +195,22 @@ def test_an_unreadable_store_decides_nothing_with_switching_on(world):
                            world["claude_json"])
     assert meters.tick(now=1000, auto=True) == []
     assert meters.snapshot()["error"] == "store is not valid JSON"
+
+
+def test_the_snapshot_names_the_live_login_before_any_account_is_stored(world, tmp_path):
+    """The Add button has to say whose login it would store."""
+    Path(world["claude_json"]).write_text(json.dumps(
+        {"oauthAccount": {"accountUuid": "uuid-active", "emailAddress": "jane.roe@example.com"}}))
+    meters = AccountMeters(str(tmp_path / "fresh" / "accounts.json"), SCRATCH_SERVICE,
+                           (SCRATCH_SERVICE, world["live"]), world["claude_json"])
+    meters.tick(now=1000)
+    assert meters.snapshot()["accounts"] == []
+    assert meters.snapshot()["live"] == "jane.roe@example.com"
+
+
+def test_the_snapshot_says_when_claude_code_has_no_login(world, tmp_path):
+    Path(world["claude_json"]).write_text("{}")
+    meters = AccountMeters(str(tmp_path / "fresh" / "accounts.json"), SCRATCH_SERVICE,
+                           (SCRATCH_SERVICE, world["live"]), world["claude_json"])
+    meters.tick(now=1000)
+    assert meters.snapshot()["live"] is None

@@ -146,7 +146,7 @@ def test_meters_snapshot_of_an_account_never_read_has_no_figures():
 def test_meters_snapshot_says_why_when_the_store_cannot_be_read():
     assert meters_snapshot([], {}, active_id=None, error="store is not valid JSON") == {
         "active": None, "accounts": [], "error": "store is not valid JSON", "last_switch": None,
-        "next_switch": None}
+        "next_switch": None, "live": None}
 
 
 def test_the_snapshot_names_the_last_switch():

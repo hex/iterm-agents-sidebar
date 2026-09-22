@@ -1025,7 +1025,7 @@ def _with_pace(window, fetched_at):
 
 
 def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_switch=None,
-                    next_switch=None):
+                    next_switch=None, live=None):
     """What the panel receives about accounts: names, which is active, figures and pace.
 
     Pace is worked out here from the reading's own time, so the snapshot only
@@ -1033,6 +1033,8 @@ def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_s
     `emails` (id -> email), else "Account N" from the id, which stays put when
     another account is removed. `last_switch` is the loop's record of the
     latest switch and `next_switch` its outlook; the panel gets targets by name.
+    `live` is the email Claude Code is logged in with, stored or not, so the
+    panel can say whose login "Add" would store; None when it has none.
     """
     emails = emails or {}
     shaped = []
@@ -1062,7 +1064,7 @@ def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_s
         target = next((a for a in accounts if a["id"] == to), {"id": to}) if to else None
         outlook = dict(next_switch, to=_name(target, emails.get(to)) if target else None)
     return {"active": active_id, "accounts": shaped, "error": error, "last_switch": shown,
-            "next_switch": outlook}
+            "next_switch": outlook, "live": live}
 
 
 def _store_lock(store_path):
@@ -1174,13 +1176,13 @@ class AccountMeters:
         except StoreError as error:
             self._snapshot = meters_snapshot([], {}, None, error=str(error))
             return
-        active = account_for(accounts, _live_login(self.claude_json))
+        live_login = _live_login(self.claude_json)
+        active = account_for(accounts, live_login)
         live_text = read_secret(*self.live_item) if active else None
         if active and live_text and should_resync(self._stored(active["id"]), json.loads(live_text)):
             write_secret(self.service, active["id"], live_text)
             update_account(self.store_path, active["id"], lastSynced=now)
         if active:
-            live_login = _live_login(self.claude_json)
             login = json.dumps(live_login)
             if read_secret(self.service, login_item(active["id"])) != login:
                 write_secret(self.service, login_item(active["id"]), login)
@@ -1202,7 +1204,8 @@ class AccountMeters:
         outlook = switch_outlook(active["id"], self.states, accounts, now) if active else None
         self._snapshot = meters_snapshot(load_store(self.store_path), self.states,
                                          active["id"] if active else None, emails=self.emails,
-                                         last_switch=self.last_switch, next_switch=outlook)
+                                         last_switch=self.last_switch, next_switch=outlook,
+                                         live=(live_login or {}).get("emailAddress"))
 
     def read_now(self, now):
         """Read every account now, except one read within the last three minutes."""

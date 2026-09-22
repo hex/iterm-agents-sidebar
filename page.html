@@ -1215,6 +1215,8 @@
     background: none; font: inherit; color: var(--fg); cursor: default;
   }
   #budget .acct-add:hover { background: var(--tint-ctl); }
+  #budget .acct-add:disabled { opacity: .55; cursor: default; }
+  #budget .acct-add:disabled:hover { background: none; }
   /* Switch rides the account's own title line, at its right end. Pointing at
      the account brings it in; the name beside it stays a name you can click to
      rename, because nothing is covering it. */
@@ -2287,11 +2289,19 @@ function accountName(account, className, suffix = "") {
   return name;
 }
 
-function addButton() {
-  const add = Object.assign(document.createElement("button"),
-    {className: "acct-add", type: "button", textContent: "Add this account"});
-  add.title = "Store the login Claude Code is using now, so the panel can meter it";
-  add.addEventListener("click", addAccount);
+// The button names the login it would store, since "this account" names
+// nothing a person can check. Without a login there is nothing to add.
+function addButton(live) {
+  const add = Object.assign(document.createElement("button"), {className: "acct-add", type: "button"});
+  if (live) {
+    add.textContent = `Add ${live}`;
+    add.title = `Store the login Claude Code is using now, ${live}, so the panel can meter it`;
+    add.addEventListener("click", addAccount);
+  } else {
+    add.textContent = "Log in to Claude Code first";
+    add.title = "Claude Code has no login to store; run claude and log in";
+    add.disabled = true;
+  }
   return add;
 }
 
@@ -2409,7 +2419,7 @@ function paintAccounts(strip, store) {
     }
     list.append(item);
   }
-  if (!active) list.append(addButton());
+  if (!active) list.append(addButton(store.live));
   if (accountNotice) list.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: accountNotice}));
   strip.append(list);
 }
@@ -2527,7 +2537,7 @@ function paintBudget(snapshot) {
   } else {
     paintSessionBudget(strip, reporting);
     if (store) {
-      strip.append(addButton());
+      strip.append(addButton(store.live));
       if (accountNotice) strip.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: accountNotice}));
     }
   }

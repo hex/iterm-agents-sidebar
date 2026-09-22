@@ -120,8 +120,8 @@ meter(oy + 30, "5-hour", 18, "1h", faded=True)
 meter(oy + 45, "Weekly", 34, "5d", tick=60, faded=True)
 meter(oy + 60, "Fable", 22, "5d", tick=60, faded=True)
 by = oy + 74
-A(f'  <rect x="{IX}" y="{by}" width="104" height="19" rx="4" fill="none" stroke="{FG}" opacity="0.22" stroke-width="0.5"/>')
-mono(IX + 7, by + 13, "Add this account", fill=FG)
+A(f'  <rect x="{IX}" y="{by}" width="130" height="19" rx="4" fill="none" stroke="{FG}" opacity="0.22" stroke-width="0.5"/>')
+mono(IX + 7, by + 13, "Add you@example.com", fill=FG)
 note(IX + IW + 12, by + 9, "Store the login Claude Code is using now")
 
 # Codex's own limits, under their own mark.
