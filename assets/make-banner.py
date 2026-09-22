@@ -263,10 +263,10 @@ swatch(s1 + 55, None, hollow=True)
 text(TEXT_X, s1 + 57, "~/src/website", fill=FG, size=13)
 text(TEXT_X, s1 + 75, "vite dev", fill=DIM, size=11.5, family=MONO)
 
-# The foot: what the day cost, and how many sessions are open.
+# The foot: the release the panel runs, and nothing more while it is current.
 rule_y = WY + WH - 34
 A(f'  <line x1="{PX+14}" y1="{rule_y}" x2="{PX+PANEL_W-14}" y2="{rule_y}" stroke="{RULE}"/>')
-text(PX + 24, rule_y + 22, "$4.82  ·  6 sessions", fill=DIM, size=12, family=MONO)
+text(PX + 24, rule_y + 22, "2026.09.20", fill=DIM, size=12, family=MONO)
 print(f"sessions card bottom {s1 + 86}, foot rule {rule_y}", file=sys.stderr)
 
 # The pointer arrives on the waiting card and clicks it: the terminal follows.

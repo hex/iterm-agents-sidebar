@@ -159,7 +159,7 @@
   <text x="1148" y="615" fill="#f2f2f7" font-size="13" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">~/src/website</text>
   <text x="1148" y="633" fill="#98989d" font-size="11.5" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">vite dev</text>
   <line x1="1104" y1="650" x2="1506" y2="650" stroke="#3a3a3c"/>
-  <text x="1114" y="672" fill="#98989d" font-size="12" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">$4.82  ·  6 sessions</text>
+  <text x="1114" y="672" fill="#98989d" font-size="12" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">2026.09.20</text>
   <g opacity="0"><animate attributeName="opacity" dur="11s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.38;0.44;0.72;0.78;1" />
   <circle cx="1390" cy="310" r="4" fill="#ff9f0a" opacity="0"><animate attributeName="r" dur="11s" repeatCount="indefinite" values="4;4;4;40;40" keyTimes="0;0.52;0.55;0.62;1" /><animate attributeName="opacity" dur="11s" repeatCount="indefinite" values="0;0;0.4;0;0" keyTimes="0;0.52;0.55;0.62;1" /></circle>
   <path d="M0,0 L0,19 L4.6,14.6 L7.6,21.2 L10.6,19.9 L7.7,13.4 L13.7,13Z" transform="translate(1390,310)" fill="#1c1c1e" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round"/>
