@@ -10,26 +10,35 @@ set -euo pipefail
 hooks="$1"
 handler="$2"
 
-command -v jq >/dev/null 2>&1 || { echo "error: registering Codex hooks needs jq." >&2; exit 1; }
-
-if [ -f "$hooks" ]; then
-  if ! jq -e 'type == "object"' "$hooks" >/dev/null 2>&1; then
-    echo "error: $hooks is not valid JSON; left unchanged." >&2
-    exit 1
-  fi
-  current=$(cat "$hooks")
-else
-  current='{}'
-fi
-
-tmp=$(mktemp)
-jq --arg handler "$handler" --arg quote "'" '
-  def ours: .hooks | any(.command | contains($handler));
-  reduce ("SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
-          "PostToolUse", "Stop", "SessionEnd") as $event
-    (.;
-     .hooks[$event] = ([(.hooks[$event] // [])[] | select(ours | not)]
-                       + [{hooks: [{type: "command", timeout: 10,
-                                    command: "python3 \($quote)\($handler)\($quote) \($event) --codex"}]}]))
-' <<<"$current" > "$tmp"
-mv "$tmp" "$hooks"
+python3 - "$hooks" "$handler" <<'PY'
+import json, os, sys
+path, handler = sys.argv[1], sys.argv[2]
+EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
+          "PostToolUse", "Stop", "SessionEnd")
+if os.path.exists(path):
+    try:
+        current = json.load(open(path))
+    except ValueError:
+        current = None
+    if not isinstance(current, dict):
+        sys.exit(f"error: {path} is not valid JSON; left unchanged.")
+else:
+    current = {}
+before = json.dumps(current, indent=2)
+hooks = current.setdefault("hooks", {})
+ours = lambda h: handler in h.get("command", "")
+for event in EVENTS:
+    kept = []
+    for entry in hooks.get(event, []):
+        # Only our command leaves an entry; whatever else it holds stays.
+        rest = [h for h in entry.get("hooks", []) if not ours(h)]
+        if rest:
+            kept.append({**entry, "hooks": rest})
+    kept.append({"hooks": [{"type": "command", "timeout": 10,
+                            "command": f"python3 '{handler}' {event} --codex"}]})
+    hooks[event] = kept
+after = json.dumps(current, indent=2)
+if after != before or not os.path.exists(path):
+    with open(path, "w") as out:
+        out.write(after + "\n")
+PY

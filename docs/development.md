@@ -5,7 +5,8 @@ it.
 
 ## The install and the port
 
-`./install.sh` writes a stub into
+`get.sh` is the one-liner's script: it clones to `~/.local/share/agents-sidebar/src`,
+or pulls there, and runs `install.sh` with its arguments. `./install.sh` writes a stub into
 `~/Library/Application Support/iTerm2/Scripts/AutoLaunch/`, and the stub loads
 `sidebar.py` from the checkout. The daemon reads `page.html` again on every
 request, but the panel fetches the page only once, when it connects, so a UI

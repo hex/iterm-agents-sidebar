@@ -8,32 +8,37 @@ window and tab, with the Claude Code, Codex and omp ones at the top, each showin
 ## Install
 
 ```sh
-git clone https://github.com/hex/iterm-agents-sidebar.git
-cd iterm-agents-sidebar
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/get.sh | bash
 ```
 
-The clone is the install, so leave the directory in place and update it with
-`git pull`. It needs nothing else: one iTerm2 Basic script, no pip, no
-virtualenv, nothing beyond the standard library.
+That clones the repository to `~/.local/share/agents-sidebar/src` and runs
+`install.sh` there; run the same line again to update. Or clone it anywhere
+yourself and run `./install.sh`: the clone is the install, so leave it in
+place and update it with `git pull`. It needs nothing else: one iTerm2 Basic
+script, no pip, no virtualenv, nothing beyond the standard library.
 
 1. Scripts, AutoLaunch, `agents_sidebar` starts it without restarting iTerm2.
 2. View, Toolbelt, Agents opens the panel.
 
-Two things are opt-in, because each edits a file another tool owns:
+The install also points `statusLine.command` in `~/.claude/settings.json` at
+`plugin/statusline-bridge.sh`, because that payload is the only place Claude
+Code says how full the context is; the bridge publishes it and then renders
+the statusline you had, so your line stays. The install backs the file up first.
+
+If Codex CLI is on the machine, the install also adds the state hook to
+`~/.codex/hooks.json`, keeping whatever other tools put there, and names a
+writable directory in `~/.codex/config.toml`; Codex asks once to trust the
+hook. Without Codex, nothing of that happens.
 
 ```sh
-./install.sh --statusline   # rows get a context percentage
-./install.sh --codex        # Codex CLI sessions get cards too
+./install.sh --no-statusline   # leave settings.json alone; cards show no context figure
+./install.sh --no-codex        # leave Codex's files alone
+./install.sh --codex           # insist, and fail if Codex is not there
 ```
 
-`--statusline` points `statusLine.command` in `~/.claude/settings.json` at
-`plugin/statusline-bridge.sh`, which publishes the payload and then renders the
-statusline you had. `--codex` adds the state hook to `~/.codex/hooks.json` and
-a writable directory to `~/.codex/config.toml`; Codex asks once to trust it.
-Both back the file up first. See
+Through the one-liner, a flag goes after `bash -s --`. See
 [docs/integrations.md](docs/integrations.md) for the detail and how to undo
-either.
+any of it.
 
 Notifications need `swiftc`, from the Xcode Command Line Tools
 (`xcode-select --install`). Without it the panel works as usual and posts
