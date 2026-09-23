@@ -1145,6 +1145,25 @@
     border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
   }
   body.stale #queue { opacity: .55; }
+  /* The one thing the panel asks of its own setup, above the meters: bare,
+     since it is about the panel and not a session. */
+  #sl-offer {
+    margin: 0 8px; padding: 8px 2px 9px;
+    border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
+    font: 400 11px/1.4 -apple-system, sans-serif; color: var(--dim);
+  }
+  #sl-offer .sl-head { display: flex; align-items: center; gap: 6px;
+    font: 600 12px/1.3 -apple-system, sans-serif; color: var(--fg); }
+  #sl-offer .sl-head .mi { width: 14px; height: 14px; flex: none; color: var(--dim); }
+  #sl-offer .sl-head > span { flex: 1; min-width: 0; }
+  #sl-offer p { margin: 4px 0 0; }
+  #sl-offer p.refused { color: var(--alert); }
+  #sl-offer button { height: 20px; padding: 0 9px; border: 0; border-radius: 6px; flex: none;
+    font: 500 11px/1 -apple-system, sans-serif; color: var(--fg); background: var(--tint-ctl); }
+  #sl-offer button:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+  #sl-offer button.go { color: #fff; background: color-mix(in srgb, AccentColor 92%, #000); }
+  #sl-offer button.go:hover { background: AccentColor; }
+  #sl-offer button:disabled { opacity: .5; }
   #queue h3 { padding: 0 2px 3px; }
   /* The one warm mark in the section, and it is a number, not a surface. */
   #queue h3 .n { color: var(--blocked-text); }
@@ -1344,6 +1363,7 @@
 <div id="groups"></div>
 <div id="foot">
   <p id="row-help" class="offscreen">Press Enter to bring this session's pane forward. Right-click it for its options.</p>
+  <section id="sl-offer" aria-label="Statusline bridge" hidden></section>
   <section id="queue" aria-label="Sessions waiting on you" hidden></section>
   <div id="budget" hidden></div>
 </div>
@@ -1398,6 +1418,7 @@ const META_ICONS = {
   gear: '<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/>',
   tasks: '<path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/>',
   check: '<path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/>',
+  plug: '<path d="M237.66,66.34a8,8,0,0,0-11.32,0L192,100.69,155.31,64l34.35-34.34a8,8,0,1,0-11.32-11.32L144,52.69,117.66,26.34a8,8,0,0,0-11.32,11.32L112.69,44l-53,53a40,40,0,0,0,0,56.57l15.71,15.71L26.34,218.34a8,8,0,0,0,11.32,11.32l49.09-49.09,15.71,15.71a40,40,0,0,0,56.57,0l53-53,6.34,6.35a8,8,0,0,0,11.32-11.32L203.31,112l34.35-34.34A8,8,0,0,0,237.66,66.34ZM147.72,185a24,24,0,0,1-33.95,0L71,142.23a24,24,0,0,1,0-33.95l53-53L200.69,132Z"/>',
   memory: '<path d="M232,56H24A16,16,0,0,0,8,72V200a8,8,0,0,0,16,0V184H40v16a8,8,0,0,0,16,0V184H72v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V72A16,16,0,0,0,232,56ZM24,72H232v96H24Zm88,80a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H48a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8ZM56,104h48v32H56Zm88,48h64a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H144a8,8,0,0,0-8,8v48A8,8,0,0,0,144,152Zm8-48h48v32H152Z"/>',
 };
 
@@ -2015,6 +2036,7 @@ function render(snapshot) {
   fitMeta();
   paintSeams();
   paintVersion();
+  paintStatuslineOffer();
   animateRows(before);
 }
 
@@ -3366,6 +3388,7 @@ const SETTING_ROWS = [
   {k: "expand_shells", label: "Start expanded", needs: "show_shells"},
   {k: "ui_scale",     label: "Text size",
    steps: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]},
+  {k: "offer_statusline", label: "Offer the statusline bridge"},
 ];
 
 // Each control keeps a closure that repaints it from SETTINGS, so a change
@@ -3602,6 +3625,61 @@ function takeRelease() {
     })
     .catch(err => { releaseState = String(err); })
     .then(paintVersion);
+}
+
+// The statusline payload is the panel's only source for a card's context,
+// model and effort and for the hover's cost, limits and cache. While
+// settings.json lacks the bridge, the foot says so and offers to put it in.
+// "installing", "installed", or a refusal's text; null while nothing is asked.
+let statuslineState = null;
+function paintStatuslineOffer() {
+  const box = document.getElementById("sl-offer");
+  const offered = LATEST.statusline === "missing" && SETTINGS?.offer_statusline !== false;
+  box.hidden = !offered && statuslineState !== "installed";
+  if (box.hidden) return;
+  const key = `${offered}|${statuslineState}`;
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.replaceChildren();
+  const head = Object.assign(document.createElement("div"), {className: "sl-head"});
+  const title = document.createElement("span");
+  head.append(metaIcon("plug"), title);
+  box.append(head);
+  const say = (text, cls = "") => box.append(Object.assign(document.createElement("p"), {className: cls, textContent: text}));
+  if (statuslineState === "installed") {
+    title.textContent = "Statusline bridge installed";
+    say("Sessions started from now on show their context figures.");
+    return;
+  }
+  title.textContent = "No context figures";
+  const install = Object.assign(document.createElement("button"),
+                                {className: "go", type: "button", textContent: statuslineState === "installing" ? "Installing…" : "Install"});
+  install.disabled = statuslineState === "installing";
+  install.title = "Point statusLine in ~/.claude/settings.json at the bridge; settings.json is backed up first";
+  install.addEventListener("click", installStatusline);
+  const later = Object.assign(document.createElement("button"), {type: "button", textContent: "Not now"});
+  later.title = "Stop offering it; Settings > Offer the statusline bridge brings it back";
+  later.addEventListener("click", () => { statuslineState = null; push({offer_statusline: false}); });
+  head.append(install, later);
+  say("Cards miss their context %, model and effort, and the hover misses cost, limits and cache, "
+      + "because the statusline bridge is not in ~/.claude/settings.json. Your own statusline keeps running inside it.");
+  if (statuslineState && statuslineState !== "installing") say(statuslineState, "refused");
+}
+
+function installStatusline() {
+  statuslineState = "installing";
+  paintStatuslineOffer();
+  fetch(`/statusline?token=${encodeURIComponent(TOKEN)}`, {method: "POST"})
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      statuslineState = r.ok ? "installed" : (body.error || `install failed (${r.status})`);
+    })
+    .catch(err => { statuslineState = String(err); })
+    .then(() => {
+      paintStatuslineOffer();
+      // The confirmation is news once; after that it is only a resting state.
+      if (statuslineState === "installed") setTimeout(() => { statuslineState = null; paintStatuslineOffer(); }, 8000);
+    });
 }
 
 function push(change) {

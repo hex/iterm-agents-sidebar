@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import accounts  # noqa: E402
 import codex  # noqa: E402
 import omp  # noqa: E402
+import statusline  # noqa: E402
 import update  # noqa: E402
 
 #: Where the `cs` tool keeps its managed sessions. A terminal sitting anywhere
@@ -114,6 +115,9 @@ DEFAULT_SETTINGS = {
     "show_task_age": True,
     "show_task_bar": True,
     "show_task_list": True,
+    # The foot offers the statusline bridge while settings.json lacks it,
+    # until the offer is declined.
+    "offer_statusline": True,
     "show_agents": True,
     "show_shells": True,
     # The list follows the terminals by default: a card sits where its tab
@@ -411,6 +415,12 @@ def row_label(snapshot, session_id):
     """
     row = find_row(snapshot, session_id)
     return row.get("label", "") if row else ""
+
+
+def statusline_offer(state, settings):
+    """Should the foot offer the statusline bridge? Only while settings.json
+    lacks it and can take it, and until the person says not now."""
+    return state == "missing" and bool(settings["offer_statusline"])
 
 
 def running_models(snapshot):
@@ -1768,6 +1778,11 @@ def parse_model(status):
 #: claude pid. The bridge learns that pid for free: it is the $PPID of the
 #: statusline process itself.
 STATUS_DIR = os.path.expanduser("~/.claude/agents-sidebar-status")
+#: Claude Code's user settings, whose statusLine.command must be the bridge
+#: for any of the payload above to reach the panel.
+CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
+#: The bridge in this checkout, which is what install.sh points settings at.
+BRIDGE = str(Path(__file__).resolve().parent / "plugin" / "statusline-bridge.sh")
 
 #: Where task.py keeps each session's own note about its work, by session id.
 TASKS_DIR = os.path.expanduser("~/.claude/agents-sidebar-tasks")
@@ -2234,7 +2249,7 @@ class Sidebar:
     """
 
     def __init__(self, token, page_path, snapshot_fn, action_fn,
-                 settings_path=None, accounts_fn=None, update_fn=None):
+                 settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None):
         self.token = token
         self.page_path = Path(page_path)
         self.snapshot_fn = snapshot_fn
@@ -2243,6 +2258,8 @@ class Sidebar:
         self.accounts_fn = accounts_fn
         #: () -> (ok, text): takes the release the panel was offered.
         self.update_fn = update_fn
+        #: () -> the statusline it displaced; raises ValueError when it may not.
+        self.statusline_fn = statusline_fn
 
     def authorized(self, target):
         supplied = parse_qs(urlsplit(target).query).get("token", [""])[0]
@@ -2278,6 +2295,16 @@ class Sidebar:
             # line, the console the whole of it.
             print(f"sidebar: update refused:\n{text}", flush=True)
             return self._json(409, {"error": text})
+
+        if method == "POST" and path == "/statusline":
+            if self.statusline_fn is None:
+                return self._json(400, {"error": "this daemon cannot install the statusline bridge"})
+            try:
+                self.statusline_fn()
+            except (ValueError, OSError) as refusal:
+                print(f"sidebar: statusline bridge refused: {refusal}", flush=True)
+                return self._json(409, {"error": str(refusal)})
+            return self._json(200, {"ok": True})
 
         # Read the page from disk per request, so editing it needs no restart.
         return (200, "text/html; charset=utf-8", self.page_path.read_bytes())
@@ -2656,6 +2683,8 @@ class Bridge:
         self.latest = snapshot(await self.read_sessions(), settings["sort_by_name"],
                                settings["provider_mark"] == "groups")
         self.latest["version"] = version()
+        if statusline_offer(statusline.state(CLAUDE_SETTINGS, BRIDGE), settings):
+            self.latest["statusline"] = "missing"
         if self.update:
             self.latest["update"] = self.update
         if self.meters is not None:
@@ -2983,6 +3012,7 @@ async def main(connection):
             bridge.act(session_id, verb, text)),
         accounts_fn=lambda op, request: bridge.account_op(op, request),
         update_fn=lambda: update.take(here),
+        statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
     )
     server = Server(sidebar, health_fn=lambda: bridge.healthy(), restart_fn=restart)
     bridge = Bridge(connection, server, meters)

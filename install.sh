@@ -89,39 +89,14 @@ if [ "$statusline" = 1 ]; then
   settings="$HOME/.claude/settings.json"
   status_dir="$HOME/.claude/agents-sidebar-status"
   bridge="$repo/plugin/statusline-bridge.sh"
-  mkdir -p "$status_dir" "$(dirname "$settings")"
-  [ -f "$settings" ] || printf '{}\n' > "$settings"
-
-  current=$(python3 -c 'import json, sys
-try:
-    settings = json.load(open(sys.argv[1]))
-except ValueError:
-    sys.exit("error: " + sys.argv[1] + " is not valid JSON; left unchanged.")
-print(settings.get("statusLine", {}).get("command", ""), end="")' "$settings")
-
-  if [ "$current" = "$bridge" ]; then
+  # The panel's Install button runs the same step, so it lives in one place.
+  result=$(python3 "$repo/statusline.py" "$settings" "$bridge" "$status_dir")
+  if [ "$result" = already ]; then
     ok statusline "already installed"
   else
-    backup="$settings.before-agents-sidebar"
-    cp "$settings" "$backup"
-    # Saved before the swap, so the displaced statusline is recoverable even
-    # if this script dies between here and the write below.
-    printf '%s' "$current" > "$status_dir/original-statusline"
-    # Only the command: the tick rate is cs's to set (its logo pulses on that
-    # timer), and two installers writing it would flip it on each other.
-    python3 - "$settings" "$bridge" <<'PY'
-import json, sys
-path, bridge = sys.argv[1], sys.argv[2]
-settings = json.load(open(path))
-line = settings.get("statusLine") or {}
-line.update({"type": "command", "command": bridge})
-settings["statusLine"] = line
-with open(path, "w") as out:
-    json.dump(settings, out, indent=2)
-    out.write("\n")
-PY
+    displaced=$(printf '%s\n' "$result" | sed -n 2p)
     ok statusline "bridge set in $(tilde "$settings")"
-    [ -n "$current" ] && more "your statusline, $current, runs inside it; kept in $(tilde "$status_dir")/original-statusline"
+    [ -n "$displaced" ] && more "your statusline, $displaced, runs inside it; kept in $(tilde "$status_dir")/original-statusline"
   fi
   undo+=("statusline  cp $(tilde "$settings").before-agents-sidebar $(tilde "$settings")   (or --no-statusline next time)")
 else

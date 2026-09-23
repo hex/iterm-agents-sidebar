@@ -25,6 +25,11 @@ The install also points `statusLine.command` in `~/.claude/settings.json` at
 `plugin/statusline-bridge.sh`, because that payload is the only place Claude
 Code says how full the context is; the bridge publishes it and then renders
 the statusline you had, so your line stays. The install backs the file up first.
+Without it, cards show no context %, model or effort, and the hover no cost,
+limits or cache. Whenever `settings.json` lacks the bridge (installed with
+`--no-statusline`, or replaced by another tool), the foot of the panel says so
+and offers Install, which does the same step, or Not now; Settings > Offer the
+statusline bridge brings a dismissed offer back.
 
 If Codex CLI is on the machine, the install also adds the state hook to
 `~/.codex/hooks.json`, keeping whatever other tools put there, and names a
