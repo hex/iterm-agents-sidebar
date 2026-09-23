@@ -6,7 +6,8 @@
 | A row shows `?` for its directory or job | iTerm2 can't report that one session | Nothing; one session costs its own row, not the list |
 | The panel is white and nothing loads | Two tool identifiers named "Agents", and the menu opened the dead one | Rename the stale entry, below |
 | Codex cards stop appearing | A herdr update rewrote `~/.codex/hooks.json` | `./install.sh --codex` |
-| Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | `./install.sh` |
+| Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | Install in the panel's foot, or `./install.sh` |
+| Install in the foot shows red text | `~/.claude/settings.json` is not valid JSON, so nothing was written | Fix the file, then press Install again |
 | Update refused, red text in the bar | The checkout could not fast-forward, or `install.sh` failed; the whole message is in the script console | `git -C <checkout> status`, then `./install.sh` by hand |
 | The panel is blank after Update | The daemon restarted on a new port | Reopen it: View > Toolbelt > Agents |
 

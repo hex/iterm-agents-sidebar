@@ -1,12 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 592" width="880" role="img" aria-label="The settings drawer: a card each for sounds, notifications, focus and the rows, every setting with its default">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 623" width="880" role="img" aria-label="The settings drawer: a card each for sounds, notifications, focus and the rows, every setting with its default">
   <title>Settings</title>
   <defs>
     <pattern id="tickmask" width="6" height="4" patternUnits="userSpaceOnUse">
       <rect width="3" height="4" fill="#ffffff"/>
     </pattern>
-    <mask id="tick"><rect width="880" height="592" fill="url(#tickmask)"/></mask>
+    <mask id="tick"><rect width="880" height="623" fill="url(#tickmask)"/></mask>
   </defs>
-  <rect width="880" height="592" rx="16" fill="#242426"/>
+  <rect width="880" height="623" rx="16" fill="#242426"/>
   <text x="26" y="30" fill="#f2f2f7" font-size="11.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Settings</text>
   <rect x="24" y="44" width="404" height="122" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
   <text x="34" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Play sounds</text>
@@ -52,7 +52,7 @@
   <rect x="390" y="317.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
   <circle cx="409.5" cy="325.5" r="6.5" fill="#ffffff"/>
   </g>
-  <rect x="452" y="44" width="404" height="509" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <rect x="452" y="44" width="404" height="540" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
   <text x="462" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Rows</text>
   <line x1="452" y1="77" x2="856" y2="77" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
   <text x="462" y="96.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Warn above</text>
@@ -130,4 +130,8 @@
   <text x="776" y="542.0" fill="#f2f2f7" font-size="13" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">−</text>
   <text x="805" y="541.0" fill="#f2f2f7" font-size="11" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="middle">1.0×</text>
   <text x="834" y="542.0" fill="#f2f2f7" font-size="13" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">+</text>
+  <line x1="452" y1="553" x2="856" y2="553" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="462" y="572.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Offer the statusline bridge</text>
+  <rect x="818" y="560.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="568.5" r="6.5" fill="#ffffff"/>
 </svg>

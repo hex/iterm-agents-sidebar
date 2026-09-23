@@ -286,3 +286,39 @@ def test_an_update_needs_the_token(tmp_path):
 
 def test_a_daemon_without_an_updater_refuses_the_request(tmp_path):
     assert build(tmp_path).handle("POST", f"/update?token={TOKEN}", b"")[0] == 400
+
+
+def statusline_server(tmp_path, install):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda *a: None, statusline_fn=install)
+
+
+def test_installing_the_statusline_bridge_says_so(tmp_path):
+    calls = []
+    server = statusline_server(tmp_path, lambda: calls.append("install") or "cs-statusline")
+    status, _, body = server.handle("POST", f"/statusline?token={TOKEN}", b"")
+    assert (status, json.loads(body), calls) == (200, {"ok": True}, ["install"])
+
+
+def test_a_refused_statusline_install_carries_the_reason(tmp_path):
+    def refuse():
+        raise ValueError("/Users/x/.claude/settings.json is not valid JSON; left unchanged")
+    status, _, body = statusline_server(tmp_path, refuse).handle("POST", f"/statusline?token={TOKEN}", b"")
+    assert (status, json.loads(body)) == (
+        409, {"error": "/Users/x/.claude/settings.json is not valid JSON; left unchanged"})
+
+
+def test_a_statusline_install_needs_the_token(tmp_path):
+    assert statusline_server(tmp_path, lambda: "").handle("POST", "/statusline", b"")[0] == 403
+
+
+def test_the_bridge_is_offered_only_while_missing_and_not_declined():
+    from sidebar import statusline_offer
+    assert statusline_offer("missing", {"offer_statusline": True}) is True
+    assert statusline_offer("missing", {"offer_statusline": False}) is False
+    assert statusline_offer("installed", {"offer_statusline": True}) is False
+    # A settings.json that is not JSON cannot be installed into; offering
+    # a button that can only refuse would be noise.
+    assert statusline_offer("unreadable", {"offer_statusline": True}) is False
