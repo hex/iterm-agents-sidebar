@@ -13,6 +13,8 @@ login.
 Until you store an account, the limits come from the sessions' status lines:
 5-hour and weekly, as thin bars with the percentage used and the time left
 until the reset. If no session sends statusline data, the panel hides those lines instead of showing zero.
+Here the 5-hour bar has a tick too, and a percentage turns warm once it passes
+its tick and reaches 80%.
 
 ## Adding an account
 
@@ -36,20 +38,25 @@ the time left until each resets (`2h`, `3d`, `14m`).
 | Green bar | Under 70% of the window used |
 | Amber bar | 70% or more used |
 | Red bar and red percentage | 90% or more used |
-| A tick on a weekly line | Where an even spend across the week would be |
+| A tick on a weekly line | Where an even spend across the week would be. None in the first day after a reset |
 | A warm percentage | 15 points or more past that tick |
 | `as of 14:02` | The last reading failed; these are the figures from then |
 | `log in to <name> again` | That account's login stopped working |
+| `reading...` | The first reading is on its way |
+| `no reading yet` | The first reading failed; the panel tries again later |
+| `not a stored login` | Claude Code runs on a login the panel has not stored |
 
-The foot shows an account's nickname, or its email if it has none. Click a name
-to set a nickname: Enter saves, Esc cancels, and an empty name goes back to the
-email.
+The foot shows an account's nickname, or its email if it has none, or
+`Account N` without either. Click a name to set a nickname: Enter saves, Esc
+cancels, and an empty name goes back to the email.
 
 ## Switching
 
 Point at an account and click the **Switch** button over its bars, then click
-**Confirm switch** within 4 seconds. Running sessions pick up the new account
-within about 30 seconds.
+**Confirm switch** within 4 seconds. The buttons show only while the login
+Claude Code runs on is a stored one, and never on an account that needs a new
+login. A switch that fails says `not switched: <reason>`. Running sessions pick
+up the new account within about 30 seconds.
 
 The panel first refreshes that account's token, which proves its login still
 works. Then it swaps Claude Code's credential and the account in
@@ -61,9 +68,10 @@ and how long ago. A chip marks a switch the panel made on its own.
 
 ## Switching on its own
 
-Off by default. The **Auto-switch** control above the accounts lets the panel
-move your sessions between accounts so the quota you have lasts, and so no
-session stops at a limit while another account has room.
+Off by default. The **Auto-switch** control above the accounts, shown once you
+store two or more, lets the panel move your sessions between accounts so the
+quota you have lasts, and so no session stops at a limit while another account
+has room.
 
 **Which limits count.** An account's figure is its fullest window among the
 5-hour, the weekly, and the weekly limit of each model your Claude sessions and
@@ -72,42 +80,50 @@ while every session runs Opus. When a session's model is not known yet, every
 limit counts. A model limit at 100% on every account decides nothing: no switch
 can help it, so the other limits decide until the first one returns, and the
 chip says `Fable full everywhere` with that account and time in its tooltip.
-If that model is the only one running, the panel stays put and says why once.
+If that model is the only one running, the panel stays put and says why once,
+in `daemon.log`.
 
 **Leaving a full account.** It leaves when that figure reaches 90%, or when the
 rate it is filling at would reach 100% within ten minutes. It waits instead
-when that window resets within ten minutes and would not fill first. It goes
-to an account at least ten points better and under 90%; when none is, to one at
-least three points emptier than the active one and under 100%. Automatic moves are at
-least five minutes apart, except that the panel leaves an account about to hit
-100% at once. It reads an account again first when its reading is older than
-three minutes.
+when that window resets within ten minutes and would not fill first. It goes to
+an account at least ten points better and under 90%; when none is, to one at
+least three points emptier than the active one and under 100%. It never goes to
+an account whose own readings show it filling. An automatic move comes at least
+five minutes after the last switch, by hand or automatic. The one exception is
+an account about to hit 100%: the panel leaves it after only a minute, and then
+any emptier account under 100% can take the sessions. Before it compares, the
+panel reads another account again when that reading is older than three
+minutes. When the active account's own reading failed or is older than 330
+seconds, the panel stays put without asking for a new reading.
 
 **Balancing before anything is full.** While the active account is under the
-line, the panel moves to another account when that one has at least 1.25 times
-the weekly runway: the room left in its tightest weekly window, divided by the
-days until that window resets. Quota that returns tomorrow is spent before
-quota that has to last a week, so less of it resets unused. A balance goes
-only to an account under 90% whose 5-hour window is under 70%, waits half an
-hour after any switch, uses
-readings up to 15 minutes old without asking for new ones, and happens only
-when two readings of the active account agree on the same target. It never
-goes to an account whose own readings show it filling, one whose 5-hour
-window was not read, or one with a weekly limit that does not say when it
-resets. With no Claude session running, nothing switches.
+line, or at 90% or more in a window that resets within ten minutes, the panel
+moves to another account when that one has at least 1.25 times the weekly
+runway: the room left in its tightest weekly window, divided by the days until
+that window resets. Quota that returns tomorrow is spent before quota that has
+to last a week, so less of it resets unused. A balance goes only to an account
+under 90% whose 5-hour window is under 70%, waits half an hour after any
+switch, uses readings up to 15 minutes old without asking for new ones, and
+happens only when two readings of the active account agree on the same target.
+It never goes to an account whose own readings show it filling, one whose
+5-hour window was not read, or one with a weekly limit that does not say when
+it resets. With no Claude session running, nothing switches.
 
 **Choosing among accounts.** The panel takes an account under 90% with room in
 its 5-hour window (under 70%) first, then any account under 90%, then the rest. Among those, the most weekly
 runway wins. Runways within 10% of each other go to the one that resets
 sooner, then to the emptier 5-hour window.
 
-While a switch is near, a chip beside the control names where it would go
-(`→ spare soon`), or says `nowhere to go`; point at it for the reason
-(`Fable at 86%`, or a window on course for 100%).
+While a switch is near, meaning the active account is at 80% or more or a
+window is on course for 100%, a chip beside the control names where it would go
+(`→ spare soon`), or says `nowhere to go`; point at it for the reason (`Fable
+at 86%`, or a window on course for 100%).
 
-Each switch posts a macOS notice with the reason and writes a line to
-`~/.claude/agents-sidebar-status/daemon.log`. Run this or `cswap auto`, not
-both: two engines would trade the login between them.
+Each automatic switch writes a line to
+`~/.claude/agents-sidebar-status/daemon.log`, and posts a macOS notice with the
+reason when notifications are on in Settings and the install built
+`Agents.app`. Run this or `cswap auto`, not both: two engines would trade the
+login between them.
 
 ## How often it reads
 
@@ -117,7 +133,8 @@ The panel reads usage at most every 3 minutes per account
 - Usage moved since the last reading: read twice as often, down to that floor.
 - Usage sitting still: read less often, up to 5 minutes for the active account
   and 10 for the others, and never later than a window's reset.
-- A failed reading: back off to 30 minutes. A 429: wait an hour.
+- A failed reading: wait 1.5 times longer each time, up to 30 minutes. A 429:
+  wait an hour.
 
 The reload button asks for fresh readings first, except for an account read in
 the last 3 minutes. The panel refreshes the tokens of the accounts you are not

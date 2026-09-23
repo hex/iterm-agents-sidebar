@@ -8,7 +8,8 @@ lives outside it, so that directory has to be named here. The standard
 library reads TOML but does not write it, so this is a line edit of one
 table: the table is created when absent, the key added when absent, the
 directory appended to a one-line array when missing. An array laid out over
-several lines is left alone with a message, exit 2, rather than guessed at.
+several lines, or any other layout of the key, is left alone with a message,
+exit 2, rather than guessed at.
 The first run keeps a copy of the file as it was.
 """
 import os
@@ -19,6 +20,7 @@ import sys
 TABLE = "[sandbox_workspace_write]"
 KEY = re.compile(r'^(\s*writable_roots\s*=\s*)\[(.*)\]\s*$')
 OPEN = re.compile(r'^\s*writable_roots\s*=\s*\[\s*$')
+NAMED = re.compile(r'^\s*writable_roots\s*=')
 
 
 def edited(lines, directory):
@@ -35,6 +37,8 @@ def edited(lines, directory):
             raise ValueError("writable_roots spans several lines")
         m = KEY.match(lines[i])
         if not m:
+            if NAMED.match(lines[i]):
+                raise ValueError("writable_roots is laid out in a way this edit cannot read")
             continue
         if quoted in m.group(2):
             return None

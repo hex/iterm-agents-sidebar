@@ -9,7 +9,7 @@ from panel_draw import *  # noqa: F401,F403
 #: The README banner is wide and short. BANNER_H=864 draws the same window
 #: taller, 16:9, for a place that crops anything wider (a social post's
 #: preview); the panel flows from the top, so the extra height is floor.
-W, H = 1536, int(os.environ.get("BANNER_H", 708))
+W, H = 1536, int(os.environ.get("BANNER_H", 742))
 CYCLE = "11s"
 
 # The window nearly fills the frame: what is left is room for its shadow,
@@ -209,22 +209,42 @@ for i in range(3):
       f'repeatCount="indefinite"/></circle>')
 text(CARD_X + 78, t1 + 22, "reviewer", fill=DIM, size=13)
 
-# The session that needs you: beat one turns the whole card amber.
+# The session that needs you: beat one turns the whole card amber, and its
+# report gives way to the question and a button per answer, in the same height.
+ASKING = ("0;0.22;0.28;0.66;0.74;1")
 c2 = t1 + 42
-card(c2, 80)
-A(f'  <g opacity="0">{cycle("opacity", "0;0;1;1;0;0", "0;0.22;0.28;0.66;0.74;1")}'
-  f'<rect x="{CARD_X}" y="{c2}" width="{CARD_W}" height="80" rx="10" fill="{BLOCKED_BG}" '
+card(c2, 114)
+A(f'  <g opacity="0">{cycle("opacity", "0;0;1;1;0;0", ASKING)}'
+  f'<rect x="{CARD_X}" y="{c2}" width="{CARD_W}" height="114" rx="10" fill="{BLOCKED_BG}" '
   f'stroke="{BLOCKED_BORDER}" stroke-width="3"/></g>')
 working_dots(c2 + 20, "#2a9d8f")
 text(TEXT_X, c2 + 31, "beacon", fill=FG, size=15, weight=600)
 tag("beacon", c2 + 31, "claude")
-text(TEXT_X, c2 + 52, "Pick the cache store", fill=DIM, size=12.5)
-chips(TEXT_X, c2 + 69, [("branch", "feat/cache", None), ("model", "Fable 5.1", None)])
+A(f'  <g>{cycle("opacity", "1;1;0;0;1;1", ASKING)}')
+text(TEXT_X, c2 + 52, "Cache the pricing lookup", fill=DIM, size=12.5)
+text(TEXT_X, c2 + 72, "Choosing a store", fill=LIT_INK, size=12.5)
+x = middot(TEXT_X + width_of("Choosing a store", 12.5), c2 + 72)
+mark("clock", x, c2 + 62, 12, DIM)
+text(x + 16, c2 + 72, "1m", fill=DIM, size=12.5)
+A(f'  <g mask="url(#tick)">'
+  f'<rect x="{TEXT_X}" y="{c2+80}" width="330" height="5" fill="{FG}" opacity="0.16"/>'
+  f'<rect x="{TEXT_X}" y="{c2+80}" width="90" height="5" fill="{LIT}"/></g>')
+chips(TEXT_X, c2 + 102, [("branch", "feat/cache", None), ("model", "Fable 5.1", None)])
+A('  </g>')
+A(f'  <g opacity="0">{cycle("opacity", "0;0;1;1;0;0", ASKING)}')
+text(TEXT_X, c2 + 52, "Which store should the cache use?", fill=BLOCKED_TEXT, size=12.5)
+for i, answer in enumerate(("Postgres", "SQLite")):
+    y_row = c2 + 62 + i * 23
+    A(f'  <rect x="{TEXT_X}" y="{y_row}" width="{CARD_X + CARD_W - 16 - TEXT_X}" height="19" rx="6" '
+      f'fill="{BLOCKED_TEXT}" fill-opacity=".14"/>')
+    text(TEXT_X + 9, y_row + 13.5, str(i + 1), fill=BLOCKED_TEXT, size=11.5, weight=500)
+    text(TEXT_X + 22, y_row + 13.5, answer, fill=FG, size=11.5, weight=500)
+A('  </g>')
 badge(c2 + 14, "WAITING", filled=True,
-      animation=cycle("opacity", "0;0;1;1;0;0", "0;0.22;0.28;0.66;0.74;1"))
+      animation=cycle("opacity", "0;0;1;1;0;0", ASKING))
 
 # One finished, and one whose tree is eating the machine.
-c3 = c2 + 94
+c3 = c2 + 128
 card(c3, 80)
 swatch(c3 + 20, "#8e8e93")
 text(TEXT_X, c3 + 31, "ember", fill=FG, size=15, weight=600)

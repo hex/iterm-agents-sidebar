@@ -4,7 +4,8 @@ without disturbing what the file already says.
 Failure modes this covers, written before the script: no file yet; the table
 absent; the table present with other roots on one line; ours already there;
 the table present without the key; a layout the edit cannot read (an array
-over several lines), which must leave the file alone; the backup from the
+over several lines, or one with a trailing comment), which must leave the file
+alone; the backup from the
 first run, which a re-run must not overwrite.
 """
 import subprocess
@@ -61,6 +62,18 @@ def test_an_array_over_several_lines_is_left_alone(tmp_path):
     result = open_up(config)
     assert result.returncode == 2
     assert result.stderr == f"{config}: writable_roots spans several lines; add {DIR} to it by hand\n"
+    assert config.read_text() == before
+
+
+def test_a_one_line_array_with_a_trailing_comment_is_left_alone(tmp_path):
+    """The key is there but not in a shape the edit reads; adding a second
+    writable_roots would make the file invalid TOML."""
+    config = tmp_path / "config.toml"
+    before = '[sandbox_workspace_write]\nwritable_roots = ["/tmp/a"]  # mine\n'
+    config.write_text(before)
+    result = open_up(config)
+    assert result.returncode == 2
+    assert result.stderr == f"{config}: writable_roots is laid out in a way this edit cannot read; add {DIR} to it by hand\n"
     assert config.read_text() == before
 
 

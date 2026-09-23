@@ -13,8 +13,8 @@ curl -fsSL https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/get.s
 
 That clones the repository to `~/.local/share/agents-sidebar/src` and runs
 `install.sh` there. The bar at the foot names the release you run and, once
-a newer one is out, offers it with an Update button; the same line again does
-the same thing. Or clone it anywhere yourself and run `./install.sh`: the
+a newer one is out, offers it with an Update button. Running the same line
+again pulls the latest too. Or clone it anywhere yourself and run `./install.sh`: the
 clone is the install, so leave it in place and update it with `git pull`. It needs nothing else: one iTerm2 Basic
 script, no pip, no virtualenv, nothing beyond the standard library.
 
@@ -47,7 +47,8 @@ Through the one-liner, a flag goes after `bash -s --`. See
 any of it. `./uninstall.sh` takes it out again: the script, the hook,
 your own statusline back, our entries out of Codex's hooks, the notifier,
 and the panel's settings, state and account store with the Keychain items
-behind it. It leaves the checkout and the `.before-agents-sidebar` backups.
+behind it. It leaves the checkout, the `.before-agents-sidebar` backups and
+the writable directory line in `~/.codex/config.toml`.
 
 Notifications need `swiftc`, from the Xcode Command Line Tools
 (`xcode-select --install`). Without it the panel works as usual and posts
@@ -68,8 +69,8 @@ its sound and banner style.
 Click an empty part of the panel first to give it keyboard focus. Arrow keys
 only; iTerm2 keeps the other combinations for itself.
 
-A card whose agent asks a question while it sits past the edge of the list
-scrolls into view; one already on screen stays put.
+A card that starts waiting on you while it sits out of sight scrolls into
+view.
 
 ### What a card says
 
@@ -77,7 +78,7 @@ scrolls into view; one already on screen stays put.
 
 | State | How it looks |
 | --- | --- |
-| Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question with a button per answer, or the tool and the command it wants to run |
+| Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question with a button per answer (a question that takes more than one answer lists them without buttons), or the tool and the command it wants to run |
 | Working | Dark name, working dots |
 | Idle | Grey name, IDLE outline |
 | Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
@@ -140,7 +141,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 | On the banner | What it does |
 | --- | --- |
 | A click | Brings that session forward, tab and all |
-| A question's option button | Sends that option's number into the prompt |
+| A question's option button | Sends that option's number into the prompt. A question that takes more than one answer gets no buttons and no Other |
 | Other | Picks that option, then types your text |
 | Allow, on a permission gate | Answers Yes. It shows the command's first line and approves the whole command, so No stays in the terminal |
 | Reply, on a finished turn | Your text becomes the session's next prompt |
@@ -150,16 +151,25 @@ The banner can answer for you, so a session in another tab doesn't wait.
 <img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: a card each for sounds, notifications, focus and the rows, every setting with its default">
 
 The gear opens the drawer; every setting is there with its default, as above.
-The sliders have limits the picture doesn't show:
+A setting indented under another works only while that one is on.
+
+| Card | Settings |
+| --- | --- |
+| Sound | Play sounds; under it When a session is blocked, When one finishes, Volume |
+| Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
+| Focus | Bring a blocked session forward; under it Go back once it resumes |
+| Rows | Warn above, CPU heavy at, Memory heavy at, Sort cards by name, Provider badge, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
+
+Some have limits the picture doesn't show:
 
 | Setting | Range |
 | --- | --- |
 | Warn above, the context figure a row starts to show | 0 to 100% |
 | CPU heavy at | 25 to 400%, of one core |
 | Memory heavy at | 0.5 to 8 GB |
-| Text size | 0.8 to 1.6 times the size as designed |
+| Text size | Minus and plus buttons over nine sizes, 0.8 to 1.6 times the size as designed |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, the Auto-switch control, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, Codex's own limits, and the bar with the release, reload and the gear">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the newer one on offer with its Update button, reload and the gear">
 
 The foot lists the sessions waiting on you, oldest first, and under them your
 Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
@@ -168,12 +178,14 @@ between accounts from there. Auto-switch, off by default, spends first the
 quota that resets soonest and leaves an account before a limit stops your
 sessions. Only the limits of the models your sessions run count, and a model
 limit full on every account is set aside with a `Fable full everywhere` chip.
-While a switch is near, a chip says where it would go and why. Codex's own limits sit under them, read from
+While Auto-switch is on, you have two or more accounts and a switch is near,
+a chip reads the account's name and `soon`, and gives the reason on hover. Codex's own limits sit under them, read from
 its session log: a 5-hour and a weekly window, or weekly alone, depending on
 the plan. See [docs/accounts.md](docs/accounts.md).
 
 The bar at the bottom names the release you run, and two buttons: reload and
-the gear. Once a day the daemon lists the releases on GitHub; when one is
+the gear. At start, once a day and on every reload press, the daemon lists
+the releases on GitHub; when one is
 newer, the bar adds its number and an Update button. Pressing it pulls that
 release, runs `install.sh` and restarts the daemon, after which the panel
 needs reopening from View > Toolbelt. See
@@ -184,13 +196,14 @@ needs reopening from View > Toolbelt. See
 Right-click an agent row, or press Shift+F10 on a selected one, for
 `/compact`, `/rotate`, `/clear` and Close. Close and `/clear` ask for a second
 click. A Codex row gets `/compact` and Close, since Codex has no `/rotate` or
-`/clear`. An omp row gets `/compact`, `/clear` and Close.
+`/clear`. An omp row gets `/compact`, `/clear` and Close. A plain terminal's
+row gets Close alone.
 
 ## More
 
 - [docs/usage.md](docs/usage.md): what every part of a card means
 - [docs/accounts.md](docs/accounts.md): accounts, switching, the meters
-- [docs/integrations.md](docs/integrations.md): the two opt-in installs
+- [docs/integrations.md](docs/integrations.md): the statusline bridge and Codex hooks, and how to opt out
 - [docs/troubleshooting.md](docs/troubleshooting.md): `STALE`, `?`, a white panel,
   tracing the statusline bridge
 - [docs/development.md](docs/development.md): how it works, tests, releases

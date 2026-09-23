@@ -2,14 +2,26 @@
 
 | Symptom | What it means | What to do |
 | --- | --- | --- |
-| Every row dims, `STALE` banner | The daemon missed two heartbeats, or a heartbeat says it can't read iTerm2 | Restart the script from the Scripts menu |
-| A row shows `?` for its directory or job | iTerm2 can't report that one session | Nothing; one session costs its own row, not the list |
+| Every row dims, `STALE` banner | The daemon missed two heartbeats, or a heartbeat says it can't read iTerm2 | Quit the running script first, in Scripts > Manage > Console or by killing the `venvs/3.10/bin/python` process that runs `agents_sidebar.py`. Then start it from the Scripts menu. Starting it while one runs makes a second daemon |
+| A row shows `?` for its directory | iTerm2 can't report that one session's directory. The row leaves out a job it can't read | Nothing; one session costs its own row, not the list |
 | The panel is white and nothing loads | Two tool identifiers named "Agents", and the menu opened the dead one | Rename the stale entry, below |
 | Codex cards stop appearing | A herdr update rewrote `~/.codex/hooks.json` | `./install.sh --codex` |
-| Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | Install in the panel's foot, or `./install.sh` |
-| Install in the foot shows red text | `~/.claude/settings.json` is not valid JSON, so nothing was written | Fix the file, then press Install again |
+| Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | Install in the panel's foot, or `./install.sh`. After **Not now** the foot offers nothing until Settings > Offer the statusline bridge brings it back |
+| No context percentage, and no offer in the foot | `~/.claude/settings.json` is not valid JSON, so the panel offers nothing | Fix the file; the offer then shows |
+| Install in the foot shows red text | `~/.claude/settings.json` stopped being valid JSON after the offer showed, so the panel wrote nothing | Fix the file, then press Install again |
 | Update refused, red text in the bar | The checkout could not fast-forward, or `install.sh` failed; the whole message is in the script console | `git -C <checkout> status`, then `./install.sh` by hand |
 | The panel is blank after Update | The daemon restarted on a new port | Reopen it: View > Toolbelt > Agents |
+| `accounts hidden: <error>` in the foot | The panel can't read the account store, `~/.config/agents-sidebar/accounts.json` | Fix that file; the error says what is wrong with it |
+
+Some failures show only in `~/.claude/agents-sidebar-status/daemon.log`:
+
+| Line in `daemon.log` | What it means | What to do |
+| --- | --- | --- |
+| `no notifier at <path>; run install.sh` | `Agents.app` is missing, so no notices go out | `./install.sh`; it needs `swiftc` |
+| `resume refused <session>` | A resume click found the session gone, not resumable, or a resume already under way | Nothing; click again once the card offers it |
+| `answer refused <session> <text>` | A click on a card's answer came after the question changed or was already answered | Answer in the pane |
+| `auto-switch: nowhere to go, <why>` | The panel should leave the account, but no other account fits | Wait for a reset, or add an account |
+| `auto-switch refused: <why>` | An automatic switch failed, and the login did not change | Act on the reason it gives |
 
 ## The white panel
 
@@ -76,8 +88,9 @@ Reading it:
 - `render-end rc=0` a long way after its `render-start` is a render that is
   simply slow, which is a different problem with a different fix.
 - `warm-printed` lands before `render-start`: the tick answers from the last
-  line, then renders the next one itself. It renders as this process rather
-  than as a background job on purpose -- see below.
+  line, then renders the next one itself. The render is a background job in
+  its own process group, and the tick waits for it rather than leaving it
+  running, on purpose. The next section says why.
 
 ## Why the statusline goes dark
 

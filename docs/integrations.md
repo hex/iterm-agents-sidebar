@@ -1,9 +1,23 @@
 # Integrations
 
 What `./install.sh` changes outside its own files, the statusline bridge and
-the Codex hooks, and how to undo them. `./uninstall.sh` undoes everything at
-once, the panel's own data included. Each has an opt-out, `--no-statusline`
-and `--no-codex`. The README has the short version.
+the Codex hooks, and how to undo them. `./uninstall.sh` undoes most of it at
+once, the panel's own data included; below says what it leaves. The bridge
+and the hooks each have an opt-out, `--no-statusline` and `--no-codex`. The
+README has the short version.
+
+## What the install writes
+
+| Where | What |
+| --- | --- |
+| `~/Library/Application Support/iTerm2/Scripts/AutoLaunch/agents_sidebar.py` | A stub that loads `sidebar.py` from the checkout, so iTerm2 starts the panel |
+| `~/.claude/skills/agents-sidebar` | A copy of `plugin/`, the state hook. Claude Code runs this copy, not the checkout, so after editing `plugin/` run `./install.sh` again |
+| `~/.local/share/agents-sidebar/Agents.app` | The app that posts the macOS notices. It needs `swiftc`; without it the install warns and builds nothing. macOS asks once to allow its notifications |
+| `~/.claude/settings.json` | The statusline bridge, below |
+| `~/.codex/hooks.json` and `~/.codex/config.toml` | The Codex hooks, below |
+
+`--statusline` also exists. The bridge goes in by default, so the flag only
+cancels an earlier `--no-statusline` on the same command line.
 
 ## The statusline bridge
 
@@ -27,17 +41,23 @@ session leaves behind once they are a day old.
 
 The install saves the replaced command to
 `~/.claude/agents-sidebar-status/original-statusline` and backs up the whole
-settings file to `settings.json.before-agents-sidebar`.
+settings file to `settings.json.before-agents-sidebar`. Every install of the
+bridge writes that backup again, the panel's Install button included, so it
+holds the file from just before the latest install, not the first.
 
 `cs` rewrites `settings.json` from a template, so `cs -statusline enable`
 replaces the bridge. The statusline keeps working, but the context figure
 stops updating. Run `./install.sh` again to put it back.
 
-To undo:
+While `settings.json` lacks the bridge, the panel's foot offers it. **Install**
+puts it in, and **Not now** hides the offer. The Settings row **Offer the
+statusline bridge** brings the offer back. A `settings.json` that is not valid
+JSON gets no offer; fix the file first.
 
-```sh
-cp ~/.claude/settings.json.before-agents-sidebar ~/.claude/settings.json
-```
+To undo, run `./uninstall.sh`. It puts back only the `statusLine` key and
+leaves the rest of `settings.json` alone, later edits included. Copying the
+backup over `settings.json` also works, but it throws away every edit made
+since the latest install.
 
 ## Codex hooks
 
@@ -48,10 +68,14 @@ report. It also adds `~/.claude/agents-sidebar-tasks` to
 `[sandbox_workspace_write] writable_roots` in `~/.codex/config.toml`, because
 Codex writes only inside its workspace and the task line lives in that
 directory. `codex-sandbox.py` makes that edit: it creates the table or the key
-when absent and appends to a one-line array, and leaves an array laid out over
-several lines alone with a message, so add the directory by hand then.
-`--codex` insists and fails when Codex is missing; `--no-codex` skips both
-files.
+when absent and appends to a one-line array. Any other layout (an array over
+several lines, or one with a comment after it) it leaves alone with a message,
+so add the directory by hand then.
+`--codex` installs even when Codex is missing, and creates `~/.codex` for it;
+`--no-codex` skips both files.
+
+Before its first prompt, a Codex session has published nothing. The panel
+still shows a Codex card for a pane whose foreground job is `codex`.
 
 A `codex exec` that a Claude session runs as a tool reports nothing. It shares
 the Claude pane, and the card stays the Claude session's.
@@ -59,17 +83,37 @@ the Claude pane, and the card stays the Claude session's.
 Entries other tools put in `hooks.json` (herdr registers its own) stay where
 they are, and the first install copies each file to
 `hooks.json.before-agents-sidebar` and `config.toml.before-agents-sidebar`; a
-re-run keeps those first copies. A herdr update can rewrite the hooks file, so
-run `./install.sh` again if Codex cards stop showing up.
+re-run keeps those first copies. A file that did not exist gets no copy. A
+herdr update can rewrite the hooks file, so run `./install.sh` again if Codex
+cards stop showing up.
 
-To undo:
+To undo, run `./uninstall.sh`. It takes only our entries out of `hooks.json`
+and leaves the rest. Copying the backups back would also drop what other
+tools added since the first install. To take our entries out and keep
+everything else installed, run this in the checkout:
 
 ```sh
-cp ~/.codex/hooks.json.before-agents-sidebar ~/.codex/hooks.json
-cp ~/.codex/config.toml.before-agents-sidebar ~/.codex/config.toml
+bash codex-hooks.sh --remove ~/.codex/hooks.json \
+  ~/.claude/skills/agents-sidebar/hooks-handlers/emit-state.py
 ```
 
+The `writable_roots` entry in `config.toml` stays either way; remove it by
+hand if you like.
+
 See `docs/codex-rows-design.md` for what a Codex card reads and from where.
+
+## Uninstall
+
+`./uninstall.sh` takes no flags. It stops the daemon and removes:
+
+- the AutoLaunch stub, the plugin copy and `Agents.app`
+- the bridge from `settings.json`, putting back only the `statusLine` key
+- our entries from `~/.codex/hooks.json`, through `codex-hooks.sh --remove`
+- the panel's settings, state and account store, and the Keychain items of
+  every stored login
+
+It leaves the `writable_roots` entry in `~/.codex/config.toml`, the
+`.before-agents-sidebar` backups, and the checkout itself.
 
 ## omp
 

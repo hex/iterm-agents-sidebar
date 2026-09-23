@@ -10,6 +10,9 @@
 #
 #   ./release.sh "What changed, in one line"
 #
+# It ends with a GitHub release page carrying that line and a compare link,
+# made with gh; edit the page afterwards for longer notes.
+#
 # RELEASE_SCRUB, when set, is a space-separated list of words the public tree
 # must not contain (names, hostnames); the release stops on a hit.
 set -euo pipefail
@@ -93,3 +96,17 @@ git branch -f public "$commit"
 git tag -a "v$version" -m "$summary" "$commit"
 git push -q "$remote" public:main "v$version"
 echo "published $version as $(git rev-parse --short "$commit") -> $remote"
+
+# The release page: the summary, and what changed since the release before.
+# The tag is already public, so a page that fails says how to make it by hand.
+previous="$(git describe --tags --abbrev=0 "$commit^")"
+url="$(git remote get-url "$remote" | sed -e 's|\.git$||' -e 's|^git@github.com:|https://github.com/|')"
+notes="$summary
+
+**Full changelog**: $url/compare/$previous...v$version"
+gh release create "v$version" --repo "$url" --verify-tag --title "$version" --notes "$notes" >/dev/null || {
+  echo "error: v$version is pushed but has no release page; make it with:" >&2
+  echo "  gh release create v$version --repo $url --verify-tag --title $version --notes-file <notes>" >&2
+  exit 1
+}
+echo "release page: $url/releases/tag/v$version"

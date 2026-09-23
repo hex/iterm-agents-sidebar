@@ -104,8 +104,8 @@ else
 fi
 
 # Codex sessions as panel rows: on when Codex is here (its directory or its
-# binary), so a machine without it sees nothing about it. --codex insists and
-# fails loudly instead; --no-codex leaves Codex's files alone. Two files
+# binary), so a machine without it sees nothing about it. --codex installs
+# anyway, creating ~/.codex; --no-codex leaves Codex's files alone. Two files
 # change: ~/.codex/hooks.json, which other tools write too (herdr registers
 # its own entries there), so only our entries move; and config.toml, where
 # Codex's sandbox learns the task directory. Codex asks once to trust the hooks.
