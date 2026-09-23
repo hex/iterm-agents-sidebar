@@ -766,12 +766,21 @@ def test_the_models_that_decide_switching_are_those_claude_sessions_and_their_su
     assert running_models(snap) == {"opus", "fable", "sonnet"}
 
 
-def test_a_claude_session_whose_model_is_not_known_yet_leaves_every_limit_deciding():
+def test_a_claude_session_whose_model_is_not_known_yet_is_left_out_while_another_reports_one():
+    """A session reports its model within seconds of starting. Counting every
+    limit meanwhile moved the account for a Fable limit nothing ran."""
     from sidebar import running_models
     snap = {"groups": [{"name": "AGENTS", "rows": [{"state": "working", "model": "Opus 5.5"},
                                                    {"state": "working"}]}]}
-    assert running_models(snap) is None
+    assert running_models(snap) == {"opus"}
     assert running_models({"groups": []}) == set()
+
+
+def test_when_no_claude_session_has_reported_a_model_every_limit_decides():
+    from sidebar import running_models
+    snap = {"groups": [{"name": "AGENTS", "rows": [
+        {"state": "working"}, {"state": "idle", "subagents": [{"model": None, "ended": None}]}]}]}
+    assert running_models(snap) is None
 
 
 def test_an_exited_session_runs_no_model():
@@ -784,14 +793,14 @@ def test_an_exited_session_runs_no_model():
     assert running_models(snap) == {"opus"}
 
 
-def test_a_finished_subagent_does_not_count_and_a_running_one_without_a_model_is_unknown():
+def test_a_finished_subagent_does_not_count_and_a_running_one_without_a_model_is_left_out():
     from sidebar import running_models
     finished = {"groups": [{"name": "AGENTS", "rows": [
         {"state": "working", "model": "Opus 5.5", "subagents": [{"model": "claude-fable-5-1", "ended": 1790000000}]}]}]}
     assert running_models(finished) == {"opus"}
     blind = {"groups": [{"name": "AGENTS", "rows": [
         {"state": "working", "model": "Opus 5.5", "subagents": [{"model": None, "ended": None}]}]}]}
-    assert running_models(blind) is None
+    assert running_models(blind) == {"opus"}
 
 
 def test_a_claude_conversation_offers_its_context_breakdown_and_nothing_else_does():
