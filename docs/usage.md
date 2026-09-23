@@ -133,3 +133,9 @@ log under Scripts > Manage > Console.
 
 A card whose agent asks a question while it sits below the visible list
 scrolls into view. One already on screen stays put.
+
+A waiting card says what it waits on, under the name: the first question of an
+AskUserQuestion (two lines at most, with "+1 more" when it asked several), or
+the tool a permission prompt is for and the first line of what it would run.
+The line goes when the prompt is answered. An omp session reports only that it is
+blocked, so its card shows no question.

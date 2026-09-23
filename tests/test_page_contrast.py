@@ -17,6 +17,8 @@ PAIRS = [
     ("--dim", "--bg"),
     ("--fg", "--card"),
     ("--blocked-text", "--blocked-bg"),
+    # A waiting card's "+1 more" after its question.
+    ("--dim", "--blocked-bg"),
     ("--badge-ink", "--blocked-border"),
     ("--accent-ink", "--switch-bg"),
     ("--accent-ink", "--hot"),

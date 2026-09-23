@@ -30,7 +30,7 @@ def report(x, top, activity, age, done):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="Four cards: one amber with a WAITING badge, one at work with a report and ticks, '
+  f'aria-label="Four cards: one amber with a WAITING badge and its question, one at work with a report and ticks, '
   f'one grey with an IDLE outline, and one at work for 25 minutes with a warm long badge">')
 A('  <title>What a card says</title>')
 A(f'''  <defs>
@@ -50,7 +50,7 @@ A(f'  <rect x="{x}" y="{c}" width="{CARD_W}" height="80" rx="10" fill="{BLOCKED_
 working_dots(x + 18, c + 20, "#2a9d8f")
 text(tx, c + 31, "beacon", fill=FG, size=15, weight=600)
 tag(tx + NAME_W["beacon"] + 9, c + 31, "claude")
-text(tx, c + 52, "Pick the cache store", fill=DIM, size=12.5)
+text(tx, c + 52, "Redis or SQLite for the cache?", fill=BLOCKED_TEXT, size=12.5)
 facts(tx, c + 69, "feat/cache", "Fable 5.1")
 badge(x + CARD_W - 16, c + 14, "WAITING", filled=True)
 

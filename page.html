@@ -605,6 +605,23 @@
     display: inline-block; width: var(--meta-icon); height: var(--meta-icon);
     vertical-align: -1px; margin-right: 3px; opacity: 1; fill: currentColor;
   }
+  /* What a blocked card is asking, in the card's own amber ink: two lines of
+     the question at most, the rest in the tooltip. A tool gate names the tool
+     and the start of what it would run, cut to one line. */
+  .asks {
+    align-self: stretch; max-width: 100%; margin-block: 4px 3px;
+    font: 400 11px/1.35 -apple-system, sans-serif; color: var(--blocked-text);
+  }
+  .asks .asks-text {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  }
+  .asks .asks-more { color: var(--dim); }
+  .asks:has(.asks-tool) { display: flex; gap: 5px; align-items: baseline; }
+  .asks .asks-tool { flex: none; font-weight: 600; }
+  .asks .asks-cmd {
+    flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 400 10.5px/1.35 ui-monospace, Menlo, monospace;
+  }
   /* The ellipsis goes on the text, not the chip. A chip is a flex box, and
      text-overflow does nothing for the loose text inside a flex box -- the
      text was simply cut, "cs/unity-studi" with no sign anything was missing. */
@@ -2076,6 +2093,26 @@ function taskLine(task) {
   return line;
 }
 
+// What a blocked session is waiting on, in its own words: the question it
+// asked, or the tool it wants to run and on what. Only while the gate stands,
+// since that is when it decides which card to answer first.
+function questionLine(asked) {
+  const line = Object.assign(document.createElement("span"), {className: "asks"});
+  const el = (cls, text) => Object.assign(document.createElement("span"), {className: cls, textContent: text});
+  if (asked.options) {
+    const text = el("asks-text", asked.question || asked.header || "");
+    // The count rides the question's last line, so it never takes one of its own.
+    if (asked.more) text.append(" ", el("asks-more", `+${asked.more} more`));
+    line.append(text);
+    line.title = asked.question || "";
+  } else {
+    line.append(el("asks-tool", asked.tool));
+    if (asked.summary) line.append(el("asks-cmd", asked.summary));
+    line.title = asked.summary ? `${asked.tool}: ${asked.summary}` : asked.tool;
+  }
+  return line;
+}
+
 // What the agent itself calls the session and what it says it is on, in the
 // task line's place and style. Both are read live off the agent, so the line
 // has no age and no estimate.
@@ -2797,6 +2834,10 @@ function paint(snapshot) {
           b.classList.add("cornered");
           b.append(glyph);
         }
+      }
+
+      if (hot && row.question && (row.question.options || row.question.tool)) {
+        stack.append(questionLine(row.question));
       }
 
       // What the session says it is doing, as it wrote it: a title, then
