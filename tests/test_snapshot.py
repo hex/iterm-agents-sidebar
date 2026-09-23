@@ -774,6 +774,16 @@ def test_a_claude_session_whose_model_is_not_known_yet_leaves_every_limit_decidi
     assert running_models({"groups": []}) == set()
 
 
+def test_an_exited_session_runs_no_model():
+    """Its process is gone, and the statusline file that named its model
+    goes with it: counted, it would leave every limit deciding."""
+    from sidebar import running_models
+    snap = {"groups": [{"name": "AGENTS", "rows": [{"state": "working", "model": "Opus 5.5"},
+                                                   {"state": "exited", "model": "Fable 5.1"},
+                                                   {"state": "exited"}]}]}
+    assert running_models(snap) == {"opus"}
+
+
 def test_a_finished_subagent_does_not_count_and_a_running_one_without_a_model_is_unknown():
     from sidebar import running_models
     finished = {"groups": [{"name": "AGENTS", "rows": [

@@ -774,6 +774,23 @@
   .word.idle { color: var(--dim); box-shadow: inset 0 0 0 .5px var(--dim);
     font-family: -apple-system, sans-serif; font-weight: 600; }
   button.row.resting > .word.idle { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  /* An agent whose process is gone: the idle outline without its sweep, and
+     the card behind it faded, since nothing on it is live any more. */
+  .word.exited { color: var(--dim); box-shadow: inset 0 0 0 .5px var(--dim);
+    font-family: -apple-system, sans-serif; font-weight: 600; }
+  button.row.resting > .word.exited { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  li.line.card.exited > button.row, li.line.card.exited > .children,
+  li.line.card.exited > .shell-sum { opacity: .55; }
+  /* The one live control on a faded card, in the plain tint of the bar's
+     buttons: the badge already says what happened. */
+  li.line.card > .resume {
+    align-self: flex-start; width: auto; height: 20px; margin: 2px 0 8px var(--child-indent, 44px);
+    padding: 0 9px; border: 0; border-radius: 6px;
+    font: 500 11px/1 -apple-system, sans-serif; color: var(--fg);
+    background: var(--tint-ctl);
+  }
+  li.line.card > .resume:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+  li.line.card > .resume:disabled { opacity: .5; }
   /* A highlight sweeps through the letters: the dim ink stays the base and a
      band of light passes over it, towards white in either theme. The page rebuilds rows on every
      update, so each badge starts at the point the clock says the sweep has
@@ -886,7 +903,8 @@
   #bar button:focus-visible, .step button:focus-visible, .shell-sum:focus-visible,
   .shell-pop button:focus-visible, #budget .acct-name:focus-visible,
   #budget .acct-item-name:focus-visible, #budget .acct-add:focus-visible,
-  #budget .acct-switch:focus-visible, #budget .acct-rename:focus-visible {
+  #budget .acct-switch:focus-visible, #budget .acct-rename:focus-visible,
+  li.line.card > .resume:focus-visible {
     outline: 1px solid var(--hot); outline-offset: 1px;
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 22%, transparent);
   }
@@ -1401,7 +1419,8 @@ const STATE_TITLES = {
   working: "working",
   idle: "idle",
   blocked: "needs your permission",
-  unknown: "state unknown, the last writer is gone",
+  unknown: "state unknown, nothing has reported for a while",
+  exited: "exited, its process is gone",
 };
 // A turn still working after this long may be stuck: it earns a badge.
 const LONG_TURN_SECONDS = 20 * 60;
@@ -2803,7 +2822,7 @@ function paint(snapshot) {
         mark.className = "shell-mark";
         mark.append(metaIcon("shells"));
       } else {
-        mark.className = "swatch" + (row.state === "unknown" ? " hollow" : "");
+        mark.className = "swatch" + (row.state === "unknown" || row.state === "exited" ? " hollow" : "");
       }
       if (SESSION_COLOURS[row.colour]) {
         mark.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
@@ -2961,6 +2980,14 @@ function paint(snapshot) {
         syncShimmer(word);
         b.append(word);
         b.classList.add("resting");
+      } else if (row.state === "exited" && !row.depth) {
+        // Not "crashed": all the panel knows is that the process is gone.
+        const word = document.createElement("span");
+        word.className = "word exited";
+        word.textContent = "exited";
+        b.append(word);
+        b.classList.add("resting");
+        card.classList.add("exited");
       }
 
 
@@ -3002,6 +3029,19 @@ function paint(snapshot) {
       }
       li.append(b);
       if (menu) li.append(menu);
+      // Outside the row, since a button cannot hold one. The daemon decides
+      // what is typed and refuses anything it no longer finds safe.
+      if (row.resumable) {
+        const resume = Object.assign(document.createElement("button"),
+                                     {className: "resume", type: "button", textContent: "Resume"});
+        resume.title = "Reopen this conversation at the prompt of the pane it exited in";
+        resume.addEventListener("click", () => {
+          resume.disabled = true;
+          resume.textContent = "Resuming…";
+          act(row.session_id, "resume");
+        });
+        li.append(resume);
+      }
       // Gathered by agent, the daemon sends each agent's cards together; a
       // head opens each run, and a list of one agent needs none.
       if (group.name === "AGENTS" && agentMark() === "groups" && !row.worktree_of

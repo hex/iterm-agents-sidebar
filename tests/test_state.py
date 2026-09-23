@@ -26,14 +26,27 @@ def test_parse_state_reads_a_live_payload():
     assert parse_state(raw) == "working"
 
 
-def test_a_dead_writer_reports_unknown_not_its_last_claim():
+def reaped_pid():
+    """The pid of a process that has run and been waited for: nobody's now."""
+    import subprocess
+    child = subprocess.Popen(["true"])
+    child.wait()
+    return child.pid
+
+
+def test_a_dead_writer_reports_exited_not_its_last_claim():
     """The council's central warning about SetUserVar: it is last-writer-wins
     with no concept of death. A session killed mid-turn leaves "working" in the
     variable forever, which is exactly the plausible-but-false display this
-    design forbids.
-
-    PID 0 can never be a real Claude process, so it stands in for a dead one.
+    design forbids. Its writer is gone, which is what the card then says.
     """
+    for claim in ("working", "idle", "blocked"):
+        raw = json.dumps({"state": claim, "pid": reaped_pid(), "ts": 1788774165})
+        assert parse_state(raw) == "exited"
+
+
+def test_pid_zero_is_no_writer_at_all():
+    """kill(0) addresses the whole process group, so it proves nothing."""
     raw = json.dumps({"state": "working", "pid": 0, "ts": 1788774165})
     assert parse_state(raw) == "unknown"
 

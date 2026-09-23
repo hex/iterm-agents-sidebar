@@ -76,6 +76,7 @@ scrolls into view; one already on screen stays put.
 | Working | Dark name, working dots |
 | Idle | Grey name, IDLE outline |
 | Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
+| Exited | Faded, with an EXITED outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
 
 <img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each part joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">
 
