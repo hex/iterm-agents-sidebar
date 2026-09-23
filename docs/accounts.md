@@ -62,17 +62,44 @@ and how long ago. A chip marks a switch the panel made on its own.
 ## Switching on its own
 
 Off by default. The **Auto-switch** control above the accounts lets the panel
-leave the active account before a limit stops your sessions. It moves when the account's
-fullest window, the 5-hour, the weekly or the Fable limit, reaches 90%, or when
-the rate it is filling at would reach 100% within ten minutes. It waits instead
-when that window resets within ten minutes and would not fill first.
+move your sessions between accounts so the quota you have lasts, and so no
+session stops at a limit while another account has room.
 
-It picks the account with the most room, at least ten points better and under
-90% itself; near-equal accounts are split by whichever resets sooner. A reading
-older than three minutes is taken again before the switch. Automatic switches
-are at least five minutes apart, except that an account already at 100% is left
-at once. When every account is full it stays put and says so once in the
-daemon log.
+**Which limits count.** An account's figure is its fullest window among the
+5-hour, the weekly, and the weekly limit of each model your Claude sessions and
+their subagents run. A Fable limit counts while a session runs Fable, and not
+while every session runs Opus. When a session's model is not known yet, every
+limit counts. A model limit at 100% on every account decides nothing: no switch
+can help it, so the other limits decide until the first one returns, and the
+chip says `Fable full everywhere` with that account and time in its tooltip.
+If that model is the only one running, the panel stays put and says why once.
+
+**Leaving a full account.** It leaves when that figure reaches 90%, or when the
+rate it is filling at would reach 100% within ten minutes. It waits instead
+when that window resets within ten minutes and would not fill first. It goes
+to an account at least ten points better and under 90%; when none is, to one at
+least three points emptier than the active one and under 100%. Automatic moves are at
+least five minutes apart, except that the panel leaves an account about to hit
+100% at once. It reads an account again first when its reading is older than
+three minutes.
+
+**Balancing before anything is full.** While the active account is under the
+line, the panel moves to another account when that one has at least 1.25 times
+the weekly runway: the room left in its tightest weekly window, divided by the
+days until that window resets. Quota that returns tomorrow is spent before
+quota that has to last a week, so less of it resets unused. A balance goes
+only to an account under 90% whose 5-hour window is under 70%, waits half an
+hour after any switch, uses
+readings up to 15 minutes old without asking for new ones, and happens only
+when two readings of the active account agree on the same target. It never
+goes to an account whose own readings show it filling, one whose 5-hour
+window was not read, or one with a weekly limit that does not say when it
+resets. With no Claude session running, nothing switches.
+
+**Choosing among accounts.** The panel takes an account under 90% with room in
+its 5-hour window (under 70%) first, then any account under 90%, then the rest. Among those, the most weekly
+runway wins. Runways within 10% of each other go to the one that resets
+sooner, then to the emptier 5-hour window.
 
 While a switch is near, a chip beside the control names where it would go
 (`→ spare soon`), or says `nowhere to go`; point at it for the reason

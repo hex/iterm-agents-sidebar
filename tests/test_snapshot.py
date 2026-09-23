@@ -752,3 +752,33 @@ def test_a_session_named_base_at_feature_follows_the_base_session_by_name_when_g
     rows = snapshot([elsewhere, by_name])["groups"][0]["rows"]
     assert [r["label"] for r in rows] == ["atlas", "atlas@worktree"]
     assert "worktree_of" not in rows[1]
+
+
+def test_the_models_that_decide_switching_are_those_claude_sessions_and_their_subagents_run():
+    from sidebar import running_models
+    snap = {"groups": [
+        {"name": "AGENTS", "rows": [
+            {"state": "working", "model": "Opus 5.5",
+             "subagents": [{"model": "claude-fable-5-1"}, {"model": None, "provider": "codex"}]},
+            {"state": "idle", "model": "gpt-6", "provider": "codex"},
+            {"state": "idle", "model": "Sonnet 5", "provider": "claude"}]},
+        {"name": "SESSIONS", "rows": [{"label": "zsh"}]}]}
+    assert running_models(snap) == {"opus", "fable", "sonnet"}
+
+
+def test_a_claude_session_whose_model_is_not_known_yet_leaves_every_limit_deciding():
+    from sidebar import running_models
+    snap = {"groups": [{"name": "AGENTS", "rows": [{"state": "working", "model": "Opus 5.5"},
+                                                   {"state": "working"}]}]}
+    assert running_models(snap) is None
+    assert running_models({"groups": []}) == set()
+
+
+def test_a_finished_subagent_does_not_count_and_a_running_one_without_a_model_is_unknown():
+    from sidebar import running_models
+    finished = {"groups": [{"name": "AGENTS", "rows": [
+        {"state": "working", "model": "Opus 5.5", "subagents": [{"model": "claude-fable-5-1", "ended": 1790000000}]}]}]}
+    assert running_models(finished) == {"opus"}
+    blind = {"groups": [{"name": "AGENTS", "rows": [
+        {"state": "working", "model": "Opus 5.5", "subagents": [{"model": None, "ended": None}]}]}]}
+    assert running_models(blind) is None

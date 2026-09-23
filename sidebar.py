@@ -404,6 +404,28 @@ def row_label(snapshot, session_id):
     return row.get("label", "") if row else ""
 
 
+def running_models(snapshot):
+    """The model families the Claude sessions on the panel and their running
+    subagents use, for switching: {"opus", "fable"}, or None when one's model
+    is not known yet, so every limit keeps deciding until it is. A finished
+    subagent uses nothing."""
+    families = set()
+    for group in snapshot.get("groups", []):
+        for row in group["rows"]:
+            if row.get("state") is None or row.get("provider") not in (None, "claude"):
+                continue
+            if not row.get("model"):
+                return None
+            families.add(accounts.family(row["model"]))
+            for sub in row.get("subagents") or []:
+                if sub.get("ended") is not None or sub.get("provider") not in (None, "claude"):
+                    continue
+                if not sub.get("model"):
+                    return None
+                families.add(accounts.family(sub["model"]))
+    return families
+
+
 def notifies_itself(row):
     """Whether the row's agent already tells the terminal about its own moments."""
     return row.get("provider") == "omp"
@@ -2736,8 +2758,13 @@ class Bridge:
             result = self.meters.rename(request["account_id"], request["alias"])
         else:
             result = self.meters.switch(request["account_id"], time.time())
-        self.meters.tick(time.time())
+        self.meters.tick(time.time(), models=self.models_running())
         return result
+
+    def models_running(self):
+        """The families switching should count, or None before the first
+        rebuild has said which sessions there are."""
+        return running_models(self.latest) if self.last_ok is not None else None
 
     async def watch_accounts(self):
         """Read account usage in the background; rebuild picks the result up.
@@ -2749,7 +2776,7 @@ class Bridge:
         while True:
             try:
                 auto = load_settings()["auto_switch"]
-                events = await asyncio.to_thread(self.meters.tick, time.time(), auto)
+                events = await asyncio.to_thread(self.meters.tick, time.time(), auto, self.models_running())
                 for event in events:
                     self.log(switch_log_line(event))
                     if event["kind"] == "switched":
