@@ -105,6 +105,7 @@ DEFAULT_SETTINGS = {
     "show_task_activity": True,
     "show_task_age": True,
     "show_task_bar": True,
+    "show_task_list": True,
     "show_agents": True,
     "show_shells": True,
     # The list follows the terminals by default: a card sits where its tab

@@ -37,7 +37,7 @@ def test_the_settings_figure_lists_every_setting_the_sheet_has():
     from panel_draw import setting_rows
     svg = (ASSETS / "settings.svg").read_text()
     labels = [row["label"] for row in setting_rows() if "label" in row]
-    assert len(labels) == 24
+    assert len(labels) == 25
     for label in labels:
         assert f">{label}<" in svg, label
 

@@ -147,7 +147,7 @@ def test_the_task_line_is_shown_by_default():
 def test_every_piece_of_the_task_line_can_be_turned_off_and_starts_on():
     """The bar, the activity and the report age are each the session's own
     claim; a panel that shows fewer of them is still a working panel."""
-    for key in ("show_task_bar", "show_task_activity", "show_task_age"):
+    for key in ("show_task_bar", "show_task_activity", "show_task_age", "show_task_list"):
         assert sidebar.DEFAULT_SETTINGS[key] is True
 
 
