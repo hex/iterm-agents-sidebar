@@ -618,6 +618,29 @@
   .asks .asks-more { color: var(--dim); }
   .asks:has(.asks-tool) { display: flex; gap: 5px; align-items: baseline; }
   .asks .asks-tool { flex: none; font-weight: 600; }
+  /* The options of a question, one row each, in the question's own left edge.
+     A card asking a question shows only its name, the question and these:
+     the task line, model line and folds come back once it is answered, and
+     the card keeps about the height it had while working. */
+  li.line.card > .answers {
+    display: flex; flex-direction: column; gap: 4px;
+    margin: -2px var(--row-pad) 10px calc(var(--row-pad) + var(--mark) + var(--row-gap));
+  }
+  li.line.card > .answers > .answer {
+    display: flex; gap: 7px; align-items: baseline; min-width: 0; padding: 4px 9px;
+    border: 0; border-radius: 6px; text-align: left;
+    font: 500 11.5px/1.3 -apple-system, sans-serif; color: var(--fg);
+    background: color-mix(in srgb, var(--blocked-text) 14%, transparent);
+  }
+  li.line.card > .answers > button.answer:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--blocked-text) 24%, transparent);
+  }
+  li.line.card > .answers > .answer:disabled { opacity: .5; }
+  li.line.card > .answers > .answer.picked { opacity: 1; font-weight: 600; }
+  li.line.card > .answers .answer-n { flex: none; color: var(--blocked-text); font-variant-numeric: tabular-nums; }
+  li.line.card > .answers .answer-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li.line.card.asking > button.row .stack > .task, li.line.card.asking > button.row .stack > .model,
+  li.line.card.asking > .children, li.line.card.asking > .shell-sum { display: none; }
   .asks .asks-cmd {
     flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     font: 400 10.5px/1.35 ui-monospace, Menlo, monospace;
@@ -904,7 +927,7 @@
   .shell-pop button:focus-visible, #budget .acct-name:focus-visible,
   #budget .acct-item-name:focus-visible, #budget .acct-add:focus-visible,
   #budget .acct-switch:focus-visible, #budget .acct-rename:focus-visible,
-  li.line.card > .resume:focus-visible {
+  li.line.card > .resume:focus-visible, li.line.card > .answers > .answer:focus-visible {
     outline: 1px solid var(--hot); outline-offset: 1px;
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 22%, transparent);
   }
@@ -2154,6 +2177,41 @@ function questionLine(asked) {
   return line;
 }
 
+// The picked option per session, by the question it answered, so a repaint
+// before the question closes keeps the buttons spent.
+const pickedAnswers = new Map();
+
+// A button per option under a question card; a click types that option's
+// number, and the daemon types it only onto the question it was drawn for.
+// A multi-select question takes several digits and a submit, so its options
+// are shown but answered in the terminal.
+function answerRows(row) {
+  const asked = row.question;
+  const answers = Object.assign(document.createElement("div"), {className: "answers"});
+  const picked = pickedAnswers.get(row.session_id);
+  const spent = picked && picked.question === asked.question;
+  asked.options.forEach((label, i) => {
+    const option = document.createElement(asked.multi ? "div" : "button");
+    option.className = "answer";
+    option.title = asked.multi ? `${label} (several can be picked: answer in the terminal)` : label;
+    option.append(Object.assign(document.createElement("span"), {className: "answer-n", textContent: String(i + 1)}),
+                  Object.assign(document.createElement("span"), {className: "answer-label", textContent: label}));
+    if (!asked.multi) {
+      option.type = "button";
+      option.disabled = !!spent;
+      if (spent && picked.pick === i + 1) option.classList.add("picked");
+      option.addEventListener("click", () => {
+        pickedAnswers.set(row.session_id, {question: asked.question, pick: i + 1});
+        for (const other of answers.children) other.disabled = true;
+        option.classList.add("picked");
+        act(row.session_id, "answer", JSON.stringify({pick: i + 1, question: asked.question}));
+      });
+    }
+    answers.append(option);
+  });
+  return answers;
+}
+
 // What the agent itself calls the session and what it says it is on, in the
 // task line's place and style. Both are read live off the agent, so the line
 // has no age and no estimate.
@@ -3051,6 +3109,10 @@ function paint(snapshot) {
       }
       li.append(b);
       if (menu) li.append(menu);
+      if (hot && row.question?.options?.length) {
+        li.classList.add("asking");
+        li.append(answerRows(row));
+      }
       // Outside the row, since a button cannot hold one. The daemon decides
       // what is typed and refuses anything it no longer finds safe.
       if (row.resumable) {

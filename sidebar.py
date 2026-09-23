@@ -67,7 +67,10 @@ VERBS = ("focus", "send", "close",
          "notify",
          # reopen an exited agent's conversation where it died; the daemon
          # builds the command, the page sends no text.
-         "resume")
+         "resume",
+         # pick an option of a standing AskUserQuestion; the daemon checks
+         # the question and types only its digit.
+         "answer")
 
 #: What the page may do with accounts. Nothing here removes one.
 ACCOUNT_OPS = ("add", "switch", "rename", "read")
@@ -310,6 +313,41 @@ def notify_response(line, kind, question):
         if 1 <= int(action) <= min(len(question["options"]), NOTICE_BUTTONS):
             return "send", action
     return None, None
+
+
+def answer_keys(text, standing, answered):
+    """A click on a card's answer button -> the digit to type, or None.
+
+    The page sends the option's number and the question it drew the button
+    for; `standing` is the row's question now and `answered` the one this
+    session last answered from the card. The digit goes only to the question
+    the button was drawn for, once: a replaced question, a second click, and
+    the next question of a set (which the row still names as the first) all
+    send nothing. A multi-select question is never answered here, since its
+    digits toggle boxes and submit nothing.
+    """
+    try:
+        request = json.loads(text)
+        pick, meant = request["pick"], request["question"]
+    except (ValueError, TypeError, KeyError):
+        return None
+    if not isinstance(standing, dict) or "options" not in standing or standing.get("multi"):
+        return None
+    if meant != standing.get("question") or standing == answered:
+        return None
+    if type(pick) is not int or not 1 <= pick <= len(standing["options"]):
+        return None
+    return str(pick)
+
+
+def still_answered(answered, snapshot):
+    """Keep only the answers whose question still stands on its row.
+
+    Once a question closes it is forgotten, so the same words asked again
+    later can be answered from the card again.
+    """
+    return {session_id: question for session_id, question in answered.items()
+            if (find_row(snapshot, session_id) or {}).get("question") == question}
 
 
 def response_target(line, own_session_id):
@@ -2497,6 +2535,8 @@ class Bridge:
         #: Session id -> (when a resume was typed into it, the job it was typed
         #: at), until its agent reports; see still_resuming.
         self.resuming = {}
+        #: session id -> the question last answered from its card.
+        self.answered = {}
         self.notifier_missing_said = False
         #: The mirror release newer than this checkout, or None; set by watch_releases.
         self.update = None
@@ -2683,6 +2723,7 @@ class Bridge:
         self.latest = snapshot(await self.read_sessions(), settings["sort_by_name"],
                                settings["provider_mark"] == "groups")
         self.latest["version"] = version()
+        self.answered = still_answered(self.answered, self.latest)
         if statusline_offer(statusline.state(CLAUDE_SETTINGS, BRIDGE), settings):
             self.latest["statusline"] = "missing"
         if self.update:
@@ -2715,6 +2756,9 @@ class Bridge:
             return
         if verb == "resume":
             await self.resume(session, session_id)
+            return
+        if verb == "answer":
+            await self.answer_from_card(session, session_id, text)
             return
         if verb == "bring":
             self.trips.leave(session_id, self.active_session_id())
@@ -2755,6 +2799,21 @@ class Bridge:
         await session.async_activate(select_tab=True, order_window_front=True)
         self.log("resume", session_id[:8], command)
         await self.rebuild()
+
+    async def answer_from_card(self, session, session_id, text):
+        """Type the digit of the option clicked on a card, if its question still stands.
+
+        Checked against the last rebuild, not the page's copy, and remembered,
+        so a second click types nothing until a different question stands.
+        """
+        standing = (find_row(self.latest, session_id) or {}).get("question")
+        keys = answer_keys(text, standing, self.answered.get(session_id))
+        if keys is None:
+            self.log("answer refused", session_id[:8], repr(text))
+            return
+        self.answered[session_id] = standing
+        await session.async_send_text(keys)
+        self.log("answer", session_id[:8], keys)
 
     def log(self, *words):
         """Say it in the Script Console and in a file beside the status files.

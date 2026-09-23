@@ -68,3 +68,25 @@ def test_ink_reads_on_its_ground(theme, ink, ground):
     assert ink in palette and ground in palette, f"{theme} lacks {ink} or {ground}"
     ratio = contrast(palette[ink], palette[ground])
     assert ratio >= AA, f"{theme}: {ink} {palette[ink]} on {ground} {palette[ground]} = {ratio:.2f}"
+
+
+def answer_rule(selector):
+    """The declarations of one rule of a question card's answer rows."""
+    css = PAGE.read_text(encoding="utf-8")
+    return re.search(re.escape(selector) + r"\s*\{([^}]*)\}", css).group(1)
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("part", ["li.line.card > .answers > .answer", "li.line.card > .answers .answer-n"])
+def test_an_answer_row_reads_on_its_tint(theme, part):
+    """An answer row is the card's amber ink mixed over the waiting card's
+    ground; its label and its number both have to read on that tint."""
+    t = tokens(theme)
+    tint_rule = answer_rule("li.line.card > .answers > .answer")
+    tint_ink, share = re.search(r"background: color-mix\(in srgb, var\((--[\w-]+)\) (\d+)%, transparent\)", tint_rule).groups()
+    ink_hex, ground_hex = t[tint_ink], t["--blocked-bg"]
+    mixed = [round(int(ink_hex[i:i + 2], 16) * int(share) / 100 + int(ground_hex[i:i + 2], 16) * (1 - int(share) / 100))
+             for i in (1, 3, 5)]
+    tint = "#" + "".join(f"{c:02x}" for c in mixed)
+    text = re.search(r"(?<![-\w])color: var\((--[\w-]+)\)", answer_rule(part)).group(1)
+    assert contrast(t[text], tint) >= AA, f"{text} on the answer tint in {theme}"

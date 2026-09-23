@@ -82,6 +82,14 @@ def test_bring_and_return_verbs_dispatch(tmp_path):
     assert calls == [("abc", "bring", None), ("abc", "return", None)]
 
 
+def test_answer_verb_carries_the_pick_and_its_question(tmp_path):
+    server, calls = record(tmp_path)
+    status, _, _ = server.handle("POST", f"/action?token={TOKEN}",
+                                 b'{"session_id": "abc", "verb": "answer", "text": "{\\"pick\\": 2, \\"question\\": \\"Q?\\"}"}')
+    assert status == 200
+    assert calls == [("abc", "answer", '{"pick": 2, "question": "Q?"}')]
+
+
 def test_unknown_verb_is_refused_and_dispatches_nothing(tmp_path):
     """There is a short fixed list of verbs. Anything else is refused rather than passed
     through -- the action_fn reaches the live iTerm2 API.

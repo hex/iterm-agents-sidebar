@@ -140,6 +140,15 @@ the tool a permission prompt is for and the first line of what it would run.
 The line goes when the prompt is answered. An omp session reports only that it is
 blocked, so its card shows no question.
 
+Under a question the card lists its options, a button each. Clicking one types
+that option's number into the prompt, as if you had pressed it there. The
+daemon types it only while that same question still stands, and only once:
+a question you already answered in the terminal, or the next question of a
+set, gets nothing. A question that takes more than one answer shows its
+options without buttons; answer it in the terminal. While a card asks, it
+drops its task line, model line and folds, so its height barely moves; they
+come back once you answer.
+
 ## Resuming an exited agent
 
 When an agent's process dies (killed, or crashed) and its pane drops back to a
