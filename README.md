@@ -68,11 +68,11 @@ scrolls into view; one already on screen stays put.
 
 ### What a card says
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Four cards: one amber with a WAITING badge, one at work with a report and ticks, one grey with an IDLE outline, and one at work for 25 minutes with a warm long badge">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Four cards: one amber with a WAITING badge and its question, one at work with a report and ticks, one grey with an IDLE outline, and one at work for 25 minutes with a warm long badge">
 
 | State | How it looks |
 | --- | --- |
-| Waiting on you | The whole card amber, with a WAITING badge |
+| Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question, or the tool and the command it wants to run |
 | Working | Dark name, working dots |
 | Idle | Grey name, IDLE outline |
 | Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
