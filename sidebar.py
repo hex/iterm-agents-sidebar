@@ -316,27 +316,56 @@ def notify_response(line, kind, question):
     return None, None
 
 
+def _typed(standing, answered):
+    """How many steps of the standing question the card has typed: the
+    answered entry names that question, with its count (1 when it has none)."""
+    if not isinstance(answered, dict):
+        return 0
+    if {key: value for key, value in answered.items() if key != "typed"} != standing:
+        return 0
+    return answered.get("typed", 1)
+
+
+def next_answered(standing, answered):
+    """The answered entry once one more step of `standing` has been typed."""
+    return {**standing, "typed": _typed(standing, answered) + 1}
+
+
 def answer_keys(text, standing, answered):
     """A click on a card's answer button -> the digit to type, or None.
 
     The page sends the option's number and the question it drew the button
-    for; `standing` is the row's question now and `answered` the one this
-    session last answered from the card. The digit goes only to the question
-    the button was drawn for, once: a replaced question, a second click, and
-    the next question of a set (which the row still names as the first) all
-    send nothing. A multi-select question is never answered here, since its
-    digits toggle boxes and submit nothing.
+    for; `standing` is the row's question now and `answered` what this
+    session has typed into it from the card. The digit goes only to the
+    question the button was drawn for, once: a replaced question and a second
+    click send nothing. A set is walked in order: each question once, then
+    Submit (1; 2 is Cancel, which throws the set away), and a click must name
+    the step the daemon expects next. A question answered in the terminal is
+    not seen, so the card's next click answers the question after it. A
+    multi-select question is never answered here, since its digits toggle
+    boxes and submit nothing.
     """
     try:
         request = json.loads(text)
         pick, meant = request["pick"], request["question"]
-    except (ValueError, TypeError, KeyError):
+    except (ValueError, TypeError, KeyError, AttributeError):
         return None
     if not isinstance(standing, dict) or "options" not in standing or standing.get("multi"):
         return None
-    if meant != standing.get("question") or standing == answered:
+    if meant != standing.get("question"):
         return None
-    if type(pick) is not int or not 1 <= pick <= len(standing["options"]):
+    questions = standing.get("set") or [standing]
+    typed = _typed(standing, answered)
+    if typed > len(questions) or (typed == len(questions) and "set" not in standing):
+        return None
+    if "set" in standing:
+        step = typed if typed < len(questions) else "submit"
+        if request.get("step") != step:
+            return None
+        if step != "submit" and questions[step].get("multi"):
+            return None
+    options = questions[typed]["options"] if typed < len(questions) else ["Submit answers"]
+    if type(pick) is not int or not 1 <= pick <= len(options):
         return None
     return str(pick)
 
@@ -347,8 +376,8 @@ def still_answered(answered, snapshot):
     Once a question closes it is forgotten, so the same words asked again
     later can be answered from the card again.
     """
-    return {session_id: question for session_id, question in answered.items()
-            if (find_row(snapshot, session_id) or {}).get("question") == question}
+    return {session_id: entry for session_id, entry in answered.items()
+            if _typed((find_row(snapshot, session_id) or {}).get("question"), entry)}
 
 
 def response_target(line, own_session_id):
@@ -2868,7 +2897,7 @@ class Bridge:
         if keys is None:
             self.log("answer refused", session_id[:8], repr(text))
             return
-        self.answered[session_id] = standing
+        self.answered[session_id] = next_answered(standing, self.answered.get(session_id))
         await session.async_send_text(keys)
         self.log("answer", session_id[:8], keys)
 

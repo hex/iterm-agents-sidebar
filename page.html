@@ -2491,15 +2491,31 @@ function questionLine(asked) {
 // before the question closes keeps the buttons spent.
 const pickedAnswers = new Map();
 
+// What the card asks now. A set of questions is walked here, since Claude
+// Code says nothing as it moves through one: each click on the card moves it
+// to the next question, and after the last to Submit. The step counts clicks
+// on this card only; one answered in the terminal is not seen.
+function cardQuestion(row) {
+  const asked = row.question;
+  if (!asked.set) return asked;
+  const picked = pickedAnswers.get(row.session_id);
+  const done = picked && picked.question === asked.question ? picked.steps : 0;
+  const count = asked.set.length;
+  if (done < count) return {...asked.set[done], more: count - 1 - done, step: done};
+  return {header: "Submit", question: "Ready to submit your answers?", options: ["Submit answers"],
+          multi: false, more: 0, step: "submit", spent: done > count};
+}
+
 // A button per option under a question card; a click types that option's
 // number, and the daemon types it only onto the question it was drawn for.
 // A multi-select question takes several digits and a submit, so its options
 // are shown but answered in the terminal.
 function answerRows(row) {
-  const asked = row.question;
+  const asked = cardQuestion(row);
   const answers = Object.assign(document.createElement("div"), {className: "answers"});
   const picked = pickedAnswers.get(row.session_id);
-  const spent = picked && picked.question === asked.question;
+  const spent = row.question.set ? asked.spent
+                                 : picked && picked.question === asked.question;
   asked.options.forEach((label, i) => {
     const option = document.createElement(asked.multi ? "div" : "button");
     // Claude Code marks the option it suggests by ending its label so.
@@ -2512,10 +2528,16 @@ function answerRows(row) {
       option.disabled = !!spent;
       if (spent && picked.pick === i + 1) option.classList.add("picked");
       option.addEventListener("click", () => {
-        pickedAnswers.set(row.session_id, {question: asked.question, pick: i + 1});
+        const first = row.question.question;
+        const before = picked && picked.question === first ? picked.steps : 0;
+        pickedAnswers.set(row.session_id, {question: first, pick: i + 1, steps: before + 1});
         for (const other of answers.children) other.disabled = true;
         option.classList.add("picked");
-        act(row.session_id, "answer", JSON.stringify({pick: i + 1, question: asked.question}));
+        // The daemon checks the step against the ones it typed itself.
+        act(row.session_id, "answer", JSON.stringify({pick: i + 1, question: first, step: asked.step}));
+        // The next step is drawn now, not on the next snapshot, which the
+        // set would not change anyway.
+        if (row.question.set && LATEST) render(LATEST);
       });
     }
     answers.append(option);
@@ -3247,7 +3269,7 @@ function paint(snapshot) {
       }
 
       if (hot && row.question && (row.question.options || row.question.tool)) {
-        stack.append(questionLine(row.question));
+        stack.append(questionLine(row.question.options ? cardQuestion(row) : row.question));
       }
 
       // What the session says it is doing, as it wrote it: a title, then
