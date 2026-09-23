@@ -464,24 +464,24 @@ def statusline_offer(state, settings):
 
 def running_models(snapshot):
     """The model families the Claude sessions on the panel and their running
-    subagents use, for switching: {"opus", "fable"}, or None when one's model
-    is not known yet, so every limit keeps deciding until it is. A finished
+    subagents use, for switching: {"opus", "fable"}. One whose model is not
+    known yet is left out: it reports one within seconds, and counting every
+    limit meanwhile moved the account for a limit nothing ran. Only when none
+    has reported a model is it None, so every limit decides. A finished
     subagent uses nothing, and neither does an exited session."""
-    families = set()
+    families, unknown = set(), False
     for group in snapshot.get("groups", []):
         for row in group["rows"]:
             if row.get("state") in (None, "exited") or row.get("provider") not in (None, "claude"):
                 continue
-            if not row.get("model"):
-                return None
-            families.add(accounts.family(row["model"]))
-            for sub in row.get("subagents") or []:
-                if sub.get("ended") is not None or sub.get("provider") not in (None, "claude"):
-                    continue
-                if not sub.get("model"):
-                    return None
-                families.add(accounts.family(sub["model"]))
-    return families
+            running = [row] + [sub for sub in row.get("subagents") or []
+                               if sub.get("ended") is None and sub.get("provider") in (None, "claude")]
+            for agent in running:
+                if agent.get("model"):
+                    families.add(accounts.family(agent["model"]))
+                else:
+                    unknown = True
+    return None if unknown and not families else families
 
 
 def notifies_itself(row):
