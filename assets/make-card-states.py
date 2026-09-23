@@ -30,7 +30,7 @@ def report(x, top, activity, age, done):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="Four cards: one amber with a WAITING badge and its question, one at work with a report and ticks, '
+  f'aria-label="Four cards: one amber with a WAITING badge, its question and a button per answer, one at work with a report and ticks, '
   f'one grey with an IDLE outline, and one at work for 25 minutes with a warm long badge">')
 A('  <title>What a card says</title>')
 A(f'''  <defs>
@@ -45,13 +45,19 @@ A(f'  <rect width="{W}" height="{H}" rx="16" fill="{BG}"/>')
 x, c = COLS[0], TOP
 caption(x, c - 14, "WAITING ON YOU")
 tx = x + 44
-A(f'  <rect x="{x}" y="{c}" width="{CARD_W}" height="80" rx="10" fill="{BLOCKED_BG}" '
+A(f'  <rect x="{x}" y="{c}" width="{CARD_W}" height="114" rx="10" fill="{BLOCKED_BG}" '
   f'stroke="{BLOCKED_BORDER}" stroke-width="3"/>')
 working_dots(x + 18, c + 20, "#2a9d8f")
 text(tx, c + 31, "beacon", fill=FG, size=15, weight=600)
 tag(tx + NAME_W["beacon"] + 9, c + 31, "claude")
 text(tx, c + 52, "Redis or SQLite for the cache?", fill=BLOCKED_TEXT, size=12.5)
-facts(tx, c + 69, "feat/cache", "Fable 5.1")
+# A button per answer; the model line and the report hide while it asks.
+for i, answer in enumerate(("Redis", "SQLite")):
+    y = c + 61 + i * 23
+    A(f'  <rect x="{tx}" y="{y}" width="{CARD_W - (tx - x) - 16}" height="19" rx="6" '
+      f'fill="{BLOCKED_TEXT}" fill-opacity=".14"/>')
+    text(tx + 9, y + 13.5, str(i + 1), fill=BLOCKED_TEXT, size=11.5, weight=500)
+    text(tx + 22, y + 13.5, answer, fill=FG, size=11.5, weight=500)
 badge(x + CARD_W - 16, c + 14, "WAITING", filled=True)
 
 # Working: a dark name, the dots, and its own report.
