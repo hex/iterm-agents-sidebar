@@ -214,3 +214,22 @@ def test_the_snapshot_says_when_claude_code_has_no_login(world, tmp_path):
                            (SCRATCH_SERVICE, world["live"]), world["claude_json"])
     meters.tick(now=1000)
     assert meters.snapshot()["live"] is None
+
+
+def _weekly_reading(five, weekly, now):
+    return dict(_reading(five, now), usage={"five_hour": {"used": five, "resets_at": now + 9000},
+                                            "seven_day": {"used": weekly, "resets_at": now + 3 * 86400},
+                                            "models": []})
+
+
+def test_a_balance_is_tried_only_once_a_second_reading_proposes_it(world, tmp_path):
+    """The loop keeps the streak: the same reading twice is one comparison, a
+    new reading that says the same makes the move."""
+    meters = _meters_with_readings(world, tmp_path, active_five=20.0)
+    ids = [a["id"] for a in world["accounts"]]
+    meters.states = {ids[0]: _weekly_reading(20.0, 60.0, 1000), ids[1]: _weekly_reading(5.0, 10.0, 1000)}
+    assert meters.tick(now=1000, auto=True) == []
+    assert meters.tick(now=1030, auto=True) == []
+    meters.states[ids[0]] = _weekly_reading(20.0, 60.0, 1300)
+    meters.states[ids[1]]["fetched_at"] = 1300
+    assert meters.tick(now=1300, auto=True) == [{"kind": "refused", "why": "log in to home again"}]

@@ -2384,7 +2384,18 @@ function autoSwitchRow() {
 // panel's edge with the reason, so the chip keeps the name and gives the
 // rest on hover.
 function nextSwitchChip(next) {
-  if (!SETTINGS?.auto_switch || !next?.near) return null;
+  if (!SETTINGS?.auto_switch) return null;
+  // A model limit full on every account: no switch helps it, and the other
+  // limits decide until the first one returns.
+  const gone = next?.exhausted?.[0];
+  if (gone && !(next.near && next.to)) {
+    const chip = Object.assign(document.createElement("span"), {className: "next-chip",
+      textContent: `${gone.model} full everywhere`});
+    const back = gone.resets_at ? ` until ${gone.account} resets in ${forHumans(gone.resets_at - Date.now() / 1000)}` : "";
+    chip.title = `${gone.model} is at 100% on every account${back}; switching counts the other limits meanwhile`;
+    return chip;
+  }
+  if (!next?.near) return null;
   const chip = Object.assign(document.createElement("span"), {className: "next-chip",
     textContent: next.to ? `\u2192 ${next.to} soon` : "nowhere to go"});
   chip.title = `${next.why}; switches at 90% or when a window is on course for 100%`;

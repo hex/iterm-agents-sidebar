@@ -18,6 +18,7 @@ from datetime import datetime
 
 WEEK_SECONDS = 604800
 DAY_SECONDS = 86400
+HOUR_SECONDS = 3600
 AHEAD_POINTS = 15
 STORE_VERSION = 1
 #: Reading cadence, after cswap's measurement of the usage endpoint: about
@@ -230,6 +231,9 @@ def read_now_states(states, now):
 #: has an account that answers while it does.
 SWITCH_THRESHOLD = 90
 SWITCH_MARGIN_POINTS = 10
+#: When no account is ten points better, the least a move to an emptier one
+#: must gain: less, and two nearly full accounts trade the login back and forth.
+FALLBACK_MARGIN_POINTS = 3
 TIE_POINTS = 5
 SWITCH_COOLDOWN_SECONDS = 300
 PICKUP_SECONDS = 60
@@ -246,14 +250,33 @@ def _windows(usage):
     return [(name, window) for name, window in named if window]
 
 
-def binding(usage, now):
-    """The fullest window of a reading: {figure, window, resets_at}, or None.
+def family(model):
+    """A model name as a session or a subagent reports it -> the word its
+    limit window is named by: "Fable 5.1" and "claude-fable-5-1" -> "fable"."""
+    name = model.lower().strip()
+    name = name[len("claude-"):] if name.startswith("claude-") else name
+    return name.replace("-", " ").split()[0] if name else ""
+
+
+def scoped(usage, models):
+    """A reading with only the windows that bind for `models`, a set of
+    families: the 5-hour and the weekly always, a model's own weekly limit
+    only while a session runs that model. None means the models are not
+    known, and then every window binds."""
+    if usage is None or models is None:
+        return usage
+    kept = [m for m in usage.get("models") or [] if m["name"].lower() in models]
+    return dict(usage, models=kept)
+
+
+def binding(usage, now, models=None):
+    """The fullest window that binds: {figure, window, resets_at}, or None.
 
     None too when any window's reset has passed since the reading: the figures
     describe a window that no longer exists, and only a new reading says what
     the account holds now.
     """
-    windows = _windows(usage or {})
+    windows = _windows(scoped(usage, models) or {})
     if not windows or any(w["resets_at"] is not None and w["resets_at"] <= now for _, w in windows):
         return None
     name, window = max(windows, key=lambda pair: pair[1]["used"])
@@ -297,7 +320,52 @@ def runs_out(usage, rates):
 
 
 ACTIVE_READING_MAX_AGE_SECONDS = ACTIVE_CEILING_SECONDS + 30
+#: A model is called full everywhere only on readings this recent: an older
+#: one, or one kept through failed reads, may describe a limit since reset.
+EXHAUSTED_READING_MAX_AGE_SECONDS = OTHER_CEILING_SECONDS + 60
 STAY = {"act": "stay"}
+
+
+def exhausted_models(states, accounts, now):
+    """The model limits full on every account: [{model, resets_at, account_id}],
+    naming the account whose limit returns first.
+
+    Every account with a login has to have a recent reading that says so;
+    one that could not be read might have room, and then nothing is said.
+    """
+    readings = []
+    for account in accounts:
+        if account.get("needsLogin"):
+            continue
+        state = states.get(account["id"]) or {}
+        usage = state.get("usage")
+        if binding(usage, now) is None or now - (state.get("fetched_at") or 0) > EXHAUSTED_READING_MAX_AGE_SECONDS:
+            return []
+        readings.append((account["id"], {m["name"]: m for m in usage.get("models") or []}))
+    if not readings:
+        return []
+    out = []
+    for name in sorted({name for _, limits in readings for name in limits}):
+        held = [(limits.get(name), account_id) for account_id, limits in readings]
+        if any(window is None or window["used"] < FULL for window, _ in held):
+            continue
+        window, account_id = min(held, key=lambda pair: (pair[0]["resets_at"] is None,
+                                                         pair[0]["resets_at"] or 0))
+        out.append({"model": name, "resets_at": window["resets_at"], "account_id": account_id})
+    return out
+
+
+def _deciding(models, exhausted, states):
+    """The families whose limits decide, once exhausted ones are set aside.
+    Unknown models stay unknown unless something is exhausted; then every
+    model the readings carry, less those."""
+    gone = {m["model"].lower() for m in exhausted}
+    if not gone:
+        return models
+    if models is None:
+        models = {m["name"].lower() for state in states.values()
+                  for m in (state.get("usage") or {}).get("models") or []}
+    return models - gone
 
 
 def _why(mine, out, age):
@@ -307,7 +375,7 @@ def _why(mine, out, age):
     return f"{out['window']} on course for 100% in {minutes} min"
 
 
-def switch_decision(active_id, states, accounts, now, last_switch=None):
+def switch_decision(active_id, states, accounts, now, last_switch=None, models=None):
     """What the daemon should do about the active account now.
 
     {"act": "stay"}, {"act": "read", account_id} when a figure the decision
@@ -319,20 +387,29 @@ def switch_decision(active_id, states, accounts, now, last_switch=None):
     fetched = state.get("fetched_at")
     if state.get("outcome") != "ok" or fetched is None or now - fetched > ACTIVE_READING_MAX_AGE_SECONDS:
         return STAY
-    mine = binding(state["usage"], now)
+    exhausted = exhausted_models(states, accounts, now)
+    running = models
+    models = _deciding(models, exhausted, states)
+    if running == set():
+        return STAY                  # no Claude session to serve
+    if running and not models:
+        return {"act": "blocked", "why": " and ".join(m["model"] for m in exhausted)
+                + " is full on every account"}
+    mine = binding(state["usage"], now, models)
     if mine is None:
         return {"act": "read", "account_id": active_id}
     since = now - last_switch["at"] if last_switch else None
     if since is not None and since < PICKUP_SECONDS:
         return STAY
     age = now - fetched
-    rates = burn_rates(state.get("earlier_usage"), state.get("earlier_at"), state["usage"], fetched)
-    out = runs_out(dict(state["usage"], fetched_at=fetched), rates)
+    rates = burn_rates(scoped(state.get("earlier_usage"), models), state.get("earlier_at"),
+                       scoped(state["usage"], models), fetched)
+    out = runs_out(dict(scoped(state["usage"], models), fetched_at=fetched), rates)
     emergency = out is not None and out["seconds"] - age <= PICKUP_SECONDS
     on_course = out is not None and out["seconds"] - age <= PROJECTION_HORIZON_SECONDS
     returns_soon = mine["resets_at"] is not None and mine["resets_at"] - now <= RESET_NEAR_SECONDS
     if not (on_course or (mine["figure"] >= SWITCH_THRESHOLD and not returns_soon)):
-        return STAY
+        return _balance(active_id, state, states, accounts, now, since, models)
     if not emergency and since is not None and since < SWITCH_COOLDOWN_SECONDS:
         return STAY
 
@@ -341,14 +418,17 @@ def switch_decision(active_id, states, accounts, now, last_switch=None):
         other = states.get(account["id"]) or {}
         if account["id"] == active_id or account.get("needsLogin") or other.get("usage") is None:
             continue
-        theirs = binding(other["usage"], now)
+        theirs = binding(other["usage"], now, models)
         if theirs is None or now - other["fetched_at"] > POLL_FLOOR_SECONDS:
             held = other.get("outcome") == "rate_limited" and other.get("next_at", 0) > now
             if held or now - other.get("tried_at", 0) < POLL_FLOOR_SECONDS:
                 passed_over = True
                 continue
             return {"act": "read", "account_id": account["id"]}
-        candidates.append((account["id"], theirs))
+        if _filling(other, now, models):
+            continue
+        candidates.append((account["id"], theirs, runway(other["usage"], now, models),
+                           _five_hour(other["usage"])))
 
     target = _target(mine, candidates, emergency)
     if target is None:
@@ -359,31 +439,162 @@ def switch_decision(active_id, states, accounts, now, last_switch=None):
     return {"act": "switch", "account_id": target, "why": _why(mine, out, age)}
 
 
+#: Where an account stands: room in its 5-hour window and under the line, only
+#: under the line, or above it. A switch goes to the lowest band there is. The
+#: 5-hour window is the near-term gate; the weekly ones are what runway weighs.
+AMBER = 70
+#: Targets whose runway is within this fraction of the best count as equal.
+RUNWAY_TIE = 0.10
+
+
+def _band(candidate):
+    _, held, _, five = candidate
+    if held["figure"] >= SWITCH_THRESHOLD:
+        return 2
+    return 0 if five is not None and five < AMBER else 1
+
+
+def _five_hour(usage):
+    """The 5-hour window's use, or None when the reading has none: unknown,
+    never empty."""
+    five = (usage or {}).get("five_hour")
+    return five["used"] if five else None
+
+
+def runway(usage, now, models=None):
+    """How much weekly quota an account can spend a day before it returns:
+    {per_day, resets_at, window, left}, or None when it cannot be told.
+
+    Each weekly window, the general one and a model's own, gives what is left
+    over the days until it resets; the tightest one is the account's. One
+    that does not say when it resets leaves the whole runway unknown. Quota
+    that returns tomorrow is worth spending today, and one that returns in a
+    week is not, so this is what ranks accounts that all have room.
+    """
+    kept = scoped(usage, models) or {}
+    tightest = None
+    for name, window in _windows(kept):
+        if name == "5-hour":
+            continue
+        if window["resets_at"] is None:
+            return None              # a limit that binds, with no end in sight
+        days = max(window["resets_at"] - now, HOUR_SECONDS) / DAY_SECONDS
+        per_day = (FULL - window["used"]) / days
+        if tightest is None or per_day < tightest["per_day"]:
+            tightest = {"per_day": per_day, "resets_at": window["resets_at"], "window": name,
+                        "left": FULL - window["used"]}
+    if tightest is None:
+        return None
+    return tightest
+
+
+def _best(fit):
+    """The one to spend first among accounts that fit: the lowest band, then
+    the most runway a day, near-equal runways going to the sooner return and
+    then the emptier 5-hour window."""
+    band = min(_band(c) for c in fit)
+    fit = [c for c in fit if _band(c) == band]
+    known = [c for c in fit if c[2] is not None]
+    if not known:
+        return min(fit, key=lambda c: (c[1]["resets_at"] is None, c[1]["resets_at"] or 0, c[1]["figure"]))[0]
+    most = max(c[2]["per_day"] for c in known)
+    near = [c for c in known if c[2]["per_day"] >= most * (1 - RUNWAY_TIE)]
+    return min(near, key=lambda c: (c[2]["resets_at"], c[3] is None, c[3] or 0))[0]
+
+
 def _target(mine, candidates, emergency):
     """The account id a switch from `mine` would go to, or None when none fits.
 
     Ordinarily a target sits under the threshold and a margin under the active
-    account; in an emergency anything emptier will do. The emptiest wins, and
-    near-equal ones go to whichever resets sooner, so quota about to expire is
-    spent first.
+    account. When none does, one a few points emptier and not full will do: it
+    gives the session more room than it has. In an emergency any emptier one
+    will. Among those that fit, `_best` picks.
     """
+    emptier = [c for c in candidates if c[1]["figure"] < mine["figure"] and c[1]["figure"] < FULL]
     if emergency:
-        fit = [c for c in candidates if c[1]["figure"] < mine["figure"]]
-    else:
-        fit = [c for c in candidates if c[1]["figure"] < SWITCH_THRESHOLD
-               and c[1]["figure"] <= mine["figure"] - SWITCH_MARGIN_POINTS]
-    if not fit:
-        return None
-    lowest = min(c[1]["figure"] for c in fit)
-    tied = [c for c in fit if c[1]["figure"] - lowest <= TIE_POINTS]
-    return min(tied, key=lambda c: (c[1]["resets_at"] is None, c[1]["resets_at"] or 0, c[1]["figure"]))[0]
+        return _best(emptier) if emptier else None
+    fit = ([c for c in emptier if c[1]["figure"] < SWITCH_THRESHOLD
+            and c[1]["figure"] <= mine["figure"] - SWITCH_MARGIN_POINTS]
+           or [c for c in emptier if c[1]["figure"] <= mine["figure"] - FALLBACK_MARGIN_POINTS])
+    return _best(fit) if fit else None
+
+
+#: A move while nothing is full takes this much more runway a day, this long
+#: since the last switch, and inactive readings no older than this: balancing
+#: is slow, so it never spends a reading of its own.
+BALANCE_RATIO = 1.25
+BALANCE_COOLDOWN_SECONDS = 1800
+BALANCE_READING_MAX_AGE_SECONDS = 900
+
+
+def _filling(state, now, models):
+    """Whether an account's own last readings put a window at 100 within the
+    projection horizon from now: a target like that is no target."""
+    fetched = state.get("fetched_at")
+    if fetched is None:
+        return False
+    rates = burn_rates(scoped(state.get("earlier_usage"), models), state.get("earlier_at"),
+                       scoped(state["usage"], models), fetched)
+    out = runs_out(dict(scoped(state["usage"], models), fetched_at=fetched), rates)
+    return out is not None and out["seconds"] - (now - fetched) <= PROJECTION_HORIZON_SECONDS
+
+
+def _span(seconds):
+    hours = max(1, round(seconds / HOUR_SECONDS))
+    return f"{hours}h" if hours < 24 else f"{round(hours / 24)}d"
+
+
+def _balance(active_id, state, states, accounts, now, since, models):
+    """While nothing is full: {"act": "balance", account_id, why} when another
+    account under the line, with room in its 5-hour window, has clearly more
+    weekly runway a day than the active one, else STAY. Quota that returns sooner is spent before quota that
+    has to last."""
+    if since is not None and since < BALANCE_COOLDOWN_SECONDS:
+        return STAY
+    mine = runway(state["usage"], now, models)
+    if mine is None:
+        return STAY
+    candidates = []
+    for account in accounts:
+        other = states.get(account["id"]) or {}
+        if account["id"] == active_id or account.get("needsLogin") or other.get("outcome") != "ok":
+            continue
+        if now - other.get("fetched_at", 0) > BALANCE_READING_MAX_AGE_SECONDS:
+            continue
+        theirs = binding(other["usage"], now, models)
+        room = runway(other["usage"], now, models)
+        candidate = (account["id"], theirs, room, _five_hour(other["usage"]))
+        if theirs is not None and room is not None and _band(candidate) == 0 and not _filling(other, now, models):
+            candidates.append(candidate)
+    if not candidates:
+        return STAY
+    target = _best(candidates)
+    room = next(c[2] for c in candidates if c[0] == target)
+    if room["per_day"] < mine["per_day"] * BALANCE_RATIO:
+        return STAY
+    why = (f"{room['window']}: {room['left']:.0f}% left for {_span(room['resets_at'] - now)} there, "
+           f"{mine['left']:.0f}% for {_span(mine['resets_at'] - now)} here")
+    return {"act": "balance", "account_id": target, "why": why}
+
+
+def confirm_balance(streak, decision, reading_at):
+    """A balance is taken only when two readings of the active account propose
+    the same target. -> (streak to keep, whether to switch now)."""
+    if decision.get("act") != "balance":
+        return None, False
+    if streak is None or streak["to"] != decision["account_id"]:
+        return {"to": decision["account_id"], "readings": {reading_at}}, False
+    readings = streak["readings"] | {reading_at}
+    if len(readings) >= 2:
+        return None, True
+    return {"to": streak["to"], "readings": readings}, False
 
 
 #: Within this many points of the threshold a switch counts as near.
 NEAR_POINTS = 10
 
 
-def switch_outlook(active_id, states, accounts, now):
+def switch_outlook(active_id, states, accounts, now, models=None):
     """Where a switch would go now, and whether one is near: {to, near, why}, or None.
 
     The same ranking as `switch_decision`, without its gates: it says what the
@@ -394,12 +605,19 @@ def switch_outlook(active_id, states, accounts, now):
     fetched = state.get("fetched_at")
     if state.get("outcome") != "ok" or fetched is None:
         return None
-    mine = binding(state["usage"], now)
+    exhausted = exhausted_models(states, accounts, now)
+    running = models
+    models = _deciding(models, exhausted, states)
+    if running and not models:
+        # Only an exhausted model runs, and no switch serves it.
+        return {"to": None, "near": False, "why": None, "exhausted": exhausted}
+    mine = binding(state["usage"], now, models)
     if mine is None:
         return None
     age = now - fetched
-    rates = burn_rates(state.get("earlier_usage"), state.get("earlier_at"), state["usage"], fetched)
-    out = runs_out(dict(state["usage"], fetched_at=fetched), rates)
+    rates = burn_rates(scoped(state.get("earlier_usage"), models), state.get("earlier_at"),
+                       scoped(state["usage"], models), fetched)
+    out = runs_out(dict(scoped(state["usage"], models), fetched_at=fetched), rates)
     on_course = out is not None and out["seconds"] - age <= PROJECTION_HORIZON_SECONDS
     near = on_course or mine["figure"] >= SWITCH_THRESHOLD - NEAR_POINTS
     candidates = []
@@ -407,11 +625,15 @@ def switch_outlook(active_id, states, accounts, now):
         other = states.get(account["id"]) or {}
         if account["id"] == active_id or account.get("needsLogin") or other.get("usage") is None:
             continue
-        theirs = binding(other["usage"], now)
+        theirs = binding(other["usage"], now, models)
         if theirs is not None:
-            candidates.append((account["id"], theirs))
-    return {"to": _target(mine, candidates, emergency=False), "near": near,
-            "why": _why(mine, out, age) if near else None}
+            candidates.append((account["id"], theirs, runway(other["usage"], now, models),
+                               _five_hour(other["usage"])))
+    outlook = {"to": _target(mine, candidates, emergency=False), "near": near,
+               "why": _why(mine, out, age) if near else None}
+    if exhausted:
+        outlook["exhausted"] = exhausted
+    return outlook
 
 
 def needs_refresh(expires_at_ms, active, now):
@@ -1063,6 +1285,11 @@ def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_s
         to = next_switch["to"]
         target = next((a for a in accounts if a["id"] == to), {"id": to}) if to else None
         outlook = dict(next_switch, to=_name(target, emails.get(to)) if target else None)
+        if next_switch.get("exhausted"):
+            by_id = {a["id"]: a for a in accounts}
+            outlook["exhausted"] = [dict(gone, account=_name(by_id.get(gone["account_id"], {"id": gone["account_id"]}),
+                                                             emails.get(gone["account_id"])))
+                                    for gone in next_switch["exhausted"]]
     return {"active": active_id, "accounts": shaped, "error": error, "last_switch": shown,
             "next_switch": outlook, "live": live}
 
@@ -1124,13 +1351,23 @@ class AccountMeters:
         self.last_switch = None
         #: The blocked or refused event last reported, so it is said once.
         self._said = None
+        #: A balance proposed but not yet confirmed by a second reading.
+        self._balance = None
+        #: The model families the running sessions use, or None when unknown;
+        #: the daemon sets it from its snapshot before each tick.
+        self.models = None
 
     def snapshot(self):
         return self._snapshot
 
-    def tick(self, now, auto=False):
-        """Read what is due; with `auto`, leave a full account. -> what happened, for the log."""
+    def tick(self, now, auto=False, models=None):
+        """Read what is due; with `auto`, leave a full account. -> what happened, for the log.
+
+        `models` are the families the running sessions use, or None when not
+        known; only their own limits decide.
+        """
         with self._one_at_a_time:
+            self.models = models
             self._tick(now)
             return self._decide(now) if auto else []
 
@@ -1142,14 +1379,18 @@ class AccountMeters:
         active = account_for(accounts, _live_login(self.claude_json))
         if active is None or len(accounts) < 2:
             return []
-        decision = switch_decision(active["id"], self.states, accounts, now, self.last_switch)
+        decision = switch_decision(active["id"], self.states, accounts, now, self.last_switch, self.models)
         for _ in accounts:
             if decision["act"] != "read":
                 break
             self.states[decision["account_id"]] = dict(self.states.get(decision["account_id"]) or {}, next_at=0)
             self._tick(now)
             decision = switch_decision(active["id"], self.states, load_store(self.store_path), now,
-                                       self.last_switch)
+                                       self.last_switch, self.models)
+        self._balance, confirmed = confirm_balance(self._balance, decision,
+                                                   (self.states.get(active["id"]) or {}).get("fetched_at"))
+        if confirmed:
+            decision = dict(decision, act="switch")
         if decision["act"] == "switch":
             try:
                 result = self._switch_locked(decision["account_id"], now, why=decision["why"], auto=True)
@@ -1201,7 +1442,7 @@ class AccountMeters:
                 outcome, usage = self._read_inactive(account["id"], now)
             self.states[account["id"]] = record(self.states.get(account["id"]), outcome, usage, now,
                                                 active=account is active)
-        outlook = switch_outlook(active["id"], self.states, accounts, now) if active else None
+        outlook = switch_outlook(active["id"], self.states, accounts, now, self.models) if active else None
         self._snapshot = meters_snapshot(load_store(self.store_path), self.states,
                                          active["id"] if active else None, emails=self.emails,
                                          last_switch=self.last_switch, next_switch=outlook,
