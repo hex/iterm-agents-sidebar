@@ -60,14 +60,31 @@ shell counts) stay plain. A bar behind a dollar figure measures nothing.
 — is a chip, not a table row. Grey by default; `--warn-bg` when it carries a
 cost; `--hot` when it is a mode the user chose.
 
-**Icons.** Phosphor regular, path data read out of the local package, never
-transcribed. An icon appears only where it replaces a word. If removing it
+**Icons.** Phosphor regular, path data read out of the published package
+(`@phosphor-icons/core`), never transcribed. An icon appears only where it replaces a word. If removing it
 loses no meaning, it does not belong: the line-count row has no icon because
 `+40 −13` already says it.
 
 **Absent, not zero.** A signal that cannot be read is omitted. No placeholder,
 no "0", no "unknown" — the panel would rather show less than show something
 plausible and wrong. This is the rule everything else defers to.
+
+**Breakdown.** Where a budget has parts, the whole window is one 8px bar
+with a 2px card gap between segments, anchored left; the reserve nobody can
+spend is hatched, the rest is bare track. Under it, a row per part, largest
+first: its group icon in the group's colour, the name, a 4px bar scaled to the
+largest part, the figure. Group colours are the one place categorical colour
+is allowed, because they say which group a segment is; they are validated
+for colour blindness on both surfaces (`--ctx-conv`, `--ctx-sys`, `--ctx-mem`,
+`--ctx-agents`), and every segment is also named in a row, so no reading
+depends on colour alone. What the budget does not count (deferred tools) is a
+dim line under the rows, never a segment.
+
+**Pinned card.** A hover card the pointer rests on for 0.5 s stops following
+and takes clicks; its hairline turns `--hot` at 45% so the change is seen.
+Its one action is a full-width `--hot` tint button with a Phosphor icon; while
+it waits, a fill runs across over the usual wait and stops short of the end.
+A result that lands fades in over .14s; one already read shows at once.
 
 **Cursor.** The arrow, never the pointing hand. macOS reserves the hand for
 links, and this is a native list.

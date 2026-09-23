@@ -20,8 +20,10 @@ can count to, not iTerm2's internal tab id.
 ## What keeps a session working
 
 A session whose turn has ended stays working while a background shell,
-subagent, workflow or monitor it started is still running, because that task's end wakes it. A background command that never ends keeps it working until
-your next prompt.
+subagent or workflow it started is still running, because that task's end wakes it. A background command that never ends keeps it working until
+your next prompt. A monitor does not: it only waits for something outside to
+happen, and the watcher Claude Code arms when a session publishes an Artifact
+stays open for as long as the session does.
 
 The hook stamps the time your prompt started the turn, which is what the
 `long 25m` outline counts from.
@@ -75,7 +77,8 @@ the tool a permission prompt is for and the first line of what it would run.
 The line goes when the prompt is answered. An omp session reports only that it is
 blocked, so its card shows no question.
 
-Under a question the card lists its options, a button each. Clicking one types
+Under a question the card lists its options, a button each. The one the agent
+suggests, whose label ends in "(Recommended)", is tinted green. Clicking one types
 that option's number into the prompt, as if you had pressed it there. The
 daemon types it only while that same question still stands, and only once:
 a question you already answered in the terminal, or the next question of a
@@ -83,6 +86,23 @@ set, gets nothing. A question that takes more than one answer shows its
 options without buttons; answer it in the terminal. While a card asks, it
 drops its task line, model line and folds, so its height barely moves; they
 come back once you answer.
+
+## What fills the context
+
+Rest the pointer on a Claude card for about a second and its hover card holds
+still and takes clicks. Context breakdown then runs Claude Code's own
+`/context` on a throwaway fork of that conversation: hooks off, nothing saved,
+no model call. It takes a few seconds, and the result stays in the card until
+you read it again.
+
+The bar is the whole window: the conversation, system and tools, memory, and
+agents and skills in their own colours, then the reserve kept free for
+compaction, hatched. Under it every category has a row with its own bar. The
+deferred tool rows sit apart, since Claude Code loads them only when a tool
+runs and does not count them. Only the conversation's rows are this
+session's own; the rest are what a new session in the same directory would
+load now. The figures are `/context`'s estimate, so they can differ from the
+Context percentage above them, which Claude Code measures on each turn.
 
 ## Banners
 

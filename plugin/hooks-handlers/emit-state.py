@@ -39,7 +39,8 @@ not guesswork:
 
     a gate open                            -> blocked
     else parent working, a child alive,
-         or a background task in flight    -> working
+         or a background task in flight
+         other than a monitor              -> working
     else                                   -> idle
 
 A Stop hook that itself triggers Stop arrives with stop_hook_active true. The
@@ -293,7 +294,8 @@ def aggregate(doc):
     """
     if doc.get("gates"):
         return "blocked"
-    if doc.get("parent_active") or live_agents(doc) or doc.get("background"):
+    if doc.get("parent_active") or live_agents(doc) \
+            or any(t.get("type") not in WAITERS for t in doc.get("background") or []):
         return "working"
     return "idle"
 
@@ -412,6 +414,11 @@ def apply_event(doc, event, payload, said):
 
     return doc
 
+
+#: Background task types that only wait for an outside event and wake the
+#: session when it comes. Nothing is worked on meanwhile, and an artifact's
+#: watcher lives as long as the process, so they never hold a session working.
+WAITERS = ("monitor",)
 
 #: Background task types a subagent can run under past its parent's turn.
 AGENT_HOLDERS = ("subagent", "workflow")

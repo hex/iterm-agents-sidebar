@@ -96,7 +96,9 @@ The line below carries the branch, the model with its effort letter (`[l]`,
 `[m]`, `[h]`, `[xh]`, `[mx]`), the context percentage, and a `CPU` or `Mem`
 chip when the session's process tree is using a lot of the machine. While a
 chip shows, the hover card adds a `CPU` or `Memory` row with the figure and the
-name of the program using the most of it. A Codex
+name of the program using the most of it. Rest the pointer on a Claude card
+and its hover card offers Context breakdown, `/context` for that session
+drawn as a bar ([usage](docs/usage.md#what-fills-the-context)). A Codex
 card wears the OpenAI mark instead of the Claude one, and has no teammates and
 no background-shell line. Codex opens its session at your first prompt, so
 until then its card shows the name, the branch and a `Codex` mark, and no

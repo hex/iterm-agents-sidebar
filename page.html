@@ -24,6 +24,10 @@
     /* Limit bars: headroom, climbing, near the limit. claude-swap's bands, with
        an amber and a red that still read as amber and red on a light panel. */
     --sev-ok: #3d6b3d; --sev-warn: #c98a0b; --sev-crit: #dc2626;
+    --rec-ink: #3d6b3d;
+    /* What fills a context: the conversation, system and tools, memory,
+       agents and skills. Categorical slots, CVD-checked on this surface. */
+    --ctx-conv: #2a78d6; --ctx-sys: #eb6834; --ctx-mem: #1baf7a; --ctx-agents: #eda100;
     /* Two hovers: a row tint for anything list-shaped, a control tint for
        buttons; and one focus ring. */
     --tint-row: color-mix(in srgb, var(--hot) 12%, transparent);
@@ -58,6 +62,8 @@
       --lit: #8ec07c; --alert: #fb8b5e; --lit-ink: #8ec07c;
       --lit-bg: #8ec07c26; --alert-bg: #fb8b5e2b;
       --sev-ok: #87af87; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
+      --rec-ink: #8ec07c;
+      --ctx-conv: #3987e5; --ctx-sys: #d95926; --ctx-mem: #199e70; --ctx-agents: #c98500;
       --card-edge: 0 0 0 1px var(--card-border);
     }
   }
@@ -439,6 +445,85 @@
     color: var(--alert); background: color-mix(in srgb, var(--alert) 16%, transparent);
   }
 
+  /* Pinned: the pointer rested, so the card holds still and takes clicks.
+     Its hairline takes the actionable accent, so the change is seen, not
+     only discovered by moving. */
+  #card { transition: border-color .12s ease-out; }
+  #card.pinned {
+    pointer-events: auto;
+    border-color: color-mix(in srgb, var(--hot) 45%, transparent);
+  }
+  #card .ctx {
+    margin-top: 7px; padding-top: 7px;
+    border-top: .5px solid color-mix(in srgb, var(--fg) 11%, transparent);
+  }
+  #card .ctx-read {
+    position: relative; isolation: isolate; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    width: 100%; margin-top: 7px; padding: 5px 0;
+    border: 0; border-radius: 7px; cursor: default;
+    font: 600 11px/1.3 -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--hot); background: color-mix(in srgb, var(--hot) 13%, transparent);
+  }
+  #card .ctx > .ctx-read:first-child { margin-top: 0; }
+  #card .ctx-read svg { width: 13px; height: 13px; }
+  #card .ctx-read:hover { background: color-mix(in srgb, var(--hot) 20%, transparent); }
+  #card .ctx-read:active { background: color-mix(in srgb, var(--hot) 27%, transparent); }
+  #card .ctx-read:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* Reading: the fill runs across in the time a read usually takes. An
+     estimate, not a count, so it never reaches the end on its own. */
+  #card .ctx-read.reading { color: var(--dim); }
+  #card .ctx-read.reading::before {
+    content: ""; position: absolute; inset: 0 auto 0 0; z-index: -1; width: 88%;
+    background: color-mix(in srgb, var(--hot) 16%, transparent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    #card .ctx-read.reading::before { animation: ctxread 7s cubic-bezier(.2,.6,.4,1) both; }
+    @keyframes ctxread { from { width: 0; } to { width: 88%; } }
+  }
+  /* A read that lands fades in over its own space, so the card grows once
+     and the figures do not blink into place. */
+  @media (prefers-reduced-motion: no-preference) {
+    #card .ctx-landed { animation: ctxland .14s ease-out; }
+    @keyframes ctxland { from { opacity: 0; } to { opacity: 1; } }
+  }
+  #card .ctx-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    font: 600 11px/1.3 -apple-system, BlinkMacSystemFont, sans-serif; color: var(--fg);
+    font-variant-numeric: tabular-nums;
+  }
+  #card .ctx-head span { font-weight: 500; color: var(--dim); font-size: 10px; }
+  /* The window as one bar: what is loaded, the compaction reserve, and the
+     rest as bare track. 2px of card between segments. */
+  #card .ctx-bar {
+    display: flex; gap: 2px; height: 8px; margin: 5px 0 6px;
+    border-radius: 4px; overflow: hidden;
+    background: color-mix(in srgb, var(--fg) 8%, transparent);
+  }
+  #card .ctx-bar i { display: block; min-width: 2px; }
+  #card .ctx-bar i:first-child { border-radius: 4px 0 0 4px; }
+  #card .ctx-bar i.buffer {
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--fg) 28%, transparent) 0 1.5px, transparent 1.5px 3.5px);
+  }
+  #card .ctx-rows { display: grid; grid-template-columns: 13px 1fr 38px auto; gap: 3px 5px; align-items: center; }
+  #card .ctx-rows svg { width: 12px; height: 12px; }
+  #card .ctx-rows .name {
+    font: 500 10.5px/1.35 -apple-system, BlinkMacSystemFont, sans-serif; color: var(--fg);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #card .ctx-rows .mini { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 7%, transparent); }
+  #card .ctx-rows .mini i { display: block; height: 100%; border-radius: 2px; }
+  #card .ctx-rows .num {
+    font: 500 10.5px/1.35 -apple-system, sans-serif; color: var(--fg);
+    text-align: right; font-variant-numeric: tabular-nums; min-width: 30px;
+  }
+  #card .ctx-error {
+    margin-top: 5px; font: 400 10px/1.35 -apple-system, sans-serif; color: var(--alert);
+  }
+  #card .ctx-note {
+    margin-top: 6px; font: 400 9.5px/1.35 -apple-system, sans-serif; color: var(--dim);
+  }
+
   .menu button {
     font: 500 12.5px/1 -apple-system, BlinkMacSystemFont, sans-serif;
     text-align: left; color: var(--fg); background: none; border: 0;
@@ -652,6 +737,13 @@
   li.line.card > .answers > .answer.picked { opacity: 1; font-weight: 600; }
   li.line.card > .answers .answer-n { flex: none; color: var(--blocked-text); font-variant-numeric: tabular-nums; }
   li.line.card > .answers .answer-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The suggested answer, in the green of a good outcome, so it stands out
+     from the amber without competing with the waiting state itself. */
+  li.line.card > .answers > .answer.recommended {
+    background: color-mix(in srgb, var(--lit-ink) 18%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lit-ink) 45%, transparent);
+  }
+  li.line.card > .answers > .answer.recommended .answer-n { color: var(--rec-ink); }
   li.line.card.asking > button.row .stack > .task, li.line.card.asking > button.row .stack > .model,
   li.line.card.asking > .children, li.line.card.asking > .shell-sum { display: none; }
   .asks .asks-cmd {
@@ -1439,6 +1531,12 @@ const IS_EXCEPTION = state => state === "blocked";
 // Phosphor Icons (MIT), regular weight, path data read out of the
 // phosphor-svelte package on this machine rather than transcribed.
 const META_ICONS = {
+  breakdown: '<path d="M100,116.43a8,8,0,0,0,4-6.93v-72A8,8,0,0,0,93.34,30,104.06,104.06,0,0,0,25.73,147a8,8,0,0,0,4.52,5.81,7.86,7.86,0,0,0,3.35.74,8,8,0,0,0,4-1.07ZM88,49.62v55.26L40.12,132.51C40,131,40,129.48,40,128A88.12,88.12,0,0,1,88,49.62ZM128,24a8,8,0,0,0-8,8v91.82L41.19,169.73a8,8,0,0,0-2.87,11A104,104,0,1,0,128,24Zm0,192a88.47,88.47,0,0,1-71.49-36.68l75.52-44a8,8,0,0,0,4-6.92V40.36A88,88,0,0,1,128,216Z"/>',
+  conversation: '<path d="M168,112a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,112Zm-8,24H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16Zm72-8A104,104,0,0,1,79.12,219.82L45.07,231.17a16,16,0,0,1-20.24-20.24l11.35-34.05A104,104,0,1,1,232,128Zm-16,0A88,88,0,1,0,51.81,172.06a8,8,0,0,1,.66,6.54L40,216,77.4,203.53a7.85,7.85,0,0,1,2.53-.42,8,8,0,0,1,4,1.08A88,88,0,0,0,216,128Z"/>',
+  toolbox: '<path d="M224,64H176V56a24,24,0,0,0-24-24H104A24,24,0,0,0,80,56v8H32A16,16,0,0,0,16,80V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V80A16,16,0,0,0,224,64ZM96,56a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96ZM224,80v32H192v-8a8,8,0,0,0-16,0v8H80v-8a8,8,0,0,0-16,0v8H32V80Zm0,112H32V128H64v8a8,8,0,0,0,16,0v-8h96v8a8,8,0,0,0,16,0v-8h32v64Z"/>',
+  notebook: '<path d="M184,112a8,8,0,0,1-8,8H112a8,8,0,0,1,0-16h64A8,8,0,0,1,184,112Zm-8,24H112a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16Zm48-88V208a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32H208A16,16,0,0,1,224,48ZM48,208H72V48H48Zm160,0V48H88V208H208Z"/>',
+  robot: '<path d="M200,48H136V16a8,8,0,0,0-16,0V48H56A32,32,0,0,0,24,80V192a32,32,0,0,0,32,32H200a32,32,0,0,0,32-32V80A32,32,0,0,0,200,48Zm16,144a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V80A16,16,0,0,1,56,64H200a16,16,0,0,1,16,16Zm-52-56H92a28,28,0,0,0,0,56h72a28,28,0,0,0,0-56Zm-24,16v24H116V152ZM80,164a12,12,0,0,1,12-12h8v24H92A12,12,0,0,1,80,164Zm84,12h-8V152h8a12,12,0,0,1,0,24ZM72,108a12,12,0,1,1,12,12A12,12,0,0,1,72,108Zm88,0a12,12,0,1,1,12,12A12,12,0,0,1,160,108Z"/>',
+  again: '<path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/>',
   branch: '<path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/>',
   uptime: '<path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216Zm45.66-93.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32L152,132.69V88a8,8,0,0,1,16,0v34.34ZM88,16a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,16Z"/>',
   cache: '<path d="M128,24C74.17,24,32,48.6,32,80v96c0,31.4,42.17,56,96,56s96-24.6,96-56V80C224,48.6,181.83,24,128,24Zm80,104c0,9.62-7.88,19.43-21.61,26.92C170.93,163.35,150.19,168,128,168s-42.93-4.65-58.39-13.08C55.88,147.43,48,137.62,48,128V111.36c17.06,15,46.23,24.64,80,24.64s62.94-9.68,80-24.64Zm-21.61,74.92C170.93,211.35,150.19,216,128,216s-42.93-4.65-58.39-13.08C55.88,195.43,48,185.62,48,176V159.36c17.06,15,46.23,24.64,80,24.64s62.94-9.68,80-24.64V176C208,185.62,200.12,195.43,186.39,202.92Z"/>',
@@ -1565,6 +1663,9 @@ const card = Object.assign(document.createElement("div"), {id: "card"});
 card.hidden = true;
 document.body.append(card);
 let cardTimer = null;
+// A click in a pinned card is for the card, not the "click elsewhere closes
+// it" listener on the document.
+card.addEventListener("pointerdown", e => e.stopPropagation());
 
 // Formatted here rather than in Python so they stay true between rebuilds:
 // a countdown baked into a snapshot is wrong the moment it arrives.
@@ -1702,7 +1803,164 @@ function showCard(row) {
     card.append(bar);
   }
 
+  card.classList.remove("pinned");
   card.hidden = false;
+}
+
+// What /context said per session: {reading: true}, {error}, or {context, at}.
+// Kept past the card closing, since a read takes seconds and the pointer
+// may leave before it lands.
+const contextReads = new Map();
+
+// Pinned only: a button in a card that follows the pointer could never be
+// reached.
+function pinCard(row) {
+  card.classList.add("pinned");
+  if (!row.context_readable) return;
+  const box = Object.assign(document.createElement("div"), {className: "ctx"});
+  card.append(box);
+  paintBreakdown(box, row.session_id);
+  clampCard();
+}
+
+function paintBreakdown(box, sessionId) {
+  const read = contextReads.get(sessionId) || {};
+  box.replaceChildren();
+  if (read.context) {
+    const shape = ctxShape(read.context);
+    const figures = [...breakdownBar(shape), breakdownNote(read.at)];
+    // Only the repaint the read itself causes fades in; reopening the card
+    // on a result already read shows it at once.
+    if (read.landing) figures.forEach(el => el.classList.add("ctx-landed"));
+    box.append(...figures);
+    delete read.landing;
+  }
+  if (read.error) {
+    const why = Object.assign(document.createElement("div"), {className: "ctx-error"});
+    why.textContent = read.error;
+    box.append(why);
+  }
+  const button = Object.assign(document.createElement("button"),
+                               {className: "ctx-read" + (read.reading ? " reading" : "")});
+  button.append(metaIcon(read.context && !read.reading ? "again" : "breakdown"),
+                document.createTextNode(read.reading ? "Reading\u2026" : read.context ? "Read again" : "Context breakdown"));
+  button.disabled = !!read.reading;
+  button.addEventListener("click", () => readContext(sessionId));
+  box.append(button);
+}
+
+// The four things a context is spent on. The deferred tool rows are left out
+// of the window: /context counts them apart, loaded only when a tool is used.
+const CTX_GROUPS = [
+  {key: "conv", label: "Conversation", icon: "conversation", names: ["Messages"]},
+  {key: "sys", label: "System & tools", icon: "toolbox", names: null},
+  {key: "mem", label: "Memory", icon: "notebook", names: ["Memory files"]},
+  {key: "agents", label: "Agents & skills", icon: "robot", names: ["Custom agents", "Skills"]},
+];
+const ctxGroupOf = name =>
+  CTX_GROUPS.find(g => g.names?.includes(name)) || CTX_GROUPS[1];
+
+function ctxShape(context) {
+  const loaded = [], deferred = [];
+  let buffer = 0;
+  for (const c of context.categories) {
+    if (/\(deferred\)$/.test(c.name)) deferred.push(c);
+    else if (c.name === "Compact buffer") buffer = c.tokens;
+    else if (c.name !== "Free space") loaded.push({...c, group: ctxGroupOf(c.name)});
+  }
+  const groups = CTX_GROUPS.map(g => ({...g, tokens: loaded.filter(c => c.group === g).reduce((n, c) => n + c.tokens, 0)}))
+                           .filter(g => g.tokens > 0);
+  return {loaded, deferred, buffer, groups, used: context.used, window: context.window};
+}
+
+const tinted = (icon, key) => {
+  const svg = metaIcon(icon);
+  svg.style.color = `var(--ctx-${key})`;
+  return svg;
+};
+const pct = (n, of) => (n / of * 100 < 1 && n > 0 ? "<1" : Math.round(n / of * 100)) + "%";
+
+function ctxHead(shape) {
+  const head = Object.assign(document.createElement("div"), {className: "ctx-head"});
+  head.append(document.createTextNode(`${tokens(shape.used)} of ${tokens(shape.window)}`));
+  const share = document.createElement("span");
+  share.textContent = pct(shape.used, shape.window) + " used";
+  head.append(share);
+  return head;
+}
+
+function ctxDeferred(shape) {
+  if (!shape.deferred.length) return [];
+  const note = Object.assign(document.createElement("div"), {className: "ctx-note"});
+  note.textContent = "Loaded on use, not counted: " +
+    shape.deferred.map(c => `${c.name.replace(" (deferred)", "")} ${tokens(c.tokens)}`).join(" \u00b7 ");
+  return [note];
+}
+
+// The window as one bar, then a row per category with its own bar.
+function breakdownBar(shape) {
+  const bar = Object.assign(document.createElement("div"), {className: "ctx-bar", role: "img"});
+  bar.setAttribute("aria-label", [...shape.groups.map(g => `${g.label} ${tokens(g.tokens)}`),
+                                  ...(shape.buffer ? [`kept free for compaction ${tokens(shape.buffer)}`] : [])].join(", "));
+  for (const g of shape.groups) {
+    const seg = document.createElement("i");
+    seg.style.width = g.tokens / shape.window * 100 + "%";
+    seg.style.background = `var(--ctx-${g.key})`;
+    bar.append(seg);
+  }
+  if (shape.buffer) {
+    const seg = Object.assign(document.createElement("i"), {className: "buffer"});
+    seg.style.width = shape.buffer / shape.window * 100 + "%";
+    bar.append(seg);
+  }
+  const rows = Object.assign(document.createElement("div"), {className: "ctx-rows"});
+  const top = Math.max(...shape.loaded.map(c => c.tokens));
+  for (const c of [...shape.loaded].sort((a, b) => b.tokens - a.tokens)) {
+    const name = Object.assign(document.createElement("span"), {className: "name"});
+    name.textContent = c.name;
+    const mini = Object.assign(document.createElement("span"), {className: "mini"});
+    const fill = document.createElement("i");
+    fill.style.width = Math.max(4, c.tokens / top * 100) + "%";
+    fill.style.background = `var(--ctx-${c.group.key})`;
+    mini.append(fill);
+    const num = Object.assign(document.createElement("span"), {className: "num"});
+    num.textContent = tokens(c.tokens);
+    rows.append(tinted(c.group.icon, c.group.key), name, mini, num);
+  }
+  return [ctxHead(shape), bar, rows, ...ctxDeferred(shape)];
+}
+
+// The setup rows are measured by a fresh fork, so they say what a session
+// started here now would load; only Messages is this conversation's own.
+function breakdownNote(at) {
+  const note = Object.assign(document.createElement("div"), {className: "ctx-note"});
+  note.textContent = `Read ${forHumans(Date.now() / 1000 - at)} ago. All but Conversation is what a new session here would load.`;
+  return note;
+}
+
+function readContext(sessionId) {
+  contextReads.set(sessionId, {...contextReads.get(sessionId), reading: true, error: null});
+  repaintBreakdown(sessionId);
+  fetch(`/context?token=${encodeURIComponent(TOKEN)}`, {
+    method: "POST", body: JSON.stringify({session_id: sessionId}),
+  })
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      const before = contextReads.get(sessionId) || {};
+      contextReads.set(sessionId, r.ok ? {context: body.context, at: Date.now() / 1000, landing: true}
+                                       : {...before, reading: false, error: body.error || `read failed (${r.status})`});
+    })
+    .catch(err => {
+      contextReads.set(sessionId, {...contextReads.get(sessionId), reading: false, error: String(err)});
+    })
+    .then(() => repaintBreakdown(sessionId));
+}
+
+function repaintBreakdown(sessionId) {
+  const box = card.querySelector(".ctx");
+  if (card.hidden || card.dataset.row !== sessionId || !box) return;
+  paintBreakdown(box, sessionId);
+  clampCard();
 }
 
 // Follows the pointer, but only downward-or-up and never sideways: the panel
@@ -1723,13 +1981,27 @@ function placeCard(x, y) {
   if (left + w > window.innerWidth - pad) left = x - w - 14;
   let top = y + 16;
   if (top + h > window.innerHeight - pad) top = y - h - 16;
-  left = Math.max(pad, Math.min(left, window.innerWidth - w - pad));
-  top = Math.max(pad, Math.min(top, window.innerHeight - h - pad));
-  card.style.transform = `translate3d(${Math.round(left)}px, ${Math.round(top)}px, 0)`;
+  moveCard(left, top);
+}
+
+let cardLeft = 0, cardTop = 0;
+function moveCard(left, top) {
+  const pad = 4;
+  cardLeft = Math.max(pad, Math.min(left, window.innerWidth - card.offsetWidth - pad));
+  cardTop = Math.max(pad, Math.min(top, window.innerHeight - card.offsetHeight - pad));
+  card.style.transform = `translate3d(${Math.round(cardLeft)}px, ${Math.round(cardTop)}px, 0)`;
+}
+
+// A pinned card that grew moves only as far as it must to stay on screen,
+// so what the pointer is on stays near it.
+function clampCard() {
+  moveCard(cardLeft, cardTop);
 }
 
 function hideCard() {
   clearTimeout(cardTimer);
+  clearTimeout(pinTimer);
+  card.classList.remove("pinned");
   card.hidden = true;
 }
 
@@ -1759,6 +2031,16 @@ let hoverRow = null;
 // passing over a row is noise, and at 110ms it arrived on every crossing --
 // the panel is a list you scan, so most crossings mean nothing.
 const CARD_DELAY_MS = 500;
+// A card up and the pointer still for this long pins it.
+const PIN_DELAY_MS = 500;
+let pinTimer = null;
+
+function armPin(row) {
+  clearTimeout(pinTimer);
+  pinTimer = setTimeout(() => {
+    if (hoverRow === row && !card.hidden && card.dataset.row === row.session_id) pinCard(row);
+  }, PIN_DELAY_MS);
+}
 
 function leaveRows() {
   hoverRow = null;
@@ -1769,6 +2051,11 @@ function leaveRows() {
 // every move, so this must stay cheap: no layout reads beyond the card's own
 // size, and no work at all when the pointer is not over a row.
 document.addEventListener("mousemove", event => {
+  const pinned = card.classList.contains("pinned");
+  if (pinned && event.target.closest && event.target.closest("#card")) {
+    clearTimeout(cardTimer);                        // reached the card: stay
+    return;
+  }
   const button = event.target.closest ? event.target.closest("button.row") : null;
   if (!button || !button._row) {
     leaveRows();
@@ -1778,21 +2065,29 @@ document.addEventListener("mousemove", event => {
   hoverRow = row;
 
   if (!card.hidden && card.dataset.row === row.session_id) {
+    clearTimeout(cardTimer);
+    if (pinned) return;                             // pinned: hold still
     placeCard(event.clientX, event.clientY);        // already up: just track
+    armPin(row);
     return;
   }
-  if (!card.hidden) {                               // sliding to another row
-    showCard(row);                                  // swap contents, no wait
-    placeCard(event.clientX, event.clientY);
-    return;
-  }
-  clearTimeout(cardTimer);
   const {clientX, clientY} = event;
+  const swap = () => {
+    showCard(row);
+    placeCard(clientX, clientY);
+    armPin(row);
+  };
+  if (!card.hidden && !pinned) {                    // sliding to another row
+    swap();                                         // swap contents, no wait
+    return;
+  }
+  // Nothing up, or a pinned card the pointer may be crossing other rows to
+  // reach: either way another row takes over only once the pointer rests.
+  clearTimeout(cardTimer);
   cardTimer = setTimeout(() => {
     // Still the same row under the pointer, or the wait was for nothing.
     if (hoverRow !== row) return;
-    showCard(row);
-    placeCard(clientX, clientY);
+    swap();
   }, CARD_DELAY_MS);
 }, true);
 
@@ -1816,7 +2111,7 @@ document.addEventListener("scroll", leaveRows, true);
 // -- one selector match, and only while a card is actually up.
 setInterval(() => {
   if (card.hidden) return;
-  if (!document.querySelector("button.row:hover")) leaveRows();
+  if (!document.querySelector("button.row:hover, #card.pinned:hover")) leaveRows();
 }, 200);
 
 // Returns the menu for a row. The row opens it on right-click, which
@@ -2207,7 +2502,8 @@ function answerRows(row) {
   const spent = picked && picked.question === asked.question;
   asked.options.forEach((label, i) => {
     const option = document.createElement(asked.multi ? "div" : "button");
-    option.className = "answer";
+    // Claude Code marks the option it suggests by ending its label so.
+    option.className = "answer" + (/\(recommended\)\s*$/i.test(label) ? " recommended" : "");
     option.title = asked.multi ? `${label} (several can be picked: answer in the terminal)` : label;
     option.append(Object.assign(document.createElement("span"), {className: "answer-n", textContent: String(i + 1)}),
                   Object.assign(document.createElement("span"), {className: "answer-label", textContent: label}));

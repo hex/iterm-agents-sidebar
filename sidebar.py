@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import accounts  # noqa: E402
 import codex  # noqa: E402
+import context_usage  # noqa: E402
 import omp  # noqa: E402
 import statusline  # noqa: E402
 import update  # noqa: E402
@@ -810,6 +811,12 @@ def snapshot(sessions, sort_by_name=False, group_by_provider=False):
                 row["state"] = session["agent_state"]
             if session.get("resumable"):
                 row["resumable"] = True
+            # The same test context_target makes, so the page offers the
+            # breakdown only where the daemon would run it.
+            conversation = session.get("conversation")
+            if (session.get("provider") == "claude" and isinstance(conversation, str)
+                    and CONVERSATION_ID.fullmatch(conversation)):
+                row["context_readable"] = True
             if session.get("context") is not None:
                 row["context"] = session["context"]
             if session.get("model"):
@@ -1028,6 +1035,27 @@ def resume_command(path, provider, conversation):
     if provider == "openai":
         return f"codex resume {conversation}"
     return None
+
+
+def context_target(rows, session_id):
+    """-> (directory, conversation id) to read the session's /context from.
+
+    From the last rebuild's rows, never the page's copy. Raises
+    context_usage.Refused when the session is not a Claude conversation the
+    fork can resume: the id comes from a user variable any process in the pane
+    can set, so only its exact shape reaches the argument list.
+    """
+    row = next((row for row in rows if row["session_id"] == session_id), None)
+    if row is None:
+        raise context_usage.Refused("no such session")
+    if row.get("provider") != "claude":
+        raise context_usage.Refused("only a Claude conversation has a /context")
+    conversation = row.get("conversation")
+    if not isinstance(conversation, str) or not CONVERSATION_ID.fullmatch(conversation):
+        raise context_usage.Refused("no conversation id for this session yet")
+    if not row.get("path") or not os.path.isdir(row["path"]):
+        raise context_usage.Refused("the session's directory is gone")
+    return row["path"], conversation
 
 
 #: Where Claude Code keeps a transcript per conversation, one folder per cwd.
@@ -2287,7 +2315,8 @@ class Sidebar:
     """
 
     def __init__(self, token, page_path, snapshot_fn, action_fn,
-                 settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None):
+                 settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
+                 context_fn=None):
         self.token = token
         self.page_path = Path(page_path)
         self.snapshot_fn = snapshot_fn
@@ -2298,6 +2327,8 @@ class Sidebar:
         self.update_fn = update_fn
         #: () -> the statusline it displaced; raises ValueError when it may not.
         self.statusline_fn = statusline_fn
+        #: session id -> context_usage.parse()'s breakdown; raises context_usage.Refused.
+        self.context_fn = context_fn
 
     def authorized(self, target):
         supplied = parse_qs(urlsplit(target).query).get("token", [""])[0]
@@ -2344,6 +2375,9 @@ class Sidebar:
                 return self._json(409, {"error": str(refusal)})
             return self._json(200, {"ok": True})
 
+        if method == "POST" and path == "/context":
+            return self._context(body)
+
         # Read the page from disk per request, so editing it needs no restart.
         return (200, "text/html; charset=utf-8", self.page_path.read_bytes())
 
@@ -2360,6 +2394,19 @@ class Sidebar:
 
         self.action_fn(session_id, verb, request.get("text"))
         return self._json(200, {"ok": True})
+
+    def _context(self, body):
+        try:
+            session_id = json.loads(body or b"{}").get("session_id")
+        except (ValueError, AttributeError):
+            return self._json(400, {"error": "malformed body"})
+        if not isinstance(session_id, str) or self.context_fn is None:
+            return self._json(400, {"error": "a context read needs a session_id"})
+        try:
+            breakdown = self.context_fn(session_id)
+        except context_usage.Refused as refusal:
+            return self._json(409, {"error": str(refusal)})
+        return self._json(200, {"ok": True, "context": breakdown})
 
     def _accounts(self, body):
         try:
@@ -2468,10 +2515,11 @@ class Server:
             return
 
         path = urlsplit(target).path
-        if path in ("/accounts", "/update"):
+        if path in ("/accounts", "/update", "/context"):
             # Account ops wait on the Keychain, Claude Code's locks and the
-            # network, for seconds, and an update on a pull and install.sh;
-            # off the loop, the heartbeat keeps going.
+            # network, for seconds, an update on a pull and install.sh, and a
+            # context read on a fork of claude; off the loop, the heartbeat
+            # keeps going.
             status, content_type, payload = await asyncio.to_thread(
                 self.sidebar.handle, method, target, body)
         else:
@@ -2530,8 +2578,10 @@ class Bridge:
         #: The hook session ids that have a card, which the state sweep spares.
         self.live_sessions = set()
         self.trips = ReturnTrips()
-        #: The rows of the last rebuild, which a resume re-checks against.
+        #: The rows of the last rebuild, which a resume and a context read
+        #: re-check against.
         self.rows = []
+        self.context_reads = context_usage.Reads()
         #: Session id -> (when a resume was typed into it, the job it was typed
         #: at), until its agent reports; see still_resuming.
         self.resuming = {}
@@ -2799,6 +2849,13 @@ class Bridge:
         await session.async_activate(select_tab=True, order_window_front=True)
         self.log("resume", session_id[:8], command)
         await self.rebuild()
+
+    def read_context(self, session_id):
+        """What fills the session's context, by /context on a fork. Blocks for
+        seconds: the server runs it off the loop."""
+        path, conversation = context_target(self.rows, session_id)
+        self.log("context", session_id[:8], conversation[:8])
+        return self.context_reads.run(session_id, path, conversation)
 
     async def answer_from_card(self, session, session_id, text):
         """Type the digit of the option clicked on a card, if its question still stands.
@@ -3072,6 +3129,7 @@ async def main(connection):
         accounts_fn=lambda op, request: bridge.account_op(op, request),
         update_fn=lambda: update.take(here),
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
+        context_fn=lambda session_id: bridge.read_context(session_id),
     )
     server = Server(sidebar, health_fn=lambda: bridge.healthy(), restart_fn=restart)
     bridge = Bridge(connection, server, meters)

@@ -792,3 +792,18 @@ def test_a_finished_subagent_does_not_count_and_a_running_one_without_a_model_is
     blind = {"groups": [{"name": "AGENTS", "rows": [
         {"state": "working", "model": "Opus 5.5", "subagents": [{"model": None, "ended": None}]}]}]}
     assert running_models(blind) is None
+
+
+def test_a_claude_conversation_offers_its_context_breakdown_and_nothing_else_does():
+    """The page shows the button only where the daemon would run the read."""
+    conversation = "524ba3e7-6207-4c5a-af51-85392a3f541f"
+    agent = LIVE[1]
+    cases = {
+        "claude": dict(agent, provider="claude", conversation=conversation),
+        "codex": dict(agent, session_id="c", provider="openai", conversation=conversation),
+        "no id yet": dict(agent, session_id="n", provider="claude", conversation=None),
+        "crafted id": dict(agent, session_id="x", provider="claude", conversation=conversation + "\n"),
+    }
+    rows = {r["session_id"]: r for g in snapshot(list(cases.values()))["groups"] for r in g["rows"]}
+    assert {name: rows[s["session_id"]].get("context_readable", False) for name, s in cases.items()} == {
+        "claude": True, "codex": False, "no id yet": False, "crafted id": False}
