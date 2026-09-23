@@ -731,6 +731,26 @@ def test_a_turn_that_lists_a_workflow_leaves_its_running_agents_be():
     assert emit_state.live_agents(doc) == 2
 
 
+def test_a_session_whose_only_open_task_is_a_monitor_rests():
+    """A monitor waits for an outside event and wakes the session when one
+    comes; nothing is being worked on meanwhile. An artifact's watcher is
+    armed on publish and lives as long as the process, past /clear, so
+    counting it held a finished card at working for good (seen 2026-09-23)."""
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [MONITOR_TASK]}, "idle"),
+    ])
+    assert emit_state.aggregate(doc) == "idle"
+
+
+def test_a_shell_beside_a_monitor_still_holds_the_session_working():
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [MONITOR_TASK, SHELL_TASK]}, "idle"),
+    ])
+    assert emit_state.aggregate(doc) == "working"
+
+
 def test_a_turn_that_lists_only_a_monitor_still_ends_a_lost_subagent():
     doc = _turn(blank(), [
         ("UserPromptSubmit", {"prompt": "go"}, "working"),

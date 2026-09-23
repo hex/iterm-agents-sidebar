@@ -86,6 +86,7 @@ read against the source.
 - `accounts.py`: account usage meters, switching and the Keychain logins.
 - `codex.py`: Codex rate limits, read from Codex's own session logs.
 - `omp.py`: what an omp session says about itself, read from its own files.
+- `context_usage.py`: a Claude session's `/context`, read from a fork of it.
 - `statusline.py`: puts the statusline bridge into Claude Code's settings.
 - `update.py`: checks the mirror for a newer release and takes it.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and

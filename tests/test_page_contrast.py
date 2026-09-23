@@ -34,7 +34,8 @@ PAIRS = [
 def tokens(theme):
     """The custom properties of one theme, {name: hex}."""
     css = PAGE.read_text(encoding="utf-8")
-    light, dark = re.findall(r":root\s*\{(.*?)\}", css, re.S)[:2]
+    light = re.search(r":root\s*\{(.*?)\}", css, re.S).group(1)
+    dark = re.search(r"@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{(.*?)\}", css, re.S).group(1)
     block = light if theme == "light" else dict_merge(light, dark)
     return dict(re.findall(r"(--[\w-]+):\s*(#[0-9a-fA-F]{6})\b", block))
 
@@ -77,12 +78,18 @@ def answer_rule(selector):
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
-@pytest.mark.parametrize("part", ["li.line.card > .answers > .answer", "li.line.card > .answers .answer-n"])
-def test_an_answer_row_reads_on_its_tint(theme, part):
-    """An answer row is the card's amber ink mixed over the waiting card's
-    ground; its label and its number both have to read on that tint."""
+@pytest.mark.parametrize("tint_at,part", [
+    ("li.line.card > .answers > .answer", "li.line.card > .answers > .answer"),
+    ("li.line.card > .answers > .answer", "li.line.card > .answers .answer-n"),
+    # The recommended answer wears the green of a good outcome instead.
+    ("li.line.card > .answers > .answer.recommended", "li.line.card > .answers > .answer"),
+    ("li.line.card > .answers > .answer.recommended", "li.line.card > .answers > .answer.recommended .answer-n"),
+])
+def test_an_answer_row_reads_on_its_tint(theme, tint_at, part):
+    """An answer row is an ink mixed over the waiting card's ground; its
+    label and its number both have to read on that tint."""
     t = tokens(theme)
-    tint_rule = answer_rule("li.line.card > .answers > .answer")
+    tint_rule = answer_rule(tint_at)
     tint_ink, share = re.search(r"background: color-mix\(in srgb, var\((--[\w-]+)\) (\d+)%, transparent\)", tint_rule).groups()
     ink_hex, ground_hex = t[tint_ink], t["--blocked-bg"]
     mixed = [round(int(ink_hex[i:i + 2], 16) * int(share) / 100 + int(ground_hex[i:i + 2], 16) * (1 - int(share) / 100))

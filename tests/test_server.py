@@ -296,6 +296,43 @@ def test_a_daemon_without_an_updater_refuses_the_request(tmp_path):
     assert build(tmp_path).handle("POST", f"/update?token={TOKEN}", b"")[0] == 400
 
 
+def context_server(tmp_path, read):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda *a: None, context_fn=read)
+
+
+def test_a_context_read_answers_with_the_breakdown_of_the_session_asked_for(tmp_path):
+    asked = []
+    breakdown = {"used": 36_600, "window": 1_000_000, "categories": [{"name": "Messages", "tokens": 10}]}
+    server = context_server(tmp_path, lambda session_id: asked.append(session_id) or breakdown)
+    status, _, body = server.handle("POST", f"/context?token={TOKEN}", b'{"session_id": "abc"}')
+    assert (status, json.loads(body), asked) == (200, {"ok": True, "context": breakdown}, ["abc"])
+
+
+def test_a_refused_context_read_carries_the_reason(tmp_path):
+    import context_usage
+
+    def refuse(session_id):
+        raise context_usage.Refused("already reading this session's context")
+    status, _, body = context_server(tmp_path, refuse).handle(
+        "POST", f"/context?token={TOKEN}", b'{"session_id": "abc"}')
+    assert (status, json.loads(body)) == (409, {"error": "already reading this session's context"})
+
+
+@pytest.mark.parametrize("body", [b"not json", b"{}", b'{"session_id": 7}', b'["abc"]'])
+def test_a_context_read_without_a_session_never_reaches_the_reader(tmp_path, body):
+    asked = []
+    server = context_server(tmp_path, asked.append)
+    assert server.handle("POST", f"/context?token={TOKEN}", body)[0] == 400
+    assert asked == []
+
+
+def test_a_context_read_needs_the_token(tmp_path):
+    assert context_server(tmp_path, lambda session_id: {}).handle("POST", "/context", b'{"session_id": "abc"}')[0] == 403
+
+
 def statusline_server(tmp_path, install):
     page = tmp_path / "page.html"
     page.write_text("x")
