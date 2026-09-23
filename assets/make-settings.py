@@ -13,13 +13,13 @@ GUIDE = "#3e3e41"          # color-mix(--fg 14%, transparent) over the card
 TITLE_H, PLAIN_H, CHILD_H = 33, 31, 27
 
 
-def switch(right, mid, on, ink=False):
-    """The 28x17 pill. Ink for a switch that governs a card or a fold."""
+def switch(right, mid, on):
+    """The 28x17 pill, green when on."""
     x, y = right - 28, mid - 8.5
-    bg = (FG if ink else LIT) if on else FG
+    bg = LIT if on else FG
     A(f'  <rect x="{x}" y="{y}" width="28" height="17" rx="8.5" fill="{bg}" opacity="{1 if on else 0.18}"/>')
     kx = x + 13 if on else x + 2
-    A(f'  <circle cx="{kx + 6.5}" cy="{mid}" r="6.5" fill="{BG if (on and ink) else "#ffffff"}"/>')
+    A(f'  <circle cx="{kx + 6.5}" cy="{mid}" r="6.5" fill="#ffffff"/>')
 
 
 def ticks(right, mid, p, words):
@@ -78,7 +78,7 @@ def control(row, right, mid, kind):
     elif "choices" in row:
         pick(right, mid, words)
     else:
-        switch(right, mid, words, ink=(kind != "child"))
+        switch(right, mid, words)
 
 
 def sheet_card(x, y, title, master, kids):
@@ -89,7 +89,7 @@ def sheet_card(x, y, title, master, kids):
     text(x + 10, y + 21, title, fill=FG, size=12.5, weight=600)
     right = x + COL_W - 10
     if master:
-        switch(right, y + 16.5, bool(DEFAULT_SETTINGS[master["k"]]), ink=True)
+        switch(right, y + 16.5, bool(DEFAULT_SETTINGS[master["k"]]))
     ry = y + TITLE_H
     for i, row in enumerate(kids):
         child = bool(row.get("needs"))

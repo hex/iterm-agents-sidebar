@@ -880,12 +880,39 @@
      gear bar below it in the same ground so the two read as one surface. */
   #settings {
     position: sticky; bottom: 28px; z-index: 19;
-    max-height: calc(100vh / var(--scale) - 46px); overflow-y: auto;
-    box-sizing: border-box; padding: 10px 12px 8px;
+    /* Half the panel at most, so the list stays in sight above it. */
+    max-height: calc(50vh / var(--scale)); flex-shrink: 0;
+    box-sizing: border-box; padding: 10px 12px 0;
     background: color-mix(in srgb, var(--fg) 4%, var(--bg));
     border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
-    display: flex; flex-direction: column; gap: 9px;
+    display: flex; flex-direction: column; gap: 6px;
   }
+  /* The title and its close button stay put; the cards under them scroll,
+     with the list's fades at whichever edge has more. */
+  #settings .set-head { display: flex; align-items: center; justify-content: space-between; }
+  #settings .set-body {
+    min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    display: flex; flex-direction: column; gap: 9px; padding: 2px 0 8px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top),
+                                        #000 calc(100% - var(--fade-foot)), transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top),
+                                        #000 calc(100% - var(--fade-foot)), transparent 100%);
+  }
+  /* Cards keep their height and the body scrolls; as flex items they would
+     otherwise shrink to fit and clip their own rows. */
+  #settings .set-body > * { flex-shrink: 0; }
+  #settings .set-body::-webkit-scrollbar { width: 0; height: 0; }
+  @supports (animation-timeline: scroll(self y)) {
+    #settings .set-body { animation: groups-scroll-fade linear both; animation-timeline: scroll(self y); }
+  }
+  @media (prefers-reduced-motion: reduce) { #settings .set-body { animation: none; } }
+  #settings .set-close {
+    width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; cursor: default;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: none; color: var(--dim);
+  }
+  #settings .set-close:hover { color: var(--fg); background: var(--tint-ctl); }
+  #settings .set-close svg { width: 14px; height: 14px; fill: currentColor; }
   /* With the drawer open the bar loses its margins, or the scrim shows
      through them: a dark frame at the sides, a dark band between the
      drawer's last line and the bar. */
@@ -1011,10 +1038,6 @@
   }
   .sw[aria-checked="true"] { background: var(--lit); }
   .sw[aria-checked="true"]::after { transform: translateX(11px); }
-  /* A switch that governs a card or a fold is ink, so the green stays the
-     colour of an option that is on rather than of every row in the sheet. */
-  .sw.ink[aria-checked="true"] { background: var(--fg); }
-  .sw.ink[aria-checked="true"]::after { background: var(--bg); }
   .sw:focus-visible { outline: 2px solid var(--hot); outline-offset: 1px; }
   .sw:disabled { opacity: .4; cursor: default; }
 
@@ -3062,7 +3085,7 @@ function paint(snapshot) {
       // The session's open tasks, the checklist it keeps with TaskCreate.
       // One line with the count, opening to a row per task; a card with
       // nothing open says nothing.
-      const tasks = row.tasks || [];
+      const tasks = SETTINGS?.show_task !== false && SETTINGS?.show_task_list !== false ? row.tasks || [] : [];
       if (tasks.length) {
         const open = openTasks.has(row.session_id);
         const doing = tasks.filter(t => t.status === "in_progress").length;
@@ -3255,6 +3278,7 @@ const SETTING_ROWS = [
   {k: "show_task_activity", label: "What it is doing", needs: "show_task"},
   {k: "show_task_age", label: "How old the report is", needs: "show_task"},
   {k: "show_task_bar", label: "Progress bar", needs: "show_task"},
+  {k: "show_task_list", label: "Task list", needs: "show_task"},
   {k: "show_model",   label: "Model"},
   {k: "show_agents",  label: "Subagents"},
   {k: "show_shells",  label: "Background shells"},
@@ -3276,7 +3300,7 @@ function settingCard(title, master) {
   const t = document.createElement("span");
   t.textContent = title;
   head.append(t);
-  if (master) head.append(settingSwitch(master, "ink"));
+  if (master) head.append(settingSwitch(master));
   card.append(head);
   return card;
 }
@@ -3292,10 +3316,10 @@ function settingKids(parentKey) {
   return {kids, inner, of: parentKey};
 }
 
-function settingSwitch(row, tone) {
+function settingSwitch(row) {
   const sw = document.createElement("button");
   sw.type = "button";
-  sw.className = "sw" + (tone ? " " + tone : "");
+  sw.className = "sw";
   sw.setAttribute("role", "switch");
   sw.setAttribute("aria-label", row.label);
   sw.addEventListener("click", () => push({[row.k]: !SETTINGS[row.k]}));
@@ -3394,20 +3418,28 @@ function settingRow(row, kind) {
     ctl.append(ticks, read);
     line.append(ctl);
   } else {
-    line.append(settingSwitch(row, kind === "plain" ? "ink" : ""));
+    line.append(settingSwitch(row));
   }
   return line;
 }
 
 function settingsBody() {
-  const box = document.getElementById("settings");
-  box.textContent = "";
+  const drawer = document.getElementById("settings");
+  drawer.textContent = "";
   SETTING_SYNC = [];
-  // The drawer names itself the way the list's sections do.
+  // The drawer names itself the way the list's sections do, with a way out
+  // beside the name; the cards scroll under both.
+  const head = Object.assign(document.createElement("div"), {className: "set-head"});
   const title = document.createElement("h2");
   title.className = "set-name";
   title.textContent = "Settings";
-  box.append(title);
+  const close = Object.assign(document.createElement("button"), {type: "button", className: "set-close"});
+  close.setAttribute("aria-label", "Close settings");
+  close.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>';
+  close.addEventListener("click", () => gear.click());
+  head.append(title, close);
+  const box = Object.assign(document.createElement("div"), {className: "set-body"});
+  drawer.append(head, box);
   // A head opens a card. A master row sits in the card's title with its
   // options under it; any other row with options gets a fold of its own.
   let card = null, kids = null, i = 0;
