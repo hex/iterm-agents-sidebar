@@ -912,12 +912,17 @@ def parse_session(raw):
     return session if isinstance(session, str) and session else None
 
 
-def parse_state(raw):
+def parse_state(raw, command_running=False):
     """The claudeState user variable -> one of STATES, or None if unset.
 
     Verifies the writer is still alive. SetUserVar is last-writer-wins with no
     concept of death, so a session killed mid-turn leaves "working" sitting in
-    the variable indefinitely. A claim nobody is alive to back is "unknown".
+    the variable indefinitely. A claim whose writer is gone is "exited"; one
+    that cannot be checked, or has gone quiet, is "unknown".
+
+    `command_running` says a command is running in the writer's own process
+    tree. No hook fires inside a tool call, so that is what keeps a quiet
+    working claim believable through a long one.
     """
     if not raw:
         return None
@@ -948,7 +953,7 @@ def parse_state(raw):
             age = time.time() - float(payload.get("ts") or 0)
         except (TypeError, ValueError):
             return "unknown"
-        if age > WORKING_GOES_STALE_AFTER:
+        if age > WORKING_GOES_STALE_AFTER and not command_running:
             # The writer is alive but has gone quiet. Liveness answers whether
             # it exists, not whether it is still doing what it claimed.
             return "unknown"
@@ -2561,7 +2566,7 @@ class Bridge:
                         "job_name": job,
                         "agent_job": codex_tui,
                         "provider": provider,
-                        "agent_state": titled or parse_state(raw),
+                        "agent_state": titled or parse_state(raw, command_running=bool(shells.get(pid))),
                         "topic": omp_title_topic(values["autoName"]) if titled else None,
                         "doing": doing,
                         "agents": parse_agents(raw) if spawned is None

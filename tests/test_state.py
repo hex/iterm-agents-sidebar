@@ -211,6 +211,21 @@ def test_a_working_claim_goes_unknown_once_it_stops_being_refreshed():
     assert parse_state(stale) == "unknown"
 
 
+def test_a_quiet_working_claim_holds_while_a_command_runs_under_it():
+    """No hook fires inside a tool call, so a session running a ten-minute
+    test suite says nothing for ten minutes. Measured 2026-09-23: 40 tool
+    calls over 600 s in a week, and three of six live sessions read unknown
+    at once. A command running in the session's own tree is the evidence
+    that it is still at work; an interrupted call leaves none behind.
+    """
+    from sidebar import parse_state, WORKING_GOES_STALE_AFTER
+    import time
+    stale = json.dumps({"state": "working", "pid": os.getpid(),
+                        "ts": time.time() - WORKING_GOES_STALE_AFTER - 5})
+    assert parse_state(stale, command_running=True) == "working"
+    assert parse_state(stale, command_running=False) == "unknown"
+
+
 def test_a_recent_working_claim_is_still_believed():
     from sidebar import parse_state
     import time
