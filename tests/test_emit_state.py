@@ -301,10 +301,17 @@ ASK = {"tool_name": "AskUserQuestion", "tool_input": {"questions": [
 
 def test_a_question_carries_its_first_question_and_option_labels():
     """The banner shows one question with its options as buttons; a second
-    question is counted, not shown."""
+    question is counted, and the card steps through the whole set."""
     assert emit_state.question_from(ASK) == {
         "header": "Icon", "question": "Which icon?",
-        "options": ["Dots", "Square"], "multi": False, "more": 1}
+        "options": ["Dots", "Square"], "multi": False, "more": 1,
+        "set": [{"header": "Icon", "question": "Which icon?", "options": ["Dots", "Square"], "multi": False},
+                {"header": "Colour", "question": "Which colour?", "options": ["Blue"], "multi": False}]}
+
+
+def test_a_single_question_carries_no_set():
+    one = {"tool_name": "AskUserQuestion", "tool_input": {"questions": ASK["tool_input"]["questions"][:1]}}
+    assert "set" not in emit_state.question_from(one)
 
 
 def test_any_other_gated_tool_names_itself_and_its_first_line():

@@ -237,7 +237,7 @@ def question_from(payload):
 
     AskUserQuestion carries the question and its option labels, which a
     notice can show as buttons; the first question is shown and the rest
-    counted. Any other tool names itself and the first line of what it wants
+    counted, and a set of several also carries every question for the card. Any other tool names itself and the first line of what it wants
     to run, so the notice can say "wants to run: git push". None when the
     payload names no tool.
     """
@@ -249,14 +249,14 @@ def question_from(payload):
         questions = given.get("questions") or []
         if not questions:
             return None
-        first = questions[0]
         # Every option keeps its place: the answer is sent as its number.
-        return {"header": clip(first.get("header") or "", HEADER_LIMIT),
-                "question": clip(first.get("question") or "", QUESTION_LIMIT),
-                "options": [clip(o.get("label") or "", OPTION_LIMIT)
-                            for o in first.get("options") or []],
-                "multi": bool(first.get("multiSelect")),
-                "more": len(questions) - 1}
+        shown = [{"header": clip(asked.get("header") or "", HEADER_LIMIT),
+                  "question": clip(asked.get("question") or "", QUESTION_LIMIT),
+                  "options": [clip(o.get("label") or "", OPTION_LIMIT)
+                              for o in asked.get("options") or []],
+                  "multi": bool(asked.get("multiSelect"))} for asked in questions]
+        # A set also travels whole: the card follows the pane through it.
+        return {**shown[0], "more": len(questions) - 1, **({"set": shown} if len(shown) > 1 else {})}
     summary = given.get("command") or given.get("file_path") or given.get("path") or ""
     return {"tool": tool,
             "summary": clip(str(summary).strip().splitlines()[0], SUMMARY_LIMIT) if summary else ""}

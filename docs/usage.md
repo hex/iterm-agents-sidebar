@@ -80,10 +80,17 @@ blocked, so its card shows no question.
 Under a question the card lists its options, a button each. The one the agent
 suggests, whose label ends in "(Recommended)", is tinted green. Clicking one types
 that option's number into the prompt, as if you had pressed it there. The
-daemon types it only while that same question still stands, and only once:
-a question you already answered in the terminal, or the next question of a
-set, gets nothing. A question that takes more than one answer shows its
-options without buttons; answer it in the terminal. While a card asks, it
+daemon types it only while that same question still stands, and only once.
+
+When the agent asks more than one question at once, each click moves the card to
+the next question, and after the last it shows Submit answers; Cancel stays
+in the terminal. The daemon types each step once, in order. Claude Code says
+nothing as it moves from one question to the next, so the card counts only
+its own clicks: answer a question in the terminal and the card's next click
+answers the question after it. Answer a set in one place.
+
+A question that takes more than one answer shows its options without
+buttons; answer it in the terminal. While a card asks, it
 drops its task line, model line and folds, so its height barely moves; they
 come back once you answer.
 
