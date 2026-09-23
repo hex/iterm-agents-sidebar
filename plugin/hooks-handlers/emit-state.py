@@ -389,11 +389,12 @@ def apply_event(doc, event, payload, said):
             doc["background"] = [{"type": t.get("type"), "description": t.get("description")}
                                  for t in payload.get("background_tasks") or []]
             # A subagent in the foreground cannot outlive the turn, and the
-            # list names every one in the background. So a Stop that lists
-            # none ends whichever never reported its own end, which nothing
-            # else would: it would hold the session at working for good.
+            # list names every one in the background -- a Workflow's agents
+            # under the one workflow task that runs them. So a Stop that
+            # lists neither ends whichever never reported its own end, which
+            # nothing else would: it would hold the session at working for good.
             if isinstance(payload.get("background_tasks"), list) \
-                    and not any(t.get("type") == "subagent" for t in doc["background"]):
+                    and not any(t.get("type") in AGENT_HOLDERS for t in doc["background"]):
                 for agent_id in list(doc["agents"]):
                     doc["finished"][agent_id] = {"since": doc["agents"].pop(agent_id), "ended": now}
         # Nothing runs while a permission prompt is open, so a turn that
@@ -405,6 +406,10 @@ def apply_event(doc, event, payload, said):
         doc["question"] = None
 
     return doc
+
+
+#: Background task types a subagent can run under past its parent's turn.
+AGENT_HOLDERS = ("subagent", "workflow")
 
 
 #: What a session id may be: it names files here and in the daemon, and is

@@ -95,9 +95,10 @@ subagents write to the same terminal. Only the tool that opened a gate closes it
 A subagent leaves the record at its own `SubagentStop`. A prompt clears the
 finished ones and keeps the running ones, because a subagent sent to the
 background runs on through it. One whose stop never arrives would hold the
-session at working, so a turn's `Stop` that lists no subagent among its
-`background_tasks` ends every subagent still marked running. A launch starts
-from none.
+session at working, so a turn's `Stop` that lists neither a subagent nor a
+workflow among its `background_tasks` ends every subagent still marked
+running. A Workflow's agents are listed only as the one workflow task that
+runs them. A launch starts from none.
 
 The state reaches the daemon as an iTerm2 user variable, written to the pane on
 every hook event, in one unbuffered write. The hook keeps it under 512 bytes

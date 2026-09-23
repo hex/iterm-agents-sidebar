@@ -713,6 +713,33 @@ def test_a_turn_that_lists_a_subagent_in_the_background_leaves_the_running_ones_
     assert emit_state.live_agents(doc) == 1
 
 
+WORKFLOW_TASK = {"type": "workflow", "description": "judge each crawler"}
+MONITOR_TASK = {"type": "monitor", "description": "live updates for an artifact"}
+
+
+def test_a_turn_that_lists_a_workflow_leaves_its_running_agents_be():
+    """A Workflow's agents start as subagents of the session but run inside
+    one background task of type workflow, which the Stop lists instead of
+    each agent (seen 2026-09-23: five workflow-subagent rows ended at the
+    parent's Stop, seconds after they started)."""
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("SubagentStart", {"agent_id": "a1", "agent_type": "workflow-subagent"}, "working"),
+        ("SubagentStart", {"agent_id": "a2", "agent_type": "workflow-subagent"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [MONITOR_TASK, WORKFLOW_TASK]}, "idle"),
+    ])
+    assert emit_state.live_agents(doc) == 2
+
+
+def test_a_turn_that_lists_only_a_monitor_still_ends_a_lost_subagent():
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("SubagentStart", {"agent_id": "a1", "agent_type": "Explore"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [MONITOR_TASK]}, "idle"),
+    ])
+    assert emit_state.live_agents(doc) == 0
+
+
 def test_a_stop_that_says_nothing_of_background_tasks_ends_no_subagent():
     doc = _turn(blank(), [
         ("UserPromptSubmit", {"prompt": "go"}, "working"),
