@@ -139,3 +139,23 @@ AskUserQuestion (two lines at most, with "+1 more" when it asked several), or
 the tool a permission prompt is for and the first line of what it would run.
 The line goes when the prompt is answered. An omp session reports only that it is
 blocked, so its card shows no question.
+
+## Resuming an exited agent
+
+When an agent's process dies (killed, or crashed) and its pane drops back to a
+shell prompt, the card stays, faded, with an EXITED outline. Resume types the
+command that reopens the same conversation at that prompt and brings the pane
+forward:
+
+| Session | What Resume types |
+| --- | --- |
+| A cs session (the directory has `.cs/`) | `cs .`, which asks whether to continue; Enter resumes |
+| Claude Code | `claude --resume <conversation id>` |
+| Codex | `codex resume <conversation id>` |
+
+The button shows only while that is safe: the pane is at a shell prompt, its
+directory still exists, the conversation saved a transcript (an agent killed
+before its first reply has nothing to resume), and it is not open in another pane. After
+a click it stays away until the agent reports again, or for a minute if the
+pane comes back to its prompt without one. An agent
+that ends with `/exit` leaves no card behind, and omp sessions have no Resume.

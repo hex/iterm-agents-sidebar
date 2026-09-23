@@ -45,6 +45,11 @@ AGENT_TITLE_MARKER = "\u2733"
 #: refreshes and nothing needs to.
 WORKING_GOES_STALE_AFTER = 300
 
+#: How long a resume typed into a pane holds its button down while nothing
+#: reports and the pane is back at the shell it was typed at: long enough for
+#: the agent to start, short enough to try again after one that did not.
+RESUME_HOLD = 60
+
 #: A terminal whose foreground job is one of these is sitting at its prompt:
 #: the shell itself is not a command anyone ran. A login shell reports "-zsh".
 SHELLS = frozenset({"zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "nu"})
@@ -58,7 +63,10 @@ VERBS = ("focus", "send", "close",
          # focus that remembers where you were, and the trip back from it.
          "bring", "return",
          # a macOS notice; the text names the moment, never the message.
-         "notify")
+         "notify",
+         # reopen an exited agent's conversation where it died; the daemon
+         # builds the command, the page sends no text.
+         "resume")
 
 #: What the page may do with accounts. Nothing here removes one.
 ACCOUNT_OPS = ("add", "switch", "rename", "read")
@@ -409,11 +417,11 @@ def running_models(snapshot):
     """The model families the Claude sessions on the panel and their running
     subagents use, for switching: {"opus", "fable"}, or None when one's model
     is not known yet, so every limit keeps deciding until it is. A finished
-    subagent uses nothing."""
+    subagent uses nothing, and neither does an exited session."""
     families = set()
     for group in snapshot.get("groups", []):
         for row in group["rows"]:
-            if row.get("state") is None or row.get("provider") not in (None, "claude"):
+            if row.get("state") in (None, "exited") or row.get("provider") not in (None, "claude"):
                 continue
             if not row.get("model"):
                 return None
@@ -752,6 +760,8 @@ def snapshot(sessions, sort_by_name=False, group_by_provider=False):
                 row["provider"] = session["provider"]
             if session.get("agent_state"):
                 row["state"] = session["agent_state"]
+            if session.get("resumable"):
+                row["resumable"] = True
             if session.get("context") is not None:
                 row["context"] = session["context"]
             if session.get("model"):
@@ -882,9 +892,9 @@ def mark_busy_teammates(rows):
             lead["busy_kids"] = lead.get("busy_kids", 0) + 1
 
 
-#: States the hooks can actually establish. "unknown" is reader-derived, not
-#: emitted: it is what a row shows when the writer died mid-turn, leaving a
-#: claim nobody is backing any more.
+#: States the hooks can actually establish. "unknown" and "exited" are
+#: reader-derived, never emitted: "exited" is a claim whose writer has died,
+#: "unknown" one nobody can vouch for either way.
 STATES = ("working", "blocked", "idle", "unknown")
 
 #: iTerm2 renders context usage into user.claudeStatus as "886k (88%)".
@@ -926,7 +936,9 @@ def parse_state(raw):
         return "unknown"
     try:
         os.kill(pid, 0)          # signal 0 tests existence, sends nothing
-    except (ProcessLookupError, ValueError, OverflowError):
+    except ProcessLookupError:
+        return "exited"
+    except (ValueError, OverflowError):
         return "unknown"
     except PermissionError:
         pass                     # alive, just not ours to signal
@@ -941,6 +953,84 @@ def parse_state(raw):
             # it exists, not whether it is still doing what it claimed.
             return "unknown"
     return state
+
+
+#: A conversation id as Claude Code and Codex write it. The id comes from a
+#: user variable any process in the pane can set, and it is typed into a
+#: shell, so nothing but this exact shape is ever let through.
+CONVERSATION_ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+def resume_command(path, provider, conversation):
+    """What to type at a pane's prompt to reopen the conversation that died
+    there, or None when there is no safe way to.
+
+    A cs session goes back through cs, which resumes its own recorded
+    conversation and keeps its memory and task list; bare claude would lose
+    both. cs then asks before it resumes, and that question is the confirmation.
+    """
+    if not path or not isinstance(conversation, str) or not CONVERSATION_ID.fullmatch(conversation):
+        return None
+    if provider == "claude":
+        return "cs ." if os.path.isdir(os.path.join(path, ".cs")) else f"claude --resume {conversation}"
+    if provider == "openai":
+        return f"codex resume {conversation}"
+    return None
+
+
+#: Where Claude Code keeps a transcript per conversation, one folder per cwd.
+CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+
+def conversation_saved(provider, conversation, transcript_path, projects=CLAUDE_PROJECTS_DIR):
+    """Has the conversation written a transcript to resume from?
+
+    An agent killed before its first turn is saved leaves an id that resumes
+    to "No conversation found". Claude's hook names no transcript, so any
+    project folder may hold it; Codex's names its rollout.
+    """
+    if not isinstance(conversation, str) or not CONVERSATION_ID.fullmatch(conversation):
+        return False
+    if provider == "openai":
+        return bool(transcript_path) and os.path.isfile(transcript_path)
+    return any(Path(projects).glob(f"*/{conversation}.jsonl"))
+
+
+def still_resuming(resuming, rows, now):
+    """The resumes still under way: {session id: (when sent, job it was typed at)}.
+
+    One ends when its agent reports, or its pane goes. Otherwise it holds for
+    RESUME_HOLD, and past that for as long as something other than the shell
+    it was typed at runs in the pane: cs waits on its question until it is
+    answered, and a second resume would be typed into it.
+    """
+    exited = {row["session_id"]: row.get("job_name") for row in rows if row["agent_state"] == "exited"}
+    return {sid: (sent, shell) for sid, (sent, shell) in resuming.items()
+            if sid in exited and (now - sent < RESUME_HOLD or exited[sid] != shell)}
+
+
+def resumable(row, rows, resuming):
+    """Can this pane's exited agent be resumed where it died, right now?
+
+    Only at a shell prompt, since anything else running there would get the
+    keystrokes; only while its directory stands and its transcript exists
+    (`row["saved"]`, read once the agent has exited); and never twice: not while
+    the conversation is live in another pane, nor while a resume sent to this
+    pane (its session id in `resuming`) is still starting.
+    """
+    if row["agent_state"] != "exited" or row["session_id"] in resuming:
+        return False
+    if (row.get("job_name") or "").lstrip("-") not in SHELLS:
+        return False
+    if not row.get("path") or not os.path.isdir(row["path"]):
+        return False
+    if resume_command(row["path"], row.get("provider"), row.get("conversation")) is None:
+        return False
+    if not row.get("saved"):
+        return False
+    return not any(other["session_id"] != row["session_id"]
+                   and other.get("conversation") == row["conversation"]
+                   and other["agent_state"] not in ("exited", None)
+                   for other in rows)
 
 
 #: claude-status writes "<glyph> <model>  <bar>  <tokens> (<pct>%)", with TWO
@@ -2370,6 +2460,11 @@ class Bridge:
         #: The hook session ids that have a card, which the state sweep spares.
         self.live_sessions = set()
         self.trips = ReturnTrips()
+        #: The rows of the last rebuild, which a resume re-checks against.
+        self.rows = []
+        #: Session id -> (when a resume was typed into it, the job it was typed
+        #: at), until its agent reports; see still_resuming.
+        self.resuming = {}
         self.notifier_missing_said = False
         #: The mirror release newer than this checkout, or None; set by watch_releases.
         self.update = None
@@ -2501,6 +2596,10 @@ class Bridge:
                         # is, so a teammate can be nested under its lead.
                         "parent_session": agent_parents.get(pid),
                         "claude_session": status["session"],
+                        # The hook's own id for the conversation, which outlives
+                        # the process: the statusline's dies with it.
+                        "conversation": parse_session(raw),
+                        "rollout": parse_codex(raw)["transcript_path"] if provider == "openai" else None,
                         "branch": git_branch(values["path"]),
                         "worktree_of": git_main_worktree(values["path"]),
                     })
@@ -2508,6 +2607,13 @@ class Bridge:
         # After every row is known: a session's tree ends where another's begins.
         self.live_sessions = live_sessions - {None}
         settings, roots, now = load_settings(), set(pids), time.monotonic()
+        self.resuming = still_resuming(self.resuming, rows, now)
+        for row in rows:
+            # Read only once the agent is gone: it is a walk of every project folder.
+            row["saved"] = row["agent_state"] == "exited" and conversation_saved(
+                row["provider"], row["conversation"], row["rollout"])
+            row["resumable"] = resumable(row, rows, self.resuming)
+        self.rows = rows
         forget_heavy(self._heavy_seen, roots)
         for row, pid in zip(rows, pids):
             cpu, rss_kb = tree_usage(resources, pid, roots)
@@ -2573,6 +2679,9 @@ class Bridge:
             # the action worked.
             print(f"sidebar: {verb} on {session_id}: gone", flush=True)
             return
+        if verb == "resume":
+            await self.resume(session, session_id)
+            return
         if verb == "bring":
             self.trips.leave(session_id, self.active_session_id())
         if verb in ("focus", "bring"):
@@ -2594,6 +2703,24 @@ class Bridge:
             # time, behind the panel, for every agent pane.
             await session.async_close(force=True)
         print(f"sidebar: {verb} on {session_id}: ok", flush=True)
+
+    async def resume(self, session, session_id):
+        """Type the resume command at the prompt of the pane the agent died in.
+
+        Re-checked against the last rebuild, not the page's copy: the page
+        can be seconds old, and a second click must find the first one held.
+        """
+        row = next((row for row in self.rows if row["session_id"] == session_id), None)
+        if row is None or not resumable(row, self.rows, self.resuming):
+            self.log("resume refused", session_id[:8])
+            return
+        command = resume_command(row["path"], row["provider"], row["conversation"])
+        self.resuming[session_id] = (time.monotonic(), row["job_name"])
+        await session.async_send_text(command + "\n")
+        # In front, so cs's own question is where the answer is typed.
+        await session.async_activate(select_tab=True, order_window_front=True)
+        self.log("resume", session_id[:8], command)
+        await self.rebuild()
 
     def log(self, *words):
         """Say it in the Script Console and in a file beside the status files.
