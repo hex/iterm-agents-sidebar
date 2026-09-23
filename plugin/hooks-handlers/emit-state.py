@@ -16,6 +16,8 @@ What each event contributes, derived from a hook trace captured 2026-09-07,
 not guesswork:
 
     UserPromptSubmit                       -> working, and clears the record
+                                              but keeps the subagents still
+                                              running
     PermissionRequest                      -> opens a gate on its tool
     Notification type=permission_prompt    -> opens an uncorrelated gate, unless
                                               the tool it could be about has run
@@ -31,6 +33,9 @@ not guesswork:
     SessionStart                           -> the parent is done
     SubagentStart / SubagentStop           -> adds or removes one child
     SessionEnd                             -> cleared
+
+    any event that says idle (Stop,
+         idle_prompt, SessionStart)        -> also clears every open gate
 
     a gate open                            -> blocked
     else parent working, a child alive,

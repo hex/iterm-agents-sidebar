@@ -1,5 +1,7 @@
 # Task line: a session's own account of its work
 
+> Design record. Changed since (noted 2026-09-23): `reminded` lives in the emit-state state document only, never in the note.
+
 Approved 2026-09-16, after reading another tool's agent-progress skill,
 whose shape this follows.
 

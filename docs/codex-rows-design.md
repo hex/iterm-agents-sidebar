@@ -1,5 +1,7 @@
 # Codex sessions as panel rows
 
+> Design record. Changed since (noted 2026-09-23): `install.sh` adds the Codex hooks by default when Codex is present (`--no-codex` skips them), and every card, Claude's too, shows which agent runs it, as the `provider_mark` setting chooses (a tag by default).
+
 Status: approved 2026-09-15; `PermissionRequest` confirmed by probe.
 
 ## The request

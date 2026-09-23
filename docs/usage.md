@@ -5,14 +5,17 @@ you need on day one.
 
 ## Which group a session lands in
 
-A session running Claude Code or Codex, or sitting in a `cs` session
-directory, goes in `AGENTS`. Everything else goes in `SESSIONS`. A Codex
+A session running Claude Code, Codex or omp goes in `AGENTS`. The panel
+knows one by the agent's mark in the tab title, the state it reports, or its
+process. A terminal that only sits in a `cs` session directory is not enough.
+Everything else goes in `SESSIONS`. A Codex
 terminal counts from the moment it opens, which the panel reads from the
 foreground process, since Codex itself says nothing until the first prompt.
 
-Rows read `t3` for the third tab, `t3.2` for the second pane of a split tab,
-and `w2.t3` once there is a second window. The number is a position you can
-count to, not iTerm2's internal tab id.
+A screen reader reads a row's position out with its name: `t3` for the third
+tab, `t3·2` for the second pane of a split tab, and `w2·t3` once there is a
+second window. The row itself does not show it. The number is a position you
+can count to, not iTerm2's internal tab id.
 
 ## What keeps a session working
 
@@ -60,6 +63,27 @@ alone, when git cannot tie the two (a symlinked home, a main shell parked in a
 subdirectory). When the main session is not open, the card stays put, under
 its own name.
 
+## A waiting card
+
+A card that starts waiting on you, for a question or a permission prompt,
+while it sits past the top or bottom edge of the list scrolls into view. One
+already on screen stays put.
+
+A waiting card says what it waits on, under the name: the first question of an
+AskUserQuestion (two lines at most, with "+1 more" when it asked several), or
+the tool a permission prompt is for and the first line of what it would run.
+The line goes when the prompt is answered. An omp session reports only that it is
+blocked, so its card shows no question.
+
+Under a question the card lists its options, a button each. Clicking one types
+that option's number into the prompt, as if you had pressed it there. The
+daemon types it only while that same question still stands, and only once:
+a question you already answered in the terminal, or the next question of a
+set, gets nothing. A question that takes more than one answer shows its
+options without buttons; answer it in the terminal. While a card asks, it
+drops its task line, model line and folds, so its height barely moves; they
+come back once you answer.
+
 ## Banners
 
 The banner uses the session's name as the card shows it. The panel posts nothing for the session you are looking at, meaning the session in front of its window
@@ -73,7 +97,8 @@ switches are separate.
 
 macOS shows a single action inline and folds two or more into an Options menu,
 so a question is always a menu. The banner sends keystrokes only while its question is still open, so a prompt you already answered in the
-terminal gets nothing. Codex sessions get a plain banner with no actions.
+terminal gets nothing. omp sessions get no banner from the panel, since omp
+posts its own.
 
 ## Focus
 
@@ -93,8 +118,8 @@ name, and it goes quiet when it's back at its prompt.
 ## The task line
 
 The session writes its own report: a task title, what it's doing now, and a rough percentage. A report older than five minutes turns grey and reads
-`stale`. A hundred percent shows `Done` and stays until a new request starts a
-new task.
+`stale`. A hundred percent shows `Done` with a green tick and stays until a new
+request starts a new task.
 
 The ticks show the estimate as a count you can glance at. They are not the
 solid bars of the limit meters in the foot, on purpose: those go green, amber
@@ -111,6 +136,8 @@ event, since the tool calls that change it are the events, and hands the
 panel the pending and running items; a list is never pruned, so completed
 ones never show. A subject is clipped to 240 characters and the whole of
 what the panel got sits in the row's tooltip. Codex keeps no task list.
+Settings > Rows > Task > Task list turns the fold off; that switch hides while
+Task is off.
 
 ## Background shells
 
@@ -120,34 +147,18 @@ card each time. A shell whose command the panel can't parse shows `?`.
 
 ## Updating
 
-The bar's left end names the release the panel runs. Once a day, once at
+The bar's left end names the release the panel runs, or reads
+`unreleased checkout` in a checkout with no `VERSION` file. Once a day, once at
 start, and on every press of the reload button, the daemon lists the tags on
 the public mirror; when one is newer, the
 line adds `2026.09.20 available` and an Update button. Pressing it pulls that
 release into the checkout the daemon runs from, runs `install.sh` again and
-restarts the daemon. The port changes with the restart, so the panel goes
-blank: reopen it from View > Toolbelt > Agents. A pull the checkout cannot
+restarts the daemon. The port changes with the restart, so the bar reads
+`restarting, reopen the panel` and the panel goes blank: reopen it from
+View > Toolbelt > Agents. A pull the checkout cannot
 fast-forward, or an install that fails, leaves the daemon as it was and puts
 the tool's last line beside the button; the whole message is in the daemon's
 log under Scripts > Manage > Console.
-
-A card whose agent asks a question while it sits below the visible list
-scrolls into view. One already on screen stays put.
-
-A waiting card says what it waits on, under the name: the first question of an
-AskUserQuestion (two lines at most, with "+1 more" when it asked several), or
-the tool a permission prompt is for and the first line of what it would run.
-The line goes when the prompt is answered. An omp session reports only that it is
-blocked, so its card shows no question.
-
-Under a question the card lists its options, a button each. Clicking one types
-that option's number into the prompt, as if you had pressed it there. The
-daemon types it only while that same question still stands, and only once:
-a question you already answered in the terminal, or the next question of a
-set, gets nothing. A question that takes more than one answer shows its
-options without buttons; answer it in the terminal. While a card asks, it
-drops its task line, model line and folds, so its height barely moves; they
-come back once you answer.
 
 ## Resuming an exited agent
 

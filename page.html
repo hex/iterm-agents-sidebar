@@ -35,6 +35,16 @@
                  0 0 0 2px rgb(205 205 205 / .14);
     --ease-power2: cubic-bezier(.33, 1, .68, 1);
     --scale: 1;
+    /* The thinnest outline a shadow draws. A border under 1px is rounded up
+       to a device pixel; a shadow's spread is not, and on a 1x screen a .5px
+       one falls apart into fragments. */
+    --hair: .5px;
+    /* An outline that has to stay whole is a border, not a shadow: WebKit
+       snaps a border to device pixels wherever the box lands, while a shadow
+       at a fractional position smears across two pixels at half strength. */
+  }
+  @media (max-resolution: 1.5dppx) {
+    :root { --hair: 1px; }
   }
   html { zoom: var(--scale); }
   @media (prefers-color-scheme: dark) {
@@ -283,7 +293,7 @@
     backdrop-filter: saturate(180%) blur(20px);
     border: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
     box-shadow:
-      0 0 0 .5px color-mix(in srgb, var(--fg) 5%, transparent),
+      0 0 0 var(--hair) color-mix(in srgb, var(--fg) 5%, transparent),
       0 8px 28px -6px color-mix(in srgb, var(--fg) 34%, transparent),
       0 2px 6px -2px color-mix(in srgb, var(--fg) 18%, transparent);
     transform-origin: top left;
@@ -329,7 +339,7 @@
     backdrop-filter: saturate(180%) blur(20px);
     border: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
     box-shadow:
-      0 0 0 .5px color-mix(in srgb, var(--fg) 5%, transparent),
+      0 0 0 var(--hair) color-mix(in srgb, var(--fg) 5%, transparent),
       0 10px 30px -8px color-mix(in srgb, var(--fg) 36%, transparent),
       0 2px 6px -2px color-mix(in srgb, var(--fg) 18%, transparent);
   }
@@ -474,8 +484,11 @@
   /* A name too long for the row fades out at the edge instead of ending in
      an ellipsis: the dots read as characters of the path, and a path cut at
      "sideb..." looks like a name nobody chose. */
+  /* A badge or corner mark sits over the row's top right, so the name stops
+     short of it: by max-width, since a clip edge is the padding box and text
+     would run on under padding. */
   .label {
-    max-width: 100%; line-height: 1.2;
+    max-width: calc(100% - var(--badge-room, 0px)); line-height: 1.2;
     overflow: hidden; white-space: nowrap;
     -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
             mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
@@ -502,7 +515,7 @@
     position: absolute; right: 10px; top: 7px; width: 15px; height: 15px; fill: var(--agent);
   }
   button.row.cornered { --corner: 22px; }
-  button.row.cornered .label { padding-right: var(--corner); }
+  button.row.cornered { --badge-room: var(--corner); }
   /* Or as a head over the cards of one agent. */
   #groups li.phead {
     display: flex; align-items: center; gap: 5px; margin: 10px 4px 5px; list-style: none;
@@ -791,15 +804,17 @@
      line too, and at larger text sizes that cut the context figure off. */
   .word.blocked { color: var(--badge-ink); background: var(--blocked-border); font-family: -apple-system, sans-serif; }
   button.row.hot > .word.blocked { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
-  button.row.hot .label { padding-right: calc(62px + var(--corner, 0px)); }
+  button.row.hot { --badge-room: calc(62px + var(--corner, 0px)); }
   /* Idle is the resting state, so its badge is an outline in the dim ink: it
      says the session is free for a prompt without competing with "waiting". */
-  .word.idle { color: var(--dim); box-shadow: inset 0 0 0 .5px var(--dim);
+  .word.idle { color: var(--dim); border: var(--hair) solid var(--dim);
+    padding: calc(3px - var(--hair)) calc(5px - var(--hair));
     font-family: -apple-system, sans-serif; font-weight: 600; }
   button.row.resting > .word.idle { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
   /* An agent whose process is gone: the idle outline without its sweep, and
      the card behind it faded, since nothing on it is live any more. */
-  .word.exited { color: var(--dim); box-shadow: inset 0 0 0 .5px var(--dim);
+  .word.exited { color: var(--dim); border: var(--hair) solid var(--dim);
+    padding: calc(3px - var(--hair)) calc(5px - var(--hair));
     font-family: -apple-system, sans-serif; font-weight: 600; }
   button.row.resting > .word.exited { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
   li.line.card.exited > button.row, li.line.card.exited > .children,
@@ -838,13 +853,13 @@
     @keyframes idle-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
     .shell-sum:hover .shimmer { animation: none; background: none; color: inherit; }
   }
-  button.row.resting .label { padding-right: calc(40px + var(--corner, 0px)); }
+  button.row.resting { --badge-room: calc(40px + var(--corner, 0px)); }
   /* A turn that has run long enough to be worth a look: warm outline, no fill,
      so it stays below "waiting", which is the one state that needs you. */
   .word.long { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn);
     font-family: -apple-system, sans-serif; }
   button.row.long-turn > .word.long { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
-  button.row.long-turn .label { padding-right: calc(70px + var(--corner, 0px)); }
+  button.row.long-turn { --badge-room: calc(70px + var(--corner, 0px)); }
 
 
   /* Motion belongs to the exception. An earlier build spun the icon on
@@ -1305,9 +1320,9 @@
     text-overflow: ellipsis; white-space: nowrap; }
   #budget .switched .sw-sep::before { content: "\00b7"; margin: 0 4px; color: var(--dim); }
   #budget .switched .sw-reason { color: var(--dim); }
-  #budget .switched .sw-chip { flex: none; padding: 0 5px; border-radius: 4px; font-size: 9px;
-    line-height: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--dim);
-    box-shadow: inset 0 0 0 .5px var(--dim); }
+  #budget .switched .sw-chip { flex: none; padding: 0 calc(5px - var(--hair)); border-radius: 4px; font-size: 9px;
+    line-height: calc(13px - 2 * var(--hair)); letter-spacing: .04em; text-transform: uppercase; color: var(--dim);
+    border: var(--hair) solid var(--dim); }
   #budget .switched .sw-age { flex: none; display: inline-flex; align-items: center; gap: 3px;
     color: var(--dim); font-variant-numeric: tabular-nums; }
   #budget .switched .sw-age .mi { width: 11px; height: 11px; }
@@ -1352,7 +1367,7 @@
                                       color-mix(in srgb, AccentColor 92%, #000));
     border-color: color-mix(in srgb, AccentColor 60%, #000);
     color: #fff;
-    box-shadow: inset 0 .5px 0 rgb(255 255 255 / .28), 0 1px 1.5px rgb(0 0 0 / .18);
+    box-shadow: inset 0 var(--hair) 0 rgb(255 255 255 / .28), 0 1px 1.5px rgb(0 0 0 / .18);
     transition: filter .09s, opacity .09s ease-out;
   }
   #budget .acct-switch svg { width: 11px; height: 11px; fill: currentColor; }
@@ -3535,16 +3550,21 @@ function settingRow(row, kind) {
       back.disabled = off() || at === 0;
       on.disabled = off() || at === row.steps.length - 1;
     };
-    const move = by => {
+    const move = (by, pressed) => {
       const next = Math.max(0, Math.min(row.steps.length - 1, at + by));
       if (next === at) return;
+      const was = pressed.getBoundingClientRect().top;
       // Applied before it is saved, so the size you are choosing is the
       // size you are looking at.
       if (row.k === "ui_scale") applyScale(row.steps[next]);
       push({[row.k]: row.steps[next]});
+      if (row.k === "ui_scale") holdInPlace(pressed, was);
+      // WebKit does not focus a button on click, and one that reaches its end
+      // disables itself: either way the next key press would go nowhere.
+      (pressed.disabled ? (pressed === on ? back : on) : pressed).focus({preventScroll: true});
     };
-    back.addEventListener("click", () => move(-1));
-    on.addEventListener("click", () => move(1));
+    back.addEventListener("click", () => move(-1, back));
+    on.addEventListener("click", () => move(1, on));
     SETTING_SYNC.push(paint);
     box.append(back, now, on);
     line.append(box);
@@ -3635,6 +3655,21 @@ function settingsBody() {
     }
   }
   syncSettings();
+}
+
+// A new text size rescales the drawer around the control being pressed; scroll
+// it back so the control stays under the pointer. Measured twice, since how
+// far one scrolled pixel moves it depends on the zoom the engine applies.
+function holdInPlace(el, top) {
+  const scroller = el.closest(".set-body");
+  if (!scroller) return;
+  const drift = () => el.getBoundingClientRect().top - top;
+  const first = drift();
+  if (!first) return;
+  scroller.scrollTop += first;
+  const left = drift();
+  const moved = first - left;
+  if (left && moved) scroller.scrollTop += left * (first / moved);
 }
 
 function syncSettings() {

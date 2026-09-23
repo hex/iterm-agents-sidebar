@@ -85,7 +85,7 @@ def tag(x, baseline, kind):
 
 
 MEASURED = {"main": 28.0, "Fable 5.1": 51.2, "feat/cache": 61.7, "gpt-6-astra": 68.5,
-            "CPU": 26.0, "Writing tests": 74.2, "gpt-5.6-luna": 74.0, "31%": 25.1,
+            "CPU": 26.0, "Writing tests": 74.2, "Choosing a store": 99.0, "gpt-5.6-luna": 74.0, "31%": 25.1,
             "Reading code": 80.0, "40s": 22.4, "2m": 18.3, "12m": 24.1, "3m": 18.6,
             "Done": 30.8, "stale": 28.0, "Opus 5": 42.1, "Mem": 28.8, "82%": 27.0,
             "94%": 27.5, "$0.42": 34.0, "feat/search": 65.7, "release": 42.3,
