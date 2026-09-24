@@ -124,7 +124,7 @@ def test_a_window_on_course_for_100_moves_before_the_threshold():
 
 
 def test_a_full_account_takes_any_emptier_one_when_none_is_ten_points_better():
-    """Asked 2026-09-22 with the strip at ERPK 94, hex 90, alex 100: holding for
+    """Asked 2026-09-22 with the strip at work 94, hex 90, home 100: holding for
     three days spends nothing. When no account is ten points better, a strictly
     emptier one under 100 still gives the session more room than the one it is
     on."""
@@ -222,7 +222,7 @@ def test_a_model_limit_a_session_runs_still_binds():
 
 def test_sessions_on_another_model_are_not_pushed_off_an_account_by_its_fable_limit():
     """The strip on 2026-09-22, with every session on Opus: Fable at 94 forces
-    nothing. What moves them is alex's week coming back in 19 hours."""
+    nothing. What moves them is home's week coming back in 19 hours."""
     states = {"acct-1": state(usage(49, 63, 94, week_reset=NOW + 2 * DAY)),
               "acct-2": state(usage(0, 51, 90)),
               "acct-3": state(usage(0, 81, 100, week_reset=NOW + 19 * HOUR))}
@@ -361,14 +361,14 @@ def test_a_different_answer_starts_the_count_again():
 def test_the_panel_is_told_which_account_an_exhausted_model_returns_on_first():
     from accounts import meters_snapshot
     outlook = switch_outlook("acct-1", ALL_FABLE_FULL, [A, B, C], NOW, models={"fable"})
-    shaped = meters_snapshot([dict(A, alias="ERPK"), dict(B, alias="hex"), dict(C, alias="alex")],
+    shaped = meters_snapshot([dict(A, alias="work"), dict(B, alias="hex"), dict(C, alias="home")],
                              ALL_FABLE_FULL, "acct-1", next_switch=outlook)
     assert shaped["next_switch"]["exhausted"] == [
-        {"model": "Fable", "resets_at": NOW + 19 * HOUR, "account_id": "acct-3", "account": "alex"}]
+        {"model": "Fable", "resets_at": NOW + 19 * HOUR, "account_id": "acct-3", "account": "home"}]
 
 
 def test_weekly_room_about_to_return_is_spent_even_when_the_week_is_mostly_used():
-    """The strip of 2026-09-23 with every session on Opus: alex has 19% of its
+    """The strip of 2026-09-23 with every session on Opus: home has 19% of its
     week left and gets it all back in three hours. Its 5-hour window is empty,
     so nothing stops it spending that before the reset."""
     states = {"acct-1": state(usage(0, 64, 96, week_reset=NOW + 2 * DAY)),

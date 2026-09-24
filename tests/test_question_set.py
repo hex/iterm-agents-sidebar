@@ -13,7 +13,7 @@ Ways this can go wrong, and the test for each:
   (2 is Cancel, which throws the whole set away);
 - a set asked again, word for word, after it closed: remembered for good, it
   could never be answered.
-Known and accepted (Alex, 2026-09-23): a question answered in the terminal
+Known and accepted (2026-09-23): a question answered in the terminal
 is not seen, so the card's next click answers the question after it.
 """
 import json

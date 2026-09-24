@@ -4256,39 +4256,11 @@ fetch(`/settings?token=${encodeURIComponent(TOKEN)}`)
   .catch(() => { SETTINGS = {}; });
 
 // ------------------------------------------------------------------- sound
-// Synthesised, because the page has no network and so no audio files. WebKit
-// will not start an AudioContext without a gesture, so it is created on the
-// first one and the first sounds before that are simply skipped.
-let audio = null;
-addEventListener("pointerdown", () => {
-  if (!audio) { try { audio = new AudioContext(); } catch (e) { audio = false; } }
-  if (audio && audio.state === "suspended") audio.resume();
-}, {once: false});
-
-function tone(steps, gain) {
-  if (!audio || !SETTINGS || !SETTINGS.sound) return;
-  const level = gain * (SETTINGS.volume ?? .4);
-  steps.forEach(([hz, at, len], i) => {
-    const osc = audio.createOscillator();
-    const amp = audio.createGain();
-    osc.type = "sine";
-    osc.frequency.value = hz;
-    const t0 = audio.currentTime + at;
-    // A short attack and an exponential tail: a click on either end is what
-    // makes a synthesised tone sound cheap.
-    amp.gain.setValueAtTime(0.0001, t0);
-    amp.gain.exponentialRampToValueAtTime(level, t0 + .012);
-    amp.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
-    osc.connect(amp).connect(audio.destination);
-    osc.start(t0);
-    osc.stop(t0 + len + .02);
-  });
-}
-
-// Rising pair: a question, and it wants an answer.
-const soundBlocked = () => tone([[660, 0, .16], [880, .13, .26]], .22);
-// Single soft note, falling away: something ended, nothing is being asked.
-const soundDone    = () => tone([[520, 0, .34]], .10);
+// The daemon plays the sounds. WebKit starts page audio only after a click in
+// the page, and every daemon restart reloads it, so sounds played here went
+// silent until the next click. The page says which moment it saw; the daemon
+// checks the settings, and plays a moment once however many windows' pages
+// report it.
 
 // Sound fires on a CHANGE of state, never on the state itself: a snapshot
 // arrives every few seconds and re-announcing a standing state is how a
@@ -4300,6 +4272,9 @@ let lastStates = new Map();
 // down. Only a prompt moves working_since.
 const turnStarts = new Map();
 const announcedTurns = new Map();
+// The turn each session last sounded finished for, kept apart from the
+// notices so a sound does not depend on whether notices are on.
+const soundedTurns = new Map();
 function announce(snapshot) {
   const now = new Map();
   for (const g of snapshot.groups || []) {
@@ -4317,8 +4292,11 @@ function announce(snapshot) {
       const newTurn = state === "working" && turn !== undefined && turn !== announcedTurns.get(id);
       const turnDone = state === "idle" && before === "working" && turn !== announcedTurns.get(id);
       if (state === "blocked") revealAfterPaint(id);
-      if (state === "blocked" && SETTINGS?.sound_blocked) soundBlocked();
-      else if (state === "idle" && before === "working" && SETTINGS?.sound_done) soundDone();
+      if (state === "blocked") act(id, "sound", "blocked");
+      else if (state === "idle" && before === "working" && (turn === undefined || turn !== soundedTurns.get(id))) {
+        act(id, "sound", "done");
+        if (turn !== undefined) soundedTurns.set(id, turn);
+      }
       // The banner reaches you in another application, where no sound or
       // focus move can. The daemon decides whether you are already looking
       // at the session; the page only says what happened. Going back to work
