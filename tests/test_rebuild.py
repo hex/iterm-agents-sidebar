@@ -228,6 +228,21 @@ def test_a_job_pid_that_is_no_pid_leaves_the_omp_row_without_a_process(monkeypat
     assert row["started_at"] is None
 
 
+def test_a_light_session_never_asks_what_its_busiest_process_is_called(monkeypatch):
+    """A plain login shell is `-zsh` in ps, so its args name no program;
+    asking the kernel every rebuild for a row nobody is shown would cost a ps."""
+    b = bridge(monkeypatch, [])
+    resources = {4242: (1, 0.5, 9000, "ttys001")}
+    monkeypatch.setattr(sidebar, "read_system",
+                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, resources, {4242: None}))
+    asked = []
+    monkeypatch.setattr(sidebar, "read_program_names", lambda pids: asked.append(pids) or {})
+    b.app = one_session(OmpSessionWithAJob())
+    [row] = asyncio.run(b.read_sessions())
+    assert row["heavy"] == [] and row["usage"] == {}
+    assert asked == []
+
+
 class OmpSessionOnATerminal(OmpSession):
     async def async_get_variable(self, name):
         return "/dev/ttys008" if name == "tty" else await super().async_get_variable(name)

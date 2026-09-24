@@ -5,6 +5,9 @@ subagents hang off it by parent pid. Sample lines are the shape of
 `ps -ww -eo pid=,ppid=,pgid=,tpgid=,tty=,lstart=,%cpu=,rss=,args=`.
 """
 import importlib.util
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
@@ -129,11 +132,57 @@ def test_the_listing_names_each_process_by_its_program():
     assert names[100] == "claude"
 
 
+def test_a_process_whose_first_argument_is_a_flag_has_no_name_in_the_listing():
+    """jdtls execs java with no program name, so its argv[0] is a JVM flag.
+    ps shows that flag first; it names no program."""
+    line = ("  300     1   300   300 ??      Thu Sep 17 12:00:04 2026  80.0 2300000 "
+            "-Djdk.xml.maxGeneralEntitySizeLimit=0 -Djdk.xml.totalEntitySizeLimit=0 -jar x.jar\n")
+    assert sidebar.parse_commands(PS + line)[300] is None
+
+
+def test_a_hog_whose_args_name_no_program_is_named_by_its_executable():
+    """Against the real process table: a child that execs sleep with a JVM
+    flag for argv[0], as jdtls does with java."""
+    child = subprocess.Popen([sys.executable, "-c",
+                              "import os; os.execvp('sleep', ['-Djdk.xml.maxGeneralEntitySizeLimit=0', '5'])"])
+    try:
+        deadline = time.monotonic() + 3
+        while True:
+            listing = sidebar.read_process_listing()
+            names = sidebar.parse_commands(listing)
+            if child.pid in names and names[child.pid] is None or time.monotonic() > deadline:
+                break
+        assert names[child.pid] is None
+        hogs = sidebar.tree_hogs(sidebar.parse_resources(listing), names, child.pid, stop_at=set())
+        assert hogs == {"cpu": "sleep", "memory": "sleep"}
+    finally:
+        child.kill()
+        child.wait()
+
+
+def test_reading_program_names_asks_for_nothing_when_nothing_is_missing():
+    assert sidebar.read_program_names([]) == {}
+
+
+def test_a_process_gone_before_its_name_is_read_stays_unnamed():
+    gone = subprocess.Popen(["true"])
+    gone.wait()
+    assert sidebar.read_program_names([gone.pid]) == {}
+
+
 def test_a_tree_names_what_uses_the_most_of_each():
     table, names = sidebar.parse_resources(PS), sidebar.parse_commands(PS)
     # Under 100, node burns the CPU (90.0) and claude holds the memory (300000 KB).
     assert sidebar.tree_hogs(table, names, 100, stop_at={100, 200, 300}) == {
         "cpu": "node", "memory": "claude"}
+
+
+def test_a_tree_whose_hogs_are_named_by_their_args_runs_no_second_ps(monkeypatch):
+    table, names = sidebar.parse_resources(PS), sidebar.parse_commands(PS)
+    asked = []
+    monkeypatch.setattr(sidebar, "read_program_names", lambda pids: asked.append(pids) or {})
+    sidebar.tree_hogs(table, names, 100, stop_at={100, 200, 300})
+    assert asked == [[]]
 
 
 def test_a_tree_that_is_gone_names_nothing():

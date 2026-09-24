@@ -413,6 +413,8 @@
     margin-left: auto; padding-left: 6px;
     font: 400 9px/1.5 -apple-system, BlinkMacSystemFont, sans-serif;
     color: var(--dim); opacity: .8; white-space: nowrap;
+    /* Cut, never run under the bar beside it; the whole name is its tooltip. */
+    min-width: 0; overflow: hidden; text-overflow: ellipsis;
   }
   #card .grid .note.urgent { color: var(--alert); }
   /* Flags are on or they are absent. A row saying "Fast mode: off" spends a
@@ -1778,7 +1780,7 @@ function showCard(row) {
       if (value && typeof value === "object" && value.note) {
         const note = document.createElement("span");
         note.className = "note" + (value.alarm ? " urgent" : "");
-        note.textContent = value.note;
+        note.textContent = note.title = value.note;
         dt.append(note);
       }
 
