@@ -81,7 +81,7 @@ ACCOUNT_OPS = ("add", "switch", "rename", "read")
 #: per-origin goes with it.
 SETTINGS_FILE = Path.home() / ".claude" / "agents-sidebar-settings.json"
 
-#: The release number, YYYY.MM.BUILD, written by release.sh. Nothing else
+#: The release number, YYYY.M.BUILD, written by release.sh. Nothing else
 #: carries it: the plugin manifest and the panel both read from here.
 VERSION_FILE = Path(__file__).resolve().parent / "VERSION"
 
@@ -131,7 +131,7 @@ DEFAULT_SETTINGS = {
     # A multiplier on the stylesheet's own sizes, so 1.0 means "as designed".
     "ui_scale": 1.0,
     # How a card says which agent runs in it, beyond the glyph on its facts line.
-    "provider_mark": "tag",
+    "provider_mark": "groups",
 }
 
 #: (low, high) for the values that are numbers.
