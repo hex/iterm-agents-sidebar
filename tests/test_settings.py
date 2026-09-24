@@ -185,11 +185,11 @@ def test_switching_accounts_automatically_is_off_until_asked_for():
     assert DEFAULT_SETTINGS["auto_switch"] is False
 
 
-def test_a_card_says_which_agent_it_is_with_a_tag_unless_told_otherwise(tmp_path):
+def test_cards_are_grouped_by_agent_unless_told_otherwise(tmp_path):
     """One of four: a tag after the name, a mark in the corner, cards grouped
     under a head per agent, or nothing beyond the glyph on the facts line."""
     store = tmp_path / "settings.json"
-    assert DEFAULT_SETTINGS["provider_mark"] == "tag"
+    assert DEFAULT_SETTINGS["provider_mark"] == "groups"
     for choice in ("corner", "groups", "off", "tag"):
         assert save_settings({"provider_mark": choice}, store)["provider_mark"] == choice
         assert load_settings(store)["provider_mark"] == choice
@@ -198,7 +198,7 @@ def test_a_card_says_which_agent_it_is_with_a_tag_unless_told_otherwise(tmp_path
 def test_a_way_of_marking_the_agent_that_is_not_one_of_them_is_refused():
     """Refused as a number that is not one is: the default stands."""
     for junk in ("stripe", "", None, 3, True, ["tag"]):
-        assert sidebar._clean({"provider_mark": junk})["provider_mark"] == "tag"
+        assert sidebar._clean({"provider_mark": junk})["provider_mark"] == "groups"
 
 
 def test_a_stored_muted_flag_is_ignored(tmp_path):

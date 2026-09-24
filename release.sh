@@ -1,5 +1,5 @@
 #!/bin/bash
-# Cut a release: number it YYYY.MM.BUILD, commit it on main, and publish it
+# Cut a release: number it YYYY.M.BUILD, commit it on main, and publish it
 # to the public mirror as one squashed, tagged commit.
 #
 # main carries the .cs/ session files and is never pushed. The mirror is a
@@ -30,9 +30,12 @@ remote="github"
 [ -z "$(git status --porcelain -- . ':!.cs')" ] || { echo "error: uncommitted changes" >&2; exit 1; }
 git rev-parse -q --verify public >/dev/null || { echo "error: no local branch 'public'" >&2; exit 1; }
 
-# The number: this month's count of tags on the mirror, plus one.
-month="$(date +%Y.%m)"
-last="$(git tag -l "v$month.*" | sed "s/^v$month\.//" | sort -n | tail -1)"
+# The number: this month's count of tags on the mirror, plus one. The month
+# has no leading zero; tags before 2026.9.43 had one, so both are counted.
+month="$(date +%Y).$(( 10#$(date +%m) ))"
+padded="$(date +%Y.%m)"
+last="$( { git tag -l "v$month.*" | sed "s/^v$month\.//"
+          git tag -l "v$padded.*" | sed "s/^v$padded\.//"; } | sort -n | tail -1)"
 version="$month.$(( ${last:-0} + 1 ))"
 
 echo "release $version"

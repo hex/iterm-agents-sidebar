@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.10
 # ABOUTME: Tells the panel when the mirror carries a newer release than the checkout it
 # ABOUTME: runs from, and takes that release: a fast-forward pull, then install.sh again.
-"""Releases are tags on the public mirror, `vYYYY.MM.BUILD`. One listing a
+"""Releases are tags on the public mirror, `vYYYY.M.BUILD`. One listing a
 day is enough: nothing here waits on it, and a release that lands between
 two checks is offered at the next one.
 """
@@ -13,13 +13,14 @@ from pathlib import Path
 #: Where releases are published; the same source get.sh clones from.
 MIRROR = "https://github.com/hex/iterm-agents-sidebar.git"
 #: The tag shape release.sh writes; anything else on the mirror is not a release.
-RELEASE_TAG = re.compile(r"^refs/tags/v(\d{4})\.(\d{2})\.(\d+)$")
+#: The month lost its leading zero at 2026.9.43; earlier tags carry it.
+RELEASE_TAG = re.compile(r"^refs/tags/v(\d{4})\.(\d{1,2})\.(\d+)$")
 
 
 def newest_release(listing):
     """-> the highest release in a `git ls-remote --tags` listing, or None.
 
-    BUILD counts up without padding, so `2026.09.8` sorts before `2026.09.19`
+    BUILD counts up without padding, so `2026.9.8` sorts before `2026.9.19`
     only when the parts are compared as numbers.
     """
     found = []
@@ -31,7 +32,7 @@ def newest_release(listing):
     if not found:
         return None
     year, month, build = max(found)
-    return f"{year}.{month:02d}.{build}"
+    return f"{year}.{month}.{build}"
 
 
 def _parts(release):

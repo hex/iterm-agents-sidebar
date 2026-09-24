@@ -30,7 +30,8 @@ The hook stamps the time your prompt started the turn, which is what the
 
 ## Order
 
-Cards follow iTerm2's own order of windows, tabs and panes. Sort cards by name,
+Cards follow iTerm2's own order of windows, tabs and panes, inside each agent's
+group while cards are grouped by provider (the default). Sort cards by name,
 under Rows in settings, switches to alphabetical order. Either way a teammate
 stays under its lead and a worktree card stays docked to its session, because
 each card travels with the rows under it.
@@ -42,13 +43,19 @@ Claude Code, Codex or omp:
 
 | Choice | What you get |
 |---|---|
-| Tag by the name | A small pill after the session name, tinted in the agent's colour, with its glyph and its name. The default |
+| Tag by the name | A small pill after the session name, tinted in the agent's colour, with its glyph and its name |
 | Icon in the corner | The glyph alone in the card's top corner. The state badge moves over for it |
-| Group by provider | Cards gathered under a head for each agent, Claude first. The list no longer follows your tabs. With one agent running there are no heads |
+| Group by provider | Cards gathered under a head for each agent, Claude first. Cards follow your tabs only inside each group. With one agent running there are no heads. The default |
 | Off | The glyph stays before the model name, as the only sign of the agent |
 
 With a tag or a corner mark the glyph leaves the facts line, so a card says it
 once. Sorting by name still applies inside each group.
+
+## A long name
+
+A card name too long for its row fades out at the edge. Every few seconds it
+slides left to show its end, and its start comes back in from the right. It
+stays still when Reduce motion is on in macOS accessibility settings.
 
 ## Teammates and worktrees
 
@@ -178,7 +185,7 @@ The bar's left end names the release the panel runs, or reads
 `unreleased checkout` in a checkout with no `VERSION` file. Once a day, once at
 start, and on every press of the reload button, the daemon lists the tags on
 the public mirror; when one is newer, the
-line adds `2026.09.20 available` and an Update button. Pressing it pulls that
+line adds `2026.9.20 available` and an Update button. Pressing it pulls that
 release into the checkout the daemon runs from, runs `install.sh` again and
 restarts the daemon. The port changes with the restart, so the bar reads
 `restarting, reopen the panel` and the panel goes blank: reopen it from

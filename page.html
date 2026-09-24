@@ -581,6 +581,9 @@
   /* The mask costs nothing when the text fits, but it would still fade the
      last word of a short name, so it only applies to a label that overflows. */
   .label:not(.clipped) { -webkit-mask-image: none; mask-image: none; }
+  /* The part of a card's name that moves when the name glides to its end:
+     a transform needs a box, and the label keeps its clip and fade. */
+  .label > .run { display: inline-block; }
   /* The model's mark is its provider's, in the provider's colour. */
   .model .provider { width: var(--meta-icon); height: var(--meta-icon); flex-shrink: 0; fill: currentColor; }
   .model .provider.claude { fill: #d97757; opacity: 1; }
@@ -2991,7 +2994,7 @@ const AGENT_KINDS = {
 const agentKindOf = row => row.provider || "claude";
 const agentKind = row => AGENT_KINDS[agentKindOf(row)] || {name: agentKindOf(row), colour: "currentColor"};
 // How a card says which agent it is: "tag", "corner", "groups" or "off".
-const agentMark = () => SETTINGS?.provider_mark ?? "tag";
+const agentMark = () => SETTINGS?.provider_mark ?? "groups";
 
 // A sub-head over the cards of one agent, for a list gathered by agent.
 function agentHead(row, count) {
@@ -3105,8 +3108,45 @@ function fitMeta() {
   // A label only fades when it has more text than room; measured here, with
   // the rest of the layout reads, rather than per row as it is built.
   for (const label of document.querySelectorAll("#groups .label")) {
-    label.classList.toggle("clipped", label.scrollWidth > label.clientWidth + 1);
+    const run = label.querySelector(":scope > .run");
+    // The run's own width, since a glide under way moves the run and would
+    // change what scrollWidth reports. Going round, the run is two equal halves.
+    const going = run?.querySelector(":scope > .copy");
+    const width = run ? (going ? run.offsetWidth / 2 - GLIDE_GAP : run.offsetWidth) : label.scrollWidth;
+    const clipped = width > label.clientWidth + 1;
+    label.classList.toggle("clipped", clipped);
+    if (run) glide(run, clipped ? width : 0);
   }
+}
+
+// A card's name longer than its room goes round now and then: it glides
+// left at a reading pace while a copy follows it in, so its start comes back
+// from the right and the name lands where it began. Timed off the clock like
+// the shimmer, so a row rebuilt mid-lap carries on from where it was.
+const GLIDE_PX_PER_S = 40;
+const GLIDE_REST_MS = 5000;
+// Between the end of the name and its copy coming in behind it.
+const GLIDE_GAP = 32;
+function glide(run, width) {
+  for (const a of run.getAnimations()) a.cancel();
+  run.querySelector(":scope > .copy")?.remove();
+  run.style.paddingRight = "";
+  if (!width || !MOTION.matches) return;
+  // Name, gap, copy, gap: two equal halves, so moving the run by half of
+  // itself puts the copy exactly where the name started, whatever the zoom.
+  const copy = Object.assign(document.createElement("span"), {className: "copy"});
+  copy.setAttribute("aria-hidden", "true");
+  copy.style.paddingLeft = `${GLIDE_GAP}px`;
+  copy.append(...[...run.childNodes].map(n => n.cloneNode(true)));
+  run.append(copy);
+  run.style.paddingRight = `${GLIDE_GAP}px`;
+  const total = GLIDE_REST_MS + (width + GLIDE_GAP) / GLIDE_PX_PER_S * 1000;
+  const motion = run.animate([
+    {transform: "translateX(0)"},
+    {transform: "translateX(0)", offset: GLIDE_REST_MS / total, easing: "ease-in-out"},
+    {transform: "translateX(-50%)"},
+  ], {duration: total, iterations: Infinity, id: "glide"});
+  motion.currentTime = Date.now() % total;
 }
 window.addEventListener("resize", () => { fitMeta(); paintSeams(); });
 
@@ -3247,7 +3287,9 @@ function paint(snapshot) {
 
       const label = document.createElement("span");
       label.className = "label";
-      label.append(row.label);
+      const run = Object.assign(document.createElement("span"), {className: "run"});
+      run.append(row.label);
+      label.append(run);
       stack.append(label);
       // Which agent this is, said once per card: a tag after the name or a
       // mark in the row's corner. The glyph then leaves the facts line.
@@ -3260,7 +3302,7 @@ function paint(snapshot) {
           const tag = Object.assign(document.createElement("span"), {className: "ptag"});
           if (AGENT_KINDS[agentKindOf(row)]) tag.style.setProperty("--ink", `var(--ink-${agentKindOf(row)})`);
           tag.append(glyph, agentKind(row).name);
-          label.append(tag);
+          run.append(tag);
         } else {
           glyph.classList.add("pcorner");
           b.classList.add("cornered");

@@ -3,6 +3,8 @@
 Failure modes, written before the code: a peeled `^{}` ref line; a tag that
 is not a release; `v2026.09.8` sorting after `v2026.09.19` as text; a mirror
 release equal to the installed one; an installed checkout with no VERSION;
+a month written without its leading zero (`v2026.9.43`, from 2026.09.43 on)
+not read as a release, or read as older than a padded one;
 git exiting nonzero, timing out, or printing nothing; an update script that
 fails, whose text the panel must get and after which nothing restarts.
 """
@@ -22,7 +24,17 @@ LISTING = (
 
 
 def test_the_newest_release_is_read_numerically_not_as_text():
-    assert update.newest_release(LISTING) == "2026.09.19"
+    assert update.newest_release(LISTING) == "2026.9.19"
+
+
+def test_a_month_without_its_leading_zero_is_a_release_and_counts_on_from_the_padded_ones():
+    listing = LISTING + "2222222222222222222222222222222222222222\trefs/tags/v2026.9.20\n"
+    assert update.newest_release(listing) == "2026.9.20"
+
+
+def test_a_padded_install_is_offered_the_first_unpadded_release():
+    assert update.offer("2026.9.43", "2026.09.42") == "2026.9.43"
+    assert update.offer("2026.9.42", "2026.09.42") is None
 
 
 def test_a_mirror_without_release_tags_offers_nothing():
@@ -54,7 +66,7 @@ def fake_git(tmp_path, body):
 
 def test_the_check_reads_the_newest_tag_off_the_mirror(tmp_path):
     git = fake_git(tmp_path, f"printf '%s' '{LISTING}'\n".replace("\n\n", "\\n"))
-    assert update.check(git=git) == "2026.09.19"
+    assert update.check(git=git) == "2026.9.19"
 
 
 def test_a_failed_listing_yields_nothing(tmp_path):
