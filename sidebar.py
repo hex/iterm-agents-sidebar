@@ -1293,16 +1293,43 @@ def parse_resources(raw):
 
 
 def parse_commands(raw):
-    """The process listing -> {pid: the program it runs, without its path}."""
+    """The process listing -> {pid: the program it runs, without its path}.
+
+    None for a process whose first argument is a flag: its args name no
+    program. jdtls, for one, execs java with its JVM flags and no argv[0];
+    a login shell's is `-zsh`. tree_hogs asks the kernel for the few it shows.
+    """
     names = {}
     for line in (raw or "").splitlines():
         parts = line.split(None, PROCESS_FIELDS)
         if len(parts) <= PROCESS_FIELDS:
             continue
         try:
-            names[int(parts[0])] = os.path.basename(parts[PROCESS_FIELDS].split()[0])
+            first = parts[PROCESS_FIELDS].split()[0]
+            names[int(parts[0])] = None if first.startswith("-") else os.path.basename(first)
         except ValueError:
             continue
+    return names
+
+
+def read_program_names(pids):
+    """-> {pid: its executable's name} from the kernel, for processes whose
+    args name no program. Missing for a process already gone.
+
+    A separate ps, since ucomm can hold spaces and only the last column may.
+    """
+    if not pids:
+        return {}
+    try:
+        out = subprocess.run(["/bin/ps", "-o", "pid=,ucomm=", "-p", ",".join(map(str, pids))],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    names = {}
+    for line in out.splitlines():
+        pid, _, name = line.strip().partition(" ")
+        if pid.isdigit():
+            names[int(pid)] = name.strip()
     return names
 
 
@@ -1386,12 +1413,19 @@ def tree_pids(table, root, stop_at):
 
 def tree_hogs(table, names, root, stop_at):
     """-> {"cpu": program, "memory": program}: what in `root`'s tree uses the
-    most of each. Empty when the tree is gone."""
+    most of each. Empty when the tree is gone.
+
+    A hog whose args name no program is named by the kernel, which costs a
+    ps; the rebuild asks only for a heavy tree's hogs, so that is rare.
+    """
     pids = tree_pids(table, root, stop_at)
     if not pids:
         return {}
-    return {"cpu": names.get(max(pids, key=lambda pid: table[pid][1])),
-            "memory": names.get(max(pids, key=lambda pid: table[pid][2]))}
+    hogs = {"cpu": max(pids, key=lambda pid: table[pid][1]),
+            "memory": max(pids, key=lambda pid: table[pid][2])}
+    unnamed = [pid for pid in set(hogs.values()) if names.get(pid) is None]
+    found = read_program_names(unnamed)
+    return {kind: names.get(pid) or found.get(pid) for kind, pid in hogs.items()}
 
 
 def read_process_listing():
@@ -2781,8 +2815,8 @@ class Bridge:
         for row, pid in zip(rows, pids):
             cpu, rss_kb = tree_usage(resources, pid, roots)
             row["heavy"] = hold_heavy(self._heavy_seen, heavy_on(cpu, rss_kb, settings), pid, now)
-            row["usage"] = usage_shown(row["heavy"], cpu, rss_kb,
-                                       tree_hogs(resources, commands, pid, roots))
+            hogs = tree_hogs(resources, commands, pid, roots) if row["heavy"] else {}
+            row["usage"] = usage_shown(row["heavy"], cpu, rss_kb, hogs)
         return rows
 
     def healthy(self):
