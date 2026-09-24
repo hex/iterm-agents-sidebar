@@ -27,6 +27,7 @@ import accounts  # noqa: E402
 import codex  # noqa: E402
 import context_usage  # noqa: E402
 import omp  # noqa: E402
+import sound  # noqa: E402
 import statusline  # noqa: E402
 import update  # noqa: E402
 
@@ -71,7 +72,10 @@ VERBS = ("focus", "send", "close",
          "resume",
          # pick an option of a standing AskUserQuestion; the daemon checks
          # the question and types only its digit.
-         "answer")
+         "answer",
+         # one of the panel's two sounds, named by kind; the daemon plays a
+         # fixed tone, and whether it plays at all is the settings' call.
+         "sound")
 
 #: What the page may do with accounts. Nothing here removes one.
 ACCOUNT_OPS = ("add", "switch", "rename", "read")
@@ -2416,12 +2420,17 @@ class Sidebar:
         except ValueError:
             return self._json(400, {"error": "malformed body"})
 
+        if not isinstance(request, dict):
+            return self._json(400, {"error": "malformed body"})
         verb = request.get("verb")
         session_id = request.get("session_id")
-        if verb not in VERBS or not session_id:
+        text = request.get("text")
+        if verb not in VERBS or not isinstance(session_id, str) or not session_id:
             return self._json(400, {"error": "unknown verb"})
+        if text is not None and not isinstance(text, str):
+            return self._json(400, {"error": "malformed body"})
 
-        self.action_fn(session_id, verb, request.get("text"))
+        self.action_fn(session_id, verb, text)
         return self._json(200, {"ok": True})
 
     def _context(self, body):
@@ -2620,6 +2629,9 @@ class Bridge:
         #: The mirror release newer than this checkout, or None; set by watch_releases.
         self.update = None
         self.notices = Notices()
+        #: Plays the panel's sounds; main() makes it before the server takes
+        #: its first request, since making it writes the tone files.
+        self.player = None
 
     def active_session_id(self):
         """The session in front of the key iTerm2 window, or None."""
@@ -2825,6 +2837,10 @@ class Bridge:
         # it belongs to has closed.
         if verb == "notify":
             await self.notify(session_id, text)
+            return
+        # Nor does a sound: the moment it marks may already be over.
+        if verb == "sound":
+            await self.player.play(session_id, text, load_settings())
             return
         session = self.app.get_session_by_id(session_id)
         if session is None:
@@ -3162,6 +3178,7 @@ async def main(connection):
     )
     server = Server(sidebar, health_fn=lambda: bridge.healthy(), restart_fn=restart)
     bridge = Bridge(connection, server, meters)
+    bridge.player = sound.Player.for_dir(os.path.join(STATUS_DIR, "tones"), bridge.log)
     bridge.app = await iterm2.async_get_app(connection)
 
     port = await server.start()

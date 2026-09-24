@@ -118,6 +118,15 @@ session's own; the rest are what a new session in the same directory would
 load now. The figures are `/context`'s estimate, so they can differ from the
 Context percentage above them, which Claude Code measures on each turn.
 
+## Sounds
+
+The daemon plays the sounds, so a restart or an update never leaves them
+waiting for a click in the panel. Still, like banners, they need the panel
+open in some window: the page is what notices a session change. With the
+panel open in several windows, each moment plays once. At most two sounds
+play at a time, and a problem playing one is written to `daemon.log` in
+`~/.claude/agents-sidebar-status`.
+
 ## Banners
 
 The banner uses the session's name as the card shows it. The panel posts nothing for the session you are looking at, meaning the session in front of its window

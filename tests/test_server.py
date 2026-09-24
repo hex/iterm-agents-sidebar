@@ -101,6 +101,28 @@ def test_unknown_verb_is_refused_and_dispatches_nothing(tmp_path):
     assert calls == []
 
 
+def test_sound_verb_carries_its_kind(tmp_path):
+    server, calls = record(tmp_path)
+    status, _, _ = server.handle("POST", f"/action?token={TOKEN}",
+                                 b'{"session_id": "abc", "verb": "sound", "text": "done"}')
+    assert status == 200
+    assert calls == [("abc", "sound", "done")]
+
+
+@pytest.mark.parametrize("body", [
+    b'["sound"]',
+    b'{"session_id": ["abc"], "verb": "sound", "text": "done"}',
+    b'{"session_id": "", "verb": "focus"}',
+    b'{"session_id": "abc", "verb": "sound", "text": {"kind": "done"}}',
+])
+def test_an_action_whose_parts_are_not_strings_is_refused(tmp_path, body):
+    """A list for a session id would reach the daemon's per-session tables as a key."""
+    server, calls = record(tmp_path)
+    status, _, _ = server.handle("POST", f"/action?token={TOKEN}", body)
+    assert status == 400
+    assert calls == []
+
+
 def test_sse_frame_is_one_data_line_terminated_by_a_blank_line(tmp_path):
     from sidebar import sse_frame
     assert sse_frame({"groups": []}) == b'data: {"groups": []}\n\n'
