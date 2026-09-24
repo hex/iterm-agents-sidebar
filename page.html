@@ -1320,6 +1320,20 @@
     flex-shrink: 0; font: 400 10px/1 ui-monospace, Menlo, monospace;
     color: var(--dim); font-variant-numeric: tabular-nums;
   }
+  /* A row that knows what its session asks says it under the name, one line:
+     the question's header and text, or the tool and the start of its
+     command. Its mark is the kind of wait, a question or a tool to allow,
+     in grey: the count stays the section's one warm mark. */
+  .qrow.asked { align-items: flex-start; }
+  .qrow > .qtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .qrow .qwhat {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 400 11px/1.35 -apple-system, sans-serif; color: var(--dim);
+  }
+  .qrow .qwhat .qhead { font-weight: 600; margin-right: 5px; }
+  .qrow .qwhat .asks-cmd { font: 400 10.5px/1.35 ui-monospace, Menlo, monospace; }
+  .qrow > .qkind { width: 12px; height: 12px; flex: none; margin-top: .5px; color: var(--dim); }
+  .qrow.asked > .ago { margin-top: 4px; }
   #queue .more {
     padding: 2px 2px 0 calc(2px + var(--mark) + var(--row-gap));
     font-size: 11px; color: var(--dim);
@@ -1558,6 +1572,7 @@ const META_ICONS = {
   tasks: '<path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/>',
   check: '<path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/>',
   plug: '<path d="M237.66,66.34a8,8,0,0,0-11.32,0L192,100.69,155.31,64l34.35-34.34a8,8,0,1,0-11.32-11.32L144,52.69,117.66,26.34a8,8,0,0,0-11.32,11.32L112.69,44l-53,53a40,40,0,0,0,0,56.57l15.71,15.71L26.34,218.34a8,8,0,0,0,11.32,11.32l49.09-49.09,15.71,15.71a40,40,0,0,0,56.57,0l53-53,6.34,6.35a8,8,0,0,0,11.32-11.32L203.31,112l34.35-34.34A8,8,0,0,0,237.66,66.34ZM147.72,185a24,24,0,0,1-33.95,0L71,142.23a24,24,0,0,1,0-33.95l53-53L200.69,132Z"/>',
+  question: '<path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>',
   memory: '<path d="M232,56H24A16,16,0,0,0,8,72V200a8,8,0,0,0,16,0V184H40v16a8,8,0,0,0,16,0V184H72v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V72A16,16,0,0,0,232,56ZM24,72H232v96H24Zm88,80a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H48a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8ZM56,104h48v32H56Zm88,48h64a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H144a8,8,0,0,0-8,8v48A8,8,0,0,0,144,152Zm8-48h48v32H152Z"/>',
 };
 
@@ -2577,6 +2592,39 @@ function waited(since) {
 
 const QUEUE_ROWS = 3;
 
+// The kind of wait, as a queue row's mark: a tool to allow or a question.
+function queueKind(asked) {
+  const icon = metaIcon(asked.tool ? "shells" : "question");
+  icon.classList.add("qkind");
+  return icon;
+}
+
+// What a waiting session asks, as words: the tool and its command, or the
+// question's header and text.
+function asksAloud(asked) {
+  const first = asked.set ? asked.set[0] : asked;
+  return (asked.tool ? [asked.tool, asked.summary] : [first.header, first.question])
+    .filter(Boolean).join(": ");
+}
+
+// A queue row's name over what it asks. A set shows its first question,
+// the one the terminal is on until the card or the terminal answers it.
+function queueText(label, asked) {
+  const span = (cls, text) => Object.assign(document.createElement("span"), {className: cls, textContent: text});
+  const what = span("qwhat", "");
+  if (asked.tool) {
+    what.append(span("qhead", asked.tool));
+    if (asked.summary) what.append(span("asks-cmd", asked.summary));
+  } else {
+    const first = asked.set ? asked.set[0] : asked;
+    if (first.header) what.append(span("qhead", first.header));
+    if (first.question) what.append(first.question);
+  }
+  const text = span("qtext", "");
+  text.append(label, what);
+  return text;
+}
+
 function paintQueue(snapshot) {
   const box = document.getElementById("queue");
   box.textContent = "";
@@ -2598,16 +2646,23 @@ function paintQueue(snapshot) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "qrow";
-    const mark = Object.assign(document.createElement("span"), {className: "swatch"});
-    if (SESSION_COLOURS[row.colour]) mark.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
     const label = Object.assign(document.createElement("span"),
                                 {className: "label", textContent: row.label});
-    b.append(mark, label);
+    if (row.question) {
+      b.classList.add("asked");
+      b.append(queueKind(row.question), queueText(label, row.question));
+    } else {
+      // Nothing says what it asks, so nothing claims a kind: the session's
+      // own colour, and the name alone.
+      const mark = Object.assign(document.createElement("span"), {className: "swatch"});
+      if (SESSION_COLOURS[row.colour]) mark.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+      b.append(mark, label);
+    }
     const ago = waited(row.blocked_since);
     if (ago) b.append(Object.assign(document.createElement("span"),
                                     {className: "ago", textContent: ago}));
-    b.setAttribute("aria-label", [row.label, "waiting", ago && `for ${ago}`]
-                                   .filter(Boolean).join(" "));
+    const said = [row.label, "waiting", ago && `for ${ago}`].filter(Boolean).join(" ");
+    b.setAttribute("aria-label", row.question ? `${said}, ${asksAloud(row.question)}` : said);
     b.addEventListener("click", () => act(row.session_id, "focus"));
     const li = document.createElement("li");
     li.append(b);

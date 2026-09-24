@@ -1,135 +1,141 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 484" width="880" role="img" aria-label="The panel's foot: two sessions waiting, the Auto-switch control, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, Codex's own limits, and the bar with the release, reload and the gear">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 504" width="880" role="img" aria-label="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Auto-switch control, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, Codex's own limits, and the bar with the release, reload and the gear">
   <title>The foot of the panel</title>
-  <rect width="880" height="484" rx="16" fill="#1c1c1e"/>
-  <rect x="24" y="0" width="430" height="484" fill="#1c1c1e"/>
+  <rect width="880" height="504" rx="16" fill="#1c1c1e"/>
+  <rect x="24" y="0" width="430" height="504" fill="#1c1c1e"/>
   <line x1="44" y1="22" x2="434" y2="22" stroke="#f2f2f7" opacity="0.14"/>
   <text x="44" y="40" fill="#f2f2f7" font-size="11.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Waiting on you</text>
   <text x="134" y="40" fill="#ffd60a" font-size="11.5" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">2</text>
-  <rect x="46" y="56" width="9" height="9" rx="2.5" fill="#2a9d8f"/>
+  <g transform="translate(45,56) scale(0.0469)" fill="#98989d"><path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/></g>
   <text x="63" y="65" fill="#f2f2f7" font-size="12" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">beacon</text>
   <text x="434" y="65" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">4m</text>
-  <rect x="46" y="80" width="9" height="9" rx="2.5" fill="#c4508f"/>
-  <text x="63" y="89" fill="#f2f2f7" font-size="12" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">delta</text>
-  <text x="434" y="89" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">12s</text>
-  <line x1="44" y1="106" x2="434" y2="106" stroke="#f2f2f7" opacity="0.14"/>
-  <text x="406" y="123" fill="#98989d" font-size="10.5" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="end">Auto-switch</text>
-  <rect x="414" y="114" width="20" height="12" rx="6.0" fill="#8ec07c" opacity="1"/>
-  <circle cx="428.0" cy="120.0" r="4.5" fill="#ffffff"/>
-  <rect x="44" y="111" width="82" height="15" rx="5" fill="#fb8b5e" fill-opacity="0.12"/>
-  <text x="50" y="122" fill="#fb8b5e" font-size="10" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">→ spare soon</text>
-  <g transform="translate(44,155) scale(0.5000)" fill="#d97757"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></g>
-  <text x="62" y="165" fill="#f2f2f7" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.85">work</text>
-  <g transform="translate(94,155) scale(0.0469)" fill="#8ec07c"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></g>
+  <text x="63" y="80" fill="#98989d" font-size="11" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Deploy</text>
+  <text x="106.47800000000001" y="80" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Ship the staging build now?</text>
+  <g transform="translate(45,90) scale(0.0469)" fill="#98989d"><path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/></g>
+  <text x="63" y="99" fill="#f2f2f7" font-size="12" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">delta</text>
+  <text x="434" y="99" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">12s</text>
+  <text x="63" y="114" fill="#98989d" font-size="11" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Bash</text>
+  <text x="93.652" y="114" fill="#98989d" font-size="10.5" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">npm run migrate</text>
+  <line x1="44" y1="126" x2="434" y2="126" stroke="#f2f2f7" opacity="0.14"/>
+  <text x="406" y="143" fill="#98989d" font-size="10.5" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="end">Auto-switch</text>
+  <rect x="414" y="134" width="20" height="12" rx="6.0" fill="#8ec07c" opacity="1"/>
+  <circle cx="428.0" cy="140.0" r="4.5" fill="#ffffff"/>
+  <rect x="44" y="131" width="82" height="15" rx="5" fill="#fb8b5e" fill-opacity="0.12"/>
+  <text x="50" y="142" fill="#fb8b5e" font-size="10" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">→ spare soon</text>
+  <g transform="translate(44,175) scale(0.5000)" fill="#d97757"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></g>
+  <text x="62" y="185" fill="#f2f2f7" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.85">work</text>
+  <g transform="translate(94,175) scale(0.0469)" fill="#8ec07c"><path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/></g>
   <g opacity="1">
-  <text x="44" y="186" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">5-hour</text>
-  <rect x="88" y="180.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
-  <rect x="88" y="180.5" width="114.2" height="3" rx="1.5" fill="#87af87"/>
-  <text x="394" y="186" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">42%</text>
-  <text x="434" y="186" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">2h</text>
-  </g>
-  <g opacity="1">
-  <text x="44" y="201" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Weekly</text>
-  <rect x="88" y="195.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
-  <rect x="88" y="195.5" width="193.1" height="3" rx="1.5" fill="#d7af5f"/>
-  <rect x="250.7" y="193.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
-  <text x="394" y="201" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">71%</text>
-  <text x="434" y="201" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">3d</text>
+  <text x="44" y="206" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">5-hour</text>
+  <rect x="88" y="200.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
+  <rect x="88" y="200.5" width="114.2" height="3" rx="1.5" fill="#87af87"/>
+  <text x="394" y="206" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">42%</text>
+  <text x="434" y="206" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">2h</text>
   </g>
   <g opacity="1">
-  <text x="44" y="216" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Fable</text>
-  <rect x="88" y="210.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
-  <rect x="88" y="210.5" width="247.5" height="3" rx="1.5" fill="#d75f5f"/>
-  <rect x="250.7" y="208.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
-  <text x="394" y="216" fill="#d75f5f" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">91%</text>
-  <text x="434" y="216" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">3d</text>
+  <text x="44" y="221" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Weekly</text>
+  <rect x="88" y="215.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
+  <rect x="88" y="215.5" width="193.1" height="3" rx="1.5" fill="#d7af5f"/>
+  <rect x="250.7" y="213.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
+  <text x="394" y="221" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">71%</text>
+  <text x="434" y="221" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">3d</text>
   </g>
-  <g transform="translate(44,233) scale(0.0469)" fill="#f2f2f7"><path d="M213.66,181.66l-32,32a8,8,0,0,1-11.32-11.32L188.69,184H48a8,8,0,0,1,0-16H188.69l-18.35-18.34a8,8,0,0,1,11.32-11.32l32,32A8,8,0,0,1,213.66,181.66Zm-139.32-64a8,8,0,0,0,11.32-11.32L67.31,88H208a8,8,0,0,0,0-16H67.31L85.66,53.66A8,8,0,0,0,74.34,42.34l-32,32a8,8,0,0,0,0,11.32Z"/></g>
-  <text x="62" y="243" fill="#f2f2f7" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Switched to work</text>
-  <text x="161" y="243" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">·</text>
-  <text x="169" y="243" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Fable at 91%</text>
-  <rect x="344" y="232" width="30" height="13" rx="4" fill="none" stroke="#98989d" stroke-width="0.5"/>
-  <text x="359" y="242" fill="#98989d" font-size="9" letter-spacing="0.4" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">AUTO</text>
-  <g transform="translate(382,233) scale(0.0430)" fill="#98989d"><path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216Zm45.66-93.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32L152,132.69V80a8,8,0,0,1,16,0v58.34ZM128,72a8,8,0,0,1-8-8V32a8,8,0,0,1,16,0V64A8,8,0,0,1,128,72Z"/></g>
-  <text x="434" y="243" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">12m</text>
-  <line x1="44" y1="262" x2="434" y2="262" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <g opacity="0.75">
-  <g transform="translate(44,273) scale(0.5000)" fill="#d97757"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></g>
-  <text x="62" y="283" fill="#f2f2f7" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">spare</text>
+  <g opacity="1">
+  <text x="44" y="236" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Fable</text>
+  <rect x="88" y="230.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
+  <rect x="88" y="230.5" width="247.5" height="3" rx="1.5" fill="#d75f5f"/>
+  <rect x="250.7" y="228.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
+  <text x="394" y="236" fill="#d75f5f" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">91%</text>
+  <text x="434" y="236" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">3d</text>
   </g>
-  <rect x="368" y="269" width="66" height="19" rx="5" fill="#3478f6" stroke="#1d4fa8" stroke-width="0.5"/>
-  <g transform="translate(376,273) scale(0.0430)" fill="#ffffff"><path d="M213.66,181.66l-32,32a8,8,0,0,1-11.32-11.32L188.69,184H48a8,8,0,0,1,0-16H188.69l-18.35-18.34a8,8,0,0,1,11.32-11.32l32,32A8,8,0,0,1,213.66,181.66Zm-139.32-64a8,8,0,0,0,11.32-11.32L67.31,88H208a8,8,0,0,0,0-16H67.31L85.66,53.66A8,8,0,0,0,74.34,42.34l-32,32a8,8,0,0,0,0,11.32Z"/></g>
-  <text x="391" y="283" fill="#ffffff" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Switch</text>
+  <g transform="translate(44,253) scale(0.0469)" fill="#f2f2f7"><path d="M213.66,181.66l-32,32a8,8,0,0,1-11.32-11.32L188.69,184H48a8,8,0,0,1,0-16H188.69l-18.35-18.34a8,8,0,0,1,11.32-11.32l32,32A8,8,0,0,1,213.66,181.66Zm-139.32-64a8,8,0,0,0,11.32-11.32L67.31,88H208a8,8,0,0,0,0-16H67.31L85.66,53.66A8,8,0,0,0,74.34,42.34l-32,32a8,8,0,0,0,0,11.32Z"/></g>
+  <text x="62" y="263" fill="#f2f2f7" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Switched to work</text>
+  <text x="161" y="263" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">·</text>
+  <text x="169" y="263" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Fable at 91%</text>
+  <rect x="344" y="252" width="30" height="13" rx="4" fill="none" stroke="#98989d" stroke-width="0.5"/>
+  <text x="359" y="262" fill="#98989d" font-size="9" letter-spacing="0.4" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">AUTO</text>
+  <g transform="translate(382,253) scale(0.0430)" fill="#98989d"><path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216Zm45.66-93.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32L152,132.69V80a8,8,0,0,1,16,0v58.34ZM128,72a8,8,0,0,1-8-8V32a8,8,0,0,1,16,0V64A8,8,0,0,1,128,72Z"/></g>
+  <text x="434" y="263" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">12m</text>
+  <line x1="44" y1="282" x2="434" y2="282" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
   <g opacity="0.75">
-  <text x="44" y="306" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">5-hour</text>
-  <rect x="88" y="300.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
-  <rect x="88" y="300.5" width="49.0" height="3" rx="1.5" fill="#87af87"/>
-  <text x="394" y="306" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">18%</text>
-  <text x="434" y="306" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">1h</text>
+  <g transform="translate(44,293) scale(0.5000)" fill="#d97757"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></g>
+  <text x="62" y="303" fill="#f2f2f7" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">spare</text>
   </g>
+  <rect x="368" y="289" width="66" height="19" rx="5" fill="#3478f6" stroke="#1d4fa8" stroke-width="0.5"/>
+  <g transform="translate(376,293) scale(0.0430)" fill="#ffffff"><path d="M213.66,181.66l-32,32a8,8,0,0,1-11.32-11.32L188.69,184H48a8,8,0,0,1,0-16H188.69l-18.35-18.34a8,8,0,0,1,11.32-11.32l32,32A8,8,0,0,1,213.66,181.66Zm-139.32-64a8,8,0,0,0,11.32-11.32L67.31,88H208a8,8,0,0,0,0-16H67.31L85.66,53.66A8,8,0,0,0,74.34,42.34l-32,32a8,8,0,0,0,0,11.32Z"/></g>
+  <text x="391" y="303" fill="#ffffff" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Switch</text>
   <g opacity="0.75">
-  <text x="44" y="321" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Weekly</text>
-  <rect x="88" y="315.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
-  <rect x="88" y="315.5" width="92.5" height="3" rx="1.5" fill="#87af87"/>
-  <rect x="250.7" y="313.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
-  <text x="394" y="321" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">34%</text>
-  <text x="434" y="321" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">5d</text>
+  <text x="44" y="326" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">5-hour</text>
+  <rect x="88" y="320.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
+  <rect x="88" y="320.5" width="49.0" height="3" rx="1.5" fill="#87af87"/>
+  <text x="394" y="326" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">18%</text>
+  <text x="434" y="326" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">1h</text>
   </g>
   <g opacity="0.75">
-  <text x="44" y="336" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Fable</text>
-  <rect x="88" y="330.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
-  <rect x="88" y="330.5" width="59.8" height="3" rx="1.5" fill="#87af87"/>
-  <rect x="250.7" y="328.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
-  <text x="394" y="336" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">22%</text>
-  <text x="434" y="336" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">5d</text>
+  <text x="44" y="341" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Weekly</text>
+  <rect x="88" y="335.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
+  <rect x="88" y="335.5" width="92.5" height="3" rx="1.5" fill="#87af87"/>
+  <rect x="250.7" y="333.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
+  <text x="394" y="341" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">34%</text>
+  <text x="434" y="341" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">5d</text>
   </g>
-  <rect x="44" y="346" width="130" height="19" rx="4" fill="none" stroke="#f2f2f7" opacity="0.22" stroke-width="0.5"/>
-  <text x="51" y="359" fill="#f2f2f7" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Add you@example.com</text>
-  <line x1="44" y1="378" x2="434" y2="378" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <g transform="translate(44,389) scale(0.5000)" fill="#f2f2f7"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></g>
-  <text x="62" y="399" fill="#f2f2f7" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.85">Codex</text>
+  <g opacity="0.75">
+  <text x="44" y="356" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Fable</text>
+  <rect x="88" y="350.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
+  <rect x="88" y="350.5" width="59.8" height="3" rx="1.5" fill="#87af87"/>
+  <rect x="250.7" y="348.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
+  <text x="394" y="356" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">22%</text>
+  <text x="434" y="356" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">5d</text>
+  </g>
+  <rect x="44" y="366" width="130" height="19" rx="4" fill="none" stroke="#f2f2f7" opacity="0.22" stroke-width="0.5"/>
+  <text x="51" y="379" fill="#f2f2f7" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Add you@example.com</text>
+  <line x1="44" y1="398" x2="434" y2="398" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <g transform="translate(44,409) scale(0.5000)" fill="#f2f2f7"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></g>
+  <text x="62" y="419" fill="#f2f2f7" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" opacity="0.85">Codex</text>
   <g opacity="1">
-  <text x="44" y="420" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">5-hour</text>
-  <rect x="88" y="414.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
-  <rect x="88" y="414.5" width="174.1" height="3" rx="1.5" fill="#87af87"/>
-  <text x="394" y="420" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">64%</text>
-  <text x="434" y="420" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">1h</text>
+  <text x="44" y="440" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">5-hour</text>
+  <rect x="88" y="434.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
+  <rect x="88" y="434.5" width="174.1" height="3" rx="1.5" fill="#87af87"/>
+  <text x="394" y="440" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">64%</text>
+  <text x="434" y="440" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">1h</text>
   </g>
   <g opacity="1">
-  <text x="44" y="435" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Weekly</text>
-  <rect x="88" y="429.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
-  <rect x="88" y="429.5" width="103.4" height="3" rx="1.5" fill="#87af87"/>
-  <rect x="250.7" y="427.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
-  <text x="394" y="435" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">38%</text>
-  <text x="434" y="435" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">5d</text>
+  <text x="44" y="455" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">Weekly</text>
+  <rect x="88" y="449.5" width="272" height="3" rx="1.5" fill="#f2f2f7" opacity="0.12"/>
+  <rect x="88" y="449.5" width="103.4" height="3" rx="1.5" fill="#87af87"/>
+  <rect x="250.7" y="447.5" width="1" height="6" fill="#f2f2f7" opacity="0.45"/>
+  <text x="394" y="455" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">38%</text>
+  <text x="434" y="455" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">5d</text>
   </g>
-  <line x1="44" y1="450" x2="434" y2="450" stroke="#f2f2f7" opacity="0.14"/>
-  <text x="44" y="466" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">2026.09.19</text>
-  <text x="107" y="466" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">·</text>
-  <text x="114" y="466" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">2026.09.20 available</text>
-  <rect x="238" y="455" width="42" height="18" rx="5" fill="#3478f6"/>
-  <text x="259" y="467" fill="#ffffff" font-size="10" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">Update</text>
-  <g transform="translate(388,455) scale(0.0547)" fill="#98989d"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></g>
-  <g transform="translate(416,455) scale(0.0547)" fill="#98989d"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></g>
+  <line x1="44" y1="470" x2="434" y2="470" stroke="#f2f2f7" opacity="0.14"/>
+  <text x="44" y="486" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">2026.09.19</text>
+  <text x="107" y="486" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">·</text>
+  <text x="114" y="486" fill="#98989d" font-size="10" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">2026.09.20 available</text>
+  <rect x="238" y="475" width="42" height="18" rx="5" fill="#3478f6"/>
+  <text x="259" y="487" fill="#ffffff" font-size="10" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">Update</text>
+  <g transform="translate(388,475) scale(0.0547)" fill="#98989d"><path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/></g>
+  <g transform="translate(416,475) scale(0.0547)" fill="#98989d"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/></g>
   <line x1="446" y1="65" x2="486" y2="65" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
   <text x="494" y="69" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Who is waiting, oldest first; a click brings one forward</text>
-  <line x1="446" y1="120" x2="486" y2="120" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="124" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Auto-switch: leave an account before a limit stops it</text>
-  <line x1="446" y1="136" x2="486" y2="136" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="140" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">While a switch is near: where it would go; hover for why</text>
-  <line x1="446" y1="161" x2="486" y2="161" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="165" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">The account your sessions run on</text>
-  <line x1="446" y1="182" x2="486" y2="182" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="186" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Its 5-hour limit, then each weekly one, with the time to reset</text>
-  <line x1="446" y1="212" x2="486" y2="212" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="216" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Amber from 70%, red from 90%; the tick is an even pace</text>
-  <line x1="446" y1="239" x2="486" y2="239" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="243" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">The last switch: where, why, and a chip when the panel chose</text>
-  <line x1="446" y1="279" x2="486" y2="279" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="283" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Another account: point at it for Switch, then Confirm</text>
-  <line x1="446" y1="355" x2="486" y2="355" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="359" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Store the login Claude Code is using now</text>
-  <line x1="446" y1="395" x2="486" y2="395" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="399" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Codex's limits, read from its session log</text>
-  <line x1="446" y1="462" x2="486" y2="462" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
-  <text x="494" y="466" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">The release running, and the one on the mirror until it is taken</text>
+  <line x1="446" y1="81" x2="486" y2="81" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="85" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">What each asks: a question, or a tool to allow</text>
+  <line x1="446" y1="140" x2="486" y2="140" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="144" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Auto-switch: leave an account before a limit stops it</text>
+  <line x1="446" y1="156" x2="486" y2="156" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="160" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">While a switch is near: where it would go; hover for why</text>
+  <line x1="446" y1="181" x2="486" y2="181" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="185" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">The account your sessions run on</text>
+  <line x1="446" y1="202" x2="486" y2="202" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="206" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Its 5-hour limit, then each weekly one, with the time to reset</text>
+  <line x1="446" y1="232" x2="486" y2="232" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="236" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Amber from 70%, red from 90%; the tick is an even pace</text>
+  <line x1="446" y1="259" x2="486" y2="259" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="263" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">The last switch: where, why, and a chip when the panel chose</text>
+  <line x1="446" y1="299" x2="486" y2="299" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="303" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Another account: point at it for Switch, then Confirm</text>
+  <line x1="446" y1="375" x2="486" y2="375" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="379" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Store the login Claude Code is using now</text>
+  <line x1="446" y1="415" x2="486" y2="415" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="419" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Codex's limits, read from its session log</text>
+  <line x1="446" y1="482" x2="486" y2="482" stroke="#aeaeb2" stroke-width="0.8" opacity="0.45" stroke-dasharray="2 3"/>
+  <text x="494" y="486" fill="#aeaeb2" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">The release running, and the one on the mirror until it is taken</text>
 </svg>
