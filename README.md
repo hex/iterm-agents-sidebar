@@ -171,9 +171,10 @@ Some have limits the picture doesn't show:
 | Memory heavy at | 0.5 to 8 GB |
 | Text size | Minus and plus buttons over nine sizes, 0.8 to 1.6 times the size as designed |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the newer one on offer with its Update button, reload and the gear">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the newer one on offer with its Update button, reload and the gear">
 
-The foot lists the sessions waiting on you, oldest first, and under them your
+The foot lists the sessions waiting on you, oldest first, each with what it
+asks: the question's header and text, or the tool and its command. Under them are your
 Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
 until each resets. Store a login with **Add <your email>** and you can switch
 between accounts from there. Auto-switch, off by default, spends first the

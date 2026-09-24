@@ -3,7 +3,7 @@
 import pathlib, sys
 from panel_draw import *  # noqa: F401,F403
 
-W, H = 880, 484
+W, H = 880, 504
 PX, PW = 24, 430
 IX, IW = PX + 20, PW - 40      # the content's edges inside the panel
 LX = PX + PW + 40
@@ -51,7 +51,7 @@ def switch(x, y, on, w=20, h=12):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The panel\'s foot: two sessions waiting, the Auto-switch control, the active account\'s '
+  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the Auto-switch control, the active account\'s '
   f'5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, '
   f'Codex\'s own limits, and the bar with the release, reload and the gear">')
 A('  <title>The foot of the panel</title>')
@@ -63,15 +63,22 @@ y = 22
 hairline(y)
 text(IX, y + 18, "Waiting on you", fill=FG, size=11.5, weight=600)
 text(IX + 90, y + 18, "2", fill=BLOCKED_TEXT, size=11.5, weight=500)
-for i, (name, hue, ago) in enumerate((("beacon", "#2a9d8f", "4m"), ("delta", "#c4508f", "12s"))):
-    ry = y + 30 + i * 24
-    A(f'  <rect x="{IX+2}" y="{ry+4}" width="9" height="9" rx="2.5" fill="{hue}"/>')
+# Each row: the kind of wait, the name, and under it what the session asks.
+waiting = (("beacon", "question", "4m", "Deploy", "Ship the staging build now?", SANS),
+           ("delta", "shells", "12s", "Bash", "npm run migrate", MONO))
+for i, (name, kind, ago, head, asks, face) in enumerate(waiting):
+    ry = y + 30 + i * 34
+    mark(kind, IX + 1, ry + 4, 12, DIM)
     text(IX + 19, ry + 13, name, fill=FG, size=12, weight=500)
     mono(IX + IW, ry + 13, ago, anchor="end")
+    text(IX + 19, ry + 28, head, fill=DIM, size=11, weight=600)
+    text(IX + 24 + width_of(head, 11) * 1.06, ry + 28, asks, fill=DIM,
+         size=10.5 if face == MONO else 11, family=face)
 note(IX + IW + 12, y + 43, "Who is waiting, oldest first; a click brings one forward")
+note(IX + IW + 12, y + 59, "What each asks: a question, or a tool to allow")
 
 # The budget: auto-switch, then the account the sessions run on.
-y += 84
+y += 104
 hairline(y)
 text(IX + IW - 28, y + 17, "Auto-switch", fill=DIM, size=10.5, extra=' text-anchor="end"')
 switch(IX + IW - 20, y + 8, True)
