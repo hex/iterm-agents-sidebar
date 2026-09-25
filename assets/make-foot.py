@@ -92,7 +92,7 @@ note(IX + IW + 12, y + 30, "While a switch is near: where it would go; hover for
 ay = y + 48
 mark("claude", IX, ay + 1, 12, CLAUDE_MARK)
 text(IX + 18, ay + 11, "work", fill=FG, size=10, weight=600, family=MONO, extra=' opacity="0.85"')
-mark("check", IX + 50, ay + 1, 12, LIT)
+mark("checked", IX + 50, ay + 1, 12, LIT)
 note(IX + IW + 12, ay + 7, "The account your sessions run on")
 meter(ay + 28, "5-hour", 42, "2h")
 meter(ay + 43, "Weekly", 71, "3d", tick=60)

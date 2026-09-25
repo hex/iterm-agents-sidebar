@@ -72,14 +72,18 @@ def test_close_verb_dispatches(tmp_path):
     assert calls == [("abc", "close", None)]
 
 
-def test_bring_and_return_verbs_dispatch(tmp_path):
+@pytest.mark.parametrize("verb, text", [("notify", "blocked"), ("sound", "done"),
+                                        ("bring", None), ("return", None)])
+def test_alerts_are_the_daemons_to_decide_so_a_page_cannot_ask_for_one(tmp_path, verb, text):
+    """A page that fell behind announced a backlog of old moments at once, and
+    each window's page had its own copy of the settings. The daemon now reads
+    the sessions and decides; a page asking still (one open from before the
+    change) is refused."""
     server, calls = record(tmp_path)
-    for verb in ("bring", "return"):
-        status, _, _ = server.handle(
-            "POST", f"/action?token={TOKEN}",
-            ('{"session_id": "abc", "verb": "%s"}' % verb).encode())
-        assert status == 200
-    assert calls == [("abc", "bring", None), ("abc", "return", None)]
+    body = {"session_id": "abc", "verb": verb, "text": text}
+    status, _, _ = server.handle("POST", f"/action?token={TOKEN}", json.dumps(body).encode())
+    assert status == 400
+    assert calls == []
 
 
 def test_answer_verb_carries_the_pick_and_its_question(tmp_path):
@@ -101,19 +105,11 @@ def test_unknown_verb_is_refused_and_dispatches_nothing(tmp_path):
     assert calls == []
 
 
-def test_sound_verb_carries_its_kind(tmp_path):
-    server, calls = record(tmp_path)
-    status, _, _ = server.handle("POST", f"/action?token={TOKEN}",
-                                 b'{"session_id": "abc", "verb": "sound", "text": "done"}')
-    assert status == 200
-    assert calls == [("abc", "sound", "done")]
-
-
 @pytest.mark.parametrize("body", [
-    b'["sound"]',
-    b'{"session_id": ["abc"], "verb": "sound", "text": "done"}',
+    b'["send"]',
+    b'{"session_id": ["abc"], "verb": "send", "text": "ls"}',
     b'{"session_id": "", "verb": "focus"}',
-    b'{"session_id": "abc", "verb": "sound", "text": {"kind": "done"}}',
+    b'{"session_id": "abc", "verb": "send", "text": {"keys": "ls"}}',
 ])
 def test_an_action_whose_parts_are_not_strings_is_refused(tmp_path, body):
     """A list for a session id would reach the daemon's per-session tables as a key."""
@@ -280,16 +276,6 @@ def test_a_rename_without_an_account_or_a_text_nickname_never_reaches_the_handle
     server, calls = accounts_server(tmp_path)
     assert server.handle("POST", f"/accounts?token={TOKEN}", body)[0] == 400
     assert calls == []
-
-
-def test_notify_dispatches_the_moment_as_its_text(tmp_path):
-    """The page reports what happened; the daemon decides whether to post."""
-    server, calls = record(tmp_path)
-    status, _, _ = server.handle(
-        "POST", f"/action?token={TOKEN}",
-        b'{"session_id": "abc", "verb": "notify", "text": "blocked"}')
-    assert status == 200
-    assert calls == [("abc", "notify", "blocked")]
 
 
 def update_server(tmp_path, result):

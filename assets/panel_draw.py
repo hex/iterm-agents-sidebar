@@ -32,7 +32,7 @@ def marks():
     found = {}
     for name in ("branch", "clock", "computer", "cpu", "model", "gauge", "shells",
                  "switch", "warning", "check", "tasks", "memory", "reload", "gear", "cost",
-                 "question"):
+                 "question", "checked"):
         m = re.search(r"^  %s: '(.+)',?$" % name, page, re.M)
         if m:
             found[name] = (m.group(1), 256)

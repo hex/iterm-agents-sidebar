@@ -33,9 +33,10 @@ only a change to `hooks.json` also needs `/reload-plugins` in a running
 session.
 
 The daemon binds `127.0.0.1` and checks a token of 24 random bytes on every
-request, including the event stream. The panel can ask nine things about a
-session: focus, send, close, bring, return, notify, resume, answer and sound.
-A sound plays one of two fixed tone files; the page names only the kind. The
+request, including the event stream. The panel can ask five things about a
+session: focus, send, close, resume and answer. Alerts are not among them: the
+daemon decides sounds, banners and the focus move from its own reading
+(`alerts.py`), so a page that fell behind cannot replay old ones. The
 server also takes `POST /accounts` (switch, add, rename, read), `/update` and
 `/statusline`. No endpoint runs arbitrary code.
 

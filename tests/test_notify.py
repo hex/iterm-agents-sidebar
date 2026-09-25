@@ -90,7 +90,7 @@ def test_allow_for_a_gate_that_has_gone_or_is_a_question_sends_nothing():
 
 
 def test_a_question_the_hook_could_not_read_still_gets_a_plain_notice():
-    assert arg(notify_argv(APP, "s", "n", "blocked", None), "--body") == "is asking a question"
+    assert arg(notify_argv(APP, "s", "n", "blocked", None), "--body") == "needs you"
 
 
 def test_a_session_going_back_to_work_takes_its_notice_down():

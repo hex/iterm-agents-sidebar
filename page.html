@@ -706,7 +706,7 @@
   .task .task-done { color: var(--sev-ok); font-weight: 600; }
   .task .task-done .mi {
     display: inline-block; width: var(--meta-icon); height: var(--meta-icon);
-    vertical-align: -1px; margin-right: 3px; opacity: 1; fill: currentColor;
+    vertical-align: -1px; margin-right: 3px; opacity: 1; fill: var(--lit);
   }
   /* What a blocked card is asking, in the card's own amber ink: two lines of
      the question at most, the rest in the tooltip. A tool gate names the tool
@@ -1573,6 +1573,8 @@ const META_ICONS = {
   gear: '<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/>',
   tasks: '<path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/>',
   check: '<path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/>',
+  // Settled: the account sessions run on, and a task reported done.
+  checked: '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/>',
   plug: '<path d="M237.66,66.34a8,8,0,0,0-11.32,0L192,100.69,155.31,64l34.35-34.34a8,8,0,1,0-11.32-11.32L144,52.69,117.66,26.34a8,8,0,0,0-11.32,11.32L112.69,44l-53,53a40,40,0,0,0,0,56.57l15.71,15.71L26.34,218.34a8,8,0,0,0,11.32,11.32l49.09-49.09,15.71,15.71a40,40,0,0,0,56.57,0l53-53,6.34,6.35a8,8,0,0,0,11.32-11.32L203.31,112l34.35-34.34A8,8,0,0,0,237.66,66.34ZM147.72,185a24,24,0,0,1-33.95,0L71,142.23a24,24,0,0,1,0-33.95l53-53L200.69,132Z"/>',
   question: '<path d="M140,180a12,12,0,1,1-12-12A12,12,0,0,1,140,180ZM128,72c-22.06,0-40,16.15-40,36v4a8,8,0,0,0,16,0v-4c0-11,10.77-20,24-20s24,9,24,20-10.77,20-24,20a8,8,0,0,0-8,8v8a8,8,0,0,0,16,0v-.72c18.24-3.35,32-17.9,32-35.28C168,88.15,150.06,72,128,72Zm104,56A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>',
   memory: '<path d="M232,56H24A16,16,0,0,0,8,72V200a8,8,0,0,0,16,0V184H40v16a8,8,0,0,0,16,0V184H72v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V72A16,16,0,0,0,232,56ZM24,72H232v96H24Zm88,80a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H48a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8ZM56,104h48v32H56Zm88,48h64a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H144a8,8,0,0,0-8,8v48A8,8,0,0,0,144,152Zm8-48h48v32H152Z"/>',
@@ -2447,7 +2449,7 @@ function taskLine(task) {
   if (task.done) {
     // A tick before the word: the one report that is a result, not a claim.
     const done = el("task-done", "");
-    done.append(metaIcon("check"), document.createTextNode("Done"));
+    done.append(metaIcon("checked"), document.createTextNode("Done"));
     status.append(done);
     spoken.push("Done");
   } else {
@@ -2967,12 +2969,11 @@ function paintAccounts(strip, store) {
     : Object.assign(document.createElement("span"), {className: "acct-name", textContent: "not a stored login"}));
   // The login every session runs on.
   if (active && renamingAccount !== active.id) {
-    const check = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    check.setAttribute("viewBox", "0 0 256 256");
+    const check = metaIcon("checked");
     check.setAttribute("class", "acct-badge");
+    check.removeAttribute("aria-hidden");
     check.setAttribute("role", "img");
     check.setAttribute("aria-label", "active");
-    check.innerHTML = '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z"/>';
     head.append(check);
   }
   strip.append(head);
@@ -4257,69 +4258,21 @@ fetch(`/settings?token=${encodeURIComponent(TOKEN)}`)
   .then(s => { SETTINGS = s; applyScale(s.ui_scale); settingsBody(); render(LATEST); })
   .catch(() => { SETTINGS = {}; });
 
-// ------------------------------------------------------------------- sound
-// The daemon plays the sounds. WebKit starts page audio only after a click in
-// the page, and every daemon restart reloads it, so sounds played here went
-// silent until the next click. The page says which moment it saw; the daemon
-// checks the settings, and plays a moment once however many windows' pages
-// report it.
-
-// Sound fires on a CHANGE of state, never on the state itself: a snapshot
-// arrives every few seconds and re-announcing a standing state is how a
-// notification becomes noise.
+// ------------------------------------------------------------------ alerts
+// Alerts -- sounds, banners, the focus move -- are the daemon's: it reads the
+// sessions itself and decides once, under the settings as they are now. A
+// page decided before, and a page that fell behind announced its backlog of
+// old changes all at once. What stays here is this page's own list: a card
+// that turns blocked is scrolled into view.
 let lastStates = new Map();
-// When each session's current turn began, from the row; a Stop hook that runs
-// a command flips the session to working for a few seconds without starting
-// a turn, and that must neither re-post a finished-turn notice nor take one
-// down. Only a prompt moves working_since.
-const turnStarts = new Map();
-const announcedTurns = new Map();
-// The turn each session last sounded finished for, kept apart from the
-// notices so a sound does not depend on whether notices are on.
-const soundedTurns = new Map();
 function announce(snapshot) {
   const now = new Map();
   for (const g of snapshot.groups || []) {
-    for (const r of g.rows) {
-      now.set(r.session_id, r.state);
-      if (r.working_since) turnStarts.set(r.session_id, r.working_since);
-    }
+    for (const r of g.rows) now.set(r.session_id, r.state);
   }
   if (lastStates.size) {
-    let focused = false;
     for (const [id, state] of now) {
-      const before = lastStates.get(id);
-      if (state === before) continue;
-      const turn = turnStarts.get(id);
-      const newTurn = state === "working" && turn !== undefined && turn !== announcedTurns.get(id);
-      const turnDone = state === "idle" && before === "working" && turn !== announcedTurns.get(id);
-      if (state === "blocked") revealAfterPaint(id);
-      if (state === "blocked") act(id, "sound", "blocked");
-      else if (state === "idle" && before === "working" && (turn === undefined || turn !== soundedTurns.get(id))) {
-        act(id, "sound", "done");
-        if (turn !== undefined) soundedTurns.set(id, turn);
-      }
-      // The banner reaches you in another application, where no sound or
-      // focus move can. The daemon decides whether you are already looking
-      // at the session; the page only says what happened. Going back to work
-      // takes a standing notice down, so the list never lies about a session
-      // that has since moved on.
-      if (SETTINGS?.notify) {
-        if (state === "blocked" && SETTINGS.notify_blocked) act(id, "notify", "blocked");
-        else if (turnDone && SETTINGS.notify_done) { act(id, "notify", "done"); announcedTurns.set(id, turn); }
-        else if (before === "blocked" || newTurn) act(id, "notify", "clear");
-      }
-      // One session per update: two blocking at once would otherwise each
-      // take focus in turn, leaving you on whichever happened to be last.
-      if (state === "blocked" && SETTINGS?.focus_blocked && !focused) {
-        act(id, "bring");
-        focused = true;
-      }
-      // The daemon goes back only if it brought you here and you are still
-      // here, so this can be sent for every session that stops being blocked.
-      if (before === "blocked" && SETTINGS?.focus_blocked && SETTINGS?.return_after_blocked) {
-        act(id, "return");
-      }
+      if (state === "blocked" && lastStates.get(id) !== "blocked") revealAfterPaint(id);
     }
   }
   lastStates = now;
