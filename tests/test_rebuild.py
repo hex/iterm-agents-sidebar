@@ -352,3 +352,39 @@ def test_the_refresh_button_asks_the_mirror_for_a_release_too(monkeypatch):
     monkeypatch.setattr(sidebar.update, "check", lambda: None)
     b.account_op("read", {})
     assert b.update is None and "update" not in b.latest
+
+
+def test_each_rebuild_decides_the_alerts_and_carries_them_out(monkeypatch, tmp_path):
+    """The daemon, not a page, turns a change it read into a sound and a banner,
+    under the settings on disk at that moment."""
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({"notify_done": False, "sound_blocked": False}))
+    monkeypatch.setattr(sidebar, "SETTINGS_FILE", settings)
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    readings = iter([{"groups": [{"rows": [{"session_id": "a", "state": "working", "working_since": 100},
+                                           {"session_id": "b", "state": "working", "working_since": 100}]}]},
+                     {"groups": [{"rows": [{"session_id": "a", "state": "blocked"},
+                                           {"session_id": "b", "state": "idle"}]}]}])
+    monkeypatch.setattr(sidebar, "snapshot", lambda *_: next(readings))
+    monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
+    b = sidebar.Bridge(None, Quiet())
+    b.app = NoWindows()
+    done = []
+
+    class Player:
+        async def play(self, session_id, kind, settings):
+            done.append(("sound", session_id, kind))
+
+    async def notify(session_id, kind):
+        done.append(("notify", session_id, kind))
+    b.player = Player()
+    b.notify = notify
+
+    async def two_rebuilds():
+        await b._rebuild_once()
+        await b._rebuild_once()
+        await asyncio.sleep(0)
+    asyncio.run(two_rebuilds())
+    assert sorted(done) == [("notify", "a", "blocked"), ("sound", "b", "done")]
+    logged = [line.split(" ", 2)[2] for line in (tmp_path / "daemon.log").read_text().splitlines()]
+    assert logged == ["alert notify a blocked", "alert sound b done"]

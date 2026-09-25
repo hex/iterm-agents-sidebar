@@ -120,11 +120,12 @@ Context percentage above them, which Claude Code measures on each turn.
 
 ## Sounds
 
-The daemon plays the sounds, so a restart or an update never leaves them
-waiting for a click in the panel. Still, like banners, they need the panel
-open in some window: the page is what notices a session change. With the
-panel open in several windows, each moment plays once. At most two sounds
-play at a time, and a problem playing one is written to `daemon.log` in
+The daemon notices each change as it reads the sessions and plays the sound
+itself, so sounds, banners and the focus move come whether or not the panel is
+open in any window, and each moment plays once, even for a session shown in
+two panes (two tmux clients on it). A setting takes effect on the
+next change, in every window. At most two sounds play at a time. Each alert,
+and any problem playing one, is written to `daemon.log` in
 `~/.claude/agents-sidebar-status`.
 
 ## Banners
@@ -133,10 +134,11 @@ The banner uses the session's name as the card shows it. The panel posts nothing
 while iTerm2 is the frontmost app. A session in another tab of the same window
 still gets one, since that is exactly when you can't see it.
 
-A session has one banner at most, and going back to work takes it down. Like
-the sounds, banners only post while the panel is open, and they need the app
-that `install.sh` builds. A banner plays no sound of its own; the sound
-switches are separate.
+A session has one banner at most, and going back to work takes it down, as
+does closing the session. Banners need the app that `install.sh` builds. A
+banner plays no sound of its own; the sound switches are separate. A session
+waiting on something other than a question or a tool it wants to run says it
+"needs you".
 
 macOS shows a single action inline and folds two or more into an Options menu,
 so a question is always a menu. The banner sends keystrokes only while its question is still open, so a prompt you already answered in the

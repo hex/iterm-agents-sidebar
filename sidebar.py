@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import accounts  # noqa: E402
+import alerts  # noqa: E402
 import codex  # noqa: E402
 import context_usage  # noqa: E402
 import omp  # noqa: E402
@@ -60,22 +61,17 @@ SHELLS = frozenset({"zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "nu"})
 #: What a row shows for anything iTerm2 could not tell us.
 UNKNOWN = "?"
 
-#: Everything v1 will do to a session. Deliberately short: nothing here takes
-#: arbitrary code, and `send` targets a named session id only.
+#: Everything the page may ask of a session. Deliberately short: nothing here
+#: takes arbitrary code, and `send` targets a named session id only. Alerts --
+#: sounds, banners, the focus move to a blocked session and back -- are not
+#: here: the daemon decides them from its own reading (alerts.Watch).
 VERBS = ("focus", "send", "close",
-         # focus that remembers where you were, and the trip back from it.
-         "bring", "return",
-         # a macOS notice; the text names the moment, never the message.
-         "notify",
          # reopen an exited agent's conversation where it died; the daemon
          # builds the command, the page sends no text.
          "resume",
          # pick an option of a standing AskUserQuestion; the daemon checks
          # the question and types only its digit.
-         "answer",
-         # one of the panel's two sounds, named by kind; the daemon plays a
-         # fixed tone, and whether it plays at all is the settings' call.
-         "sound")
+         "answer")
 
 #: What the page may do with accounts. Nothing here removes one.
 ACCOUNT_OPS = ("add", "switch", "rename", "read")
@@ -218,7 +214,9 @@ NOTIFIER_APP = Path.home() / ".local" / "share" / "agents-sidebar" / "Agents.app
 #: What each moment says. The session's own name is the title, so the message
 #: only has to finish the sentence.
 NOTIFY_MESSAGES = {
-    "blocked": "is asking a question",
+    # Blocked is a question or a tool waiting for permission; a question
+    # says itself in the body, so this covers what is known to be neither.
+    "blocked": "needs you",
     "done": "finished a turn",
 }
 
@@ -2663,6 +2661,8 @@ class Bridge:
         #: The mirror release newer than this checkout, or None; set by watch_releases.
         self.update = None
         self.notices = Notices()
+        #: Decides each alert from successive rebuilds.
+        self.watch = alerts.Watch()
         #: Plays the panel's sounds; main() makes it before the server takes
         #: its first request, since making it writes the tone files.
         self.player = None
@@ -2860,22 +2860,32 @@ class Bridge:
         # Stamped only on the way out: a refresh that raised has not produced
         # anything worth calling current.
         self.last_ok = time.monotonic()
+        conversations = {row["session_id"]: row.get("conversation") for row in self.rows}
+        self.alert(self.watch.step(self.latest, settings, conversations), settings)
         frame = sse_frame(self.latest)
         if frame != self._last_pushed:
             self._last_pushed = frame
             self.server.broadcast(frame)
 
+    def alert(self, decisions, settings):
+        """Carry out what alerts.Watch decided, none of it awaited here: a
+        sound or a notice must not hold up the next rebuild.
+
+        A notice names a session, it does not touch one, so taking a stale
+        one down works once its session has closed; a sound marks a moment
+        that may already be over.
+        """
+        for verb, session_id, kind in decisions:
+            if verb != "notify" or kind != "clear":
+                self.log("alert", verb, session_id[:8], kind or "")
+            if verb == "sound":
+                asyncio.ensure_future(self.player.play(session_id, kind, settings))
+            elif verb == "notify":
+                asyncio.ensure_future(self.notify(session_id, kind))
+            else:
+                asyncio.ensure_future(self.act(session_id, verb, None))
+
     async def act(self, session_id, verb, text):
-        # Before the lookup below: a notice names a session, it does not touch
-        # one, so taking a stale notice down must still work once the session
-        # it belongs to has closed.
-        if verb == "notify":
-            await self.notify(session_id, text)
-            return
-        # Nor does a sound: the moment it marks may already be over.
-        if verb == "sound":
-            await self.player.play(session_id, text, load_settings())
-            return
         session = self.app.get_session_by_id(session_id)
         if session is None:
             # A row can outlive the session it names: the page holds a
