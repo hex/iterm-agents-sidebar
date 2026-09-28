@@ -708,7 +708,7 @@
     display: inline-block; width: var(--meta-icon); height: var(--meta-icon);
     vertical-align: -1px; margin-right: 3px; opacity: 1; fill: var(--lit);
   }
-  /* What a blocked card is asking, in the card's own amber ink: two lines of
+  /* What a blocked card is asking, in the card's own amber ink: three lines of
      the question at most, the rest in the tooltip. A tool gate names the tool
      and the start of what it would run, cut to one line. */
   .asks {
@@ -716,7 +716,7 @@
     font: 400 11px/1.35 -apple-system, sans-serif; color: var(--blocked-text);
   }
   .asks .asks-text {
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
   }
   .asks .asks-more { color: var(--dim); }
   .asks:has(.asks-tool) { display: flex; gap: 5px; align-items: baseline; }
@@ -1299,9 +1299,14 @@
   #sl-offer button.go { color: #fff; background: color-mix(in srgb, AccentColor 92%, #000); }
   #sl-offer button.go:hover { background: AccentColor; }
   #sl-offer button:disabled { opacity: .5; }
-  #queue h3 { padding: 0 2px 3px; }
-  /* The one warm mark in the section, and it is a number, not a surface. */
-  #queue h3 .n { color: var(--blocked-text); }
+  /* Warm type, no surface: the heading in the waiting card's ink and the
+     count as a small filled pill like the card's WAITING badge. In grey type
+     alone the section was easy to miss; a slab would repeat the card. */
+  #queue h3 { padding: 0 2px 3px; color: var(--blocked-text); }
+  #queue h3 .n {
+    align-self: center; padding: 1px 5px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; color: var(--badge-ink); background: var(--blocked-border);
+  }
   #queue ul { padding: 0; }
   .qrow {
     display: flex; align-items: center; gap: var(--row-gap); width: 100%;
@@ -1325,7 +1330,7 @@
   /* A row that knows what its session asks says it under the name, one line:
      the question's header and text, or the tool and the start of its
      command. Its mark is the kind of wait, a question or a tool to allow,
-     in grey: the count stays the section's one warm mark. */
+     in the heading's amber. */
   .qrow.asked { align-items: flex-start; }
   .qrow > .qtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .qrow .qwhat {
@@ -1334,7 +1339,7 @@
   }
   .qrow .qwhat .qhead { font-weight: 600; margin-right: 5px; }
   .qrow .qwhat .asks-cmd { font: 400 10.5px/1.35 ui-monospace, Menlo, monospace; }
-  .qrow > .qkind { width: 12px; height: 12px; flex: none; margin-top: .5px; color: var(--dim); }
+  .qrow > .qkind { width: 12px; height: 12px; flex: none; margin-top: .5px; color: var(--blocked-text); }
   .qrow.asked > .ago { margin-top: 4px; }
   #queue .more {
     padding: 2px 2px 0 calc(2px + var(--mark) + var(--row-gap));
@@ -4114,18 +4119,18 @@ function paintVersion() {
   }
   const refused = releaseState && releaseState !== "taking";
   if (refused) {
-    // The refusal takes the words' place: the bar has one line, and the
-    // button beside it says what was refused.
+    // The bar has one line, and the button beside it says what was refused.
     const line = releaseState.trim().split("\n").pop();
     bar.append(" · ", Object.assign(document.createElement("span"),
                                    {className: "refused", textContent: line, title: releaseState}));
-  } else {
-    bar.append(` · ${LATEST.update} available`);
   }
+  // The offered version rides on the button's tooltip: spelled out on the
+  // bar it filled the line at panel width and pushed the button off it.
   const take = Object.assign(document.createElement("button"), {className: "take", type: "button"});
   take.textContent = releaseState === "taking" ? "Updating…" : "Update";
   take.disabled = releaseState === "taking";
-  take.title = `Pull release ${LATEST.update} into this checkout, run install.sh and restart the daemon`;
+  take.title = `${LATEST.update} available: pull it into this checkout, run install.sh and restart the daemon`;
+  take.setAttribute("aria-label", `Update to ${LATEST.update}`);
   take.addEventListener("click", takeRelease);
   bar.append(take);
 }

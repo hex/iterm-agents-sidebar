@@ -171,7 +171,7 @@ Some have limits the picture doesn't show:
 | Memory heavy at | 0.5 to 8 GB |
 | Text size | Minus and plus buttons over nine sizes, 0.8 to 1.6 times the size as designed |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the newer one on offer with its Update button, reload and the gear">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
 
 The foot lists the sessions waiting on you, oldest first, each with what it
 asks: the question's header and text, or the tool and its command. Under them are your
@@ -189,7 +189,7 @@ the plan. See [docs/accounts.md](docs/accounts.md).
 The bar at the bottom names the release you run, and two buttons: reload and
 the gear. At start, once a day and on every reload press, the daemon lists
 the releases on GitHub; when one is
-newer, the bar adds its number and an Update button. Pressing it pulls that
+newer, the bar adds an Update button that names it in its tooltip. Pressing it pulls that
 release, runs `install.sh` and restarts the daemon, after which the panel
 needs reopening from View > Toolbelt. See
 [docs/usage.md](docs/usage.md#updating).

@@ -79,7 +79,7 @@ while it sits past the top or bottom edge of the list scrolls into view. One
 already on screen stays put.
 
 A waiting card says what it waits on, under the name: the first question of an
-AskUserQuestion (two lines at most, with "+1 more" when it asked several), or
+AskUserQuestion (three lines at most, with "+1 more" when it asked several), or
 the tool a permission prompt is for and the first line of what it would run.
 The line goes when the prompt is answered. An omp session reports only that it is
 blocked, so its card shows no question.
@@ -196,7 +196,7 @@ The bar's left end names the release the panel runs, or reads
 `unreleased checkout` in a checkout with no `VERSION` file. Once a day, once at
 start, and on every press of the reload button, the daemon lists the tags on
 the public mirror; when one is newer, the
-line adds `2026.9.20 available` and an Update button. Pressing it pulls that
+line adds an Update button, which names the new release in its tooltip. Pressing it pulls that
 release into the checkout the daemon runs from, runs `install.sh` again and
 restarts the daemon. The port changes with the restart, so the bar reads
 `restarting, reopen the panel` and the panel goes blank: reopen it from
