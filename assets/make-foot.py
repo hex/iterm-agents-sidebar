@@ -61,14 +61,15 @@ A(f'  <rect x="{PX}" y="0" width="{PW}" height="{H}" fill="{BG}"/>')
 # Who is waiting, oldest first.
 y = 22
 hairline(y)
-text(IX, y + 18, "Waiting on you", fill=FG, size=11.5, weight=600)
-text(IX + 90, y + 18, "2", fill=BLOCKED_TEXT, size=11.5, weight=500)
+text(IX, y + 18, "Waiting on you", fill=BLOCKED_TEXT, size=11.5, weight=600)
+A(f'  <rect x="{IX + 89}" y="{y + 8}" width="15" height="14" rx="4" fill="{BLOCKED_BORDER}"/>')
+text(IX + 96.5, y + 18.5, "2", fill=BADGE_INK, size=10, weight=600, extra=' text-anchor="middle"')
 # Each row: the kind of wait, the name, and under it what the session asks.
 waiting = (("beacon", "question", "4m", "Deploy", "Ship the staging build now?", SANS),
            ("delta", "shells", "12s", "Bash", "npm run migrate", MONO))
 for i, (name, kind, ago, head, asks, face) in enumerate(waiting):
     ry = y + 30 + i * 34
-    mark(kind, IX + 1, ry + 4, 12, DIM)
+    mark(kind, IX + 1, ry + 4, 12, BLOCKED_TEXT)
     text(IX + 19, ry + 13, name, fill=FG, size=12, weight=500)
     mono(IX + IW, ry + 13, ago, anchor="end")
     text(IX + 19, ry + 28, head, fill=DIM, size=11, weight=600)
@@ -148,15 +149,13 @@ note(IX + IW + 12, cy + 7, "Codex's limits, read from its session log")
 by = cy + 62
 hairline(by)
 # The release line as the panel draws it the day after a release: the one it
-# runs, the one it could, and the button that takes it.
-mono(IX, by + 16, "2026.09.19")
-mono(IX + 63, by + 16, "·", size=10, fill=DIM)
-mono(IX + 70, by + 16, "2026.09.20 available")
-A(f'  <rect x="{IX + 194}" y="{by + 5}" width="42" height="18" rx="5" fill="{ACCENT}"/>')
-text(IX + 215, by + 17, "Update", fill="#ffffff", size=10, weight=500, extra=' text-anchor="middle"')
+# runs, and the button that takes the newer one, named in its tooltip.
+mono(IX, by + 16, "2026.9.19")
+A(f'  <rect x="{IX + 64}" y="{by + 5}" width="42" height="18" rx="5" fill="{ACCENT}"/>')
+text(IX + 85, by + 17, "Update", fill="#ffffff", size=10, weight=500, extra=' text-anchor="middle"')
 mark("reload", IX + IW - 46, by + 5, 14, DIM)
 mark("gear", IX + IW - 18, by + 5, 14, DIM)
-note(IX + IW + 12, by + 12, "The release running, and the one on the mirror until it is taken")
+note(IX + IW + 12, by + 12, "The release running; Update takes a newer one, named on hover")
 
 NOTES.draw()
 A('</svg>')

@@ -2,8 +2,7 @@
 
 Ways it could go wrong, each checked below: a row whose session sent no
 question claims a kind of wait anyway; a permission prompt wears the
-question mark; the kind icon turns amber and the count stops being the
-section's one warm mark; a question set shows nothing because only its
+question mark; a question set shows nothing because only its
 first question carries text; a screen reader hears the name but not what
 is asked, or hears the header and text run together.
 """
@@ -31,11 +30,15 @@ def test_a_tool_waits_behind_the_shell_mark_and_a_question_behind_the_question_m
     assert 'metaIcon(asked.tool ? "shells" : "question")' in body
 
 
-def test_the_kind_icon_stays_grey_so_the_count_is_the_one_warm_mark():
+def test_the_section_is_warm_type_and_a_filled_count_with_no_surface():
+    """Asked 2026-09-28: grey type alone was very hard to notice. Picked from
+    four renders: amber heading, count as a filled pill, amber kind mark."""
     css = PAGE.read_text(encoding="utf-8")
-    rule = re.search(r"\.qrow > \.qkind \{([^}]*)\}", css).group(1)
-    assert "color: var(--dim)" in rule
-    assert not re.search(r"\.qkind[^{]*\{[^}]*--blocked-text", css)
+    assert "color: var(--blocked-text)" in re.search(r"^  #queue h3 \{([^}]*)\}", css, re.M).group(1)
+    count = re.search(r"^  #queue h3 \.n \{([^}]*)\}", css, re.M).group(1)
+    assert "background: var(--blocked-border)" in count and "color: var(--badge-ink)" in count
+    assert "color: var(--blocked-text)" in re.search(r"\.qrow > \.qkind \{([^}]*)\}", css).group(1)
+    assert not re.search(r"#queue \{[^}]*--blocked-bg", css)
 
 
 def test_a_set_is_described_by_its_first_question():
