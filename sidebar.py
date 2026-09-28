@@ -2025,7 +2025,7 @@ def parse_status(raw):
     renders nothing rather than a figure we cannot stand behind.
     """
     blank = {"context": None, "model": None, "effort": None, "details": {},
-             "transcript": None, "session": None}
+             "transcript": None, "session": None, "directory": None}
     if not raw:
         return blank
     try:
@@ -2048,12 +2048,15 @@ def parse_status(raw):
         name = name.split(" (", 1)[0].strip() or None
     transcript = payload.get("transcript_path")
     session = payload.get("session_id")
+    # Where the session was started, which a Bash tool's cd never moves.
+    directory = field("workspace", "project_dir")
     return {"context": int(used) if isinstance(used, (int, float)) else None,
             "model": name,
             "effort": field("effort", "level"),
             "details": details(payload, field),
             "transcript": transcript if isinstance(transcript, str) else None,
-            "session": session if isinstance(session, str) else None}
+            "session": session if isinstance(session, str) else None,
+            "directory": directory if isinstance(directory, str) and directory else None}
 
 
 def details(payload, field):
@@ -2742,6 +2745,12 @@ class Bridge:
                                    for agent in told["agents"]]
                     else:
                         status = read_status(pid)
+                        # iTerm2's path is the last directory the pane was told
+                        # it is in; once one is pushed it stops polling, so a
+                        # push from anywhere in the pane sticks. Two live
+                        # sessions carded as a third that way. The agent's own
+                        # word on its directory outranks it, and tmux's.
+                        values["path"] = status["directory"] or values["path"]
                     marks = transcript_marks(status.get("transcript"))
                     rows.append({
                         "session_id": session.session_id,

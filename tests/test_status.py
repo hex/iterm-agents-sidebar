@@ -34,7 +34,7 @@ def test_a_payload_missing_the_fields_reports_nothing():
     """
     assert sidebar.parse_status(json.dumps({"session_id": "x"})) == {
         "context": None, "model": None, "effort": None, "details": {},
-        "transcript": None, "session": "x"}
+        "transcript": None, "session": "x", "directory": None}
 
 
 def test_unreadable_input_is_not_a_crash():
@@ -44,7 +44,7 @@ def test_unreadable_input_is_not_a_crash():
     for raw in ("", None, "not json", "[1,2]", '{"context_window": "wrong"}'):
         assert sidebar.parse_status(raw) == {
             "context": None, "model": None, "effort": None, "details": {},
-        "transcript": None, "session": None}
+        "transcript": None, "session": None, "directory": None}
 
 
 def test_no_pid_means_no_reading():

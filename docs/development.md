@@ -133,6 +133,11 @@ Inspect Element.
   `--agent-color` on the same command line, the only place it lives.
 - **Subagents:** the name from the subagent's meta file, the model from its
   transcript. Until those exist, the row shows the subagent's type.
+- **A Claude card's directory** (its name and branch): `workspace.project_dir`
+  from the statusline payload. iTerm2's `path` is only the last directory
+  pushed to the pane, and after a push iTerm2 stops polling, so a stray push
+  sticks; without the statusline bridge the card falls back to it (or to
+  tmux's, inside tmux).
 - **Plain terminals inside tmux:** iTerm2 doesn't reliably report a pane's
   command or directory, so the panel asks tmux for the pane's tty and
   directory and names the tty's foreground process. A script run by an
