@@ -320,6 +320,45 @@ def test_an_omp_pane_iterm2_names_no_terminal_for_is_on_its_processs_terminal(mo
     assert seen == ["ttys014"]
 
 
+class ClaudeSessionIterm2Misplaced(Session):
+    """A Claude pane iTerm2 files under another directory: a pushed working
+    directory sticks there, and the poller stops correcting it."""
+    session_id = "s4"
+
+    async def async_get_variable(self, name):
+        if name == "user.claudeState":
+            return json.dumps({"state": "idle", "pid": 4343, "ts": 1789480900,
+                               "session": "c4"})
+        if name == "path":
+            return "/Users/x/.claude-sessions/wap@testing-infrastructure"
+        return None
+
+
+def test_a_claude_row_stands_in_the_directory_its_agent_reports(monkeypatch, tmp_path):
+    """Two live sessions both carded as a third, idle one (a colleague's
+    panel, 2026-09-26): iTerm2's path is wherever the pane was last told it
+    was, and Claude Code's own statusline says where the session runs."""
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    (tmp_path / "4343.json").write_text(json.dumps({
+        "session_id": "c4",
+        "workspace": {"current_dir": "/Users/x/Documents/proiect-master",
+                      "project_dir": "/Users/x/.claude-sessions/proiect-master"}}))
+    b.app = one_session(ClaudeSessionIterm2Misplaced())
+    rows = asyncio.run(b.read_sessions())
+    assert rows[0]["path"] == "/Users/x/.claude-sessions/proiect-master"
+    [card] = sidebar.snapshot(rows)["groups"][0]["rows"]
+    assert card["label"] == "proiect-master"
+
+
+def test_a_claude_row_without_a_statusline_keeps_the_path_iterm2_reports(monkeypatch, tmp_path):
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    b.app = one_session(ClaudeSessionIterm2Misplaced())
+    [row] = asyncio.run(b.read_sessions())
+    assert row["path"] == "/Users/x/.claude-sessions/wap@testing-infrastructure"
+
+
 def test_a_newer_mirror_release_rides_every_snapshot_and_an_absent_one_leaves_no_key(monkeypatch):
     """`latest` is rebuilt from scratch each cycle, so the offer has to be
     copied in every time; and a panel that is current sees no key at all,
