@@ -77,6 +77,10 @@ so add the directory by hand then.
 Before its first prompt, a Codex session has published nothing. The panel
 still shows a Codex card for a pane whose foreground job is `codex`.
 
+No Codex hook fires when you answer one of its permission prompts, so a card
+waiting on a command turns back to working as soon as that command shows up
+running under a Codex process, started after the prompt opened.
+
 A `codex exec` that a Claude session runs as a tool reports nothing. It shares
 the Claude pane, and the card stays the Claude session's.
 

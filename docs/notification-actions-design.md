@@ -47,7 +47,8 @@ the state variable, beside `blocked_since`:
                  "multi": false, "more": 0}
 
 For any other gated tool: `{"tool": "Bash", "summary": "git push origin main"}`.
-Cleared with the gates. The daemon copies it onto the row as `question`; the
+Each gate keeps its own; the state carries the newest open gate's and none
+once the gates clear. The daemon copies it onto the row as `question`; the
 page passes it through to the notify call unchanged.
 
 Codex has no `AskUserQuestion`; its gates carry `tool` and `summary` only.

@@ -100,8 +100,8 @@ def blank_state():
     """A session nothing is known about: not working, no children, no gates."""
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
             "agent_info": {}, "gates": {}, "last_tool": None, "last_tool_ran": False,
-            "turn_started": None, "reminded": 0, "question": None, "background": [],
-            "running": {}}
+            "turn_started": None, "reminded": 0, "question": None, "asks": {},
+            "background": [], "running": {}}
 
 
 def live_agents(doc):
@@ -301,6 +301,13 @@ def aggregate(doc):
     return "idle"
 
 
+def standing_question(doc):
+    """What the newest gate still open asks, or None when none asks anything."""
+    open_asks = [key for key in doc["gates"] if doc["asks"].get(key)]
+    # Reversed so that of two raised in the same millisecond the later wins.
+    return doc["asks"][max(reversed(open_asks), key=doc["gates"].get)] if open_asks else None
+
+
 def apply_event(doc, event, payload, said, codex=False):
     """Fold one hook event into a session's state document. Pure.
 
@@ -320,6 +327,7 @@ def apply_event(doc, event, payload, said, codex=False):
            "turn_started": doc.get("turn_started"),
            "reminded": doc.get("reminded") or 0,
            "question": doc.get("question"),
+           "asks": dict(doc.get("asks") or {}),
            "background": list(doc.get("background") or []),
            "running": dict(doc.get("running") or {})}
     now = round(time.time(), 3)
@@ -337,6 +345,7 @@ def apply_event(doc, event, payload, said, codex=False):
         doc["agent_types"] = {k: v for k, v in doc["agent_types"].items() if k in running}
         doc["agent_info"] = {k: v for k, v in doc["agent_info"].items() if k in running}
         doc["gates"] = {}
+        doc["asks"] = {}
         doc["last_tool"] = None
         doc["running"] = {}
 
@@ -360,6 +369,7 @@ def apply_event(doc, event, payload, said, codex=False):
             # tools beside an open prompt, so there only the gated tool's
             # own end can close its gate.
             doc["gates"] = {}
+            doc["asks"] = {}
             doc["question"] = None
 
     if event == "SubagentStart":
@@ -379,8 +389,8 @@ def apply_event(doc, event, payload, said, codex=False):
         if key:
             doc["running"].pop(key, None)
             doc["gates"].pop(key, None)
-            if not doc["gates"]:
-                doc["question"] = None
+            doc["asks"].pop(key, None)
+            doc["question"] = standing_question(doc)
             if key == doc["last_tool"]:
                 doc["last_tool_ran"] = True
 
@@ -394,10 +404,14 @@ def apply_event(doc, event, payload, said, codex=False):
         # notification with no tool seen at all still holds its gate.
         pass
     elif said == "blocked":
-        doc["gates"][payload.get("tool_use_id") or doc["last_tool"] or UNKEYED] = now
-        # What the newest gate asks; the notice needs the question, not
-        # only the fact of one.
-        doc["question"] = question_from(payload) or doc["question"]
+        key = payload.get("tool_use_id") or doc["last_tool"] or UNKEYED
+        doc["gates"][key] = now
+        # What each gate asks, kept per gate: the notice needs the question,
+        # not only the fact of one, and when the newest closes first the card
+        # has to fall back to what the one still open asks. A Notification
+        # echo carries no question and keeps the one its gate already has.
+        doc["asks"][key] = question_from(payload) or doc["asks"].get(key) or doc["question"]
+        doc["question"] = standing_question(doc)
         # Asking to run a tool means a turn is under way.
         doc["parent_active"] = True
     elif said == "working":
@@ -431,6 +445,7 @@ def apply_event(doc, event, payload, said, codex=False):
         # prompt instead left the badge standing for as long as the user took
         # to type, which in practice meant it never came down.
         doc["gates"] = {}
+        doc["asks"] = {}
         doc["question"] = None
 
     return doc
@@ -492,6 +507,8 @@ def read_state(session_id):
                             if isinstance(doc.get("turn_started"), (int, float)) else None,
             "reminded": doc.get("reminded") if isinstance(doc.get("reminded"), (int, float)) else 0,
             "question": doc.get("question") if isinstance(doc.get("question"), dict) else None,
+            "asks": doc.get("asks") if isinstance(doc.get("asks"), dict) else {},
+            "running": doc.get("running") if isinstance(doc.get("running"), dict) else {},
             "background": doc.get("background") if isinstance(doc.get("background"), list) else []}
 
 

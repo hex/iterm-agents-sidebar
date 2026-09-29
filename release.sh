@@ -2,7 +2,7 @@
 # Cut a release: number it YYYY.M.BUILD, commit it on main, and publish it
 # to the public mirror as one squashed, tagged commit.
 #
-# main carries the .cs/ session files and is never pushed. The mirror is a
+# main is never pushed. The mirror is a
 # separate lineage on the local branch `public`: each release adds one commit
 # there whose tree is main's tree minus .cs/, under the public identity. BUILD
 # counts releases within the month, from the tags already on the mirror, so
@@ -62,7 +62,7 @@ index="$(mktemp)"
 rm -f "$index"
 export GIT_INDEX_FILE="$index"
 git read-tree main
-git rm -q --cached -r .cs
+git rm -q --cached -r --ignore-unmatch .cs
 git update-index --cacheinfo "100644,$(git rev-parse public:.gitignore),.gitignore"
 tree="$(git write-tree)"
 unset GIT_INDEX_FILE

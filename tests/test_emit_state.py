@@ -572,3 +572,38 @@ def test_the_state_counts_the_tools_started_and_not_finished():
     doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t3"}, "working", codex=True)
     doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": False}, "idle", codex=True)
     assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 0
+
+
+def test_the_card_asks_what_the_gates_still_open_ask():
+    """Two prompts open, the newer answered first: the card goes back to the
+    older one's question, never the closed one's."""
+    doc = emit_state.blank_state()
+    doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t1"}, "working")
+    doc = emit_state.apply_event(doc, "PermissionRequest",
+                                 {"tool_name": "Bash", "tool_input": {"command": "make test"}}, "blocked")
+    doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t2"}, "working")
+    doc = emit_state.apply_event(doc, "PermissionRequest",
+                                 {"tool_name": "Bash", "tool_input": {"command": "git push"}}, "blocked")
+    assert doc["question"] == {"tool": "Bash", "summary": "git push"}
+    doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t2"}, "working")
+    assert doc["question"] == {"tool": "Bash", "summary": "make test"}
+    doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t1"}, "working")
+    assert doc["question"] is None
+
+
+def test_each_gates_question_survives_the_state_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    emit_state.update("s1", "PreToolUse", {"tool_use_id": "t1"}, "working")
+    emit_state.update("s1", "PermissionRequest", {"tool_name": "Bash", "tool_input": {"command": "make test"}}, "blocked")
+    emit_state.update("s1", "PreToolUse", {"tool_use_id": "t2"}, "working")
+    emit_state.update("s1", "PermissionRequest", {"tool_name": "Bash", "tool_input": {"command": "git push"}}, "blocked")
+    doc = emit_state.update("s1", "PostToolUse", {"tool_use_id": "t2"}, "working")
+    assert doc["question"] == {"tool": "Bash", "summary": "make test"}
+
+
+def test_tools_still_running_survive_the_state_file(tmp_path, monkeypatch):
+    """Each hook event is its own process, so the count lives on disk."""
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    emit_state.update("s1", "PreToolUse", {"tool_use_id": "t1"}, "working", codex=True)
+    doc = emit_state.update("s1", "PreToolUse", {"tool_use_id": "t2"}, "working", codex=True)
+    assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 2
