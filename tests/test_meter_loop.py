@@ -69,6 +69,28 @@ def test_one_pass_copies_a_rotated_active_token_into_the_panels_item(world):
     assert read_secret(SCRATCH_SERVICE, world["accounts"][0]["id"]) == rotated
 
 
+def test_a_fresh_login_to_a_flagged_account_clears_its_log_in_again(world):
+    """Seen 2026-09-29: two accounts logged into again, one of them active,
+    still read "log in to ... again", since nothing ever dropped the flag."""
+    save_store(world["store"], [dict(a, needsLogin=True) for a in world["accounts"]])
+    write_secret(SCRATCH_SERVICE, world["live"], _credential("logged-in-again"))
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"])
+    meters.tick(now=1000)
+    active, other = meters.snapshot()["accounts"]
+    assert not active["needs_login"] and not load_store(world["store"])[0].get("needsLogin")
+    assert other["needs_login"], "an account nobody logged into keeps its flag"
+
+
+def test_adding_a_flagged_account_again_clears_its_log_in_again(world):
+    save_store(world["store"], [dict(a, needsLogin=True) for a in world["accounts"]])
+    write_secret(SCRATCH_SERVICE, world["live"], _credential(world["accounts"][0]["id"]))
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"])
+    meters.add(now=1000)
+    assert not load_store(world["store"])[0].get("needsLogin")
+
+
 def test_an_unreadable_store_is_reported_not_rebuilt(world):
     Path(world["store"]).write_text("{ torn")
     meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),

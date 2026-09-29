@@ -41,7 +41,7 @@ the time left until each resets (`2h`, `3d`, `14m`).
 | A tick on a weekly line | Where an even spend across the week would be. None in the first day after a reset |
 | A warm percentage | 15 points or more past that tick |
 | `as of 14:02` | The last reading failed; these are the figures from then |
-| `log in to <name> again` | That account's login stopped working |
+| `log in to <name> again` | That account's login stopped working. It clears once Claude Code runs on a new login to it, or when you Add it again while logged in |
 | `reading...` | The first reading is on its way |
 | `no reading yet` | The first reading failed; the panel tries again later |
 | `not a stored login` | Claude Code runs on a login the panel has not stored |

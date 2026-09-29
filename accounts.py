@@ -1146,7 +1146,9 @@ def add_account(accounts, oauth_account, now, alias=None):
         raise ValueError("login has no accountUuid")
     existing = account_for(accounts, oauth_account)
     if existing is not None:
-        updated = dict(existing, lastSynced=now)
+        # Adding it again stores the live login, so a dead one is replaced.
+        updated = {k: v for k, v in existing.items() if k != "needsLogin"}
+        updated["lastSynced"] = now
         return [updated if a is existing else a for a in accounts], updated
     numbers = [int(a["id"][5:]) for a in accounts if a["id"].startswith("acct-") and a["id"][5:].isdigit()]
     account = {"id": f"acct-{max(numbers, default=0) + 1}", "alias": alias}
@@ -1422,7 +1424,10 @@ class AccountMeters:
         live_text = read_secret(*self.live_item) if active else None
         if active and live_text and should_resync(self._stored(active["id"]), json.loads(live_text)):
             write_secret(self.service, active["id"], live_text)
-            update_account(self.store_path, active["id"], lastSynced=now)
+            # A new token from Claude Code is a login that works: whatever
+            # refusal marked this account, the token it refused is gone.
+            fresh = {"needsLogin": False} if active.get("needsLogin") else {}
+            update_account(self.store_path, active["id"], lastSynced=now, **fresh)
         if active:
             login = json.dumps(live_login)
             if read_secret(self.service, login_item(active["id"])) != login:
