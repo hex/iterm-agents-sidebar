@@ -1035,6 +1035,9 @@ def parse_state(raw, command_running=False):
         pass                     # alive, just not ours to signal
 
     if state == "working":
+        # The hook's own count of tools started and not finished: a Codex
+        # command runs under a daemon no process listing ties to the pane.
+        command_running = command_running or bool(payload.get("tools_running"))
         try:
             age = time.time() - float(payload.get("ts") or 0)
         except (TypeError, ValueError):
@@ -1576,6 +1579,37 @@ HOOK_STATE_DIR = os.path.expanduser("~/.claude/agents-sidebar-subagents")
 #: A session id as a file name: any program in a pane can set its variable,
 #: so the id is checked before it names a path.
 _SESSION_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def filed_codex_state(cwd, since, directory=None):
+    """The state a Codex filed for a pane in `cwd` whose Codex started at
+    `since`, as the JSON the variable would carry, or None.
+
+    Codex runs its hooks in an app-server daemon that outlives the Codex that
+    started it and serves the next one, so those hooks can find no terminal to
+    write to and file the state instead. Nothing Codex records ties a session
+    to a terminal; the directory and the start time are what is left. Only a
+    single filing newer than the pane's Codex counts: two would be a guess.
+    """
+    if not cwd or since is None:
+        return None
+    found = []
+    try:
+        names = os.listdir(directory or HOOK_STATE_DIR)
+    except OSError:
+        return None
+    for name in names:
+        if not name.endswith(".published"):
+            continue
+        try:
+            with open(os.path.join(directory or HOOK_STATE_DIR, name), encoding="utf-8") as fh:
+                doc = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if (isinstance(doc, dict) and "transcript_path" in doc and doc.get("cwd") == cwd
+                and isinstance(doc.get("ts"), (int, float)) and doc["ts"] >= since):
+            found.append(doc)
+    return json.dumps(found[0]) if len(found) == 1 else None
 
 
 def with_detail(raw, directory=None):
@@ -2707,6 +2741,23 @@ class Bridge:
                     # is sitting in front of an agent; a pane that has
                     # published state is left to speak for itself.
                     job = values["jobName"] or pane.get("job")
+                    if (provider == "openai" and job == "codex"
+                            and parse_state(raw) == "exited"):
+                        # A Codex started again where one exited: the dead
+                        # run's state is all the pane holds until the new one
+                        # takes its first prompt, and it read EXITED over a
+                        # live Codex. The running job speaks for the pane.
+                        raw, provider = None, None
+                    if provider is None and job == "codex":
+                        tty = (pane.get("tty") or values["tty"] or "").removeprefix("/dev/")
+                        codex_pids = [p for p, (_, _, _, on) in resources.items()
+                                      if on == tty and commands.get(p) == "codex"]
+                        if len(codex_pids) == 1:
+                            filed = filed_codex_state(values["path"], started.get(codex_pids[0]))
+                            if filed:
+                                raw = json.dumps(dict(json.loads(filed), pid=codex_pids[0]))
+                                provider = "openai"
+                                live_sessions.add(parse_session(raw))
                     codex_tui = provider is None and job == "codex"
                     if codex_tui:
                         provider = "openai"
@@ -2768,7 +2819,10 @@ class Bridge:
                         "agent_job": codex_tui,
                         "provider": provider,
                         "agent_state": titled or parse_state(raw, command_running=bool(shells.get(pid))),
-                        "topic": omp_title_topic(values["autoName"]) if titled else None,
+                        # The name the agent gave the conversation, where it keeps one.
+                        "topic": (omp_title_topic(values["autoName"]) if titled
+                                  else codex.thread_name(parse_session(raw)) if provider == "openai"
+                                  else None),
                         "doing": doing,
                         "agents": parse_agents(raw) if spawned is None
                                   else sum(agent["ended"] is None for agent in spawned),

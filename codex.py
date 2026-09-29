@@ -4,11 +4,14 @@
 """Codex records its limits in every `token_count` event of a rollout log."""
 import json
 import os
+import sqlite3
 import stat
 
 from accounts import DAY_SECONDS, _epoch, pace
 
 SESSIONS_DIR = os.path.expanduser("~/.codex/sessions")
+#: Codex's own database, where it titles each conversation.
+STATE_DB = os.path.expanduser("~/.codex/state_5.sqlite")
 #: How much of a rollout's end to read; readings repeat every turn, so the last one is near the end.
 TAIL_BYTES = 256 * 1024
 #: Newest rollouts to look through when the newest has no reading yet.
@@ -183,3 +186,25 @@ def read_session(rollout_path):
         return session_from_lines(_tail_lines(rollout_path)) if rollout_path else session_from_lines([])
     except OSError:
         return session_from_lines([])
+
+
+def thread_name(session_id, db_path=None):
+    """The title Codex gave a conversation, as its status line shows it, or None.
+
+    Read-only and short on patience: the database is Codex's, written while it
+    runs, and a rebuild must not wait on its lock.
+    """
+    if not session_id:
+        return None
+    try:
+        db = sqlite3.connect(f"file:{db_path or STATE_DB}?mode=ro", uri=True, timeout=0.2)
+    except sqlite3.Error:
+        return None
+    try:
+        row = db.execute("SELECT name FROM threads WHERE id = ?", (session_id,)).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        db.close()
+    return row[0] if row and row[0] else None
+

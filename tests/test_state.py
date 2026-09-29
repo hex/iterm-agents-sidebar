@@ -461,3 +461,16 @@ def test_parse_tasks():
     assert parse_tasks(json.dumps({"tasks": "six"})) == []
     assert parse_tasks(json.dumps({})) == []
     assert parse_tasks("not json") == []
+
+
+def test_a_quiet_working_claim_holds_while_its_hook_says_a_tool_runs():
+    """A Codex command runs under Codex's shared app-server daemon, so no
+    process listing ties it to the pane; the hook's own record of a tool
+    started and not finished is what keeps a long one believable."""
+    import json, os, time
+    from sidebar import parse_state, WORKING_GOES_STALE_AFTER
+    old = time.time() - WORKING_GOES_STALE_AFTER - 5
+    running = json.dumps({"state": "working", "pid": os.getpid(), "ts": old, "tools_running": 1})
+    finished = json.dumps({"state": "working", "pid": os.getpid(), "ts": old, "tools_running": 0})
+    assert parse_state(running) == "working"
+    assert parse_state(finished) == "unknown"
