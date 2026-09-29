@@ -33,7 +33,7 @@ class Quiet:
 def bridge(monkeypatch, readings):
     def read_system():
         readings.append(1)
-        return ({}, {}, {}, {}), {}, {}, {}
+        return ({}, {}, {}, {}), {}, {}, {}, {}
     monkeypatch.setattr(sidebar, "read_system", read_system)
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
@@ -50,7 +50,7 @@ def test_the_process_listing_is_read_off_the_event_loop(monkeypatch):
             seen.append("on the loop")
         except RuntimeError:
             seen.append("in a thread")
-        return ({}, {}, {}, {}), {}, {}, {}
+        return ({}, {}, {}, {}), {}, {}, {}, {}
     monkeypatch.setattr(sidebar, "read_system", read_system)
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
@@ -211,7 +211,7 @@ def test_an_omp_row_is_the_process_iterm2_names_as_the_panes_job(monkeypatch):
     foreground job, which is where the row's start time comes from."""
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system",
-                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, {}, {}))
+                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, {}, {}, {}))
     b.app = one_session(OmpSessionWithAJob())
     [row] = asyncio.run(b.read_sessions())
     assert row["started_at"] == 1789980000
@@ -223,7 +223,7 @@ def test_a_job_pid_that_is_no_pid_leaves_the_omp_row_without_a_process(monkeypat
             return True if name == "jobPid" else await super().async_get_variable(name)
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system",
-                        lambda: (({}, {1: 1789980000}, {}, {}), {}, {}, {}))
+                        lambda: (({}, {1: 1789980000}, {}, {}), {}, {}, {}, {}))
     b.app = one_session(Odd())
     [row] = asyncio.run(b.read_sessions())
     assert row["started_at"] is None
@@ -235,7 +235,7 @@ def test_a_light_session_never_asks_what_its_busiest_process_is_called(monkeypat
     b = bridge(monkeypatch, [])
     resources = {4242: (1, 0.5, 9000, "ttys001")}
     monkeypatch.setattr(sidebar, "read_system",
-                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, resources, {4242: None}))
+                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, resources, {4242: None}, {}))
     asked = []
     monkeypatch.setattr(sidebar, "read_program_names", lambda pids: asked.append(pids) or {})
     b.app = one_session(OmpSessionWithAJob())
@@ -297,7 +297,7 @@ def test_an_omp_pane_inside_tmux_is_on_the_terminal_tmux_gave_it(monkeypatch):
     seen = []
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system", lambda: (
-        ({}, {}, {}, {}), {72: {"tty": "ttys011", "path": "/Users/x/atlas"}}, {}, {}))
+        ({}, {}, {}, {}), {72: {"tty": "ttys011", "path": "/Users/x/atlas"}}, {}, {}, {}))
     monkeypatch.setattr(sidebar.omp, "read_session",
                         lambda _, tty: seen.append(tty) or {"model": None, "effort": None,
                                                             "context": None, "cost": None, "doing": None, "jobs": [], "agents": []})
@@ -312,7 +312,7 @@ def test_an_omp_pane_iterm2_names_no_terminal_for_is_on_its_processs_terminal(mo
     seen = []
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system", lambda: (
-        ({}, {}, {}, {}), {}, {4242: (1, 0.0, 0, "ttys014")}, {}))
+        ({}, {}, {}, {}), {}, {4242: (1, 0.0, 0, "ttys014")}, {}, {}))
     monkeypatch.setattr(sidebar.omp, "read_session",
                         lambda _, tty: seen.append(tty) or {"model": None, "effort": None,
                                                             "context": None, "cost": None, "doing": None, "jobs": [], "agents": []})
@@ -427,7 +427,7 @@ def codex_pane(monkeypatch, tmp_path, started=CODEX_STARTED):
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system", lambda: (
         ({}, {os.getpid(): started}, {}, {}), {}, {os.getpid(): (1, 0.0, 0, "ttys007")},
-        {os.getpid(): "codex"}))
+        {os.getpid(): "codex"}, {}))
     b.app = one_session(CodexOnADaemon())
     return b
 
@@ -475,7 +475,7 @@ def test_a_newer_mirror_release_rides_every_snapshot_and_an_absent_one_leaves_no
     """`latest` is rebuilt from scratch each cycle, so the offer has to be
     copied in every time; and a panel that is current sees no key at all,
     rather than a null to interpret."""
-    monkeypatch.setattr(sidebar, "read_system", lambda: (({}, {}, {}, {}), {}, {}, {}))
+    monkeypatch.setattr(sidebar, "read_system", lambda: (({}, {}, {}, {}), {}, {}, {}, {}))
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
     b.app = NoWindows()
@@ -539,3 +539,72 @@ def test_each_rebuild_decides_the_alerts_and_carries_them_out(monkeypatch, tmp_p
     assert sorted(done) == [("notify", "a", "blocked"), ("sound", "b", "done")]
     logged = [line.split(" ", 2)[2] for line in (tmp_path / "daemon.log").read_text().splitlines()]
     assert logged == ["alert notify a blocked", "alert sound b done"]
+
+
+#: When a Codex prompt opened, and the approved command's shell under the
+#: shared daemon: `/bin/zsh -lc <command>`, as Codex 0.159 spawns it.
+ASKED_AT = int(time.time()) - 30
+DAEMON, SHELL = 65418, 87940
+GATED = {"tool": "Bash", "summary": "bash tests/codex-watcher/run.sh"}
+
+
+def approved(args=f"/bin/zsh -lc bash tests/codex-watcher/run.sh", started=ASKED_AT + 8,
+             parent_program="codex", question=GATED):
+    return sidebar.approved_codex_command(
+        question, ASKED_AT, {SHELL: args}, {SHELL: started},
+        {SHELL: (DAEMON, 0.0, 0, None), DAEMON: (1, 0.0, 0, None)}, {DAEMON: parent_program})
+
+
+def test_an_approved_codex_command_is_seen_running_under_codex():
+    assert approved() is True
+
+
+def test_a_command_started_before_the_prompt_is_not_its_answer():
+    assert approved(started=ASKED_AT - 60) is False
+
+
+def test_the_same_command_outside_codex_is_not_its_answer():
+    assert approved(parent_program="zsh") is False
+
+
+def test_another_command_is_not_its_answer():
+    assert approved(args="/bin/zsh -lc git status") is False
+
+
+def test_a_question_that_names_no_command_is_never_answered_this_way():
+    assert approved(question={"tool": "Bash", "summary": ""}) is False
+    assert approved(question={"header": "Pick", "question": "Which?", "options": []}) is False
+
+
+def test_a_clipped_command_still_matches_what_runs():
+    long = "bash tests/" + "x" * 300
+    assert approved(args=f"/bin/zsh -lc {long}",
+                    question={"tool": "Bash", "summary": long[:199] + "…"}) is True
+
+
+class CodexAsking(Session):
+    """A live Codex pane whose hook last said blocked on a command prompt."""
+    session_id = "s7"
+
+    async def async_get_variable(self, name):
+        if name == "user.codexState":
+            return json.dumps({"state": "blocked", "pid": os.getpid(), "ts": ASKED_AT,
+                               "session": "codex-asking", "model": "gpt-6-astra",
+                               "blocked_since": ASKED_AT, "question": GATED,
+                               "transcript_path": "/Users/x/.codex/sessions/rollout-asking.jsonl"})
+        if name == "jobName":
+            return "codex"
+        return None
+
+
+def test_a_codex_card_stops_waiting_once_its_approved_command_runs(monkeypatch):
+    """Seen 2026-09-29: the card read WAITING from the approval until Codex's
+    next tool, since no hook fires when a prompt is answered."""
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "read_system", lambda: (
+        ({}, {SHELL: ASKED_AT + 8}, {}, {}), {},
+        {SHELL: (DAEMON, 0.0, 0, None), DAEMON: (1, 0.0, 0, None)}, {DAEMON: "codex"},
+        {SHELL: "/bin/zsh -lc bash tests/codex-watcher/run.sh"}))
+    b.app = one_session(CodexAsking())
+    [row] = asyncio.run(b.read_sessions())
+    assert row["agent_state"] == "working"

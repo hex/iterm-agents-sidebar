@@ -1313,6 +1313,52 @@ def parse_commands(raw):
     return names
 
 
+def parse_args(raw):
+    """The process listing -> {pid: its whole command line}."""
+    table = {}
+    for line in (raw or "").splitlines():
+        parts = line.split(None, PROCESS_FIELDS)
+        if len(parts) <= PROCESS_FIELDS:
+            continue
+        try:
+            table[int(parts[0])] = parts[PROCESS_FIELDS]
+        except ValueError:
+            continue
+    return table
+
+
+#: How far up from a command to look for the Codex that ran it: the daemon's
+#: shell is its child, and a wrapper or two may sit between.
+CODEX_ANCESTRY = 6
+
+
+def approved_codex_command(question, since, args, started, resources, commands):
+    """Whether the command a Codex prompt asked to run is already running.
+
+    No hook fires when a Codex prompt is answered: the next one is Codex's
+    next PreToolUse, and the approved command runs before it, for minutes if
+    it is a test run. So an open gate over a running command is read off the
+    process table: a process under a Codex, started since the prompt, running
+    the command the prompt named (its first line, as the hook clipped it).
+    """
+    summary = (question or {}).get("summary") or ""
+    wanted = summary.removesuffix("\u2026").strip()
+    if not wanted or since is None:
+        return False
+    for pid, line in args.items():
+        # lstart has whole seconds; the prompt's clock has fractions.
+        if wanted not in line or (started.get(pid) or 0) < since - 1:
+            continue
+        parent = (resources.get(pid) or (None,))[0]
+        for _ in range(CODEX_ANCESTRY):
+            if parent is None or parent <= 1:
+                break
+            if commands.get(parent) == "codex":
+                return True
+            parent = (resources.get(parent) or (None,))[0]
+    return False
+
+
 def read_program_names(pids):
     """-> {pid: its executable's name} from the kernel, for processes whose
     args name no program. Missing for a process already gone.
@@ -1443,7 +1489,7 @@ def read_system():
     """Everything a rebuild learns from outside iTerm2, off one ps and one tmux."""
     listing = read_process_listing()
     return (parse_processes(listing), read_tmux_panes(listing), parse_resources(listing),
-            parse_commands(listing))
+            parse_commands(listing), parse_args(listing))
 
 
 #: Programs that run a script: the script names what is running, not them.
@@ -2714,7 +2760,7 @@ class Bridge:
     async def read_sessions(self):
         # Two execs and a walk of the process table: in a thread, or the
         # heartbeat, the settings sheet and every focus click wait behind them.
-        (shells, started, agent_colours, agent_parents), tmux_panes, resources, commands = \
+        (shells, started, agent_colours, agent_parents), tmux_panes, resources, commands, args = \
             await asyncio.to_thread(read_system)
         codex_jobs = await asyncio.to_thread(read_codex_jobs)
         rows, pids, live_sessions = [], [], set()
@@ -2803,6 +2849,12 @@ class Bridge:
                         # word on its directory outranks it, and tmux's.
                         values["path"] = status["directory"] or values["path"]
                     marks = transcript_marks(status.get("transcript"))
+                    agent_state = titled or parse_state(raw, command_running=bool(shells.get(pid)))
+                    if provider == "openai" and agent_state == "blocked" and approved_codex_command(
+                            parse_question(raw), parse_blocked_since(raw), args, started, resources,
+                            commands):
+                        # Answered: the command it asked for is running.
+                        agent_state = "working"
                     rows.append({
                         "session_id": session.session_id,
                         "window_id": window.window_id,
@@ -2818,7 +2870,7 @@ class Bridge:
                         "job_name": job,
                         "agent_job": codex_tui,
                         "provider": provider,
-                        "agent_state": titled or parse_state(raw, command_running=bool(shells.get(pid))),
+                        "agent_state": agent_state,
                         # The name the agent gave the conversation, where it keeps one.
                         "topic": (omp_title_topic(values["autoName"]) if titled
                                   else codex.thread_name(parse_session(raw)) if provider == "openai"
