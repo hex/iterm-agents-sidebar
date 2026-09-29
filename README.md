@@ -83,7 +83,7 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 | Idle | Grey name, IDLE outline |
 | Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
 | Exited | Faded, with an EXITED outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
-| Unknown | A hollow square: a turn silent for five minutes with no command running under it |
+| Unknown | A hollow square: a turn silent for five minutes with no command or tool running under it |
 
 <img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each part joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">
 
@@ -102,7 +102,8 @@ drawn as a bar ([usage](docs/usage.md#what-fills-the-context)). A Codex
 card wears the OpenAI mark instead of the Claude one, and has no teammates and
 no background-shell line. Codex opens its session at your first prompt, so
 until then its card shows the name, the branch and a `Codex` mark, and no
-state.
+state. Once Codex titles the conversation, the title its status line shows
+sits under the card's name, in place of the title of any task it reports.
 
 An omp session needs nothing installed. omp writes its state into its own tab
 title: `π >` at your turn, `π !` while an approval or a question waits, and a

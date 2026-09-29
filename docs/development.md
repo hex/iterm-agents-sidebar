@@ -159,7 +159,12 @@ from the last event that fired. It has to, because a parent and all its
 subagents write to the same terminal. A gate closes when the tool that
 opened it runs, fails or is denied, when your next prompt comes, or when the
 turn ends: a `Stop`, an `idle_prompt` notification or a `SessionStart` clears
-every open gate. In a Codex session any tool starting closes every gate too:
+every open gate. A Codex state reaches its pane another way when it has to:
+Codex runs hooks in an app-server daemon that outlives the Codex that started
+it and serves the next, and from there the hook finds no terminal. It files
+the state with its directory instead, and the panel gives it to the pane
+running Codex in that directory, if exactly one state newer than that Codex
+is filed there. In a Codex session any tool starting closes every gate too:
 Codex issues no tool while its prompt is up, and waiting for the approved
 command to finish kept the card waiting through whole test runs.
 

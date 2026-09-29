@@ -8,6 +8,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import time
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
@@ -357,6 +358,117 @@ def test_a_claude_row_without_a_statusline_keeps_the_path_iterm2_reports(monkeyp
     b.app = one_session(ClaudeSessionIterm2Misplaced())
     [row] = asyncio.run(b.read_sessions())
     assert row["path"] == "/Users/x/.claude-sessions/wap@testing-infrastructure"
+
+
+class CodexReopened(Session):
+    """A pane whose Codex exited and was started again: the variable still
+    holds the old run's state, whose pid is gone, and the new run publishes
+    nothing until its first prompt."""
+    session_id = "s5"
+
+    async def async_get_variable(self, name):
+        if name == "user.codexState":
+            return json.dumps({"state": "idle", "pid": 999999, "ts": 1789480900,
+                               "session": "codex-old", "model": "gpt-6-astra",
+                               "transcript_path": "/Users/x/.codex/sessions/rollout-old.jsonl"})
+        if name == "jobName":
+            return "codex"
+        return None
+
+
+def test_a_codex_started_again_in_its_pane_is_not_the_run_that_exited(monkeypatch):
+    """Seen 2026-09-29: a Codex quit and relaunched in the same pane read
+    EXITED, since the dead run's state was all the pane had published."""
+    b = bridge(monkeypatch, [])
+    b.app = one_session(CodexReopened())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["provider"], row["agent_job"], row["agent_state"]) == ("openai", True, None)
+    assert row["conversation"] is None
+
+
+def test_a_dead_codex_whose_pane_moved_on_still_reads_exited(monkeypatch):
+    class Gone(CodexReopened):
+        async def async_get_variable(self, name):
+            return None if name == "jobName" else await super().async_get_variable(name)
+    b = bridge(monkeypatch, [])
+    b.app = one_session(Gone())
+    [row] = asyncio.run(b.read_sessions())
+    assert row["agent_state"] == "exited"
+
+
+class CodexOnADaemon(CodexReopened):
+    """A Codex whose hooks run in the app-server daemon an earlier Codex
+    started: they find no terminal, so they file the state under the session
+    and the pane's variable keeps the dead run's."""
+    session_id = "s6"
+
+    async def async_get_variable(self, name):
+        if name == "path":
+            return "/Users/x/atlas"
+        if name == "tty":
+            return "/dev/ttys007"
+        return await super().async_get_variable(name)
+
+
+def filed(directory, session, cwd, ts, state="working"):
+    (directory / f"{session}.published").write_text(json.dumps(
+        {"state": state, "pid": None, "session": session, "ts": ts, "cwd": cwd,
+         "agents": 0, "subagents": [], "model": "gpt-6-astra",
+         "transcript_path": f"/Users/x/.codex/sessions/rollout-{session}.jsonl"}))
+
+
+#: When the pane's Codex started: filings are placed around it, and a working
+#: state older than the panel's staleness window reads unknown, so it is now.
+CODEX_STARTED = int(time.time()) - 60
+
+
+def codex_pane(monkeypatch, tmp_path, started=CODEX_STARTED):
+    monkeypatch.setattr(sidebar, "HOOK_STATE_DIR", str(tmp_path))
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "read_system", lambda: (
+        ({}, {os.getpid(): started}, {}, {}), {}, {os.getpid(): (1, 0.0, 0, "ttys007")},
+        {os.getpid(): "codex"}))
+    b.app = one_session(CodexOnADaemon())
+    return b
+
+
+def test_a_codex_whose_hooks_find_no_terminal_is_read_from_its_filed_state(monkeypatch, tmp_path):
+    """Seen 2026-09-29: a Codex started while an earlier one's app-server
+    daemon was still up worked five minutes on a bare card. Its hooks ran in
+    that daemon, found no terminal, and never reached the pane."""
+    filed(tmp_path, "codex-new", "/Users/x/atlas", ts=CODEX_STARTED + 20)
+    [row] = asyncio.run(codex_pane(monkeypatch, tmp_path).read_sessions())
+    assert (row["provider"], row["agent_state"], row["conversation"]) == ("openai", "working", "codex-new")
+    assert row["rollout"] == "/Users/x/.codex/sessions/rollout-codex-new.jsonl"
+
+
+def test_two_filed_codex_sessions_in_one_directory_pair_with_neither(monkeypatch, tmp_path):
+    filed(tmp_path, "codex-a", "/Users/x/atlas", ts=CODEX_STARTED + 20)
+    filed(tmp_path, "codex-b", "/Users/x/atlas", ts=CODEX_STARTED + 27)
+    [row] = asyncio.run(codex_pane(monkeypatch, tmp_path).read_sessions())
+    assert (row["agent_state"], row["conversation"]) == (None, None)
+
+
+def test_a_filed_codex_session_older_than_the_panes_codex_is_not_its(monkeypatch, tmp_path):
+    filed(tmp_path, "codex-old", "/Users/x/atlas", ts=CODEX_STARTED - 5000)
+    filed(tmp_path, "codex-elsewhere", "/Users/x/beacon", ts=CODEX_STARTED + 20)
+    [row] = asyncio.run(codex_pane(monkeypatch, tmp_path).read_sessions())
+    assert (row["agent_state"], row["conversation"]) == (None, None)
+
+
+def test_a_codex_card_is_named_as_codex_named_its_thread(monkeypatch, tmp_path):
+    import sqlite3
+    db = tmp_path / "state_5.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, name TEXT)")
+    conn.execute("INSERT INTO threads VALUES ('codex-1', 'Inspect brief and execute tasks')")
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(sidebar.codex, "STATE_DB", str(db))
+    b = bridge(monkeypatch, [])
+    b.app = OneCodexSession()
+    [row] = asyncio.run(b.read_sessions())
+    assert row["topic"] == "Inspect brief and execute tasks"
 
 
 def test_a_newer_mirror_release_rides_every_snapshot_and_an_absent_one_leaves_no_key(monkeypatch):

@@ -129,6 +129,19 @@ def test_codex_state_carries_its_model_and_rollout():
     assert value["transcript_path"] == "/Users/jane/.codex/sessions/2026/09/15/rollout-x.jsonl"
 
 
+def test_a_codex_hook_with_no_terminal_files_its_whole_state_with_its_directory(tmp_path):
+    """Codex runs its hooks in an app-server daemon that can outlive the Codex
+    that started it and serve the next one; from there no terminal is found,
+    and a state that reaches no pane has to be filed where the panel looks,
+    with the directory it pairs the pane by."""
+    payload = {"session_id": "codex-1", "cwd": "/Users/jane/atlas", "model": "gpt-6-astra",
+               "transcript_path": "/t"}
+    value = emit_state.published({"parent_active": True}, None, payload, codex=True, now=1789000000)
+    assert value["cwd"] == "/Users/jane/atlas"
+    emit_state.file_whole(value, "codex-1", directory=str(tmp_path))
+    assert json.loads((tmp_path / "codex-1.published").read_text()) == value
+
+
 def test_claude_state_carries_no_codex_fields():
     value = emit_state.published({}, 701, {"model": "claude-opus-5", "transcript_path": "/t"},
                                  codex=False, now=1789000000)
@@ -544,3 +557,18 @@ def test_a_codex_prompt_is_answered_once_codex_issues_its_next_tool():
         doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t2"}, "working", codex=codex)
         assert emit_state.aggregate(doc) == after, codex
         assert (doc["question"] is None) == (after == "working")
+
+
+def test_the_state_counts_the_tools_started_and_not_finished():
+    """Codex runs tools side by side, so the newest one finishing says
+    nothing of an older one still running; each is counted until its own
+    end, and a turn ending drops whatever was left."""
+    doc = emit_state.blank_state()
+    for event, tool in (("PreToolUse", "t1"), ("PreToolUse", "t2"), ("PostToolUse", "t2")):
+        doc = emit_state.apply_event(doc, event, {"tool_use_id": tool}, "working", codex=True)
+    assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 1
+    doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t1"}, "working", codex=True)
+    assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 0
+    doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t3"}, "working", codex=True)
+    doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": False}, "idle", codex=True)
+    assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 0

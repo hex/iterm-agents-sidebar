@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import codex
 from codex import limits_from_lines, read_limits, read_session, session_from_lines
 
 WEEKLY_ONLY = {"limit_id": "codex", "primary": {"used_percent": 27.0, "window_minutes": 10080,
@@ -165,3 +166,24 @@ def test_a_session_is_read_from_its_rollout_file(tmp_path):
     rollout = tmp_path / "rollout-2026-09-15T16-33-01-x.jsonl"
     rollout.write_text("\n".join([TURN_CONTEXT, TOKEN_COUNT]) + "\n")
     assert read_session(str(rollout)) == {"effort": "medium", "context": 6}
+
+
+def _threads(path, rows):
+    import sqlite3
+    db = sqlite3.connect(path)
+    db.execute("CREATE TABLE threads (id TEXT PRIMARY KEY, name TEXT)")
+    db.executemany("INSERT INTO threads VALUES (?, ?)", rows)
+    db.commit()
+    db.close()
+
+
+def test_a_codex_session_is_named_as_codex_named_its_thread(tmp_path):
+    """Codex titles a conversation in its state database, and the TUI shows
+    that title in its status line; nothing else records it."""
+    db = tmp_path / "state_5.sqlite"
+    _threads(db, [("01a0edc0-8f4a", "Inspect brief and execute tasks"), ("01a0edc0-c226", None)])
+    assert codex.thread_name("01a0edc0-8f4a", str(db)) == "Inspect brief and execute tasks"
+    assert codex.thread_name("01a0edc0-c226", str(db)) is None
+    assert codex.thread_name("absent", str(db)) is None
+    assert codex.thread_name("01a0edc0-8f4a", str(tmp_path / "missing.sqlite")) is None
+    assert codex.thread_name(None, str(db)) is None

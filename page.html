@@ -3381,7 +3381,9 @@ function paint(snapshot) {
       // What the session says it is doing, as it wrote it: a title, then
       // the rough percent, the activity and how old the report is.
       if (row.task && SETTINGS?.show_task !== false) {
-        stack.append(taskLine(row.task));
+        // Codex's own status line knows the conversation by the title Codex
+        // gave it, so a Codex card does too; the report keeps the rest.
+        stack.append(taskLine(row.provider === "openai" && row.topic ? {...row.task, title: row.topic} : row.task));
       } else if ((row.topic || row.doing) && SETTINGS?.show_task !== false) {
         stack.append(topicLine(row.topic, row.doing));
       }

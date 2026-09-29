@@ -100,7 +100,8 @@ def blank_state():
     """A session nothing is known about: not working, no children, no gates."""
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
             "agent_info": {}, "gates": {}, "last_tool": None, "last_tool_ran": False,
-            "turn_started": None, "reminded": 0, "question": None, "background": []}
+            "turn_started": None, "reminded": 0, "question": None, "background": [],
+            "running": {}}
 
 
 def live_agents(doc):
@@ -319,7 +320,8 @@ def apply_event(doc, event, payload, said, codex=False):
            "turn_started": doc.get("turn_started"),
            "reminded": doc.get("reminded") or 0,
            "question": doc.get("question"),
-           "background": list(doc.get("background") or [])}
+           "background": list(doc.get("background") or []),
+           "running": dict(doc.get("running") or {})}
     now = round(time.time(), 3)
 
     if event == "UserPromptSubmit":
@@ -336,6 +338,7 @@ def apply_event(doc, event, payload, said, codex=False):
         doc["agent_info"] = {k: v for k, v in doc["agent_info"].items() if k in running}
         doc["gates"] = {}
         doc["last_tool"] = None
+        doc["running"] = {}
 
     if event == "PreToolUse":
         # The id a gate will need. PermissionRequest carries tool_name and
@@ -345,6 +348,9 @@ def apply_event(doc, event, payload, said, codex=False):
         if payload.get("tool_use_id"):
             doc["last_tool"] = payload["tool_use_id"]
             doc["last_tool_ran"] = False
+            # Tools run side by side, so each is counted until its own end:
+            # the newest finishing says nothing of an older one still going.
+            doc["running"][payload["tool_use_id"]] = now
         if codex:
             # Codex issues no tool while its prompt is up, so this one proves
             # every prompt before it was answered. Traced 2026-09-29 over nine
@@ -371,6 +377,7 @@ def apply_event(doc, event, payload, said, codex=False):
         # vanishes while Claude waits is the failure.
         key = payload.get("tool_use_id")
         if key:
+            doc["running"].pop(key, None)
             doc["gates"].pop(key, None)
             if not doc["gates"]:
                 doc["question"] = None
@@ -404,6 +411,9 @@ def apply_event(doc, event, payload, said, codex=False):
         # whole in-flight set each time, and nothing fires when one task ends,
         # so the list is replaced, never added to.
         if event == "Stop":
+            # The turn is over, so no tool of it is still running; one the
+            # user interrupted never reported its own end.
+            doc["running"] = {}
             doc["background"] = [{"type": t.get("type"), "description": t.get("description")}
                                  for t in payload.get("background_tasks") or []]
             # A subagent in the foreground cannot outlive the turn, and the
@@ -839,6 +849,12 @@ def published(doc, pid, payload, codex, now):
     if codex:
         value["model"] = payload.get("model")
         value["transcript_path"] = payload.get("transcript_path")
+        # What the panel pairs a pane by when this state reaches no terminal.
+        value["cwd"] = payload.get("cwd")
+        # Codex's commands run under its shared app-server daemon, where no
+        # process listing ties them to a pane, so the hook's own count is
+        # what keeps a long one from reading as a session gone quiet.
+        value["tools_running"] = len(doc.get("running") or {})
     else:
         # Codex keeps no task list; a Claude session's is read whole on
         # every event, since the tool calls that change it are the events.
@@ -877,18 +893,24 @@ def carried(value, session_id, directory=None):
         return whole
     envelope = {key: item for key, item in value.items() if key not in DETAIL_FIELDS}
     try:
-        if not session_id:
-            raise OSError("no session to file the detail under")
-        path = _published_path(session_id, directory)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        temp = path + f".{os.getpid()}.tmp"
-        with open(temp, "w", encoding="utf-8") as fh:
-            fh.write(whole)
-        os.replace(temp, path)
+        file_whole(value, session_id, directory)
         envelope["detail"] = True
     except OSError:
         envelope["detail"] = False
     return json.dumps(envelope)
+
+
+def file_whole(value, session_id, directory=None):
+    """Store the whole published value under the session for the daemon to
+    read, replaced by rename so it is never read half written. Raises OSError."""
+    if not session_id:
+        raise OSError("no session to file the state under")
+    path = _published_path(session_id, directory)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temp = path + f".{os.getpid()}.tmp"
+    with open(temp, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(value))
+    os.replace(temp, path)
 
 
 def nested_agent(environ, codex):
@@ -980,6 +1002,14 @@ def main():
         pass                     # nothing this event should change
     elif state == "":
         emit("", variable=variable)
+    elif codex and not tty:
+        # Codex runs its hooks in an app-server daemon that can outlive the
+        # Codex that started it and serve the next one; from there no parent
+        # holds a terminal. File the state where the panel pairs it to a pane.
+        try:
+            file_whole(published(doc, pid, payload, codex, time.time()), session_id)
+        except OSError:
+            pass
     else:
         emit(carried(published(doc, pid, payload, codex, time.time()), session_id), tty, variable)
 
