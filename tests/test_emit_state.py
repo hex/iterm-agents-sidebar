@@ -526,3 +526,21 @@ def test_the_published_state_carries_the_open_tasks_and_files_them_past_the_ceil
 def test_a_codex_session_publishes_no_tasks():
     value = emit_state.published({}, 701, {"session_id": "abc-123", "model": "gpt-5"}, codex=True, now=1789000000)
     assert "tasks" not in value
+
+
+def test_a_codex_prompt_is_answered_once_codex_issues_its_next_tool():
+    """Traced 2026-09-29 over nine Codex gates: the approved command started
+    2 to 34 s after the prompt, always before Codex's next PreToolUse, and
+    nothing fired in the prompt window even when it lasted 34 s. Codex issues
+    no new tool while its prompt is up, so the next one proves it answered;
+    its PostToolUse alone left the card WAITING for the whole of a two-minute
+    test run. Claude Code runs tools beside an open prompt, so there the same
+    sequence stays blocked."""
+    for codex, after in ((True, "working"), (False, "blocked")):
+        doc = emit_state.blank_state()
+        doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t1"}, "working", codex=codex)
+        doc = emit_state.apply_event(doc, "PermissionRequest", {**ASK}, "blocked", codex=codex)
+        assert emit_state.aggregate(doc) == "blocked"
+        doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t2"}, "working", codex=codex)
+        assert emit_state.aggregate(doc) == after, codex
+        assert (doc["question"] is None) == (after == "working")
