@@ -69,8 +69,8 @@ its sound and banner style.
 Click an empty part of the panel first to give it keyboard focus. Arrow keys
 only; iTerm2 keeps the other combinations for itself.
 
-A card that starts waiting on you while it sits out of sight scrolls into
-view.
+A card that starts waiting on you, or asks something new while it waits, scrolls into
+view when it sits out of sight; so does a card whose row under "Waiting on you" you click.
 
 ### What a card says
 

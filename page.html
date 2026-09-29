@@ -2672,7 +2672,8 @@ function paintQueue(snapshot) {
                                     {className: "ago", textContent: ago}));
     const said = [row.label, "waiting", ago && `for ${ago}`].filter(Boolean).join(" ");
     b.setAttribute("aria-label", row.question ? `${said}, ${asksAloud(row.question)}` : said);
-    b.addEventListener("click", () => act(row.session_id, "focus"));
+    // The row names a card that may sit off the list's edge; show it too.
+    b.addEventListener("click", () => { revealAfterPaint(row.session_id); act(row.session_id, "focus"); });
     const li = document.createElement("li");
     li.append(b);
     ul.append(li);
@@ -4268,16 +4269,21 @@ fetch(`/settings?token=${encodeURIComponent(TOKEN)}`)
 // sessions itself and decides once, under the settings as they are now. A
 // page decided before, and a page that fell behind announced its backlog of
 // old changes all at once. What stays here is this page's own list: a card
-// that turns blocked is scrolled into view.
+// that turns blocked, or asks something new while blocked, is scrolled into
+// view. A second prompt arriving while the first is open is a new wait the
+// state alone does not show; it kept a card five minutes off the bottom.
 let lastStates = new Map();
+function waitKey(row) {
+  return row.state === "blocked" ? "blocked|" + JSON.stringify(row.question ?? null) : row.state;
+}
 function announce(snapshot) {
   const now = new Map();
   for (const g of snapshot.groups || []) {
-    for (const r of g.rows) now.set(r.session_id, r.state);
+    for (const r of g.rows) now.set(r.session_id, waitKey(r));
   }
   if (lastStates.size) {
-    for (const [id, state] of now) {
-      if (state === "blocked" && lastStates.get(id) !== "blocked") revealAfterPaint(id);
+    for (const [id, key] of now) {
+      if (key.startsWith("blocked") && lastStates.get(id) !== key) revealAfterPaint(id);
     }
   }
   lastStates = now;

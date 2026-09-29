@@ -300,12 +300,13 @@ def aggregate(doc):
     return "idle"
 
 
-def apply_event(doc, event, payload, said):
+def apply_event(doc, event, payload, said, codex=False):
     """Fold one hook event into a session's state document. Pure.
 
     `said` is what state_for made of the event on its own -- kept as the
     reading of a single event, which is all it can honestly be, and turned
-    into a change to the record here.
+    into a change to the record here. `codex` says whose hooks these are:
+    the two agents differ in what a tool starting proves.
     """
     doc = {"parent_active": bool(doc.get("parent_active")),
            "agents": dict(doc.get("agents") or {}),
@@ -344,6 +345,16 @@ def apply_event(doc, event, payload, said):
         if payload.get("tool_use_id"):
             doc["last_tool"] = payload["tool_use_id"]
             doc["last_tool_ran"] = False
+        if codex:
+            # Codex issues no tool while its prompt is up, so this one proves
+            # every prompt before it was answered. Traced 2026-09-29 over nine
+            # gates: the approved command always started before the next
+            # PreToolUse, and waiting for its PostToolUse instead left the
+            # card WAITING through two-minute test runs. Claude Code runs
+            # tools beside an open prompt, so there only the gated tool's
+            # own end can close its gate.
+            doc["gates"] = {}
+            doc["question"] = None
 
     if event == "SubagentStart":
         doc["agents"][payload.get("agent_id") or UNKEYED] = now
@@ -474,7 +485,7 @@ def read_state(session_id):
             "background": doc.get("background") if isinstance(doc.get("background"), list) else []}
 
 
-def update(session_id, event, payload, said):
+def update(session_id, event, payload, said, codex=False):
     """Fold the event in and store the result. -> the new document.
 
     Held under an exclusive lock across read and write, and replaced by rename:
@@ -486,12 +497,12 @@ def update(session_id, event, payload, said):
     that replaces the document cannot pull the lock out from under a waiter.
     """
     if not session_id:
-        return apply_event(blank_state(), event, payload, said)
+        return apply_event(blank_state(), event, payload, said, codex)
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(_state_path(session_id) + ".lock", "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            doc = apply_event(read_state(session_id), event, payload, said)
+            doc = apply_event(read_state(session_id), event, payload, said, codex)
             doc = describe_subagents(doc, payload.get("transcript_path"))
             path = _state_path(session_id)
             temp = path + f".{os.getpid()}.tmp"
@@ -909,7 +920,7 @@ def main():
         clear_note(session_id)
         doc = blank_state()
     else:
-        doc = update(session_id, event, payload, state)
+        doc = update(session_id, event, payload, state, codex)
     agents = live_agents(doc)
 
     # What the session is doing, not what one event said about one participant.

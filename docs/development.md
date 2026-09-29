@@ -159,7 +159,9 @@ from the last event that fired. It has to, because a parent and all its
 subagents write to the same terminal. A gate closes when the tool that
 opened it runs, fails or is denied, when your next prompt comes, or when the
 turn ends: a `Stop`, an `idle_prompt` notification or a `SessionStart` clears
-every open gate.
+every open gate. In a Codex session any tool starting closes every gate too:
+Codex issues no tool while its prompt is up, and waiting for the approved
+command to finish kept the card waiting through whole test runs.
 
 A subagent leaves the record at its own `SubagentStop`. A prompt clears the
 finished ones and keeps the running ones, because a subagent sent to the
