@@ -5,8 +5,9 @@ it.
 
 ## The install and the port
 
-`get.sh` is the one-liner's script: it clones to `~/.local/share/agents-sidebar/src`,
-or pulls there, and runs `install.sh` with its arguments. `./install.sh` writes a stub into
+`get.sh` is the one-liner's script: it clones to `~/.local/share/agents-sidebar/src`
+and runs `install.sh` with its arguments. On an existing install it stops:
+it is fetched unsigned, so it never updates one. `./install.sh` writes a stub into
 `~/Library/Application Support/iTerm2/Scripts/AutoLaunch/`, and the stub loads
 `sidebar.py` from the checkout. The daemon reads `page.html` from disk on every
 request, so a change to the page alone needs only a reload of the panel
@@ -43,27 +44,42 @@ server also takes `POST /accounts` (switch, add, rename, read), `/update` and
 ## Releases
 
 The version sits in `VERSION`, in the plugin manifest, at the left of the bar
-and on a `v` tag. `update.py` compares that file with the mirror's tags once
-a day and, on request, fast-forwards the checkout and re-execs the daemon.
+and on a `v` tag. `update.py` compares that file with the tags on the
+checkout's `origin` once a day and, on request, fetches, verifies and
+fast-forwards the checkout and re-execs the daemon.
+
+Every commit on the mirror is signed with the release key. `release-signers`
+lists the keys a release may be signed with, in git's allowed-signers format
+(`release namespaces="git" ssh-ed25519 …`), and `release-revoked` the public
+keys no longer trusted. Update judges each new commit by the lists in the
+commit before it, so a commit cannot vouch for itself. To rotate, release
+once with the old key a commit that adds the new key (and, to retire the old
+one, lists it in `release-revoked`); the release after that is signed with
+the new key.
 
 To see an update take without touching your own install, clone the mirror
-at the previous tag and run it under a spare `HOME`; `install.sh` writes only
-there, and the clone's `VERSION` moves to the newest tag:
+at the previous signed release and run it under a spare `HOME`; `install.sh`
+writes only there, and the clone's `VERSION` moves to the newest release:
 
 ```sh
 git clone -q https://github.com/hex/iterm-agents-sidebar.git /tmp/clone
-git -C /tmp/clone reset -q --hard v2026.09.18
-HOME=/tmp/fakehome python3 -c 'import sys; sys.path.insert(0, "."); import update
-print(update.take("/tmp/clone"))'
+git -C /tmp/clone reset -q --hard v<previous>
+HOME=/tmp/fakehome python3 -c 'import sys; sys.path.insert(0, "/tmp/clone"); import update
+print(update.take("/tmp/clone", "<newest>"))'
 ```
 
-A checkout whose `main` is not the mirror's, this one included, refuses the
-pull, and that refusal is what the bar shows: pressing Update here tests the
-failure path only. `./release.sh "summary"` bumps it, runs the tests
+A checkout with no `origin`, this one included, is offered nothing, and
+Update there refuses with `no release is on offer`: it tests the failure
+path only. `./release.sh "summary"` bumps it, runs the tests
 on main and again on the public tree, pushes one squashed commit to the
 mirror, and makes a GitHub release page with the summary and a compare link
 to the release before. It needs a local branch `public`, a remote named
-`github` and `gh` logged in. It always fails the release if the public tree
+`github`, `gh` logged in, and the release key: `RELEASE_SIGNING_KEY` names
+it, `~/.ssh/release-signing.pub` by default. That is the public half of a key
+an ssh-agent holds (Bitwarden's, run with `SSH_AUTH_SOCK` pointing at it), so
+git signs through the agent; a private key file works too. The key is not
+this project's own: other projects can list the same one. It signs the public
+commit and checks it against the previous release's lists before pushing. It always fails the release if the public tree
 carries an email address. `RELEASE_SCRUB="word word"` adds words that fail it
 too.
 

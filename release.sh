@@ -22,6 +22,14 @@ cd "$repo"
 summary="${1:-}"
 [ -n "$summary" ] || { echo "usage: ./release.sh \"one-line summary\"" >&2; exit 1; }
 
+# The release key. Every commit on the mirror is signed with it, and the
+# panel's Update takes only commits signed by a key in release-signers. The
+# default is a public key, so git signs through the ssh-agent holding the
+# private half (Bitwarden's; point SSH_AUTH_SOCK at it); a private key file
+# works too.
+signing_key="${RELEASE_SIGNING_KEY:-$HOME/.ssh/release-signing.pub}"
+[ -f "$signing_key" ] || { echo "error: no release key at $signing_key (set RELEASE_SIGNING_KEY)" >&2; exit 1; }
+
 public_name="hex"
 public_email="88922+hex@users.noreply.github.com"
 remote="github"
@@ -39,7 +47,25 @@ last="$( { git tag -l "v$month.*" | sed "s/^v$month\.//"
 version="$month.$(( ${last:-0} + 1 ))"
 
 echo "release $version"
-python3 -m pytest -q
+
+# Until the push lands, any exit (a failed step, a failed push, Ctrl-C)
+# takes everything back: the bump on main, public, the local tag, the check
+# worktree. Otherwise a re-run counts the unpushed tag and skips a number.
+public_before="$(git rev-parse public)"
+bumped=0; published=0; check=""
+take_back() {
+  [ "$published" = 1 ] && return
+  unset GIT_INDEX_FILE
+  if [ -n "$check" ]; then
+    git worktree remove --force "$check" 2>/dev/null || true
+    git branch -q -D "release-check-$version" 2>/dev/null || true
+  fi
+  git tag -d "v$version" >/dev/null 2>&1 || true
+  git branch -q -f public "$public_before"
+  if [ "$bumped" = 1 ]; then git reset -q --hard HEAD~1; fi
+}
+trap take_back EXIT
+trap 'exit 130' INT TERM
 
 # The bump on main.
 echo "$version" > VERSION
@@ -55,6 +81,7 @@ git add VERSION plugin/.claude-plugin/plugin.json
 git commit -q -m "Release $version
 
 $summary"
+bumped=1
 
 # The public tree: main's, minus the session files, with the mirror's own
 # .gitignore (which ignores .cs/ rather than carrying it).
@@ -80,14 +107,33 @@ done
 if [ -n "$leaks" ]; then
   echo "error: the public tree carries something personal; fix on main and re-run:" >&2
   echo "$leaks" | sed "s|^$tree:|  |" >&2
-  git reset -q --hard HEAD~1
   exit 1
 fi
 
-# The squashed commit, tested as the mirror will see it.
+# The squashed commit, signed first: the agent asks for approval now, while
+# whoever started the release is still watching, not after the test runs.
 commit="$(GIT_AUTHOR_NAME="$public_name" GIT_AUTHOR_EMAIL="$public_email" \
           GIT_COMMITTER_NAME="$public_name" GIT_COMMITTER_EMAIL="$public_email" \
-          git commit-tree "$tree" -p public -m "$version: $summary")"
+          git -c gpg.format=ssh -c user.signingkey="$signing_key" \
+          commit-tree -S "$tree" -p public -m "$version: $summary")"
+
+# Judged as the panel will judge it: by the lists in the commit before it.
+# The first signed release has no such commit, so it is checked against its
+# own; every install takes that one through the unsigned update before it.
+lists=public
+git cat-file -e public:release-signers 2>/dev/null || lists="$tree"
+verify="$(mktemp -d)"
+git show "$lists:release-signers" > "$verify/signers"
+git show "$lists:release-revoked" > "$verify/revoked"
+git -c gpg.ssh.allowedSignersFile="$verify/signers" -c gpg.ssh.revocationFile="$verify/revoked" \
+    verify-commit "$commit" 2>/dev/null || {
+  rm -rf "$verify"
+  echo "error: the release commit does not verify against $lists's release-signers" >&2
+  exit 1
+}
+rm -rf "$verify"
+# Tested on main, then as the mirror will see it.
+python3 -m pytest -q
 check="$(mktemp -d)"
 git worktree add -q --detach "$check" "$commit"
 git -C "$check" checkout -q -b "release-check-$version"
@@ -95,9 +141,12 @@ git -C "$check" checkout -q -b "release-check-$version"
 git worktree remove --force "$check"
 git branch -q -D "release-check-$version"
 
+check=""
+
 git branch -f public "$commit"
 git tag -a "v$version" -m "$summary" "$commit"
-git push -q "$remote" public:main "v$version"
+git push -q --atomic "$remote" public:main "v$version"
+published=1
 echo "published $version as $(git rev-parse --short "$commit") -> $remote"
 
 # The release page: the summary, and what changed since the release before.

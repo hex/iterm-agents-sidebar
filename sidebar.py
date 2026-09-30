@@ -3297,7 +3297,8 @@ class Bridge:
         """Ask the mirror once, off the loop, and put the answer where the next
         page connect and the next rebuild both find it. A check that cannot
         answer offers nothing."""
-        self.update = update.offer(update.check(), version())
+        mirror = update.origin(VERSION_FILE.parent)
+        self.update = update.offer(update.check(mirror=mirror) if mirror else None, version())
         if self.update:
             print(f"sidebar: release {self.update} is on the mirror", flush=True)
             self.latest["update"] = self.update
@@ -3331,7 +3332,7 @@ async def main(connection):
         action_fn=lambda session_id, verb, text: asyncio.ensure_future(
             bridge.act(session_id, verb, text)),
         accounts_fn=lambda op, request: bridge.account_op(op, request),
-        update_fn=lambda: update.take(here),
+        update_fn=lambda: update.take(here, bridge.update),
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
         context_fn=lambda session_id: bridge.read_context(session_id),
     )

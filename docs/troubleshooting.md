@@ -9,7 +9,8 @@
 | Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | Install in the panel's foot, or `./install.sh`. After **Not now** the foot offers nothing until Settings > Offer the statusline bridge brings it back |
 | No context percentage, and no offer in the foot | `~/.claude/settings.json` is not valid JSON, so the panel offers nothing | Fix the file; the offer then shows |
 | Install in the foot shows red text | `~/.claude/settings.json` stopped being valid JSON after the offer showed, so the panel wrote nothing | Fix the file, then press Install again |
-| Update refused, red text in the bar | The checkout could not fast-forward, or `install.sh` failed; the whole message is in the script console | `git -C <checkout> status`, then `./install.sh` by hand |
+| Update refused, red text in the bar | One of the checks in [Updating](usage.md#updating) failed, or `install.sh` did; the whole message is in the script console | Read the reason. `local changes to tracked files`: `git -C <checkout> status`. `git … is too old`: update git (`xcode-select --install`). `not signed with a release key` or `carries no SSH signature`: take nothing and tell the maintainer |
+| The install line stops with `already installed in …` | `get.sh` no longer updates an existing install: it is fetched unsigned | Use the panel's Update button, or run that checkout's `install.sh` |
 | The panel is blank after Update | The daemon restarted on a new port | Reopen it: View > Toolbelt > Agents |
 | `accounts hidden: <error>` in the foot | The panel can't read the account store, `~/.config/agents-sidebar/accounts.json` | Fix that file; the error says what is wrong with it |
 
