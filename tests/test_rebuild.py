@@ -495,12 +495,13 @@ def test_the_refresh_button_asks_the_mirror_for_a_release_too(monkeypatch):
             return {"accounts": []}
     b = sidebar.Bridge(None, Quiet(), Meters())
     b.latest = {"groups": []}
-    monkeypatch.setattr(sidebar.update, "check", lambda: "2027.01.1")
+    monkeypatch.setattr(sidebar.update, "origin", lambda here: "https://example.com/mirror.git")
+    monkeypatch.setattr(sidebar.update, "check", lambda mirror: "2027.01.1")
     monkeypatch.setattr(sidebar, "version", lambda: "2026.09.28")
     b.account_op("read", {})
     assert b.update == "2027.01.1"
     assert b.latest["update"] == "2027.01.1"
-    monkeypatch.setattr(sidebar.update, "check", lambda: None)
+    monkeypatch.setattr(sidebar.update, "check", lambda mirror: None)
     b.account_op("read", {})
     assert b.update is None and "update" not in b.latest
 

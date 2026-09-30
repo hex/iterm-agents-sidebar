@@ -14,8 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/get.s
 That clones the repository to `~/.local/share/agents-sidebar/src` and runs
 `install.sh` there. The bar at the foot names the release you run and, once
 a newer one is out, offers it with an Update button. Running the same line
-again pulls the latest too. Or clone it anywhere yourself and run `./install.sh`: the
-clone is the install, so leave it in place and update it with `git pull`. It needs nothing else: one iTerm2 Basic
+again on an installed machine stops with a pointer to that button. Or clone it anywhere yourself and run `./install.sh`: the
+clone is the install, so leave it in place; the Update button updates it too. It needs nothing else: one iTerm2 Basic
 script, no pip, no virtualenv, nothing beyond the standard library.
 
 1. Scripts, AutoLaunch, `agents_sidebar` starts it without restarting iTerm2.
@@ -189,9 +189,10 @@ the plan. See [docs/accounts.md](docs/accounts.md).
 
 The bar at the bottom names the release you run, and two buttons: reload and
 the gear. At start, once a day and on every reload press, the daemon lists
-the releases on GitHub; when one is
-newer, the bar adds an Update button that names it in its tooltip. Pressing it pulls that
-release, runs `install.sh` and restarts the daemon, after which the panel
+the releases on the repository it was cloned from; when one is
+newer, the bar adds an Update button that names it in its tooltip. Pressing it takes that
+release only if every commit in it is signed with a release key the installed
+copy already trusts, then runs `install.sh` and restarts the daemon, after which the panel
 needs reopening from View > Toolbelt. See
 [docs/usage.md](docs/usage.md#updating).
 

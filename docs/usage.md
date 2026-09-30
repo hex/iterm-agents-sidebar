@@ -195,15 +195,31 @@ card each time. A shell whose command the panel can't parse shows `?`.
 The bar's left end names the release the panel runs, or reads
 `unreleased checkout` in a checkout with no `VERSION` file. Once a day, once at
 start, and on every press of the reload button, the daemon lists the tags on
-the public mirror; when one is newer, the
-line adds an Update button, which names the new release in its tooltip. Pressing it pulls that
-release into the checkout the daemon runs from, runs `install.sh` again and
-restarts the daemon. The port changes with the restart, so the bar reads
+the repository the checkout was cloned from; when one is newer, the
+line adds an Update button, which names the new release in its tooltip. Pressing it fetches that
+release into the checkout the daemon runs from, checks it, runs `install.sh`
+again and restarts the daemon. The port changes with the restart, so the bar reads
 `restarting, reopen the panel` and the panel goes blank: reopen it from
-View > Toolbelt > Agents. A pull the checkout cannot
-fast-forward, or an install that fails, leaves the daemon as it was and puts
-the tool's last line beside the button; the whole message is in the daemon's
-log under Scripts > Manage > Console.
+View > Toolbelt > Agents.
+
+Update takes a release only when all of these hold, and otherwise refuses
+with the reason beside the button, leaving the checkout and the daemon as
+they were:
+
+- git is 2.34 or newer, the first that checks SSH signatures
+- no tracked file in the checkout has local edits, which would run unsigned
+- the new commits continue the checkout's history in a straight line, with
+  no merge commits
+- every new commit carries an SSH signature by a key the commit before it
+  lists in `release-signers` and does not list in `release-revoked`
+- the new `VERSION` is newer than the installed one. It is read from the
+  signed commit, not from the tag that offered it, so a stray tag cannot hold
+  a release back
+
+An install that fails after that also puts its last line beside the button,
+and puts the checkout back on the release that runs, so the offer stays and
+the next press tries again.
+The whole message is in the daemon's log under Scripts > Manage > Console.
 
 ## Resuming an exited agent
 
