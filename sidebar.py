@@ -2143,13 +2143,6 @@ def read_task(session_id):
             "reported_at": ts if isinstance(ts, (int, float)) else None}
 
 
-#: How old a statusline payload may be and still describe its pid. Claude Code
-#: renders every tick, so a live session rewrites its file every
-#: few seconds; anything this far behind belongs to a process that has stopped
-#: rendering or died. macOS reuses pids, and these files outlive the process
-#: they are named for, so without this a recycled pid reads as another
-#: session's context.
-STATUS_GOES_STALE_AFTER = 30
 
 
 #: How much of a transcript's end to read. These files reach megabytes and
@@ -2362,18 +2355,21 @@ def sweep_status_dir(now):
                 pass
 
 
-def read_status(pid):
+def read_status(pid, started_at):
     """The newest statusline payload for a claude process, by pid.
 
-    Refuses one that has stopped being refreshed. The bridge rewrites this
-    file every render, so a current file is always seconds old; an old one is
-    a dead session, or a pid the system has handed to somebody else.
+    `started_at` is when the process now holding that pid began (epoch s,
+    whole seconds from ps), or None when no such process is running. macOS
+    reuses pids and these files outlive the process they were named for, so
+    a file written before this process began is another session's. Its age
+    says nothing: Claude Code renders on events, and a session at rest
+    leaves its file alone for as long as it rests.
     """
-    if not pid:
+    if not pid or started_at is None:
         return parse_status(None)
     path = os.path.join(STATUS_DIR, f"{int(pid)}.json")
     try:
-        if time.time() - os.path.getmtime(path) > STATUS_GOES_STALE_AFTER:
+        if os.path.getmtime(path) < started_at:
             return parse_status(None)
         with open(path) as fh:
             return parse_status(fh.read())
@@ -2575,6 +2571,11 @@ class ReturnTrips:
         return origin if active == session_id else None
 
 
+#: How much of a page error the daemon log keeps: the message and the
+#: first frames of its stack.
+PAGE_ERROR_LIMIT = 500
+
+
 class Sidebar:
     """Request handling, independent of the socket that carried the request.
 
@@ -2584,7 +2585,7 @@ class Sidebar:
 
     def __init__(self, token, page_path, snapshot_fn, action_fn,
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
-                 context_fn=None):
+                 context_fn=None, log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
         self.snapshot_fn = snapshot_fn
@@ -2597,6 +2598,8 @@ class Sidebar:
         self.statusline_fn = statusline_fn
         #: session id -> context_usage.parse()'s breakdown; raises context_usage.Refused.
         self.context_fn = context_fn
+        #: line -> None: where the page's own failures are written down.
+        self.log_fn = log_fn
 
     def authorized(self, target):
         supplied = parse_qs(urlsplit(target).query).get("token", [""])[0]
@@ -2646,6 +2649,9 @@ class Sidebar:
         if method == "POST" and path == "/context":
             return self._context(body)
 
+        if method == "POST" and path == "/page-error":
+            return self._page_error(body)
+
         # Read the page from disk per request, so editing it needs no restart.
         return (200, "text/html; charset=utf-8", self.page_path.read_bytes())
 
@@ -2666,6 +2672,19 @@ class Sidebar:
             return self._json(400, {"error": "malformed body"})
 
         self.action_fn(session_id, verb, text)
+        return self._json(200, {"ok": True})
+
+    def _page_error(self, body):
+        """The page could not paint a frame. Its console cannot be read, so the
+        error is written to the daemon's log: on one line, since the page is
+        not allowed to start lines of its own there, and clipped."""
+        try:
+            error = json.loads(body or b"{}").get("error")
+        except (ValueError, AttributeError):
+            error = None
+        if not isinstance(error, str):
+            return self._json(400, {"error": "a page error needs an error string"})
+        self.log_fn(" | ".join(part.strip() for part in error.splitlines() if part.strip())[:PAGE_ERROR_LIMIT])
         return self._json(200, {"ok": True})
 
     def _context(self, body):
@@ -2966,7 +2985,7 @@ class Bridge:
                         spawned = [{**agent, "name": agent["id"], "provider": "omp", "depth": 0}
                                    for agent in told["agents"]]
                     else:
-                        status = read_status(pid)
+                        status = read_status(pid, started.get(pid))
                         # iTerm2's path is the last directory the pane was told
                         # it is in; once one is pushed it stops polling, so a
                         # push from anywhere in the pane sticks. Two live
@@ -3524,6 +3543,7 @@ async def main(connection):
         update_fn=lambda: update.take(here, bridge.update),
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
         context_fn=lambda session_id: bridge.read_context(session_id),
+        log_fn=lambda line: bridge.log("page error", line),
     )
     server = Server(sidebar, health_fn=lambda: bridge.healthy(), restart_fn=restart)
     bridge = Bridge(connection, server, meters)

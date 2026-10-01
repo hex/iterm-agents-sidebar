@@ -81,12 +81,12 @@ publish
 # empty file means there was nothing to displace, and the statusline is ours
 # alone to leave blank.
 #
-# Claude Code runs this every tick and kills a render still going when the
-# next tick comes. A statusline that takes most of a tick, in eight
-# sessions at once, then never completes, and a new session never gets a
-# line at all. So the line rendered last is printed at once and the next one
-# is rendered after it, by this process, which ignores the TERM above and so
-# outlives the tick. The line shown is one tick behind, which nobody can see.
+# Claude Code kills a run still going when it wants the next one. A
+# statusline that takes most of that time, in eight sessions at once, then
+# never completes, and a new session never gets a line at all. So the render
+# is this process's own child, which ignores the TERM above and so outlives
+# the run, and a line once rendered is kept: a run whose render another run
+# holds, or whose render failed, prints the line kept from before.
 #
 # This process waits for every render it starts and never walks away from
 # one. cs-statusline chooses its light or dark palette by walking its parent
@@ -161,11 +161,12 @@ render_in_own_group() {
 # way: under the load that makes renders overrun, each fork is a tenth of
 # a second or more.
 if [ -s "$LINE" ]; then
-    # The last line at once, so this tick completes; then the next line,
-    # if no other tick is already rendering it.
-    IFS= read -r -d '' line < "$LINE"
-    printf '%s' "$line"
-    trace warm-printed
+    # Render the line for this run, if no other run is already rendering,
+    # and print what stands afterwards. Claude Code runs the statusline on
+    # events, so what a run prints is the bar until the next event: printing
+    # the line from the run before would leave a change off the bar until
+    # something else happened. A render that failed, or one another run
+    # holds, leaves the last line standing, and that is what is printed.
     if mkdir "$LOCK" 2>/dev/null; then
         trace lock-taken
         render_in_own_group
@@ -177,6 +178,9 @@ if [ -s "$LINE" ]; then
     else
         trace lock-held
     fi
+    IFS= read -r -d '' line < "$LINE"
+    printf '%s' "$line"
+    trace warm-printed
 else
     # Nothing to show yet. A lock older than any render should take was
     # left by a process that died without cleaning up.

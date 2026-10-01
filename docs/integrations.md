@@ -34,10 +34,14 @@ statusline that was there before. It sets `CS_STATUSLINE_PARENT` to the claude
 pid, so a statusline that caches by its parent pid (cs's does) still finds its
 cache.
 
-It leaves `refreshInterval` alone. The tick rate is cs's to set, because its
-logo's attention pulse runs on that timer. At one second, the bridge costs two
-execs on a tick that finds a render still running. The daemon deletes files a
-session leaves behind once they are a day old.
+It leaves `refreshInterval` alone; leave it unset. Without it
+Claude Code renders the statusline on events, so a session at rest leaves its
+file alone; the panel trusts a file for as long as the claude process it names
+runs, and refuses one written before that process started, since macOS
+reuses pids. A timer costs more than the bridge's own execs, because Claude Code 2.1.286
+runs a full process listing to end each timed run, and at one second across
+a dozen sessions those listings piled up to the machine's process limit. The
+daemon deletes files a session leaves behind once they are a day old.
 
 The install saves the replaced command to
 `~/.claude/agents-sidebar-status/original-statusline` and backs up the whole

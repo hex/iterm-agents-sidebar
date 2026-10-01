@@ -30,10 +30,11 @@ class Quiet:
         pass
 
 
-def bridge(monkeypatch, readings):
+def bridge(monkeypatch, readings, started=None):
+    """A Bridge over no iTerm2; `started` is the process listing's start time by pid."""
     def read_system():
         readings.append(1)
-        return ({}, {}, {}, {}), {}, {}, {}, {}
+        return ({}, started or {}, {}, {}), {}, {}, {}, {}
     monkeypatch.setattr(sidebar, "read_system", read_system)
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
@@ -339,7 +340,7 @@ def test_a_claude_row_stands_in_the_directory_its_agent_reports(monkeypatch, tmp
     """Two live sessions both carded as a third, idle one (a colleague's
     panel, 2026-09-26): iTerm2's path is wherever the pane was last told it
     was, and Claude Code's own statusline says where the session runs."""
-    b = bridge(monkeypatch, [])
+    b = bridge(monkeypatch, [], started={4343: 1789480000})
     monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
     (tmp_path / "4343.json").write_text(json.dumps({
         "session_id": "c4",

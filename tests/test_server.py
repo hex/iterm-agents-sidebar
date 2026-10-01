@@ -375,3 +375,30 @@ def test_the_bridge_is_offered_only_while_missing_and_not_declined():
     # A settings.json that is not JSON cannot be installed into; offering
     # a button that can only refuse would be noise.
     assert statusline_offer("unreadable", {"offer_statusline": True}) is False
+
+
+def test_a_paint_the_page_failed_is_logged_as_one_clipped_line(tmp_path):
+    """A render that throws leaves the panel showing an old frame, and the
+    WKWebView console cannot be read; the page posts the error, and the
+    daemon log holds it on one line however the stack was broken."""
+    page = tmp_path / "page.html"
+    page.write_text("<h1>sidebar</h1>")
+    logged = []
+    sidebar = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                      action_fn=lambda session_id, verb, text: None, log_fn=logged.append)
+    stack = "TypeError: picked is undefined\n    at answerRows (page.html:2563)\n" + "x" * 900
+    status, _, _ = sidebar.handle("POST", f"/page-error?token={TOKEN}",
+                                  json.dumps({"error": stack}).encode())
+    assert status == 200
+    assert logged == [("TypeError: picked is undefined | at answerRows (page.html:2563) | " + "x" * 900)[:500]]
+
+
+@pytest.mark.parametrize("body", [b"not json", b'["a list"]', b'{"error": 7}', b'{}'])
+def test_a_malformed_page_error_is_refused_and_not_logged(tmp_path, body):
+    page = tmp_path / "page.html"
+    page.write_text("<h1>sidebar</h1>")
+    logged = []
+    sidebar = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                      action_fn=lambda session_id, verb, text: None, log_fn=logged.append)
+    status, _, payload = sidebar.handle("POST", f"/page-error?token={TOKEN}", body)
+    assert (status, json.loads(payload), logged) == (400, {"error": "a page error needs an error string"}, [])

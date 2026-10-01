@@ -51,12 +51,12 @@ def test_no_pid_means_no_reading():
     """A session whose claude pid could not be resolved has no file to read.
     Unknown, not zero.
     """
-    assert sidebar.read_status(None)["context"] is None
-    assert sidebar.read_status(0)["context"] is None
+    assert sidebar.read_status(None, None)["context"] is None
+    assert sidebar.read_status(0, None)["context"] is None
 
 
 def test_a_pid_with_no_file_reports_nothing():
-    assert sidebar.read_status(999999)["context"] is None
+    assert sidebar.read_status(999999, 1_790_000_000)["context"] is None
 
 
 def run_bridge(tmp_path, payload, original=None):
@@ -154,27 +154,40 @@ def test_a_model_name_without_a_parenthetical_is_left_alone():
     assert sidebar.parse_status(payload)["model"] == "Haiku 4.5"
 
 
-def test_a_payload_older_than_the_render_interval_is_not_trusted(tmp_path, monkeypatch):
-    """macOS reuses pids, and these files outlive the process they were named
-    for. A live session rewrites its file every tick, so
-    anything older is either a dead session or a pid that has come round again.
-    Either way it describes someone else.
-    """
+def status_file(tmp_path, monkeypatch, written_at, percent=42):
+    """A payload the bridge wrote for pid 4321 at `written_at` (epoch s)."""
     import os
-    import time
     monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
-    stale = tmp_path / "4321.json"
-    stale.write_text(json.dumps({"context_window": {"used_percentage": 99}}))
-    old = time.time() - 600
-    os.utime(stale, (old, old))
-    assert sidebar.read_status(4321)["context"] is None
+    path = tmp_path / "4321.json"
+    path.write_text(json.dumps({"context_window": {"used_percentage": percent}}))
+    os.utime(path, (written_at, written_at))
 
 
-def test_a_payload_written_a_moment_ago_is_trusted(tmp_path, monkeypatch):
-    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
-    (tmp_path / "4321.json").write_text(
-        json.dumps({"context_window": {"used_percentage": 42}}))
-    assert sidebar.read_status(4321)["context"] == 42
+def test_an_idle_session_keeps_its_reading_however_old_the_file(tmp_path, monkeypatch):
+    """Claude Code renders the statusline on events, not on a timer, so a
+    session at rest leaves its file alone for as long as it rests."""
+    status_file(tmp_path, monkeypatch, written_at=1_790_000_600)
+    assert sidebar.read_status(4321, started_at=1_790_000_000)["context"] == 42
+
+
+def test_a_file_from_before_the_process_started_describes_someone_else(tmp_path, monkeypatch):
+    """macOS reuses pids, and these files outlive the process they were
+    named for: one written before this process began is another session's."""
+    status_file(tmp_path, monkeypatch, written_at=1_790_000_000)
+    assert sidebar.read_status(4321, started_at=1_790_000_100)["context"] is None
+
+
+def test_a_pid_with_no_live_process_reports_nothing(tmp_path, monkeypatch):
+    """The session ended and its file stayed behind."""
+    status_file(tmp_path, monkeypatch, written_at=1_790_000_600)
+    assert sidebar.read_status(4321, started_at=None)["context"] is None
+
+
+def test_a_file_written_in_the_second_the_process_started_is_its_own(tmp_path, monkeypatch):
+    """ps gives start times in whole seconds, rounded down; the first render
+    can land in that same second."""
+    status_file(tmp_path, monkeypatch, written_at=1_790_000_000.4)
+    assert sidebar.read_status(4321, started_at=1_790_000_000)["context"] == 42
 
 
 #: The shapes below are from a payload captured off a live session on
@@ -645,9 +658,31 @@ def test_a_tick_with_a_line_to_show_forks_only_the_lock_the_move_and_the_render(
     payload = '{"context_window":{"used_percentage":1}}'
     run = subprocess.run(["/bin/sh", "-c", f'exec "{script}"'], input=payload, env=env,
                          capture_output=True, text=True, timeout=10)
-    assert run.stdout == "last", run.stderr
+    assert run.stdout == "fresh", run.stderr
     assert (d / f"{pid}.json").read_text() == payload
-    assert eventually(lambda: (d / f"{pid}.line").read_text() == "fresh")
+    assert (d / f"{pid}.line").read_text() == "fresh"
+
+
+def test_an_event_shows_the_line_rendered_for_it_not_the_one_before(tmp_path):
+    """Claude Code runs the statusline on events, so the line a run prints is
+    the bar until the next event: one that printed the last run's line left
+    a changed model on the bar unchanged until something else happened."""
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text(
+        """sed -n 's/.*"display_name":"\\([^"]*\\)".*/\\1/p'""")
+    before = run_bridge(tmp_path, '{"model":{"display_name":"Opus"}}')
+    after = run_bridge(tmp_path, '{"model":{"display_name":"Fable"}}')
+    assert (before.stdout.strip(), after.stdout.strip()) == ("Opus", "Fable")
+
+
+def test_a_render_that_fails_leaves_the_last_line_on_the_bar(tmp_path):
+    d = tmp_path / ".claude" / "agents-sidebar-status"
+    d.mkdir(parents=True)
+    (d / "original-statusline").write_text("cat > /dev/null; printf 'good'")
+    assert run_bridge(tmp_path, '{"n":1}').stdout == "good"
+    (d / "original-statusline").write_text("cat > /dev/null; printf 'half'; exit 3")
+    assert run_bridge(tmp_path, '{"n":2}').stdout == "good"
 
 
 def test_the_render_keeps_a_living_parent(tmp_path):
