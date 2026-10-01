@@ -144,6 +144,9 @@
   }
   @media (prefers-reduced-motion: reduce) { #groups { animation: none; } }
   li.line.card {
+    /* The list's fade depth plus a gap: a card revealed for a question
+       stops clear of the fade, not inside it. */
+    scroll-margin-block: 32px;
     margin-bottom: 6px; border-radius: 8px;
     background: var(--card); box-shadow: var(--card-edge);
     transition: background-color .18s ease-out, box-shadow .15s var(--ease-power2);
@@ -2401,10 +2404,13 @@ function animateRows(before) {
 // A frame that fails to paint leaves the list showing an older one while
 // heartbeats keep calling it current. So a failure dims the list as STALE
 // until a paint succeeds, and the error goes to the daemon's log once, since
-// this view's console cannot be read.
+// this view's console cannot be read. A frame that has just arrived is also
+// announced under the same guard, once: a re-render of a frame already seen
+// would replay its reveals.
 let paintFailure = null;
-function render(snapshot) {
+function render(snapshot, arrived = false) {
   try {
+    if (arrived) announce(snapshot);
     paintAll(snapshot);
     paintFailure = null;
   } catch (err) {
@@ -3143,7 +3149,9 @@ let lastSnapshot = {groups: []};
 // Countdowns move on their own; the daemon only pushes when its data changes.
 setInterval(() => paintBudget(lastSnapshot), 30000);
 // A stuck turn stops sending updates, so its badge has to appear on a clock.
-setInterval(() => { if (lastSnapshot.groups.length) render(lastSnapshot); }, 60000);
+// The frame last received, not the last painted: after a failed paint the
+// older frame would paint cleanly and lift STALE off a list that is behind.
+setInterval(() => { if (LATEST.groups.length) render(LATEST); }, 60000);
 // The report ages tick every second on their own: a snapshot arrives only
 // when something changed, and a fresh report counts up in seconds.
 setInterval(() => {
@@ -4326,8 +4334,9 @@ fetch(`/settings?token=${encodeURIComponent(TOKEN)}`)
 // view. A second prompt arriving while the first is open is a new wait the
 // state alone does not show; it kept a card five minutes off the bottom.
 let lastStates = new Map();
+// A row may carry no state at all: a Codex at its prompt has published none.
 function waitKey(row) {
-  return row.state === "blocked" ? "blocked|" + JSON.stringify(row.question ?? null) : row.state;
+  return row.state === "blocked" ? "blocked|" + JSON.stringify(row.question ?? null) : String(row.state);
 }
 function announce(snapshot) {
   const now = new Map();
@@ -4343,15 +4352,23 @@ function announce(snapshot) {
 }
 
 // A question asked off the bottom of the list is a question you do not see.
-// After the paint that draws the card hot, bring it to the nearest edge;
-// a card already on screen stays where it is.
+// After the paint that draws the card hot, bring the whole card to the
+// nearest edge: its answers hang below the row, and a row brought into view
+// on its own can leave them under the list's fade. A card already clear of
+// the fades stays where it is (its scroll margin is the fade's depth); one
+// taller than the list shows from its top, where the question is. It waits
+// out the paint's own motion: a card measured while it grows into its answers
+// would stop short by the rest of them.
 function revealAfterPaint(id) {
-  requestAnimationFrame(() => {
-    const card = document.querySelector(`[data-session-id="${CSS.escape(id)}"]`);
+  requestAnimationFrame(async () => {
+    await Promise.allSettled(document.getAnimations().filter(a => a.id === "flip").map(a => a.finished));
+    const row = document.querySelector(`[data-session-id="${CSS.escape(id)}"]`);
     const list = document.getElementById("groups");
-    if (!card || !list) return;
-    const c = card.getBoundingClientRect(), l = list.getBoundingClientRect();
-    if (c.top < l.top || c.bottom > l.bottom) card.scrollIntoView({block: "nearest", behavior: "smooth"});
+    if (!row || !list) return;
+    const card = row.closest("li") || row;
+    const margin = parseFloat(getComputedStyle(card).scrollMarginTop) || 0;
+    const fits = card.offsetHeight + 2 * margin <= list.clientHeight;
+    card.scrollIntoView({block: fits ? "nearest" : "start", behavior: "smooth"});
   });
 }
 
@@ -4367,8 +4384,7 @@ events.addEventListener("heartbeat", event => {
 });
 events.onmessage = event => {
   LATEST = JSON.parse(event.data);
-  announce(LATEST);
-  render(LATEST);
+  render(LATEST, true);
   markFresh();
 };
 events.onerror = () => document.body.classList.add("stale");
