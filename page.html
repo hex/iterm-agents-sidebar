@@ -1650,6 +1650,7 @@ let staleTimer = null;
 let LATEST = {groups: []};
 
 function markFresh() {
+  if (paintFailure) return;
   document.body.classList.remove("stale");
   clearTimeout(staleTimer);
   staleTimer = setTimeout(() => document.body.classList.add("stale"), STALE_AFTER_MS);
@@ -2397,7 +2398,27 @@ function animateRows(before) {
   }
 }
 
+// A frame that fails to paint leaves the list showing an older one while
+// heartbeats keep calling it current. So a failure dims the list as STALE
+// until a paint succeeds, and the error goes to the daemon's log once, since
+// this view's console cannot be read.
+let paintFailure = null;
 function render(snapshot) {
+  try {
+    paintAll(snapshot);
+    paintFailure = null;
+  } catch (err) {
+    const message = String(err);
+    if (message !== paintFailure) {
+      fetch(`/page-error?token=${encodeURIComponent(TOKEN)}`,
+            {method: "POST", body: JSON.stringify({error: `${message}\n${err && err.stack || ""}`})})
+        .catch(failed => console.log("sidebar: page error not reported", failed));
+    }
+    paintFailure = message;
+    document.body.classList.add("stale");
+  }
+}
+function paintAll(snapshot) {
   const before = measureRows();
   paint(snapshot);
   paintQueue(snapshot);
@@ -4345,10 +4366,10 @@ events.addEventListener("heartbeat", event => {
   else document.body.classList.add("stale");
 });
 events.onmessage = event => {
-  markFresh();
   LATEST = JSON.parse(event.data);
   announce(LATEST);
   render(LATEST);
+  markFresh();
 };
 events.onerror = () => document.body.classList.add("stale");
 markFresh();

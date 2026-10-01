@@ -2,7 +2,7 @@
 
 | Symptom | What it means | What to do |
 | --- | --- | --- |
-| Every row dims, `STALE` banner | The daemon missed two heartbeats, or a heartbeat says it can't read iTerm2 | Quit the running script first, in Scripts > Manage > Console or by killing the `venvs/3.10/bin/python` process that runs `agents_sidebar.py`. Then start it from the Scripts menu. Starting it while one runs makes a second daemon |
+| Every row dims, `STALE` banner | The daemon missed two heartbeats, a heartbeat says it can't read iTerm2, or the page failed to draw the latest frame (then `daemon.log` has a `page error` line, below) | Quit the running script first, in Scripts > Manage > Console or by killing the `venvs/3.10/bin/python` process that runs `agents_sidebar.py`. Then start it from the Scripts menu. Starting it while one runs makes a second daemon |
 | A row shows `?` for its directory | iTerm2 can't report that one session's directory. The row leaves out a job it can't read | Nothing; one session costs its own row, not the list |
 | The panel is white and nothing loads | Two tool identifiers named "Agents", and the menu opened the dead one | Rename the stale entry, below |
 | Codex cards stop appearing | A herdr update rewrote `~/.codex/hooks.json` | `./install.sh --codex` |
@@ -23,6 +23,7 @@ Some failures show only in `~/.claude/agents-sidebar-status/daemon.log`:
 | `answer refused <session> <text>` | A click on a card's answer came after the question changed or was already answered | Answer in the pane |
 | `auto-switch: nowhere to go, <why>` | The panel should leave the account, but no other account fits | Wait for a reset, or add an account |
 | `auto-switch refused: <why>` | An automatic switch failed, and the login did not change | Act on the reason it gives |
+| `page error <message> \| <stack>` | The panel could not draw a frame and shows `STALE` until one draws | Report the line; reopening the panel does not fix the frame that breaks it |
 
 ## The white panel
 
@@ -40,7 +41,9 @@ defaults write com.googlecode.iterm2 NoSyncDynamicTools -dict-add <old id> \
 
 A heartbeat only proves the daemon is answering, so it carries the result of
 its last read of iTerm2 as well. Without that, a stuck refresh would leave
-every row and every permission badge looking current forever.
+every row and every permission badge looking current forever. A frame the
+page fails to draw counts the same way: the heartbeats keep coming, but the
+list stays `STALE` until a frame draws.
 
 ## Tracing the statusline bridge
 
@@ -65,7 +68,7 @@ Each line is `<epoch> pid=<bridge> ppid=<claude> <event> [detail]`:
 | --- | --- |
 | `entry` | A tick began |
 | `cold` | No line rendered yet; this tick renders one and waits for it |
-| `warm-printed` | The line from last time went out; this tick is done |
+| `warm-printed` | The line went out: the one this tick rendered, or the last one kept when another tick holds the render or this one failed |
 | `lock-taken` | This tick owns the render |
 | `lock-held` / `cold-lock-held` | Another render is in flight; this tick adds nothing |
 | `lock-stale` | A lock older than ten seconds was reclaimed |
@@ -88,10 +91,10 @@ Reading it:
   of a minute without a refresh.
 - `render-end rc=0` a long way after its `render-start` is a render that is
   simply slow, which is a different problem with a different fix.
-- `warm-printed` lands before `render-start`: the tick answers from the last
-  line, then renders the next one itself. The render is a background job in
-  its own process group, and the tick waits for it rather than leaving it
-  running, on purpose. The next section says why.
+- `warm-printed` lands after `render-end`: the tick renders its own line and
+  prints that, so the bar shows the event that caused it. The render is a
+  background job in its own process group, and the tick waits for it rather
+  than leaving it running, on purpose. The next section says why.
 
 ## Why the statusline goes dark
 
