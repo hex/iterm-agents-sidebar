@@ -87,8 +87,9 @@ its own name.
 ## A waiting card
 
 A card that starts waiting on you, for a question or a permission prompt,
-while it sits past the top or bottom edge of the list scrolls into view. One
-already on screen stays put.
+while it sits past the top or bottom edge of the list scrolls into view,
+whole, with its answer buttons. A card taller than the list shows from its top.
+One already fully in view stays put.
 
 A waiting card says what it waits on, under the name: the first question of an
 AskUserQuestion (three lines at most, with "+1 more" when it asked several), or
