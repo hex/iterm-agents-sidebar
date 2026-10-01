@@ -7,6 +7,8 @@
     --bg: #f2f2f7; --fg: #1c1c1e; --dim: #6c6c70; --rule: #e5e5ea;
     /* A session is a card on the canvas; the one that needs you turns amber. */
     --card: #ffffff; --card-hover: #f9f9fb; --card-border: #e5e5ea;
+    /* A card at rest ten minutes, then thirty: washed toward the canvas. */
+    --rested-bg: #f6f6f9; --neglected-bg: #eeeef2;
     /* The words of an agent's tag: its colour, deepened until it reads on its own tint. */
     --ink-claude: #a15840; --ink-openai: #0c795e; --ink-omp: #6655d8;
     --blocked-bg: #fff3dc; --blocked-border: #ff9500; --blocked-text: #7a4100;
@@ -55,6 +57,7 @@
     :root {
       --bg: #1c1c1e; --fg: #f2f2f7; --dim: #98989d; --rule: #3a3a3c;
       --card: #2c2c2e; --card-hover: #323236; --card-border: #3a3a3c;
+      --rested-bg: #272729; --neglected-bg: #222224;
       --ink-claude: #e08f75; --ink-openai: #3bb496; --ink-omp: #9f92ee;
       --blocked-bg: #3a2500; --blocked-border: #ff9f0a; --blocked-text: #ffd60a;
       --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
@@ -190,6 +193,10 @@
     box-shadow: inset 0 0 0 2px var(--blocked-border);
   }
   li.line.card.blocked > button.row .label { color: var(--blocked-text); }
+  /* In the attention order a card at rest for ten minutes sinks toward the
+     canvas, and further after thirty: the ones that slipped the mind. */
+  li.line.card.rested { background: var(--rested-bg); }
+  li.line.card.neglected { background: var(--neglected-bg); }
   /* Teammates, subagents and shells sit inside the card, one line each,
      each joined to the session by an elbow. */
   .children { margin: 0 0 4px; }
@@ -617,6 +624,8 @@
     text-transform: uppercase; color: var(--dim);
   }
   #groups li.phead .n { font: 500 10px/1 -apple-system, sans-serif; color: var(--dim); }
+  /* The attention order's heads: a word and a count, no agent to colour them. */
+  #groups li.phead.bucket h3 { letter-spacing: .05em; }
 
   /* Silence, plus one exception. The panel is read from the corner of an eye,
      and its only question is "is anything waiting on me". So a row that needs
@@ -3061,6 +3070,14 @@ const agentKind = row => AGENT_KINDS[agentKindOf(row)] || {name: agentKindOf(row
 const agentMark = () => SETTINGS?.provider_mark ?? "groups";
 
 // A sub-head over the cards of one agent, for a list gathered by agent.
+// A head over the working cards, then the resting ones, in the attention order.
+function bucketHead(bucket, count) {
+  const head = Object.assign(document.createElement("li"), {className: "phead bucket"});
+  head.append(Object.assign(document.createElement("h3"), {textContent: bucket}),
+              Object.assign(document.createElement("span"), {className: "n", textContent: count}));
+  return head;
+}
+
 function agentHead(row, count) {
   const head = Object.assign(document.createElement("li"), {className: "phead"});
   head.style.setProperty("--agent", agentKind(row).colour);
@@ -3573,8 +3590,20 @@ function paint(snapshot) {
           && new Set(group.rows.map(agentKindOf)).size > 1
           && agentKindOf(row) !== ul.dataset.lastAgent) {
         ul.dataset.lastAgent = agentKindOf(row);
+        delete ul.dataset.lastBucket;
         ul.append(agentHead(row, group.rows.filter(r => !r.depth && agentKindOf(r) === agentKindOf(row)).length));
       }
+      // In the attention order the daemon sends the working cards and then
+      // the resting ones; a head opens each run. One run alone gets none:
+      // a head over everything says nothing.
+      if (row.bucket && !row.depth && !row.worktree_of && row.bucket !== ul.dataset.lastBucket) {
+        const run = group.rows.filter(r => r.bucket && (agentMark() !== "groups" || agentKindOf(r) === agentKindOf(row)));
+        if (new Set(run.map(r => r.bucket)).size > 1) {
+          ul.dataset.lastBucket = row.bucket;
+          ul.append(bucketHead(row.bucket, run.filter(r => r.bucket === row.bucket).length));
+        }
+      }
+      if (row.rested) li.classList.add(row.rested >= 2 ? "neglected" : "rested");
       ul.append(li);
 
       // Subagents run inside their parent's process with no terminal of their
@@ -3876,7 +3905,8 @@ const SETTING_ROWS = [
   {k: "context_threshold", label: "Warn above", range: [0, 100, 5], pct: true},
   {k: "cpu_threshold", label: "CPU heavy at", range: [25, 400, 25], pct: true},
   {k: "memory_threshold", label: "Memory heavy at", range: [0.5, 8, 0.5], unit: " GB"},
-  {k: "sort_by_name", label: "Sort cards by name"},
+  {k: "order", label: "Order",
+   choices: [["terminal", "Follow the terminals"], ["name", "By name"], ["attention", "By attention"]]},
   {k: "provider_mark", label: "Provider badge",
    choices: [["tag", "Tag by the name"], ["corner", "Icon in the corner"], ["groups", "Group by provider"], ["off", "Off"]]},
   {k: "show_branch",  label: "Branch"},

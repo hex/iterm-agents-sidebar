@@ -609,3 +609,140 @@ def test_a_codex_card_stops_waiting_once_its_approved_command_runs(monkeypatch):
     b.app = one_session(CodexAsking())
     [row] = asyncio.run(b.read_sessions())
     assert row["agent_state"] == "working"
+
+
+def file_state(directory, session, text):
+    """As the hook files one: written beside its name, then renamed over it."""
+    path = os.path.join(directory, session + ".published")
+    with open(path + ".tmp", "w", encoding="utf-8") as fh:
+        fh.write(text)
+    os.replace(path + ".tmp", path)
+
+
+async def rebuilds_after(readings, act, settle=0.3):
+    """How many rebuilds `act` brought about, once the watch has had time to answer."""
+    before = len(readings)
+    act()
+    await asyncio.sleep(settle)
+    return len(readings) - before
+
+
+async def watching(b, directory):
+    task = asyncio.ensure_future(b.watch_filed_state(directory))
+    await asyncio.sleep(0.05)
+    return task
+
+
+async def test_a_state_filed_where_no_terminal_carries_it_is_read_at_once(monkeypatch, tmp_path):
+    """A Codex whose hooks find no terminal writes no variable, so nothing
+    else tells the daemon its state changed. The directory is the hook's to
+    make, and may not be there when the daemon starts."""
+    readings = []
+    directory = str(tmp_path / "states")
+    task = await watching(bridge(monkeypatch, readings), directory)
+    try:
+        assert await rebuilds_after(readings, lambda: file_state(directory, "codex-new", "1")) == 1
+        assert await rebuilds_after(readings, lambda: file_state(directory, "codex-new", "22")) == 1
+    finally:
+        task.cancel()
+
+
+async def test_the_hooks_own_bookkeeping_in_that_directory_asks_for_nothing(monkeypatch, tmp_path):
+    """Every hook event of every session rewrites its working state and its
+    lock there. Those reach the panel through the pane's variable; answering
+    them too would double each rebuild."""
+    readings = []
+    directory = str(tmp_path)
+
+    def bookkeeping():
+        for name in ("0f3c", "0f3c.lock", "0f3c.published.41.tmp"):
+            with open(os.path.join(directory, name + ".new"), "w", encoding="utf-8") as fh:
+                fh.write("{}")
+            os.replace(os.path.join(directory, name + ".new"), os.path.join(directory, name))
+    task = await watching(bridge(monkeypatch, readings), directory)
+    try:
+        assert await rebuilds_after(readings, bookkeeping) == 0
+        assert await rebuilds_after(readings, lambda: file_state(directory, "0f3c", "1")) == 1
+        assert await rebuilds_after(readings, bookkeeping) == 0
+    finally:
+        task.cancel()
+
+
+async def test_a_filed_state_swept_away_is_read_at_once_too(monkeypatch, tmp_path):
+    readings = []
+    directory = str(tmp_path)
+    file_state(directory, "codex-gone", "1")
+    task = await watching(bridge(monkeypatch, readings), directory)
+    try:
+        assert await rebuilds_after(
+            readings, lambda: os.remove(os.path.join(directory, "codex-gone.published"))) == 1
+    finally:
+        task.cancel()
+
+
+async def test_a_directory_that_cannot_be_watched_is_said_and_left_to_the_poll(monkeypatch, tmp_path, capsys):
+    (tmp_path / "taken").write_text("a file where the directory should be")
+    directory = str(tmp_path / "taken" / "states")
+    await bridge(monkeypatch, []).watch_filed_state(directory)
+    assert capsys.readouterr().out == (
+        f"sidebar: cannot watch {directory}, falling back to polling every 2s: "
+        f"NotADirectoryError(20, 'Not a directory')\n")
+
+
+async def test_a_watch_that_stops_while_watching_is_said_and_left_to_the_poll(monkeypatch, tmp_path, capsys):
+    """The watch's readings of the directory can fail long after it opened;
+    a task that dies then would say nothing until the daemon exits."""
+    directory = str(tmp_path)
+
+    def gone(_directory):
+        raise OSError(5, "Input/output error")
+    monkeypatch.setattr(sidebar, "filed_stamps", gone)
+    await bridge(monkeypatch, []).watch_filed_state(directory)
+    assert capsys.readouterr().out == (
+        f"sidebar: {directory} watch stopped, falling back to polling every 2s: "
+        f"OSError(5, 'Input/output error')\n")
+
+
+class QueuedMonitor:
+    """iTerm2's VariableMonitor as the watch meets it: changes wait in a
+    queue until asked for, however long the asker was busy."""
+    def __init__(self, connection, scope, name, identifier):
+        self.queue = asyncio.Queue()
+        for _ in range(5):
+            self.queue.put_nowait("{}")
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def async_get(self):
+        return await self.queue.get()
+
+
+async def test_state_writes_that_land_during_a_rebuild_fold_into_one_more(monkeypatch):
+    """Several agents report at once, and each tool call reports twice. The
+    rebuild under way already reads every pane, so one more covers the rest."""
+    import sys
+    import types
+    monkeypatch.setitem(sys.modules, "iterm2", types.SimpleNamespace(
+        VariableMonitor=QueuedMonitor, VariableScopes=types.SimpleNamespace(SESSION="session")))
+    readings = []
+    task = asyncio.ensure_future(bridge(monkeypatch, readings).watch_state("user.claudeState"))
+    try:
+        await asyncio.sleep(0.3)
+        assert len(readings) == 2
+    finally:
+        task.cancel()
+
+
+def test_an_omp_rows_clocks_hold_from_one_rebuild_to_the_next(monkeypatch):
+    """omp publishes no clocks, so the daemon keeps its own; a second reading
+    must not restamp a state that has held."""
+    b = bridge(monkeypatch, [])
+    b.app = OneOmpSession()
+    [first] = asyncio.run(b.read_sessions())
+    [second] = asyncio.run(b.read_sessions())
+    assert first["agent_state"] == "blocked" and first["turn_started"] is not None
+    assert second["turn_started"] == first["turn_started"]

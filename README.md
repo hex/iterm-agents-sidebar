@@ -161,7 +161,7 @@ A setting indented under another works only while that one is on.
 | Sound | Play sounds; under it When a session is blocked, When one finishes, Volume |
 | Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
 | Focus | Bring a blocked session forward; under it Go back once it resumes |
-| Rows | Warn above, CPU heavy at, Memory heavy at, Sort cards by name, Provider badge, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
+| Rows | Warn above, CPU heavy at, Memory heavy at, Order, Provider badge, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
 
 Some have limits the picture doesn't show:
 

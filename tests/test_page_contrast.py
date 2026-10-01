@@ -15,6 +15,9 @@ AA = 4.5
 PAIRS = [
     ("--dim", "--card"),
     ("--dim", "--bg"),
+    # A card long at rest in the attention order, and its name.
+    ("--dim", "--rested-bg"), ("--fg", "--rested-bg"),
+    ("--dim", "--neglected-bg"), ("--fg", "--neglected-bg"),
     ("--fg", "--card"),
     ("--blocked-text", "--blocked-bg"),
     # A waiting card's "+1 more" after its question.

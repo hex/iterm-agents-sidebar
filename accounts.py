@@ -1346,7 +1346,18 @@ class AccountMeters:
         self.states = {}
         #: Account id -> email, read from its login block once and kept for names.
         self.emails = {}
-        self._snapshot = meters_snapshot([], {}, None)
+        # Named from the start, figures to follow: an empty snapshot reads as
+        # "no account", and the panel would ask for a login the daemon has
+        # simply not looked for yet.
+        try:
+            accounts = load_store(store_path)
+        except StoreError as error:
+            self._snapshot = meters_snapshot([], {}, None, error=str(error))
+        else:
+            live_login = _live_login(claude_json)
+            active = account_for(accounts, live_login)
+            self._snapshot = meters_snapshot(accounts, {}, active["id"] if active else None,
+                                             live=(live_login or {}).get("emailAddress"))
         #: The background loop and a reading started by Add run in threads.
         self._one_at_a_time = threading.Lock()
         #: The latest switch, by hand or not: {at, from, to, why, auto}.
