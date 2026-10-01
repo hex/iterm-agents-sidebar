@@ -19,15 +19,15 @@ def test_missing_file_yields_the_defaults(tmp_path):
 
 def test_a_saved_setting_survives_a_reload(tmp_path):
     store = tmp_path / "settings.json"
-    save_settings({"volume": 0.9, "sort_by_name": True}, store)
+    save_settings({"volume": 0.9, "order": "name"}, store)
     reloaded = load_settings(store)
-    assert reloaded["volume"] == 0.9 and reloaded["sort_by_name"] is True
+    assert reloaded["volume"] == 0.9 and reloaded["order"] == "name"
 
 
 def test_saving_one_key_keeps_the_rest(tmp_path):
     store = tmp_path / "settings.json"
     save_settings({"volume": 0.2}, store)
-    save_settings({"sort_by_name": True}, store)
+    save_settings({"order": "name"}, store)
     assert load_settings(store)["volume"] == 0.2
 
 
@@ -72,9 +72,9 @@ def test_get_settings_returns_json(tmp_path):
 
 def test_post_settings_persists_and_returns_the_result(tmp_path):
     server, store = _server(tmp_path)
-    status, _, body = server.handle("POST", "/settings?token=t", b'{"sort_by_name": true}')
-    assert status == 200 and json.loads(body)["sort_by_name"] is True
-    assert load_settings(store)["sort_by_name"] is True
+    status, _, body = server.handle("POST", "/settings?token=t", b'{"order": "attention"}')
+    assert status == 200 and json.loads(body)["order"] == "attention"
+    assert load_settings(store)["order"] == "attention"
 
 
 def test_settings_need_the_token_like_everything_else(tmp_path):

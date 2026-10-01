@@ -100,7 +100,7 @@ def blank_state():
     """A session nothing is known about: not working, no children, no gates."""
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
             "agent_info": {}, "gates": {}, "last_tool": None, "last_tool_ran": False,
-            "turn_started": None, "reminded": 0, "question": None, "asks": {},
+            "turn_started": None, "idle_since": None, "reminded": 0, "question": None, "asks": {},
             "background": [], "running": {}}
 
 
@@ -277,6 +277,12 @@ def working_since(doc):
     return round(started)
 
 
+def idle_since(doc):
+    """When the session last came to rest (epoch s), or None when it never has."""
+    rested = doc.get("idle_since")
+    return round(rested) if isinstance(rested, (int, float)) else None
+
+
 def turn_started(doc):
     """When the latest prompt arrived (epoch s), working or not, or None."""
     started = doc.get("turn_started")
@@ -316,6 +322,7 @@ def apply_event(doc, event, payload, said, codex=False):
     into a change to the record here. `codex` says whose hooks these are:
     the two agents differ in what a tool starting proves.
     """
+    before = doc
     doc = {"parent_active": bool(doc.get("parent_active")),
            "agents": dict(doc.get("agents") or {}),
            "finished": dict(doc.get("finished") or {}),
@@ -325,6 +332,7 @@ def apply_event(doc, event, payload, said, codex=False):
            "last_tool": doc.get("last_tool"),
            "last_tool_ran": bool(doc.get("last_tool_ran")),
            "turn_started": doc.get("turn_started"),
+           "idle_since": doc.get("idle_since"),
            "reminded": doc.get("reminded") or 0,
            "question": doc.get("question"),
            "asks": dict(doc.get("asks") or {}),
@@ -448,6 +456,11 @@ def apply_event(doc, event, payload, said, codex=False):
         doc["asks"] = {}
         doc["question"] = None
 
+    # When the rest began: stamped as the session comes to rest and left
+    # standing through the next turn, so a card that has worked only a moment
+    # can still be ordered by the rest it came from.
+    if aggregate(doc) == "idle" and aggregate(before) != "idle":
+        doc["idle_since"] = now
     return doc
 
 
@@ -505,6 +518,8 @@ def read_state(session_id):
                          else None,
             "turn_started": doc.get("turn_started")
                             if isinstance(doc.get("turn_started"), (int, float)) else None,
+            "idle_since": doc.get("idle_since")
+                          if isinstance(doc.get("idle_since"), (int, float)) else None,
             "reminded": doc.get("reminded") if isinstance(doc.get("reminded"), (int, float)) else 0,
             "question": doc.get("question") if isinstance(doc.get("question"), dict) else None,
             "asks": doc.get("asks") if isinstance(doc.get("asks"), dict) else {},
@@ -861,6 +876,7 @@ def published(doc, pid, payload, codex, now):
              "agents": live_agents(doc), "subagents": subagents(doc),
              "blocked_since": blocked_since(doc), "working_since": working_since(doc),
              "turn_started": turn_started(doc),
+             "idle_since": idle_since(doc),
              "question": doc.get("question") if doc.get("gates") else None,
              "ts": round(now)}
     if codex:

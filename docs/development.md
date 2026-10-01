@@ -203,6 +203,14 @@ carries the state, the ids and the times with `detail: true`. The daemon reads
 the file back on each rebuild. If the hook can't write the file, the variable says
 `detail: false` and the card shows its state without its subagents.
 
+The daemon rebuilds the list every two seconds, and at once on three changes:
+a window or tab opening or closing, a hook writing `claudeState` or
+`codexState` into any pane, and a `.published` file being created, replaced or removed.
+The last one is the only word from a Codex whose hooks find no terminal, since
+it writes no variable. A rebuild asked for while one runs folds into one more.
+If a watch stops, the daemon says so in the Script Console and the two-second
+rebuild carries on alone.
+
 A session whose working directory or job iTerm2 can't report shows `?` instead
 of a guess.
 
@@ -230,7 +238,7 @@ runs a real listener over real sockets.
 `Bridge` is the only part that talks to iTerm2, and its tests pin how it takes
 its readings (`tests/test_rebuild.py`: one process listing per rebuild, read in
 a thread, a burst of layout events folded into one more rebuild, a session's
-variables fetched together). The rest of `Bridge` gets a manual check against a
+variables fetched together, a filed state read at once). The rest of `Bridge` gets a manual check against a
 live iTerm2.
 
 ## Measuring what the machine executes
@@ -245,7 +253,8 @@ raw lines stay under `$TMPDIR`.
 
 On a managed Mac, endpoint agents inspect every exec, so the exec rate decides
 whether the panel's helpers weigh on the machine, more than CPU time does. The
-daemon execs `ps` and `tmux` once per rebuild, in a thread. It also runs the
+daemon execs `ps` and `tmux` once per rebuild, in a thread, so each hook
+event that changes a pane's state costs one more of each. It also runs the
 notifier in `~/.local/share/agents-sidebar/Agents.app` once per notice and once
 at start to sweep old notices, and `git ls-remote` once a day for updates.
 `accounts.py` runs `/usr/bin/security` each time it reads or writes a login

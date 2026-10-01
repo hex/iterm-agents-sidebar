@@ -608,27 +608,27 @@ def test_cards_keep_the_terminal_order_unless_asked_for_names():
 
 
 def test_sorting_by_name_orders_the_top_level_cards():
-    rows = snapshot([OTHER, MAIN], sort_by_name=True)["groups"][0]["rows"]
+    rows = snapshot([OTHER, MAIN], order="name")["groups"][0]["rows"]
     assert [r["label"] for r in rows] == ["atlas", "beacon"]
 
 
 def test_sorting_by_name_keeps_a_teammate_under_its_lead():
     """Sorting the rows flat would scatter children away from their parent,
     and an indent under an unrelated row is a lie the eye believes."""
-    rows = snapshot([TEAM[0], TEAM[1], MAIN], sort_by_name=True)["groups"][0]["rows"]
+    rows = snapshot([TEAM[0], TEAM[1], MAIN], order="name")["groups"][0]["rows"]
     assert [(r["label"], r["depth"]) for r in rows] == [
         ("atlas", 0), ("fignity", 0), ("review-351", 1)]
 
 
 def test_sorting_by_name_keeps_a_worktree_docked_to_its_session():
-    rows = snapshot([OTHER, MAIN, LINKED], sort_by_name=True)["groups"][0]["rows"]
+    rows = snapshot([OTHER, MAIN, LINKED], order="name")["groups"][0]["rows"]
     assert [r["label"] for r in rows] == ["atlas", "worktree", "beacon"]
 
 
 def test_sorting_by_name_ignores_case():
     upper = dict(OTHER, session_id="Zephyr", path="/Users/x/.claude-sessions/Anvil",
                  auto_name="✳ Anvil")
-    rows = snapshot([MAIN, upper], sort_by_name=True)["groups"][0]["rows"]
+    rows = snapshot([MAIN, upper], order="name")["groups"][0]["rows"]
     assert [r["label"] for r in rows] == ["Anvil", "atlas"]
 
 
@@ -719,7 +719,7 @@ def test_grouping_by_agent_keeps_a_worktree_docked_to_its_session():
 def test_grouping_by_agent_and_sorting_by_name_sort_inside_each_group():
     zed = dict(OTHER, session_id="zed", tab_id="65", tab_index=9, path="/Users/x/.claude-sessions/zed",
                auto_name="✳ zed")
-    rows = snapshot([zed, of("omp", OTHER), MAIN], sort_by_name=True,
+    rows = snapshot([zed, of("omp", OTHER), MAIN], order="name",
                     group_by_provider=True)["groups"][0]["rows"]
     assert [r["label"] for r in rows] == ["atlas", "zed", "beacon"]
 
@@ -816,3 +816,104 @@ def test_a_claude_conversation_offers_its_context_breakdown_and_nothing_else_doe
     rows = {r["session_id"]: r for g in snapshot(list(cases.values()))["groups"] for r in g["rows"]}
     assert {name: rows[s["session_id"]].get("context_readable", False) for name, s in cases.items()} == {
         "claude": True, "codex": False, "no id yet": False, "crafted id": False}
+
+
+NOW = 1_790_000_000
+
+
+def at(base, state, *, working=None, rested=None, prompt=None, **changes):
+    """A session in `state`: `working`/`rested`/`prompt` say how many seconds ago it
+    started working, came to rest, or took its last prompt."""
+    return dict(base, agent_state=state,
+                working_since=None if working is None else NOW - working,
+                idle_since=None if rested is None else NOW - rested,
+                turn_started=None if prompt is None else NOW - prompt, **changes)
+
+
+def attention(sessions, **kw):
+    rows = snapshot(sessions, order="attention", now=NOW, **kw)["groups"][0]["rows"]
+    return [(r["label"], r.get("bucket")) for r in rows]
+
+
+def test_attention_order_puts_working_cards_first_longest_turn_first_then_the_longest_rested():
+    third = dict(OTHER, session_id="cinder", path="/Users/x/.claude-sessions/cinder", auto_name="✳ cinder")
+    fourth = dict(OTHER, session_id="dune", path="/Users/x/.claude-sessions/dune", auto_name="✳ dune")
+    assert attention([at(MAIN, "idle", rested=120, prompt=600),
+                      at(OTHER, "working", working=60, prompt=60),
+                      at(third, "working", working=900, prompt=900),
+                      at(fourth, "idle", rested=3600, prompt=4000)]) == [
+        ("cinder", "working"), ("beacon", "working"), ("dune", "idle"), ("atlas", "idle")]
+
+
+def test_a_card_that_changed_state_within_the_dwell_keeps_its_place():
+    """A tool pause or a turn that just ended is not a move: the card stays
+    with the group its last settled state put it in, and its place there is
+    still ordered by that state's clock."""
+    just_started = at(OTHER, "working", working=10, prompt=10, rested=700)
+    just_ended = at(MAIN, "idle", rested=10, prompt=300)
+    settled = dict(OTHER, session_id="cinder", path="/Users/x/.claude-sessions/cinder", auto_name="✳ cinder")
+    assert attention([just_started, just_ended, at(settled, "working", working=100, prompt=100)]) == [
+        ("atlas", "working"), ("cinder", "working"), ("beacon", "idle")]
+
+
+def test_a_session_that_has_never_rested_and_just_started_working_is_working():
+    assert attention([at(MAIN, "working", working=5, prompt=5)]) == [("atlas", "working")]
+
+
+def test_a_blocked_card_stays_among_the_working():
+    """The foot already carries the ask; in the list a prompt is part of the turn."""
+    assert attention([at(MAIN, "idle", rested=600, prompt=900),
+                      at(OTHER, "blocked", prompt=50, blocked_since=NOW - 20)]) == [
+        ("beacon", "working"), ("atlas", "idle")]
+
+
+def test_a_card_with_no_state_rests_last():
+    assert attention([dict(OTHER, agent_state=None), at(MAIN, "idle", rested=60, prompt=100)]) == [
+        ("atlas", "idle"), ("beacon", "idle")]
+
+
+def test_attention_order_keeps_a_teammate_under_its_lead():
+    lead, mate = TEAM[0], TEAM[1]
+    rows = snapshot([at(lead, "idle", rested=600, prompt=700), dict(mate, agent_state="working"),
+                     at(MAIN, "working", working=100, prompt=100)], order="attention", now=NOW)["groups"][0]["rows"]
+    assert [(r["label"], r["depth"], r.get("bucket")) for r in rows] == [
+        ("atlas", 0, "working"), ("fignity", 0, "idle"), ("review-351", 1, None)]
+
+
+def test_attention_order_nests_inside_the_provider_groups():
+    rows = snapshot([at(of("omp", OTHER), "working", working=100, prompt=100),
+                     at(MAIN, "idle", rested=600, prompt=700),
+                     at(dict(OTHER, session_id="cinder", path="/Users/x/.claude-sessions/cinder",
+                             auto_name="✳ cinder"), "working", working=20, prompt=20, rested=900)],
+                    order="attention", group_by_provider=True, now=NOW)["groups"][0]["rows"]
+    assert [(r["label"], r.get("provider"), r.get("bucket")) for r in rows] == [
+        ("cinder", None, "idle"), ("atlas", None, "idle"), ("beacon", "omp", "working")]
+
+
+def test_a_card_long_at_rest_is_marked_once_and_then_twice():
+    """Ten minutes is a pause; half an hour is a session slipped from mind."""
+    rows = snapshot([at(MAIN, "idle", rested=599, prompt=700),
+                     at(OTHER, "idle", rested=600, prompt=700),
+                     at(dict(OTHER, session_id="cinder", path="/Users/x/.claude-sessions/cinder",
+                             auto_name="✳ cinder"), "idle", rested=1800, prompt=2000)],
+                    order="attention", now=NOW)["groups"][0]["rows"]
+    assert [(r["label"], r.get("rested")) for r in rows] == [("cinder", 2), ("beacon", 1), ("atlas", None)]
+
+
+def test_the_terminal_order_marks_no_bucket():
+    rows = snapshot([at(MAIN, "idle", rested=600, prompt=700)], now=NOW)["groups"][0]["rows"]
+    assert "bucket" not in rows[0]
+
+
+def test_a_turn_shorter_than_the_dwell_never_moves_the_card_out_of_idle():
+    """Codex review, 2026-10-01: rest, a ten-second turn, Stop. The card
+    stayed idle through the turn, so its end is not a move either."""
+    assert attention([at(MAIN, "idle", rested=10, prompt=20),
+                      at(OTHER, "working", working=100, prompt=100)]) == [
+        ("beacon", "working"), ("atlas", "idle")]
+
+
+def test_a_rest_shorter_than_the_dwell_never_moves_the_card_out_of_working():
+    assert attention([at(MAIN, "working", working=10, prompt=10, rested=15),
+                      at(OTHER, "idle", rested=100, prompt=200)]) == [
+        ("atlas", "working"), ("beacon", "idle")]

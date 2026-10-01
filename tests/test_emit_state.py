@@ -6,6 +6,7 @@ Every case here comes from the hook trace captured 2026-09-07 in
 import importlib.util
 import json
 import sys
+import time
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
@@ -607,3 +608,36 @@ def test_tools_still_running_survive_the_state_file(tmp_path, monkeypatch):
     emit_state.update("s1", "PreToolUse", {"tool_use_id": "t1"}, "working", codex=True)
     doc = emit_state.update("s1", "PreToolUse", {"tool_use_id": "t2"}, "working", codex=True)
     assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 2
+
+
+def test_the_state_variable_says_when_the_session_last_went_idle():
+    """A turn that ends leaves the time it ended; a prompt that starts the
+    next turn leaves it standing, since the panel orders a card that has
+    worked for only a moment by the rest it came from."""
+    doc = emit_state.apply_event(emit_state.blank_state(), "UserPromptSubmit", {}, "working")
+    assert emit_state.published(doc, 701, {}, codex=False, now=1789000000)["idle_since"] is None
+    doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": False}, "idle")
+    rested = emit_state.published(doc, 701, {}, codex=False, now=1789000000)["idle_since"]
+    assert isinstance(rested, int) and abs(rested - time.time()) < 5
+    doc = emit_state.apply_event(doc, "PreToolUse", {"tool_name": "Bash"}, "working")
+    doc = emit_state.apply_event(doc, "PostToolUse", {"tool_name": "Bash"}, "working")
+    assert emit_state.published(doc, 701, {}, codex=False, now=1789000000)["idle_since"] == rested
+    doc = emit_state.apply_event(doc, "UserPromptSubmit", {}, "working")
+    assert emit_state.published(doc, 701, {}, codex=False, now=1789000000)["idle_since"] == rested
+
+
+def test_a_rest_that_goes_on_keeps_its_start():
+    doc = emit_state.apply_event(emit_state.blank_state(), "UserPromptSubmit", {}, "working")
+    doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": False}, "idle")
+    doc["idle_since"] = 1788999000.5
+    doc = emit_state.apply_event(doc, "Notification", {"notification_type": "idle_prompt"}, "idle")
+    assert emit_state.published(doc, 701, {}, codex=False, now=1789000000)["idle_since"] == 1788999000
+
+
+def test_a_filed_rest_survives_the_next_event(tmp_path, monkeypatch):
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    emit_state.update("s-9", "UserPromptSubmit", {}, "working")
+    emit_state.update("s-9", "Stop", {"stop_hook_active": False}, "idle")
+    rested = emit_state.read_state("s-9")["idle_since"]
+    assert isinstance(rested, float)
+    assert emit_state.update("s-9", "PreToolUse", {"tool_name": "Bash"}, "working")["idle_since"] == rested

@@ -30,11 +30,23 @@ The hook stamps the time your prompt started the turn, which is what the
 
 ## Order
 
-Cards follow iTerm2's own order of windows, tabs and panes, inside each agent's
-group while cards are grouped by provider (the default). Sort cards by name,
-under Rows in settings, switches to alphabetical order. Either way a teammate
-stays under its lead and a worktree card stays docked to its session, because
-each card travels with the rows under it.
+Order, under Rows in settings, picks how the cards are arranged, inside each
+agent's group while cards are grouped by provider (the default):
+
+| Choice | What you get |
+|---|---|
+| Follow the terminals | iTerm2's own order of windows, tabs and panes. A card sits where its tab does and nothing a session does moves it. The default |
+| By name | Alphabetical |
+| By attention | The working cards first, the longest turn at the top, under a `Working` head; then every other card (at rest, exited, or not yet heard from), the longest rest at the top and the ones without a time last, under `Idle`. A card at rest for ten minutes is washed toward the background, and more after thirty: the sessions that slipped your mind. The heads appear only while a group holds both kinds |
+
+By attention moves a card only once its new state has held for thirty
+seconds: a tool pause that reads as idle, or a turn that just ended, leaves it
+where it was, and a turn or a rest shorter than that never moves it at all. A
+card waiting on a prompt counts as working and goes there at once, without the
+wait; the foot's Waiting on you is where the ask itself shows. omp publishes no times, so its cards are timed from when the panel
+saw each state begin. Whatever the order, a teammate stays under its
+lead and a worktree card stays docked to its session, because each card
+travels with the rows under it.
 
 ## Which agent a card runs
 
@@ -45,11 +57,11 @@ Claude Code, Codex or omp:
 |---|---|
 | Tag by the name | A small pill after the session name, tinted in the agent's colour, with its glyph and its name |
 | Icon in the corner | The glyph alone in the card's top corner. The state badge moves over for it |
-| Group by provider | Cards gathered under a head for each agent, Claude first. Cards follow your tabs only inside each group. With one agent running there are no heads. The default |
+| Group by provider | Cards gathered under a head for each agent, Claude first. The Order choice applies inside each group. With one agent running there are no heads. The default |
 | Off | The glyph stays before the model name, as the only sign of the agent |
 
 With a tag or a corner mark the glyph leaves the facts line, so a card says it
-once. Sorting by name still applies inside each group.
+once. The Order choice still applies inside each group.
 
 ## A long name
 

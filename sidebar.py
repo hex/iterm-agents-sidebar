@@ -13,6 +13,7 @@ import math
 import os
 import re
 import secrets
+import select
 import subprocess
 import sys
 import time
@@ -125,8 +126,9 @@ DEFAULT_SETTINGS = {
     "show_agents": True,
     "show_shells": True,
     # The list follows the terminals by default: a card sits where its tab
-    # does, and nothing a session does moves it.
-    "sort_by_name": False,
+    # does, and nothing a session does moves it. "name" orders the cards by
+    # name; "attention" gathers them by what they are doing.
+    "order": "terminal",
     "expand_shells": False,
     # A multiplier on the stylesheet's own sizes, so 1.0 means "as designed".
     "ui_scale": 1.0,
@@ -143,7 +145,8 @@ SETTING_RANGES = {"volume": (0.0, 1.0), "context_threshold": (0, 100),
 
 
 #: The values a setting that is one of a few words can take.
-SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off")}
+SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off"),
+                   "order": ("terminal", "name", "attention")}
 
 
 def _clean(settings):
@@ -705,6 +708,92 @@ def by_name(rows):
 PROVIDER_ORDER = ("claude", "openai", "omp")
 
 
+#: How long a card holds a new state before the attention order moves it.
+#: A tool pause reads as idle and a turn that just ended still has the
+#: person's eyes on it; neither is a move.
+ATTENTION_DWELL_SECONDS = 30
+
+#: After this long at rest a card in the attention order is tinted, and
+#: more strongly after the second: the sessions that slipped the mind.
+RESTED_SECONDS = (600, 1800)
+
+
+def placement(row, now):
+    """Which attention group a card belongs to, "working" or "idle".
+
+    The settled state decides: a card whose state changed less than the
+    dwell ago stays with the group its earlier state put it in, and a state
+    that itself never held the dwell put it nowhere, so a short turn after a
+    rest leaves the card at rest and a short rest in a turn leaves it
+    working. A prompt held open is part of a turn, so a blocked card is
+    among the working.
+    """
+    state = row.get("state")
+    rested = row.get("idle_since")
+    if state == "blocked":
+        return "working"
+    if state == "working":
+        since = row.get("working_since")
+        recent = since is not None and now - since < ATTENTION_DWELL_SECONDS
+        settled_rest = rested is not None and since is not None and since - rested >= ATTENTION_DWELL_SECONDS
+        return "idle" if recent and settled_rest else "working"
+    prompt = row.get("turn_started")
+    recent = rested is not None and now - rested < ATTENTION_DWELL_SECONDS
+    settled_turn = prompt is not None and rested is not None and rested - prompt >= ATTENTION_DWELL_SECONDS
+    return "working" if recent and state == "idle" and settled_turn else "idle"
+
+
+def observed_clocks(seen, sessions, now):
+    """Give the sessions that publish no clocks the daemon's own: when their
+    turn began and when they last came to rest, as the daemon saw it.
+
+    -> (what is now known, the sessions). `seen` maps a session id to
+    (state, turn began, last rest); a session gone from the list is dropped.
+    Only a session with a state and none of the three clocks is touched.
+    """
+    known = {}
+    for session in sessions:
+        state = session.get("agent_state")
+        if state not in ("working", "blocked", "idle") or any(
+                session.get(clock) is not None for clock in ("working_since", "idle_since", "turn_started")):
+            continue
+        was, turn, rest = seen.get(session["session_id"], (None, None, None))
+        if was != state:
+            if state == "idle":
+                rest = now
+            elif was in (None, "idle"):
+                turn = now
+        known[session["session_id"]] = (state, turn, rest)
+        session["idle_since"] = rest
+        session["working_since"] = turn if state == "working" else None
+        session["turn_started"] = turn
+    return known, sessions
+
+
+def by_attention(rows, now):
+    """Top-level cards gathered into the working and then the idle group,
+    each marked with its group, the longest turn and the longest rest first.
+
+    The keys are the clocks of the states themselves, so two cards keep
+    their order for as long as both stay put; one with no clock goes last.
+    """
+    def key(block):
+        head = block[0]
+        bucket = placement(head, now)
+        clock = head.get("turn_started") if bucket == "working" else head.get("idle_since")
+        return (bucket == "idle", clock is None, clock or 0)
+    blocks = sorted(_blocks(rows), key=key)
+    for block in blocks:
+        head = block[0]
+        head["bucket"] = placement(head, now)
+        rested = head.get("idle_since")
+        if head["bucket"] == "idle" and rested is not None:
+            passed = sum(1 for limit in RESTED_SECONDS if now - rested >= limit)
+            if passed:
+                head["rested"] = passed
+    return [row for block in blocks for row in block]
+
+
 def by_provider(rows):
     """Top-level cards gathered by agent, each group in the order it had."""
     def place(block):
@@ -713,13 +802,14 @@ def by_provider(rows):
     return [row for block in sorted(_blocks(rows), key=place) for row in block]
 
 
-def snapshot(sessions, sort_by_name=False, group_by_provider=False):
+def snapshot(sessions, order="terminal", group_by_provider=False, now=None):
     """Raw session dicts -> the payload the page renders.
 
     Agents first, then everything else. Order within a group is the order
     handed in, which is the order iTerm2 enumerates windows, tabs and panes,
     so a card sits where its terminal does and nothing a session does moves
-    it; `sort_by_name` puts the top-level cards in name order instead. Each
+    it; `order` "name" puts the top-level cards in name order instead, and
+    "attention" gathers them by what they are doing, judged at `now`. Each
     input dict needs session_id, window_id, tab_id, path, auto_name and
     job_name.
     """
@@ -874,6 +964,10 @@ def snapshot(sessions, sort_by_name=False, group_by_provider=False):
                 row["question"] = session["question"]
             if session.get("working_since") is not None:
                 row["working_since"] = session["working_since"]
+            if session.get("idle_since") is not None:
+                row["idle_since"] = session["idle_since"]
+            if session.get("turn_started") is not None:
+                row["turn_started"] = session["turn_started"]
             if session.get("shells"):
                 row["shells"] = session["shells"]
             if session.get("started_at") is not None:
@@ -948,9 +1042,11 @@ def snapshot(sessions, sort_by_name=False, group_by_provider=False):
             at += 1
         rows["agent"].insert(at, row)
 
-    if sort_by_name:
+    if order == "name":
         for kind in rows:
             rows[kind] = by_name(rows[kind])
+    elif order == "attention":
+        rows["agent"] = by_attention(rows["agent"], time.time() if now is None else now)
     if group_by_provider:
         rows["agent"] = by_provider(rows["agent"])
     mark_busy_teammates(rows["agent"])
@@ -1627,6 +1723,22 @@ HOOK_STATE_DIR = os.path.expanduser("~/.claude/agents-sidebar-subagents")
 _SESSION_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 
+def filed_stamps(directory):
+    """Each filed state's file name -> when it was last replaced, in nanoseconds."""
+    stamps = {}
+    try:
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if entry.name.endswith(".published"):
+                    try:
+                        stamps[entry.name] = entry.stat().st_mtime_ns
+                    except OSError:
+                        pass             # swept between the listing and the stat
+    except OSError:
+        pass
+    return stamps
+
+
 def filed_codex_state(cwd, since, directory=None):
     """The state a Codex filed for a pane in `cwd` whose Codex started at
     `since`, as the JSON the variable would carry, or None.
@@ -1851,6 +1963,14 @@ def parse_tasks(raw):
     except (ValueError, TypeError, AttributeError):
         return []
     return listed if isinstance(listed, list) else []
+
+
+def parse_idle_since(raw):
+    """The claudeState payload -> when the session last came to rest, or None."""
+    try:
+        return _epoch(json.loads(raw).get("idle_since"))
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 def parse_working_since(raw):
@@ -2709,8 +2829,11 @@ class Bridge:
     It polls rather than registering a VariableMonitor per session per
     variable. Per-session monitors would need teardown as sessions come and
     go, and a lifecycle bug there shows stale rows -- the exact failure this
-    sidebar is built to avoid. LayoutChangeMonitor makes window and tab churn
-    instant, so the interval only bounds cwd and title drift.
+    sidebar is built to avoid. Three watches that span every session make
+    the common changes instant: LayoutChangeMonitor for window and tab churn,
+    one all-sessions VariableMonitor per hook state variable, and the
+    directory where a hook without a terminal files its state. The interval
+    only bounds cwd and title drift, and whatever a watch that stopped misses.
     """
 
     def __init__(self, connection, server, meters=None):
@@ -2734,6 +2857,8 @@ class Bridge:
         #: The rows of the last rebuild, which a resume and a context read
         #: re-check against.
         self.rows = []
+        #: Session id -> (state, turn began, last rest) for agents that publish no clocks.
+        self.clocks = {}
         self.context_reads = context_usage.Reads()
         #: Session id -> (when a resume was typed into it, the job it was typed
         #: at), until its agent reports; see still_resuming.
@@ -2889,6 +3014,8 @@ class Bridge:
                         "question": parse_question(raw),
                         "tasks": parse_tasks(raw),
                         "working_since": parse_working_since(raw),
+                        "idle_since": parse_idle_since(raw),
+                        "turn_started": parse_turn_started(raw),
                         "context": status["context"],
                         "model": status["model"],
                         "effort": status["effort"],
@@ -2925,6 +3052,8 @@ class Bridge:
             row["saved"] = row["agent_state"] == "exited" and conversation_saved(
                 row["provider"], row["conversation"], row["rollout"])
             row["resumable"] = resumable(row, rows, self.resuming)
+        # omp publishes no clocks; the daemon's own watch of its state stands in.
+        self.clocks, rows = observed_clocks(self.clocks, rows, time.time())
         self.rows = rows
         forget_heavy(self._heavy_seen, roots)
         for row, pid in zip(rows, pids):
@@ -2960,7 +3089,7 @@ class Bridge:
     async def _rebuild_once(self):
         await self.app.async_refresh()
         settings = load_settings()
-        self.latest = snapshot(await self.read_sessions(), settings["sort_by_name"],
+        self.latest = snapshot(await self.read_sessions(), settings["order"],
                                settings["provider_mark"] == "groups")
         self.latest["version"] = version()
         self.answered = still_answered(self.answered, self.latest)
@@ -3223,6 +3352,66 @@ class Bridge:
             print(f"sidebar: layout monitor stopped, falling back to polling "
                   f"every {POLL_SECONDS}s: {error!r}", flush=True)
 
+    async def watch_state(self, variable):
+        """Rebuild the moment a hook writes its state into any pane."""
+        import iterm2
+
+        try:
+            async with iterm2.VariableMonitor(self.connection, iterm2.VariableScopes.SESSION,
+                                              variable, "all") as monitor:
+                while True:
+                    await monitor.async_get()
+                    # Not awaited: the monitor queues what arrives meanwhile,
+                    # and a write taken only after the rebuild would cost a
+                    # rebuild of its own rather than fold into one more.
+                    asyncio.ensure_future(self.rebuild_or_report())
+        except Exception as error:                   # noqa: BLE001
+            print(f"sidebar: {variable} monitor stopped, falling back to polling "
+                  f"every {POLL_SECONDS}s: {error!r}", flush=True)
+
+    async def watch_filed_state(self, directory=None):
+        """Rebuild the moment a hook files a state: one that no terminal
+        carries writes no variable, so no monitor sees it change."""
+        directory = directory or HOOK_STATE_DIR
+        try:
+            # The hook makes the directory at its first filing, which may be
+            # after the daemon starts.
+            os.makedirs(directory, exist_ok=True)
+            handle = os.open(directory, os.O_RDONLY)
+        except OSError as error:
+            print(f"sidebar: cannot watch {directory}, falling back to polling "
+                  f"every {POLL_SECONDS}s: {error!r}", flush=True)
+            return
+        queue = select.kqueue()
+        changed = asyncio.Event()
+
+        def woke():
+            queue.control(None, 8, 0)
+            changed.set()
+        loop = asyncio.get_running_loop()
+        try:
+            queue.control([select.kevent(handle, filter=select.KQ_FILTER_VNODE,
+                                         flags=select.KQ_EV_ADD | select.KQ_EV_CLEAR,
+                                         fflags=select.KQ_NOTE_WRITE)], 0, 0)
+            loop.add_reader(queue.fileno(), woke)
+            filed = await asyncio.to_thread(filed_stamps, directory)
+            while True:
+                await changed.wait()
+                changed.clear()
+                # The hook keeps each session's working state and lock here
+                # too, rewritten on every event; only a filing is news.
+                now = await asyncio.to_thread(filed_stamps, directory)
+                if now != filed:
+                    filed = now
+                    await self.rebuild_or_report()
+        except Exception as error:                   # noqa: BLE001
+            print(f"sidebar: {directory} watch stopped, falling back to polling "
+                  f"every {POLL_SECONDS}s: {error!r}", flush=True)
+        finally:
+            loop.remove_reader(queue.fileno())
+            queue.close()
+            os.close(handle)
+
     def account_op(self, op, request):
         """Add the live login, switch to or rename a stored one, then read accounts now.
 
@@ -3351,6 +3540,9 @@ async def main(connection):
     print(f"sidebar: serving on 127.0.0.1:{port}", flush=True)
 
     asyncio.ensure_future(bridge.watch_layout())
+    asyncio.ensure_future(bridge.watch_state("user.claudeState"))
+    asyncio.ensure_future(bridge.watch_state("user.codexState"))
+    asyncio.ensure_future(bridge.watch_filed_state())
     asyncio.ensure_future(bridge.poll())
     asyncio.ensure_future(bridge.watch_accounts())
     asyncio.ensure_future(bridge.sweep_status())
