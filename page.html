@@ -1416,6 +1416,9 @@
   #budget .acct-item-head { display: flex; align-items: center; gap: 6px; min-width: 0; height: 19px; }
   #budget .codex { margin-top: 10px; padding-top: 8px;
     border-top: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
+  /* The reserve row in the warning ink: a different allowance, not the plan. */
+  #budget .win.reserve .wl { color: var(--warn); }
+  #budget .reserve-note { color: var(--warn); margin-top: 4px; }
   /* The login the sessions run on: a filled green check, not a word. */
   /* The brighter green of the ticks, not the meters' muted one: at 12px the
      severity green read as near-black. */
@@ -3180,6 +3183,21 @@ function paintCodex(strip, limits) {
     block.append(meterRow(w.label, w.used, w.resets_at,
       {tick: w.pace?.expected ?? null, ahead: !!w.pace?.ahead}));
   }
+  // A fallback allowance Codex is drawing on (Luna Reserve) has its own
+  // window and reset, apart from the plan's: its row says so, so a reserve
+  // at 12% is never read as a weekly window that has just reset.
+  if (limits.reserve) {
+    const r = limits.reserve;
+    // The label column fits six characters; the note above says it is a
+    // reserve, so the row names the allowance by its short name, and the
+    // tooltip by its full one.
+    const short = r.label === "Luna Reserve" ? "Luna" : r.label;
+    const row = meterRow(short, r.used, r.resets_at, {tick: r.pace?.expected ?? null, ahead: !!r.pace?.ahead});
+    row.classList.add("reserve");
+    if (short !== r.label) row.title = row.title ? row.title.replace(short, r.label) : r.label;
+    block.append(Object.assign(document.createElement("div"), {className: "acct-status reserve-note",
+      textContent: limits.windows.length ? "plan usage used up, on reserve" : "on reserve, plan usage unread"}), row);
+  }
   strip.append(block);
 }
 
@@ -3221,7 +3239,7 @@ function paintBudget(snapshot) {
     }
   }
 
-  if (snapshot.codex?.windows?.length) paintCodex(strip, snapshot.codex);
+  if (snapshot.codex?.windows?.length || snapshot.codex?.reserve) paintCodex(strip, snapshot.codex);
 
   strip.hidden = strip.childElementCount === 0;
 }
