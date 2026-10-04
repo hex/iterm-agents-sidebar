@@ -151,4 +151,12 @@ session log in `~/.codex/sessions`, which Codex updates on every turn, so it
 makes no request and never touches Codex's login. A window whose reset time has
 passed reads 0% until Codex reports again.
 
+When the plan's usage is used up and Codex moves the account onto a fallback
+allowance (Luna Reserve, on selected plans), each turn counts against that
+allowance instead, and Codex's log names it. The foot then says so under the
+plan's bars and adds a row for the allowance (`Luna` for Luna Reserve) with its own usage and reset;
+the row's tooltip gives the allowance's name. The plan's bars keep their last
+reading, which stays used up until the plan's window resets. Back on the plan,
+the row goes.
+
 `docs/accounts-design.md` has the design this came from.

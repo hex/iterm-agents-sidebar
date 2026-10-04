@@ -61,12 +61,34 @@ def _rate_limits(line):
     return (limits, _epoch(event.get("timestamp"))) if isinstance(limits, dict) else None
 
 
+#: The limit Codex counts an ordinary request against. Any other limit_id is
+#: a fallback allowance such as Luna Reserve, with its own window and reset.
+PLAN_LIMIT = "codex"
+#: What Codex itself calls the reserve's limit (tui/src/model_catalog.rs).
+LIMIT_NAMES = {"gpt_reserve": "Luna Reserve"}
+
+
+def _windows(limits, now, read_at):
+    return sorted((w for w in (_window(limits.get(k), now, read_at) for k in ("primary", "secondary")) if w),
+                  key=lambda w: w["minutes"])
+
+
 def limits_from_lines(lines, now):
     """The last limits reading among a rollout's lines, or None when it has none.
 
     Returns {"windows": [...]}, shortest window first, each {label, used,
-    resets_at, minutes, pace}, with pace worked out as for account meters. A window whose reset time has passed reads as empty.
+    resets_at, minutes, pace}, with pace worked out as for account meters. A
+    window whose reset time has passed reads as empty.
+
+    Each reading names the limit the request counted against. The plan's
+    windows come from its last reading on the plan limit. When the newest
+    reading is on another limit, the account is drawing on a fallback
+    allowance: that reading is returned as "reserve" {label, used, resets_at,
+    minutes, pace} and the plan's windows are its last own reading in the
+    tail, since the reserve record carries none of them (issue #1 saw a
+    reserve window drawn as the weekly bar).
     """
+    reserve = None
     for line in reversed(list(lines)):
         reading = _rate_limits(line)
         if reading is None:
@@ -74,10 +96,16 @@ def limits_from_lines(lines, now):
         limits, written_at = reading
         # An event without a stamp is taken as fresh; there is nothing better to say.
         read_at = written_at if written_at is not None else now
-        windows = [w for w in (_window(limits.get(k), now, read_at) for k in ("primary", "secondary")) if w]
-        if windows:
-            return {"windows": sorted(windows, key=lambda w: w["minutes"])}
-    return None
+        windows = _windows(limits, now, read_at)
+        if not windows:
+            continue
+        limit_id = limits.get("limit_id") or PLAN_LIMIT
+        if limit_id == PLAN_LIMIT:
+            return {"windows": windows, **({"reserve": reserve} if reserve else {})}
+        if reserve is None:
+            label = limits.get("limit_name") or LIMIT_NAMES.get(limit_id) or limit_id
+            reserve = {**windows[-1], "label": label}
+    return {"windows": [], "reserve": reserve} if reserve else None
 
 
 #: Day folders to look in; a session started days ago can still be the one writing.

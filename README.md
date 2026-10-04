@@ -186,7 +186,8 @@ limit full on every account is set aside with a `Fable full everywhere` chip.
 While Auto-switch is on, you have two or more accounts and a switch is near,
 a chip reads the account's name and `soon`, and gives the reason on hover. Codex's own limits sit under them, read from
 its session log: a 5-hour and a weekly window, or weekly alone, depending on
-the plan. See [docs/accounts.md](docs/accounts.md).
+the plan, and a row for the fallback allowance while Codex draws on one, such
+as Luna Reserve. See [docs/accounts.md](docs/accounts.md).
 
 The bar at the bottom names the release you run, and two buttons: reload and
 the gear. At start, once a day and on every reload press, the daemon lists

@@ -73,6 +73,48 @@ def test_a_window_whose_reset_has_passed_reads_as_empty():
     assert (window["used"], window["resets_at"]) == (0.0, None)
 
 
+# A reading written while the account was on Luna Reserve: Codex counts the
+# request against the reserve's own limit, so the record names that limit
+# and carries its window, not the plan's. Shape per codex-api's
+# rate_limits.rs: x-codex-active-limit names the limit, x-<limit>-limit-name
+# labels it. The exact values on a reserve account are unobserved; the
+# parser guarantees only that limit_id is not "codex".
+RESERVE = {"limit_id": "gpt_reserve", "limit_name": "Luna Reserve",
+           "primary": {"used_percent": 12.0, "window_minutes": 10080, "resets_at": 1789900000},
+           "secondary": None, "plan_type": "plus"}
+
+
+def test_a_reading_on_reserve_is_the_reserve_not_the_plan():
+    """The reporter's case (issue #1): a reserve window drawn as the weekly bar."""
+    limits = limits_from_lines([_token_count(RESERVE)], now=NOW)
+    assert limits["windows"] == []
+    assert limits["reserve"]["label"] == "Luna Reserve"
+    assert (limits["reserve"]["used"], limits["reserve"]["resets_at"]) == (12.0, 1789900000)
+
+
+def test_on_reserve_the_plan_windows_are_its_last_own_reading():
+    lines = [_token_count(WEEKLY_ONLY), _token_count(RESERVE)]
+    limits = limits_from_lines(lines, now=NOW)
+    assert [w["used"] for w in limits["windows"]] == [27.0]
+    assert limits["reserve"]["used"] == 12.0
+
+
+def test_back_on_the_plan_the_reserve_is_gone():
+    lines = [_token_count(RESERVE), _token_count(WEEKLY_ONLY)]
+    assert "reserve" not in limits_from_lines(lines, now=NOW)
+
+
+def test_an_unnamed_other_limit_is_labelled_by_its_id():
+    unnamed = dict(RESERVE, limit_id="premium", limit_name=None)
+    assert limits_from_lines([_token_count(unnamed)], now=NOW)["reserve"]["label"] == "premium"
+
+
+def test_a_reserve_reading_without_a_window_is_no_reserve():
+    """A depleted-credits record names another limit but carries no window."""
+    depleted = dict(RESERVE, primary=None)
+    assert limits_from_lines([_token_count(depleted)], now=NOW) is None
+
+
 def _rollout(root, day, name, lines, mtime):
     folder = root / "2026" / "09" / day
     folder.mkdir(parents=True, exist_ok=True)
