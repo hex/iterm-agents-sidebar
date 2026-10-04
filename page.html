@@ -722,7 +722,8 @@
   }
   /* What a blocked card is asking, in the card's own amber ink: three lines of
      the question at most, the rest in the tooltip. A tool gate names the tool
-     and the start of what it would run, cut to one line. */
+     and the start of what it would run, cut to one line, under the reason it
+     gave, when it gave one. */
   .asks {
     align-self: stretch; max-width: 100%; margin-block: 4px 3px;
     font: 400 11px/1.35 -apple-system, sans-serif; color: var(--blocked-text);
@@ -731,7 +732,7 @@
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
   }
   .asks .asks-more { color: var(--dim); }
-  .asks:has(.asks-tool) { display: flex; gap: 5px; align-items: baseline; }
+  .asks .asks-gate { display: flex; gap: 5px; align-items: baseline; }
   .asks .asks-tool { flex: none; font-weight: 600; }
   /* The options of a question, one row each, in the question's own left edge.
      A card asking a question shows only its name, the question and these:
@@ -2543,9 +2544,14 @@ function questionLine(asked) {
     line.append(text);
     line.title = asked.question || "";
   } else {
-    line.append(el("asks-tool", asked.tool));
-    if (asked.summary) line.append(el("asks-cmd", asked.summary));
-    line.title = asked.summary ? `${asked.tool}: ${asked.summary}` : asked.tool;
+    // Why it wants to run, when it said: the words its own prompt shows.
+    if (asked.reason) line.append(el("asks-text", asked.reason));
+    const gate = el("asks-gate", "");
+    gate.append(el("asks-tool", asked.tool));
+    if (asked.summary) gate.append(el("asks-cmd", asked.summary));
+    line.append(gate);
+    const what = asked.summary ? `${asked.tool}: ${asked.summary}` : asked.tool;
+    line.title = asked.reason ? `${asked.reason}\n${what}` : what;
   }
   return line;
 }
@@ -2605,6 +2611,38 @@ function answerRows(row) {
     }
     answers.append(option);
   });
+  return answers;
+}
+
+// The key each agent's permission prompt takes for Yes, by row provider
+// (none is Claude). No is Esc on both. An agent missing here gets no buttons.
+const GATE_YES_KEY = {claude: "1", openai: "y"};
+
+// Yes and No under a permission gate's card, each marked with the key its
+// prompt shows for it. The daemon types that key only onto the gate the
+// buttons were drawn for, named by the id the hook gave it, once. The same
+// command asked again is a new gate with a new id, so its buttons are live.
+function gateRows(row) {
+  const asked = row.question;
+  const meant = asked.id;
+  const answers = Object.assign(document.createElement("div"), {className: "answers"});
+  const picked = pickedAnswers.get(row.session_id);
+  const spent = picked && picked.question === meant;
+  const yes = GATE_YES_KEY[row.provider || "claude"];
+  for (const [gate, key, label] of [["yes", yes, "Yes"], ["no", "esc", "No"]]) {
+    const option = Object.assign(document.createElement("button"), {type: "button", className: "answer", title: label});
+    option.append(Object.assign(document.createElement("span"), {className: "answer-n", textContent: key}),
+                  Object.assign(document.createElement("span"), {className: "answer-label", textContent: label}));
+    option.disabled = !!spent;
+    if (spent && picked.pick === gate) option.classList.add("picked");
+    option.addEventListener("click", () => {
+      pickedAnswers.set(row.session_id, {question: meant, pick: gate});
+      for (const other of answers.children) other.disabled = true;
+      option.classList.add("picked");
+      act(row.session_id, "answer", JSON.stringify({gate, id: asked.id}));
+    });
+    answers.append(option);
+  }
   return answers;
 }
 
@@ -3599,6 +3637,9 @@ function paint(snapshot) {
       if (hot && row.question?.options?.length) {
         li.classList.add("asking");
         li.append(answerRows(row));
+      } else if (hot && row.question?.tool && row.question.id && GATE_YES_KEY[row.provider || "claude"]) {
+        li.classList.add("asking");
+        li.append(gateRows(row));
       }
       // Outside the row, since a button cannot hold one. The daemon decides
       // what is typed and refuses anything it no longer finds safe.

@@ -61,6 +61,7 @@ import stat
 import subprocess
 import sys
 import time
+import uuid
 
 LOG = os.path.expanduser("~/.claude/agents-sidebar-events.jsonl")
 
@@ -259,8 +260,13 @@ def question_from(payload):
         # A set also travels whole: the card follows the pane through it.
         return {**shown[0], "more": len(questions) - 1, **({"set": shown} if len(shown) > 1 else {})}
     summary = given.get("command") or given.get("file_path") or given.get("path") or ""
-    return {"tool": tool,
-            "summary": clip(str(summary).strip().splitlines()[0], SUMMARY_LIMIT) if summary else ""}
+    asked = {"tool": tool,
+             "summary": clip(str(summary).strip().splitlines()[0], SUMMARY_LIMIT) if summary else ""}
+    # Why it wants to: Codex's escalation reason, Claude's Bash description.
+    reason = " ".join(str(given.get("description") or "").split())
+    if reason:
+        asked["reason"] = clip(reason, QUESTION_LIMIT)
+    return asked
 
 
 def blocked_since(doc):
@@ -418,7 +424,12 @@ def apply_event(doc, event, payload, said, codex=False):
         # not only the fact of one, and when the newest closes first the card
         # has to fall back to what the one still open asks. A Notification
         # echo carries no question and keeps the one its gate already has.
-        doc["asks"][key] = question_from(payload) or doc["asks"].get(key) or doc["question"]
+        asked = question_from(payload)
+        if asked and "tool" in asked:
+            # The card answers a permission gate by this id, never by its
+            # command's first line, which two different commands can share.
+            asked["id"] = uuid.uuid4().hex
+        doc["asks"][key] = asked or doc["asks"].get(key) or doc["question"]
         doc["question"] = standing_question(doc)
         # Asking to run a tool means a turn is under way.
         doc["parent_active"] = True
@@ -946,16 +957,41 @@ def file_whole(value, session_id, directory=None):
     os.replace(temp, path)
 
 
-def nested_agent(environ, codex):
+def ancestor_pids():
+    """This process's parents, nearest first, ending at pid 1 or a failed lookup."""
+    pids = []
+    pid = os.getppid()
+    for _ in range(16):
+        pids.append(pid)
+        if pid <= 1:
+            break
+        try:
+            out = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "ppid="],
+                                 capture_output=True, text=True, timeout=2).stdout.strip()
+            pid = int(out)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            break
+    return pids
+
+
+def nested_agent(environ, codex, ancestors):
     """Whether this hook belongs to an agent running inside another's tool.
 
     A `codex exec` started by a Claude Bash tool inherits Claude Code's
     environment and shares the pane's tty, so its hooks would publish a
     codexState over the pane's claudeState and the card would turn into a
     Codex card. Claude Code's own hooks always carry CLAUDECODE; only a Codex
-    hook seeing it is nested.
+    hook seeing it can be nested.
+
+    CLAUDECODE alone is not proof: Codex 0.159 runs hooks in a shared daemon,
+    and one first started from a Claude tool keeps that environment after the
+    tool ends, then serves every later Codex. So the Claude named by
+    CLAUDE_PID must still be among this hook's parents. `ancestors` is called
+    only then, since walking parents costs a ps per step.
     """
-    return bool(codex and environ.get("CLAUDECODE"))
+    if not (codex and environ.get("CLAUDECODE")):
+        return False
+    return environ.get("CLAUDE_PID", "") in {str(pid) for pid in ancestors()}
 
 
 def main():
@@ -964,7 +1000,7 @@ def main():
     # shape Claude Code's do, measured by a probe hook on 2026-09-15.
     codex = "--codex" in sys.argv[2:]
     # A nested run speaks for no pane; the agent that started it does.
-    if nested_agent(os.environ, codex):
+    if nested_agent(os.environ, codex, ancestor_pids):
         return
     payload = read_payload()
     state = state_for(event, payload)
@@ -1026,6 +1062,10 @@ def main():
                                  "_tool_use_id": payload.get("tool_use_id"),
                                  "_tool_name": payload.get("tool_name"),
                                  "_keys": sorted(payload),
+                                 # Does a Codex escalation hand the hook the
+                                 # reason its prompt shows? Names only.
+                                 "_input_keys": sorted(payload.get("tool_input") or {})
+                                 if isinstance(payload.get("tool_input"), dict) else None,
                                  "_background": len(payload.get("background_tasks") or []),
                                  "_agents": agents}) + "\n")
     except OSError:

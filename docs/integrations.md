@@ -86,8 +86,12 @@ No Codex hook fires when you answer one of its permission prompts, so a card
 waiting on a command turns back to working as soon as that command shows up
 running under a Codex process, started after the prompt opened.
 
-A `codex exec` that a Claude session runs as a tool reports nothing. It shares
-the Claude pane, and the card stays the Claude session's.
+A `codex exec` that a Claude session runs as a tool reports nothing while that
+Claude session is one of its hook's parent processes. It shares the Claude
+pane, and the card stays the Claude session's. Codex runs hooks in a shared
+background daemon, and one first started from a Claude tool keeps that tool's
+environment after the tool ends; its hooks have no Claude parent, so every
+Codex it serves, your own included, still reports.
 
 Entries other tools put in `hooks.json` (herdr registers its own) stay where
 they are, and the first install copies each file to

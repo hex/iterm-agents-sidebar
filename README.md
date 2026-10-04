@@ -78,7 +78,7 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 
 | State | How it looks |
 | --- | --- |
-| Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question with a button per answer (a question that takes more than one answer lists them without buttons), or the tool and the command it wants to run |
+| Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question with a button per answer (a question that takes more than one answer lists them without buttons), or the reason it gave, the tool and the command it wants to run, with Yes and No |
 | Working | Dark name, working dots |
 | Idle | Grey name, IDLE outline |
 | Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
@@ -145,6 +145,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 | --- | --- |
 | A click | Brings that session forward, tab and all |
 | A question's option button | Sends that option's number into the prompt. A question that takes more than one answer gets no buttons and no Other |
+| A permission prompt's Yes or No | Yes types `y` on Codex and `1` on Claude Code; No presses Esc. Other choices stay in the terminal |
 | Other | Picks that option, then types your text |
 | Allow, on a permission gate | Answers Yes. It shows the command's first line and approves the whole command, so No stays in the terminal |
 | Reply, on a finished turn | Your text becomes the session's next prompt |

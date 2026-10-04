@@ -103,3 +103,71 @@ def test_an_answered_question_that_closed_is_forgotten_so_it_can_be_asked_again(
 
 def test_a_session_that_left_the_panel_is_forgotten():
     assert still_answered({"gone": ASKED}, panel(ASKED)) == {}
+
+
+# A permission gate, answered by its Yes and No. Neither CLI tells the hook
+# which options its prompt shows (Codex alone has half a dozen sets), so the
+# card never types an option's number past Yes. It types the shortcut that
+# means the same on every prompt: y on Codex, 1 on Claude, Esc for No on both.
+# Ways this can go wrong, and the test for each:
+# - the gate the buttons were drawn for has closed and another stands, even
+#   one whose command starts with the same line: the key would approve a
+#   command nobody read, so a gate is named by its own id;
+# - a second click on the same standing gate: a stray y or 1 lands in the
+#   agent's next prompt or its input box;
+# - an agent whose prompt keys are unknown (omp): nothing is typed;
+# - an answer other than yes or no, or a malformed body.
+
+GATE = {"tool": "Bash", "summary": "python3 - <<'PY'", "reason": "Allow the status post?", "id": "a1b2c3"}
+
+
+def gate_click(answer, gate=GATE):
+    return json.dumps({"gate": answer, "id": gate["id"]})
+
+
+def test_yes_on_a_codex_gate_types_its_y_shortcut():
+    assert answer_keys(gate_click("yes"), GATE, None, "openai") == "y"
+
+
+def test_yes_on_a_claude_gate_types_one():
+    assert answer_keys(gate_click("yes"), GATE, None, None) == "1"
+    assert answer_keys(gate_click("yes"), GATE, None, "claude") == "1"
+
+
+def test_no_presses_escape_on_either_agent():
+    assert answer_keys(gate_click("no"), GATE, None, "openai") == "\x1b"
+    assert answer_keys(gate_click("no"), GATE, None, None) == "\x1b"
+
+
+def test_a_click_meant_for_a_gate_that_has_since_changed_sends_nothing():
+    replaced = dict(GATE, summary="git push origin main", id="d4e5f6")
+    assert answer_keys(gate_click("yes"), replaced, None, "openai") is None
+
+
+def test_a_click_meant_for_an_earlier_gate_with_the_same_first_line_sends_nothing():
+    """Two heredocs share `python3 - <<'PY'`; only the gate's id tells them apart."""
+    replaced = dict(GATE, reason="Delete the cache?", id="d4e5f6")
+    assert answer_keys(gate_click("yes"), replaced, None, "openai") is None
+
+
+def test_a_gate_without_an_id_is_never_answered():
+    unnamed = {key: value for key, value in GATE.items() if key != "id"}
+    assert answer_keys(json.dumps({"gate": "yes", "id": None}), unnamed, None, "openai") is None
+
+
+def test_a_second_click_on_an_answered_gate_sends_nothing():
+    assert answer_keys(gate_click("yes"), GATE, dict(GATE, typed=1), "openai") is None
+
+
+def test_a_gate_of_an_agent_with_unknown_keys_sends_nothing():
+    assert answer_keys(gate_click("yes"), GATE, None, "omp") is None
+
+
+def test_an_answer_that_is_neither_yes_nor_no_sends_nothing():
+    assert answer_keys(gate_click("always"), GATE, None, "openai") is None
+    assert answer_keys(json.dumps({"gate": "yes"}), GATE, None, "openai") is None
+    assert answer_keys(json.dumps({"gate": "yes", "id": 7}), dict(GATE, id=7), None, "openai") is None
+
+
+def test_a_gate_click_on_a_question_sends_nothing():
+    assert answer_keys(gate_click("yes"), ASKED, None, None) is None

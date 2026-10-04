@@ -336,8 +336,32 @@ def next_answered(standing, answered):
     return {**standing, "typed": _typed(standing, answered) + 1}
 
 
-def answer_keys(text, standing, answered):
-    """A click on a card's answer button -> the digit to type, or None.
+#: What a gate card's Yes and No type, per row provider (None is Claude).
+#: The shortcut, not an option number: neither CLI tells the hook which
+#: options its prompt shows, and Yes and Esc mean the same on all of them.
+GATE_KEYS = {None: {"yes": "1", "no": "\x1b"}, "claude": {"yes": "1", "no": "\x1b"},
+             "openai": {"yes": "y", "no": "\x1b"}}
+
+
+def gate_keys(request, standing, answered, provider):
+    """A click on a gate card's Yes or No -> the key to type, or None.
+
+    Typed only onto the gate the button was drawn for, named by the id the
+    hook gave it, and only once while it stands.
+    """
+    keys = GATE_KEYS.get(provider)
+    if keys is None or request.get("gate") not in keys:
+        return None
+    gate = standing.get("id")
+    if not isinstance(gate, str) or request.get("id") != gate:
+        return None
+    if _typed(standing, answered):
+        return None
+    return keys[request["gate"]]
+
+
+def answer_keys(text, standing, answered, provider=None):
+    """A click on a card's answer button -> the keys to type, or None.
 
     The page sends the option's number and the question it drew the button
     for; `standing` is the row's question now and `answered` what this
@@ -349,13 +373,22 @@ def answer_keys(text, standing, answered):
     not seen, so the card's next click answers the question after it. A
     multi-select question is never answered here, since its digits toggle
     boxes and submit nothing.
+
+    A gate card's click goes to `gate_keys` instead.
     """
     try:
         request = json.loads(text)
-        pick, meant = request["pick"], request["question"]
-    except (ValueError, TypeError, KeyError, AttributeError):
+    except (ValueError, TypeError):
         return None
-    if not isinstance(standing, dict) or "options" not in standing or standing.get("multi"):
+    if not isinstance(request, dict) or not isinstance(standing, dict):
+        return None
+    if "gate" in request:
+        return gate_keys(request, standing, answered, provider) if "tool" in standing else None
+    try:
+        pick, meant = request["pick"], request["question"]
+    except KeyError:
+        return None
+    if "options" not in standing or standing.get("multi"):
         return None
     if meant != standing.get("question"):
         return None
@@ -3216,7 +3249,8 @@ class Bridge:
         so a second click types nothing until a different question stands.
         """
         standing = (find_row(self.latest, session_id) or {}).get("question")
-        keys = answer_keys(text, standing, self.answered.get(session_id))
+        provider = (find_row(self.latest, session_id) or {}).get("provider")
+        keys = answer_keys(text, standing, self.answered.get(session_id), provider)
         if keys is None:
             self.log("answer refused", session_id[:8], repr(text))
             return
