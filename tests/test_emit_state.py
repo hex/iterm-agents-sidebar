@@ -294,15 +294,25 @@ def test_a_codex_run_inside_a_claude_tool_speaks_for_no_pane():
     """`codex exec` started by a Claude Bash tool inherits Claude Code's
     environment and shares the pane's tty. Its hooks would otherwise write a
     newer codexState over the Claude card, which then wore the OpenAI mark."""
-    assert emit_state.nested_agent({"CLAUDECODE": "1", "CLAUDE_PID": "63630"}, codex=True) is True
-    assert emit_state.nested_agent({"CLAUDECODE": "1"}, codex=True) is True
-    assert emit_state.nested_agent({"TERM": "xterm"}, codex=True) is False
+    inside = lambda: [70001, 70000, 63630, 1]
+    assert emit_state.nested_agent({"CLAUDECODE": "1", "CLAUDE_PID": "63630"}, True, inside) is True
+    assert emit_state.nested_agent({"TERM": "xterm"}, True, inside) is False
+
+
+def test_a_codex_daemon_started_from_a_claude_tool_still_speaks_for_its_pane():
+    """Codex 0.159 runs hooks in a shared app-server daemon. One started by a
+    codex run inside a Claude Bash tool keeps that tool's CLAUDECODE after the
+    run ends and reparents to pid 1, then hosts the hooks of every later
+    interactive Codex (seen 2026-10-01: a Codex card idle at a prompt)."""
+    daemon = lambda: [45561, 1]
+    assert emit_state.nested_agent({"CLAUDECODE": "1", "CLAUDE_PID": "5001"}, True, daemon) is False
+    assert emit_state.nested_agent({"CLAUDECODE": "1"}, True, daemon) is False
 
 
 def test_a_claude_hook_inside_claude_is_the_normal_case():
     """Claude Code's own hooks always run with CLAUDECODE set; that is not
     nesting, that is the session itself."""
-    assert emit_state.nested_agent({"CLAUDECODE": "1", "CLAUDE_PID": "1"}, codex=False) is False
+    assert emit_state.nested_agent({"CLAUDECODE": "1", "CLAUDE_PID": "1"}, False, lambda: [1]) is False
 
 
 ASK = {"tool_name": "AskUserQuestion", "tool_input": {"questions": [
@@ -333,6 +343,35 @@ def test_any_other_gated_tool_names_itself_and_its_first_line():
     assert emit_state.question_from(bash) == {"tool": "Bash", "summary": "git push origin main"}
     edit = {"tool_name": "Edit", "tool_input": {"file_path": "/x/y.py", "old_string": "a"}}
     assert emit_state.question_from(edit) == {"tool": "Edit", "summary": "/x/y.py"}
+
+
+def test_a_gate_that_says_why_carries_its_reason():
+    """Codex puts the reason its escalation prompt shows in `description`, as
+    Claude Code does its Bash description. Whitespace runs fold to one space."""
+    bash = {"tool_name": "Bash", "tool_input": {"command": "python3 - <<'PY'\nimport os",
+                                                "description": "Allow the status post\noutside the sandbox?"}}
+    assert emit_state.question_from(bash) == {"tool": "Bash", "summary": "python3 - <<'PY'",
+                                              "reason": "Allow the status post outside the sandbox?"}
+    long = {"tool_name": "Bash", "tool_input": {"command": "x", "description": "y" * 400}}
+    assert emit_state.question_from(long)["reason"] == "y" * 299 + "…"
+    blank = {"tool_name": "Bash", "tool_input": {"command": "x", "description": "  "}}
+    assert "reason" not in emit_state.question_from(blank)
+
+
+def test_each_permission_gate_gets_its_own_id():
+    """The card answers a gate by id: two gates with the same command are two
+    gates, and a Notification echo of one keeps that gate's id."""
+    gate = {"tool_name": "Bash", "tool_input": {"command": "make test"}}
+    doc = emit_state.apply_event(emit_state.blank_state(), "PreToolUse", {"tool_use_id": "t1"}, "working")
+    doc = emit_state.apply_event(doc, "PermissionRequest", gate, "blocked")
+    first = doc["question"]["id"]
+    assert isinstance(first, str) and len(first) >= 12
+    doc = emit_state.apply_event(doc, "Notification", {}, "blocked")
+    assert doc["question"]["id"] == first
+    doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t1"}, "working")
+    doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t2"}, "working")
+    doc = emit_state.apply_event(doc, "PermissionRequest", gate, "blocked")
+    assert doc["question"]["id"] != first
 
 
 def test_a_gate_without_a_tool_has_no_question():
@@ -582,12 +621,14 @@ def test_the_card_asks_what_the_gates_still_open_ask():
     doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t1"}, "working")
     doc = emit_state.apply_event(doc, "PermissionRequest",
                                  {"tool_name": "Bash", "tool_input": {"command": "make test"}}, "blocked")
+    older = doc["question"]["id"]
     doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t2"}, "working")
     doc = emit_state.apply_event(doc, "PermissionRequest",
                                  {"tool_name": "Bash", "tool_input": {"command": "git push"}}, "blocked")
-    assert doc["question"] == {"tool": "Bash", "summary": "git push"}
+    newer = doc["question"]["id"]
+    assert doc["question"] == {"tool": "Bash", "summary": "git push", "id": newer}
     doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t2"}, "working")
-    assert doc["question"] == {"tool": "Bash", "summary": "make test"}
+    assert doc["question"] == {"tool": "Bash", "summary": "make test", "id": older}
     doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t1"}, "working")
     assert doc["question"] is None
 
@@ -595,11 +636,12 @@ def test_the_card_asks_what_the_gates_still_open_ask():
 def test_each_gates_question_survives_the_state_file(tmp_path, monkeypatch):
     monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
     emit_state.update("s1", "PreToolUse", {"tool_use_id": "t1"}, "working")
-    emit_state.update("s1", "PermissionRequest", {"tool_name": "Bash", "tool_input": {"command": "make test"}}, "blocked")
+    doc = emit_state.update("s1", "PermissionRequest", {"tool_name": "Bash", "tool_input": {"command": "make test"}}, "blocked")
+    older = doc["question"]["id"]
     emit_state.update("s1", "PreToolUse", {"tool_use_id": "t2"}, "working")
     emit_state.update("s1", "PermissionRequest", {"tool_name": "Bash", "tool_input": {"command": "git push"}}, "blocked")
     doc = emit_state.update("s1", "PostToolUse", {"tool_use_id": "t2"}, "working")
-    assert doc["question"] == {"tool": "Bash", "summary": "make test"}
+    assert doc["question"] == {"tool": "Bash", "summary": "make test", "id": older}
 
 
 def test_tools_still_running_survive_the_state_file(tmp_path, monkeypatch):

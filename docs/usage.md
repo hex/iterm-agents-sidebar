@@ -93,8 +93,9 @@ One already fully in view stays put.
 
 A waiting card says what it waits on, under the name: the first question of an
 AskUserQuestion (three lines at most, with "+1 more" when it asked several), or
-the tool a permission prompt is for and the first line of what it would run.
-The line goes when the prompt is answered. An omp session reports only that it is
+the tool a permission prompt is for and the first line of what it would run,
+under the reason the agent gave for it when it gave one (Codex's escalation
+reason, Claude's command description). The line goes when the prompt is answered. An omp session reports only that it is
 blocked, so its card shows no question.
 
 Under a question the card lists its options, a button each. The one the agent
@@ -108,6 +109,13 @@ in the terminal. The daemon types each step once, in order. Claude Code says
 nothing as it moves from one question to the next, so the card counts only
 its own clicks: answer a question in the terminal and the card's next click
 answers the question after it. Answer a set in one place.
+
+Under a permission prompt the card shows Yes and No, each marked with the key
+it types: Yes is `y` on Codex and `1` on Claude Code, No is Esc on both. Neither
+agent tells the panel which options its prompt lists, and Codex's vary from one
+prompt to the next, so the rest, such as "don't ask again", stay in the
+terminal. The daemon types the key only while that same command still waits,
+and only once.
 
 A question that takes more than one answer shows its options without
 buttons; answer it in the terminal. While a card asks, it

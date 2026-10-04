@@ -45,8 +45,9 @@ is a plugin precisely to stay out of that file.
 Context percentage, git branch, model, cost, accounts with limit meters and
 switching, Codex sessions, shell rows and running commands, subagents and
 teammates nested under their lead, the hover card, the task line (title,
-percent, activity, age), and macOS notices with the question's options as
-buttons, a reply field, and Allow on a tool gate.
+percent, activity, age), answer buttons on a waiting card (a question's
+options, or Yes and No on a permission prompt), and macOS notices with the
+question's options as buttons, a reply field, and Allow on a tool gate.
 
 What theirs does that ours does not: the Workgroup (Diff and Code Review
 peers), Clippings, the "background tasks still running" hold on `working`,
