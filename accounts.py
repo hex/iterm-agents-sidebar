@@ -787,6 +787,11 @@ SECURITY = "/usr/bin/security"
 SECURITY_LINE_LIMIT = 4096 - 64
 SECURITY_TIMEOUT_SECONDS = 5
 NOT_FOUND_EXIT = 44
+#: The keychain every call names, or None for the user's default (the login
+#: keychain). The tests name the login keychain by its path: under a spare
+#: HOME `security` has no default keychain and asks in a dialog where to
+#: store an item instead of failing.
+KEYCHAIN = None
 
 
 class KeychainError(Exception):
@@ -798,19 +803,22 @@ def _security_quote(value):
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def write_command(service, account, value):
-    """The argv and stdin that store `value` as a generic password, as (argv, stdin).
+def write_command(service, account, value, keychain=None):
+    """The argv and stdin that store `value` as a generic password, as (argv, stdin),
+    in `keychain` when one is named.
 
     The value goes hex-encoded through `security -i` on stdin so it never shows
     in a process listing. Only a line too long for that buffer falls back to
     argv, because a truncated line would silently fail to write.
     """
     hex_value = value.encode("utf-8").hex()
+    named = [keychain] if keychain else []
     line = (f"add-generic-password -U -a {_security_quote(account)} "
-            f"-s {_security_quote(service)} -X {hex_value}\n")
+            f"-s {_security_quote(service)} -X {hex_value}"
+            + "".join(f" {_security_quote(k)}" for k in named) + "\n")
     if len(line.encode("utf-8")) <= SECURITY_LINE_LIMIT:
         return [SECURITY, "-i"], line
-    return [SECURITY, "add-generic-password", "-U", "-a", account, "-s", service, "-X", hex_value], None
+    return [SECURITY, "add-generic-password", "-U", "-a", account, "-s", service, "-X", hex_value, *named], None
 
 
 def read_result(returncode, stdout, stderr):
@@ -836,13 +844,14 @@ def _run_security(argv, stdin=None):
 
 def read_secret(service, account):
     """The generic password stored under service and account, or None."""
-    result = _run_security([SECURITY, "find-generic-password", "-a", account, "-s", service, "-w"])
+    result = _run_security([SECURITY, "find-generic-password", "-a", account, "-s", service, "-w",
+                            *([KEYCHAIN] if KEYCHAIN else [])])
     return read_result(result.returncode, result.stdout, result.stderr)
 
 
 def write_secret(service, account, value):
     """Create or replace the generic password under service and account."""
-    argv, stdin = write_command(service, account, value)
+    argv, stdin = write_command(service, account, value, KEYCHAIN)
     result = _run_security(argv, stdin)
     if result.returncode != 0:
         raise KeychainError(f"security failed (rc={result.returncode}: {result.stderr.strip()})")
@@ -850,7 +859,8 @@ def write_secret(service, account, value):
 
 def delete_secret(service, account):
     """Remove the generic password under service and account; absent is fine."""
-    result = _run_security([SECURITY, "delete-generic-password", "-a", account, "-s", service])
+    result = _run_security([SECURITY, "delete-generic-password", "-a", account, "-s", service,
+                            *([KEYCHAIN] if KEYCHAIN else [])])
     if result.returncode not in (0, NOT_FOUND_EXIT):
         raise KeychainError(f"security failed (rc={result.returncode}: {result.stderr.strip()})")
 

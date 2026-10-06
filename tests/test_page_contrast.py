@@ -26,6 +26,8 @@ PAIRS = [
     ("--accent-ink", "--switch-bg"),
     ("--accent-ink", "--hot"),
     ("--accent-ink", "--alert"),
+    # NEW on an idle card whose finish you have not seen.
+    ("--accent-ink", "--sev-ok"),
     # The report's live words are green; the ticks beside them are a graphic
     # and need no ratio, but the words do.
     ("--lit-ink", "--card"),

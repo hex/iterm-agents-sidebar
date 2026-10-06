@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+# ABOUTME: The panel's agents from a script: list them, or wait for one to reach a state.
+# ABOUTME: Reads the running daemon's /events stream, found through its endpoint.json.
+"""agents-sidebar status [--json]
+agents-sidebar wait <target> [--until STATE]... [--timeout SECONDS]
+
+Standard library only, and Python 3.9 at the oldest: /usr/bin/python3 is what
+a fresh Mac runs it with.
+"""
+import argparse
+import json
+import math
+import os
+import socket
+import subprocess
+import sys
+import time
+
+ENDPOINT = os.path.expanduser("~/.local/share/agents-sidebar/endpoint.json")
+STATES = ("working", "blocked", "idle", "done", "unknown", "exited")
+#: How long a dropped stream is given to come back: a restart for an update
+#: takes a pull and a first reading of iTerm2.
+RECONNECT_SECONDS = 10
+RECONNECT_PAUSE = 0.25
+#: How long one try at the daemon waits for it to take the connection and
+#: answer.
+CONNECT_SECONDS = 5
+
+
+class Failure(Exception):
+    """Something the person can act on, said on stderr with exit 1."""
+
+
+class Ambiguous(Exception):
+    """A target that names more than one session: the caller's to fix, so
+    exit 2, as for any argument that cannot be used."""
+
+
+def open_stream(patience=CONNECT_SECONDS):
+    """Connect to the daemon's /events, waiting `patience` seconds at most in
+    all, however the connection and the lines of the answer fall.
+    -> (the socket, a binary file on it positioned at the first frame).
+    Raises Failure when there is no daemon to reach."""
+    try:
+        with open(ENDPOINT, encoding="utf-8") as found:
+            endpoint = json.load(found)
+        port, token = int(endpoint["port"]), str(endpoint["token"])
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise Failure(f"the sidebar is not running: cannot read {ENDPOINT} ({error})")
+    deadline = time.monotonic() + patience
+
+    def left():
+        # A socket timeout bounds one operation; the answer comes in several.
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout("timed out")
+        return remaining
+    try:
+        connection = socket.create_connection(("127.0.0.1", port), timeout=patience)
+    except OSError as error:
+        raise Failure(f"the sidebar is not running: nothing answers on port {port} ({error})")
+    try:
+        connection.settimeout(left())
+        connection.sendall(f"GET /events?token={token} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n".encode())
+        stream = connection.makefile("rb")
+        connection.settimeout(left())
+        status = stream.readline().split()
+        if status[1:2] != [b"200"]:
+            raise Failure(f"the sidebar on port {port} refused the stream: {b' '.join(status).decode()}")
+        while True:
+            connection.settimeout(left())
+            if stream.readline() in (b"\r\n", b""):
+                break
+        connection.settimeout(patience)
+    except OSError as error:
+        connection.close()
+        raise Failure(f"the sidebar on port {port} did not answer: {error}")
+    except Failure:
+        connection.close()
+        raise
+    return connection, stream
+
+
+def frames(stream):
+    """Server-sent events -> (event name, parsed data) pairs, until the stream
+    ends. A snapshot is the unnamed event "message"."""
+    event, data = "message", []
+    for line in stream:
+        try:
+            line = line.decode("utf-8").rstrip("\r\n")
+        except UnicodeDecodeError as error:
+            raise Failure(f"the sidebar sent a line that is not UTF-8 ({error})")
+        if line.startswith("event: "):
+            event = line[len("event: "):]
+        elif line.startswith("data: "):
+            data.append(line[len("data: "):])
+        elif line == "" and data:
+            text = "\n".join(data)
+            try:
+                parsed = json.loads(text)
+            except ValueError as error:
+                raise Failure(f"the sidebar sent a frame that is not JSON ({error}): {text}")
+            yield event, parsed
+            event, data = "message", []
+
+
+def agent_rows(snapshot):
+    """The AGENTS group's rows; a daemon that has not read iTerm2 yet has none."""
+    for group in snapshot.get("groups", []):
+        if group["name"] == "AGENTS":
+            return group["rows"]
+    return []
+
+
+def provider(row):
+    """Claude rows name no provider; the page draws them as the default."""
+    return row.get("provider", "claude")
+
+
+def state(row):
+    """A row whose state could not be read has no key, and reads as unknown."""
+    return row.get("state", "unknown")
+
+
+def fresh_verdict(data):
+    """A heartbeat's word on whether the daemon's reading is current."""
+    if not (isinstance(data, dict) and isinstance(data.get("fresh"), bool)):
+        raise Failure(f"the sidebar sent a heartbeat with no fresh verdict: {json.dumps(data)}")
+    return data["fresh"]
+
+
+def status(as_json):
+    """Print the agent rows the stream opens with. Its first heartbeat says
+    whether they are current; when not, they are printed all the same, and
+    that is said on stderr with exit 1."""
+    _, stream = open_stream()
+    rows, fresh = None, None
+    try:
+        for event, data in frames(stream):
+            if event == "message":
+                rows = agent_rows(data)
+            elif event == "heartbeat" and rows is not None:
+                fresh = fresh_verdict(data)
+                break
+        else:
+            raise Failure("the sidebar closed the stream before sending its state")
+    except OSError as error:
+        raise Failure(f"the sidebar's stream failed before sending its state: {error}")
+    if as_json:
+        print(json.dumps(rows))
+    else:
+        for row in rows:
+            print(line(row))
+    if not fresh:
+        raise Failure("the panel's reading is stale, so these rows may be out of date")
+
+
+def line(row):
+    """One agent as status prints it: session id, label, provider, state."""
+    return "\t".join((row["session_id"], row["label"], provider(row), state(row)))
+
+
+def matches(row, until):
+    """Is the row in one of the asked-for states? `done` is a finished turn
+    nobody has looked at yet, so an idle row with the unseen mark."""
+    return state(row) in until or ("done" in until and state(row) == "idle" and row.get("unseen") is True)
+
+
+def caller_tty(listing, pid):
+    """The terminal of `pid`, or of its nearest ancestor that has one, from a
+    `ps -eo pid=,ppid=,tty=` listing. -> "ttys009", or None when none has.
+
+    An agent runs its tools with no terminal of their own, under the agent
+    process that holds the pane's; the pane is still where the call came from.
+    """
+    table = {}
+    for entry in listing.splitlines():
+        fields = entry.split()
+        if len(fields) == 3 and fields[0].isdigit() and fields[1].isdigit():
+            table[int(fields[0])] = (int(fields[1]), fields[2])
+    seen = set()
+    # `seen`: a listing taken while processes come and go can hold a loop.
+    while pid in table and pid not in seen:
+        seen.add(pid)
+        pid, tty = table[pid]
+        if tty != "??":
+            return tty
+    return None
+
+
+def resolve(target, rows):
+    """The session id `target` names among the agent rows: a session id
+    itself, `current` for the caller's own pane, or a label exactly one row
+    carries."""
+    if any(row["session_id"] == target for row in rows):
+        return target
+    if target == "current":
+        # By terminal, not $ITERM_SESSION_ID: in a tmux pane that is whatever
+        # the tmux server was started under, and in a hook daemon shared by
+        # several Codex panes it is the pane that started the daemon. Either
+        # can name another live session; no terminal fails out loud instead.
+        try:
+            listing = subprocess.run(["/bin/ps", "-eo", "pid=,ppid=,tty="],
+                                     capture_output=True, text=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError) as error:
+            raise Failure(f"current: could not list processes to find this terminal ({error})")
+        tty = caller_tty(listing, os.getpid())
+        if tty is None:
+            raise Failure("current: neither this process nor any it runs under has a terminal")
+        here = [row for row in rows if row.get("tty") == tty]
+        if len(here) > 1:
+            raise Ambiguous("\n".join([f"current: more than one agent is on this terminal, {tty}; "
+                                       "wait on one by its id:", *map(line, here)]))
+        if not here:
+            raise Failure(f"current: no agent in the panel is on this terminal, {tty}")
+        return here[0]["session_id"]
+    named = [row for row in rows if row["label"] == target]
+    if len(named) == 1:
+        return named[0]["session_id"]
+    if named:
+        raise Ambiguous("\n".join([f"{target} names more than one session; wait on one by its id:",
+                                   *map(line, named)]))
+    raise Failure(f"no agent is {target}: not a session id or a label in the panel")
+
+
+def wait(target, until, timeout):
+    """Print the target's row as JSON once it is in one of `until`, or raise
+    Failure once `timeout` seconds (None: never) have gone by."""
+    deadline = None if timeout is None else time.monotonic() + timeout
+    session_id, row = None, None
+
+    def timed_out():
+        said = f": session {session_id} is {state(row)}" if row else f" for {target}"
+        return Failure(f"timed out after {timeout:g} s{said}")
+
+    def left():
+        """Seconds to the deadline, None without one. Raises Failure past it."""
+        if deadline is None:
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise timed_out()
+        return remaining
+
+    def patience():
+        """CONNECT_SECONDS for a try at the daemon, or what is left of the
+        wait when that is less. Raises Failure past the deadline."""
+        remaining = left()
+        return CONNECT_SECONDS if remaining is None else min(CONNECT_SECONDS, remaining)
+
+    try:
+        connection, stream = open_stream(patience())
+    except Failure:
+        patience()    # past the deadline, the timeout is what happened
+        raise
+    while True:
+        # A stream opens with the current state and then the daemon's word on
+        # whether it is fresh; nothing matches before that word, so a state
+        # that already holds on a fresh daemon returns at once.
+        fresh, latest = False, {}
+        events = frames(stream)
+        try:
+            while True:
+                connection.settimeout(left())
+                event, data = next(events, (None, None))
+                if event is None:
+                    break
+                if event == "heartbeat":
+                    fresh = fresh_verdict(data)
+                elif event == "message":
+                    latest = data
+                if not fresh:
+                    continue
+                # Once, then held: a label can move to another pane, the id cannot.
+                if session_id is None:
+                    session_id = resolve(target, agent_rows(latest))
+                row = next((row for row in agent_rows(latest) if row["session_id"] == session_id), None)
+                if row is None:
+                    raise Failure(f"session {session_id} has closed")
+                if matches(row, until):
+                    print(json.dumps(row))
+                    return
+        except socket.timeout:
+            raise timed_out()
+        except OSError:
+            pass    # reset from the daemon's side: dropped, as an ended stream is
+        connection.close()
+        connection, stream = reopen(patience)
+
+
+def reopen(patience):
+    """Connect again after a dropped stream, for up to RECONNECT_SECONDS.
+    endpoint.json is read on every try: a daemon that restarted for an
+    update listens on a new port with a new token. `patience` gives each
+    try its time, and raises once the wait's own deadline has passed; no
+    try starts, runs or pauses past RECONNECT_SECONDS either."""
+    give_up = time.monotonic() + RECONNECT_SECONDS
+    left = RECONNECT_SECONDS
+    while True:
+        try:
+            return open_stream(min(patience(), left))
+        except Failure:
+            pause = patience()
+            left = give_up - time.monotonic()
+            if left <= 0:
+                raise
+            time.sleep(min(RECONNECT_PAUSE, pause, left))
+            left = give_up - time.monotonic()
+            if left <= 0:
+                raise
+
+
+def seconds(text):
+    """--timeout's value: a finite number of seconds above 0."""
+    value = float(text)
+    if not (math.isfinite(value) and value > 0):
+        raise argparse.ArgumentTypeError(f"{text} is not a number of seconds above 0")
+    return value
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(prog="agents-sidebar")
+    commands = parser.add_subparsers(dest="command", required=True)
+    listing = commands.add_parser("status", help="one line per agent: session id, label, provider, state")
+    listing.add_argument("--json", action="store_true", help="the rows as the panel has them")
+    waiting = commands.add_parser("wait", help="return once a session is in one of the given states")
+    waiting.add_argument("target", help="an iTerm2 session id, current, or a label one agent carries")
+    waiting.add_argument("--until", action="append", choices=STATES, metavar="STATE",
+                         help=f"one of {', '.join(STATES)}; repeatable; default blocked and idle")
+    waiting.add_argument("--timeout", type=seconds, metavar="SECONDS", help="give up after this long, with exit 1")
+    arguments = parser.parse_args(argv)
+    try:
+        if arguments.command == "status":
+            status(arguments.json)
+        else:
+            wait(arguments.target, set(arguments.until or ("blocked", "idle")), arguments.timeout)
+    except Failure as failure:
+        print(f"agents-sidebar: {failure}", file=sys.stderr)
+        return 1
+    except Ambiguous as ambiguous:
+        print(f"agents-sidebar: {ambiguous}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

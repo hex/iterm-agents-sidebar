@@ -64,6 +64,9 @@ async def test_events_stream_opens_with_current_state(tmp_path):
     await reader.readuntil(b"\r\n\r\n")                       # response headers
     first = await asyncio.wait_for(reader.readuntil(b"\n\n"), timeout=5)
     assert json.loads(first.split(b"data: ", 1)[1]) == PAYLOAD
+    # Then whether that state is current, so a stale one is never taken for fresh.
+    verdict = await asyncio.wait_for(reader.readuntil(b"\n\n"), timeout=5)
+    assert verdict == b'event: heartbeat\ndata: {"fresh": true}\n\n'
 
     # And a later broadcast reaches the same open stream.
     server.broadcast(b"data: {\"groups\": []}\n\n")

@@ -1,9 +1,9 @@
 # ABOUTME: Draws assets/menu.svg for the README: a card with its right-click menu open, the
-# ABOUTME: items read out of page.html's HOUSEKEEPING and CLOSE. The session name is invented.
+# ABOUTME: items read out of page.html's DETAILS, HOUSEKEEPING and CLOSE. The session name is invented.
 import pathlib, re, sys
 from panel_draw import *  # noqa: F401,F403
 
-W, H = 880, 196
+W, H = 880, 220
 CX, CW, CT = 24, 404, 22
 TX = CX + 44
 LX = CX + CW + 40
@@ -17,7 +17,8 @@ def menu_items():
     items = [(m.group(1), "destructive: true" in m.group(0))
              for m in re.finditer(r'\{label: "([^"]+)".*?\}(?=,?\n)', block, re.S)]
     close = re.search(r'^const CLOSE = \{label: "([^"]+)"', page, re.M).group(1)
-    return items, close
+    details = re.search(r'^const DETAILS = \{label: "([^"]+)"', page, re.M).group(1)
+    return [(details, False)] + items, close
 
 
 NOTES = Notes(LX)
@@ -25,7 +26,7 @@ note = NOTES.add
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="An idle card with its right-click menu open: /compact, /rotate, /clear, then Close">')
+  f'aria-label="An idle card with its right-click menu open: Details, /compact, /rotate, /clear, then Close">')
 A('  <title>The row menu</title>')
 A(f'''  <defs>
     <filter id="drop" x="-10%" y="-10%" width="120%" height="130%">
@@ -39,7 +40,7 @@ swatch(CX + 18, CT + 20, "#8e8e93")
 text(TX, CT + 31, "ember", fill=DIM, size=15, weight=500)
 tag(TX + NAME_W["ember"] + 9, CT + 31, "claude")
 mark("checked", TX, CT + 52 - 10, 11, LIT)
-text(TX + 15, CT + 52, "Done", fill=LIT_INK, size=12.5, weight=600)
+text(TX + 15, CT + 52, "Complete", fill=SEV_OK, size=12.5, weight=600)
 chips(TX, CT + 69, [("branch", "main", None), ("model", "Fable 5.1", None), ("gauge", "82%", ALERT)])
 badge(CX + CW - 16, CT + 14, "IDLE")
 note(CX + CW + 8, CT + 26, "Right-click a row, or Shift+F10 on a selected one")
@@ -61,11 +62,12 @@ for label, danger, sep in rows:
          extra=' letter-spacing="-0.25"')
     y += 24
 A(f'  <path d="M0,0 L0,17 L4.1,13.1 L6.8,19 L9.5,17.8 L6.9,12 L12.3,11.6Z" '
-  f'transform="translate({mx + 60},{my + 4 + 24 * 2 + 5})" fill="{POINTER_FILL}" stroke="{POINTER_EDGE}" '
+  f'transform="translate({mx + 60},{my + 4 + 24 * 3 + 5})" fill="{POINTER_FILL}" stroke="{POINTER_EDGE}" '
   f'stroke-width="1.4" stroke-linejoin="round"/>')
-note(mx + mw + 12, my + 16, "/compact for every agent; the rest only where the agent has them")
-note(mx + mw + 12, my + 4 + 24 * 2 + 12, "/clear and Close ask for a second click; the first turns them red")
-note(mx + mw + 12, my + 4 + 24 * 3 + 7 + 12, "Close shuts the pane, agent or not")
+note(mx + mw + 12, my + 16, "Details opens the details card and keeps it until Escape")
+note(mx + mw + 12, my + 4 + 24 + 12, "/compact for every agent; the rest only where the agent has them")
+note(mx + mw + 12, my + 4 + 24 * 3 + 12, "/clear and Close ask for a second click; the first turns them red")
+note(mx + mw + 12, my + 4 + 24 * 4 + 7 + 12, "Close shuts the pane, agent or not")
 
 NOTES.draw()
 A('</svg>')

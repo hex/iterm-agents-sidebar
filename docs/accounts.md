@@ -50,6 +50,18 @@ The foot shows an account's nickname, or its email if it has none, or
 `Account N` without either. Click a name to set a nickname: Enter saves, Esc
 cancels, and an empty name goes back to the email.
 
+Click **Limits**, the head over the accounts, to fold them. Folded, every
+account and Codex sit side by side, a tile each, the account your sessions run
+on first and marked with its check. A tile shows one bar, its fullest window,
+with the even-spend tick, then the percentage, the window's short name (`5h`,
+`wk`, `fab` for Fable) and the time to its reset; a reserve Codex draws on
+counts with its plan's windows. A reading that failed keeps its bar and says
+`as of 14:02` in place of the reset. Hover a tile for every window it has. A
+second click on the head opens the foot again, and you switch accounts from
+there. The fold survives reloads and daemon restarts. With no stored login,
+the Claude tile comes from your sessions' own readings. While the panel cannot
+read the account store, the foot stays open to say why.
+
 ## Switching
 
 Point at an account and click the **Switch** button over its bars, then click
@@ -152,8 +164,9 @@ makes no request and never touches Codex's login. A window whose reset time has
 passed reads 0% until Codex reports again.
 
 When the plan's usage is used up and Codex moves the account onto a fallback
-allowance (Luna Reserve, on selected plans), each turn counts against that
-allowance instead, and Codex's log names it. The foot then says so under the
+allowance (Luna Reserve, on selected plans), it switches the session to the
+reserve model, and Codex's log names both the model and the allowance. The foot
+then says so under the
 plan's bars and adds a row for the allowance (`Luna` for Luna Reserve) with its own usage and reset;
 the row's tooltip gives the allowance's name. The plan's bars keep their last
 reading, which stays used up until the plan's window resets. Back on the plan,

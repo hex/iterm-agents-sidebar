@@ -338,28 +338,42 @@ CODEX_RAW = json.dumps({"state": "working", "pid": 51201, "ts": 1789480300, "mod
 
 
 def test_a_codex_pane_reads_its_codex_variable():
-    assert agent_variable(None, CODEX_RAW) == (CODEX_RAW, "openai")
+    assert agent_variable({"claude": None, "openai": CODEX_RAW}) == (CODEX_RAW, "openai")
 
 
 def test_a_claude_pane_reads_its_claude_variable():
-    assert agent_variable(CLAUDE_RAW, None) == (CLAUDE_RAW, "claude")
-    assert agent_variable(CLAUDE_RAW, "") == (CLAUDE_RAW, "claude")
+    assert agent_variable({"claude": CLAUDE_RAW, "openai": None}) == (CLAUDE_RAW, "claude")
+    assert agent_variable({"claude": CLAUDE_RAW, "openai": ""}) == (CLAUDE_RAW, "claude")
 
 
 def test_a_pane_that_reported_nothing_has_no_agent_variable():
-    assert agent_variable(None, None) == (None, None)
+    assert agent_variable({"claude": None, "openai": None, "omp": None}) == (None, None)
 
 
 def test_when_both_are_set_the_newer_report_wins():
     """A Claude killed without SessionEnd leaves its variable behind; Codex
     started later in the same pane reports after it."""
-    assert agent_variable(CLAUDE_RAW, CODEX_RAW) == (CODEX_RAW, "openai")
+    assert agent_variable({"claude": CLAUDE_RAW, "openai": CODEX_RAW}) == (CODEX_RAW, "openai")
     newer_claude = json.dumps({"state": "working", "pid": 702, "ts": 1789480900})
-    assert agent_variable(newer_claude, CODEX_RAW) == (newer_claude, "claude")
+    assert agent_variable({"claude": newer_claude, "openai": CODEX_RAW}) == (newer_claude, "claude")
 
 
 def test_a_report_without_a_readable_time_loses_to_one_with():
-    assert agent_variable("not json", CODEX_RAW) == (CODEX_RAW, "openai")
+    assert agent_variable({"claude": "not json", "openai": CODEX_RAW}) == (CODEX_RAW, "openai")
+
+
+def test_the_newest_of_three_reports_speaks_for_the_pane():
+    """omp started where a Claude and a Codex each left a variable behind."""
+    omp_raw = json.dumps({"state": "idle", "pid": 4242, "ts": 1789480600})
+    reports = {"claude": CLAUDE_RAW, "openai": CODEX_RAW, "omp": omp_raw}
+    assert agent_variable(reports) == (omp_raw, "omp")
+    newer_codex = json.dumps({"state": "working", "pid": 51202, "ts": 1789480700})
+    assert agent_variable(dict(reports, openai=newer_codex)) == (newer_codex, "openai")
+
+
+def test_of_two_reports_in_the_same_second_the_later_provider_speaks_for_the_pane():
+    same_second = json.dumps({"state": "working", "pid": 4243, "ts": 1789480000})
+    assert agent_variable({"claude": CLAUDE_RAW, "openai": None, "omp": same_second}) == (same_second, "omp")
 
 
 def test_codex_variable_names_its_model_and_rollout():
@@ -474,3 +488,19 @@ def test_a_quiet_working_claim_holds_while_its_hook_says_a_tool_runs():
     finished = json.dumps({"state": "working", "pid": os.getpid(), "ts": old, "tools_running": 0})
     assert parse_state(running) == "working"
     assert parse_state(finished) == "unknown"
+
+
+def test_the_daemon_reads_and_watches_every_variable_the_hook_writes():
+    """A variable the hook writes and the daemon never reads is a card that
+    never changes; one it reads but does not watch changes only on the poll."""
+    import importlib.util
+    from pathlib import Path
+    from sidebar import SESSION_VARIABLES, STATE_VARIABLES
+    spec = importlib.util.spec_from_file_location(
+        "emit_state", Path(__file__).resolve().parent.parent / "plugin" / "hooks-handlers" / "emit-state.py")
+    emit_state = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(emit_state)
+    written = sorted("user." + name for name in emit_state.VARIABLES.values())
+    assert written == ["user.claudeState", "user.codexState", "user.ompState"]
+    assert sorted(STATE_VARIABLES) == written
+    assert set(STATE_VARIABLES) <= set(SESSION_VARIABLES)

@@ -25,7 +25,7 @@
     --lit-bg: #2f8f4e1f; --alert-bg: #c2410c1f;
     /* Limit bars: headroom, climbing, near the limit. claude-swap's bands, with
        an amber and a red that still read as amber and red on a light panel. */
-    --sev-ok: #3d6b3d; --sev-warn: #c98a0b; --sev-crit: #dc2626;
+    --sev-ok: #228739; --sev-warn: #c98a0b; --sev-crit: #dc2626;
     --rec-ink: #3d6b3d;
     /* What fills a context: the conversation, system and tools, memory,
        agents and skills. Categorical slots, CVD-checked on this surface. */
@@ -64,7 +64,7 @@
       --accent-ink: #1c1c1e; --badge-ink: #3a2500; --switch-bg: #d97757;
       --lit: #8ec07c; --alert: #fb8b5e; --lit-ink: #8ec07c;
       --lit-bg: #8ec07c26; --alert-bg: #fb8b5e2b;
-      --sev-ok: #87af87; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
+      --sev-ok: #30d158; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
       --rec-ink: #8ec07c;
       --ctx-conv: #3987e5; --ctx-sys: #d95926; --ctx-mem: #199e70; --ctx-agents: #c98500;
       --card-edge: 0 0 0 1px var(--card-border);
@@ -194,6 +194,13 @@
   li.line.card.blocked {
     background: var(--blocked-bg); border-color: var(--blocked-border);
     box-shadow: inset 0 0 0 2px var(--blocked-border);
+  }
+  /* The plain and worktree hovers, and a worktree's wash, outrank the rule
+     above, so the amber is restated at their weight. */
+  li.line.card.worktree.blocked[style*="--family"] { background: var(--blocked-bg); }
+  li.line.card.blocked:has(> button.row:hover),
+  li.line.card.worktree.blocked[style*="--family"]:has(> button.row:hover) {
+    background: color-mix(in srgb, var(--blocked-border) 8%, var(--blocked-bg));
   }
   li.line.card.blocked > button.row .label { color: var(--blocked-text); }
   /* In the attention order a card at rest for ten minutes sinks toward the
@@ -342,11 +349,11 @@
   }
   .shell-pop button { align-self: flex-end; }
 
-  /* The hover card. Same slab as the menu, so the panel keeps one vocabulary
+  /* The details card. Same slab as the menu, so the panel keeps one vocabulary
      for "something floating above the list". */
   #card {
-    /* top/left stay at zero and the transform does the moving, so following
-       the pointer never triggers a layout. */
+    /* top/left stay at zero and the transform does the placing, so placing
+       it never triggers a layout. */
     position: fixed; top: 0; left: 0; will-change: transform;
     z-index: 60; width: 208px; padding: 8px 10px 7px;
     border-radius: 11px; pointer-events: none;
@@ -360,8 +367,8 @@
       0 2px 6px -2px color-mix(in srgb, var(--fg) 18%, transparent);
   }
   @media (prefers-reduced-motion: no-preference) {
-    /* Opacity only. A scale or slide on something that chases the pointer
-       reads as the card struggling to keep up. */
+    /* Opacity only: the card appears beside its row, with nothing to slide
+       in from. */
     #card { animation: cardin .09s linear; }
     @keyframes cardin { from { opacity: 0; } to { opacity: 1; } }
   }
@@ -569,6 +576,18 @@
     cursor: default;
     touch-action: manipulation;
   }
+  /* A shell's card is as tall as one with its facts line under the name,
+     so a list of shells reads as even cards, the bare ones included. */
+  li.line.card > button.row.shell { min-height: 43px; }
+  /* A shell card's name is a path or a command, so it can wear a terminal's
+     face: SF Mono a size down, since its letters run wider than the panel's,
+     or the terminal's own font at the panel's size. */
+  :root[data-shell-font="mono"] li.line.card > button.row.shell .label {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px; letter-spacing: 0;
+  }
+  :root[data-shell-font="terminal"] li.line.card > button.row.shell .label {
+    font-family: var(--terminal-font, ui-monospace), ui-monospace, Menlo, monospace; letter-spacing: 0;
+  }
   button.row:hover { background: var(--tint-row); }
   button.row:focus-visible {
     outline: 1px solid var(--hot); outline-offset: -1px;
@@ -667,12 +686,14 @@
   button.row:has(.task) > .swatch,
   button.row:has(.task) > .busy,
   button.row:has(.task) > .shell-mark { align-self: flex-start; margin-top: 11px; }
-  /* Air above the facts line, but only where a report stands between it and
-     the name: a child row or a card with no report is two lines and needs
-     none. Its own rule because `margin-block` above is a shorthand, so a
-     margin-top set beside it is overwritten by the -.2em that cancels the
-     padding, and the line ends up against what it follows. */
+  /* Air above the facts line: the most where a report stands between it and
+     the name, a little on a card that has only the two lines, and none on a
+     child row, which nests its lines under the card's. Their own rules
+     because `margin-block` above is a shorthand, so a margin-top set beside
+     it is overwritten by the -.2em that cancels the padding, and the line
+     ends up against what it follows. */
   button.row:has(.task) > .stack > .model { margin-top: 9px; }
+  li.line.card > button.row:not(:has(.task)) > .stack > .model { margin-top: 4px; }
   /* The tab's own title, in the panel's face rather than the terminal's. */
   .model > .title { font: 500 10px/1 -apple-system, sans-serif; }
   /* What the session says it is doing: its own words, so the panel's face
@@ -909,7 +930,7 @@
     text-transform: uppercase; padding: 3px 5px; border-radius: 3px;
     flex-shrink: 0;
   }
-  /* A solid amber badge, the one filled shape on the panel. It sits on the
+  /* A solid amber badge, the one amber badge on the panel. It sits on the
      name's line only: as a flex column it took its width out of the details
      line too, and at larger text sizes that cut the context figure off. */
   .word.blocked { color: var(--badge-ink); background: var(--blocked-border); font-family: -apple-system, sans-serif; }
@@ -927,6 +948,14 @@
     padding: calc(3px - var(--hair)) calc(5px - var(--hair));
     font-family: -apple-system, sans-serif; font-weight: 600; }
   button.row.resting > .word.exited { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  /* An idle card whose turn ended while you were looking elsewhere, until
+     you look at it: IDLE's badge filled in the calm green, news that does
+     not compete with the amber of "waiting". */
+  .word.unseen { color: var(--accent-ink); background: var(--sev-ok); border: var(--hair) solid var(--sev-ok);
+    padding: calc(3px - var(--hair)) calc(5px - var(--hair));
+    font-family: -apple-system, sans-serif; font-weight: 600; }
+  button.row.unseen > .word.unseen { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  button.row.unseen { --badge-room: calc(40px + var(--corner, 0px)); }
   li.line.card.exited > button.row, li.line.card.exited > .children,
   li.line.card.exited > .shell-sum { opacity: .55; }
   /* The one live control on a faded card, in the plain tint of the bar's
@@ -939,6 +968,12 @@
   }
   li.line.card > .resume:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }
   li.line.card > .resume:disabled { opacity: .5; }
+  /* Why a command from the menu was not typed, under the card it was meant
+     for, until it stops mattering a few seconds later. */
+  li.line.card > .refusal, li.line.card > .children > .refusal {
+    margin: 2px 10px 8px var(--child-indent, 44px);
+    font: 400 11px/1.4 -apple-system, sans-serif; color: var(--warn);
+  }
   /* A highlight sweeps through the letters: the dim ink stays the base and a
      band of light passes over it, towards white in either theme. The page rebuilds rows on every
      update, so each badge starts at the point the clock says the sweep has
@@ -1052,6 +1087,7 @@
   .shell-pop button:focus-visible, #budget .acct-name:focus-visible,
   #budget .acct-item-name:focus-visible, #budget .acct-add:focus-visible,
   #budget .acct-switch:focus-visible, #budget .acct-rename:focus-visible,
+  #budget .lim-toggle:focus-visible,
   li.line.card > .resume:focus-visible, li.line.card > .answers > .answer:focus-visible {
     outline: 1px solid var(--hot); outline-offset: 1px;
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 22%, transparent);
@@ -1441,6 +1477,36 @@
   #budget .autosw .next-chip { margin-right: auto; padding: 2px 6px; border-radius: 5px; cursor: default;
     font: 600 10px/1 -apple-system, sans-serif; color: var(--sev-crit);
     background: color-mix(in srgb, var(--sev-crit) 12%, transparent); }
+  /* The foot's head: what folds it on the left, the auto-switch setting on
+     the right. The chevron turns the way the shells' fold line's does. */
+  #budget .lim-head { display: flex; align-items: center; gap: 5px; margin: 0 0 8px;
+    font-size: 10.5px; line-height: 14px; color: var(--dim); }
+  #budget .lim-toggle { display: flex; align-items: center; gap: 5px; flex: 0 0 auto;
+    padding: 1px 4px 1px 2px; margin-left: -2px; border: 0; border-radius: 4px; background: none;
+    font: inherit; color: inherit; text-align: left; cursor: default; }
+  #budget .lim-toggle:hover { background: var(--tint-ctl); color: var(--fg); }
+  #budget .lim-toggle .chev { width: 8px; transition: transform .15s ease-out; }
+  #budget .lim-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  #budget .lim-head .autosw { flex: 1 1 auto; min-width: 0; margin: 0; }
+  @media (prefers-reduced-motion: reduce) { #budget .lim-toggle .chev { transition: none; } }
+  /* Folded: every account and Codex side by side, a tile each with its
+     fullest window as one bar, its tick where an even spend would be. */
+  #budget .fold-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 10px; }
+  #budget .fold-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  #budget .fold-tile-head { display: flex; align-items: center; gap: 4px; min-width: 0; height: 15px; }
+  #budget .fold-tile-head .provider, #budget .fold-tile-head .acct-badge { width: 10px; height: 10px; }
+  #budget .fold-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-weight: 500; color: var(--fg); opacity: .8; }
+  #budget .fold-tile.active .fold-name { font-weight: 700; opacity: .95; }
+  #budget .fold-tile .track { margin-top: 2px; }
+  #budget .fold-tile.climbing .fill { background: var(--sev-warn); }
+  #budget .fold-tile.near .fill { background: var(--sev-crit); }
+  #budget .fold-fig { display: flex; justify-content: space-between; gap: 4px; min-width: 0; font-size: 10px; }
+  #budget .fold-fig .pct { color: var(--fg); opacity: .85; font-weight: 600; }
+  #budget .fold-tile.near .fold-fig .pct { color: var(--sev-crit); opacity: 1; }
+  #budget .fold-tile.ahead .fold-fig .pct { color: var(--warn); opacity: 1; }
+  #budget .fold-fig .when { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #budget .fold-tile.reserve .fold-fig .when { color: var(--warn); }
   /* The last switch, by hand or the daemon's, on one line under the active
      account: where the sessions went, why after a middot, a chip when the
      daemon did it, and how long ago. The reason gives way first when the
@@ -1653,6 +1719,16 @@ function applyScale(value) {
     "--scale", Number.isFinite(scale) ? Math.max(0.8, Math.min(1.6, scale)) : 1);
 }
 
+// The face shell cards' names wear. The terminal's font arrives as a
+// PostScript name, which WebKit takes as a family; SF Mono stands in when the
+// daemon could not read it.
+function applyShellFont(snapshot) {
+  const root = document.documentElement;
+  root.dataset.shellFont = SETTINGS?.shell_font ?? "system";
+  if (snapshot.terminal_font) root.style.setProperty("--terminal-font", `"${snapshot.terminal_font}"`);
+  else root.style.removeProperty("--terminal-font");
+}
+
 let staleTimer = null;
 let LATEST = {groups: []};
 
@@ -1670,10 +1746,41 @@ function act(sessionId, verb, text) {
   }).catch(err => console.log("sidebar: action failed", err));
 }
 
-// Offered only on a session that is idle and nearly full: a command typed into
-// a session mid-turn lands in the middle of whatever it is doing, and on a
-// session with room to spare there is nothing to fix.
-const typed = cmd => row => act(row.session_id, "send", cmd + "\n");
+// A prompt the daemon refused, by session id: {text, until}. Kept apart from
+// the snapshot, which repaints the card every two seconds.
+const refusedPrompts = new Map();
+const REFUSAL_SHOWN_MS = 4000;
+
+// Text meant as the agent's next input. The daemon refuses it while the
+// session waits on you or after its agent has exited, and the card says why.
+function prompt(sessionId, text) {
+  fetch(`/action?token=${encodeURIComponent(TOKEN)}`, {
+    method: "POST",
+    body: JSON.stringify({session_id: sessionId, verb: "prompt", text}),
+  }).then(r => r.status === 409 ? r.json() : null)
+    .then(reply => {
+      if (!reply?.error) return;
+      refusedPrompts.set(sessionId, {text: `not sent: ${reply.error}`, until: Date.now() + REFUSAL_SHOWN_MS});
+      render(LATEST);
+      setTimeout(() => render(LATEST), REFUSAL_SHOWN_MS + 50);
+    })
+    .catch(err => console.log("sidebar: prompt failed", err));
+}
+
+// The line that says why, while it is still worth saying; a lapsed one is dropped.
+function refusalLine(sessionId) {
+  const refusal = refusedPrompts.get(sessionId);
+  if (!refusal) return null;
+  if (refusal.until <= Date.now()) {
+    refusedPrompts.delete(sessionId);
+    return null;
+  }
+  const line = Object.assign(document.createElement("p"), {className: "refusal", textContent: refusal.text});
+  line.setAttribute("role", "status");
+  return line;
+}
+
+const typed = cmd => row => prompt(row.session_id, cmd + "\n");
 // A command is typed as it stands, so each names the agents that have it.
 const HOUSEKEEPING = [
   {label: "/compact", hint: "summarise the conversation and keep working",
@@ -1682,6 +1789,10 @@ const HOUSEKEEPING = [
   {label: "/clear", hint: "discard the conversation", destructive: true,
    agents: ["claude", "omp"], run: typed("/clear")},
 ];
+// The details card, opened only from here: it stays until Escape or a click
+// elsewhere.
+const DETAILS = {label: "Details", hint: "model, context, limits and what it is running, held until Escape or a click elsewhere",
+                 run: row => holdCard(row)};
 // Every row can be closed, agent or not: it is the pane that goes.
 const CLOSE = {label: "Close", hint: "close this pane", destructive: true,
                run: row => act(row.session_id, "close")};
@@ -1699,14 +1810,13 @@ function closeMenu() {
   openMenuKey = null;
 }
 document.addEventListener("pointerdown", () => { closeMenu(); hideCard(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeMenu(); hideCard(); } });
 
-// The hover card. One element reused by every row: a card per row would be
+// The details card. One element reused by every row: a card per row would be
 // dozens of blurred slabs in the layer tree for the one that is visible.
 const card = Object.assign(document.createElement("div"), {id: "card"});
 card.hidden = true;
 document.body.append(card);
-let cardTimer = null;
 // A click in a pinned card is for the card, not the "click elsewhere closes
 // it" listener on the document.
 card.addEventListener("pointerdown", e => e.stopPropagation());
@@ -1856,8 +1966,7 @@ function showCard(row) {
 // may leave before it lands.
 const contextReads = new Map();
 
-// Pinned only: a button in a card that follows the pointer could never be
-// reached.
+// Pinned: the card holds still and takes clicks, so it can carry a button.
 function pinCard(row) {
   card.classList.add("pinned");
   if (!row.context_readable) return;
@@ -2007,20 +2116,14 @@ function repaintBreakdown(sessionId) {
   clampCard();
 }
 
-// Follows the pointer, but only downward-or-up and never sideways: the panel
-// is 250px and the card is 208 of them, so horizontal freedom would just mean
-// horizontal clipping. Vertical tracking is the part that helps, because it
-// keeps the card next to the row being read rather than pinned to where the
-// pointer first landed.
 // Positioned by transform rather than top/left: the browser can move a
-// composited layer without laying the page out again, which is what lets it
-// keep up with the pointer instead of lagging a frame behind it.
+// composited layer without laying the page out again.
 function placeCard(x, y) {
   const w = card.offsetWidth;
   const h = card.offsetHeight;
   const pad = 4;
-  // Below and to the right of the cursor, flipping to whichever side has
-  // room. The card never covers the pointer, so the row stays readable.
+  // Below and to the right of the point, flipping to whichever side has
+  // room, so the row it belongs to stays readable.
   let left = x + 14;
   if (left + w > window.innerWidth - pad) left = x - w - 14;
   let top = y + 16;
@@ -2043,120 +2146,25 @@ function clampCard() {
 }
 
 function hideCard() {
-  clearTimeout(cardTimer);
-  clearTimeout(pinTimer);
   card.classList.remove("pinned");
   card.hidden = true;
 }
 
-function watchForCard(button, row) {
-  // The row is carried on the element so one delegated listener can serve
-  // every row. The old per-row version added a mousemove handler on each
-  // mouseenter and removed none of them.
-  button._row = row;
-  button.addEventListener("focus", () => { showCard(row); atRow(button); });
-  button.addEventListener("blur", hideCard);
+// Opened from the menu: pinned at once beside its row, so only Escape or a
+// click outside it takes it down.
+function holdCard(row) {
+  showCard(row);
+  if (card.hidden) return;                          // nothing to say about it
+  const button = [...document.querySelectorAll("#groups button.row")].find(b => b._row && b._row.session_id === row.session_id);
+  if (button) atRow(button);
+  pinCard(row);
 }
 
-// Anchored to a row rather than the pointer, for keyboard focus.
+// Anchored to a row rather than the pointer.
 function atRow(button) {
   const box = button.getBoundingClientRect();
   placeCard(box.left + 12, box.bottom - 8);
 }
-
-// Which row the pointer is over right now, or null. The timer below reads it
-// rather than trusting the row it was armed with: leaving the panel quickly
-// used to let a card appear after the pointer had already gone, and since
-// hiding depended on a further mousemove that was never coming, it stayed up
-// until something else disturbed it.
-let hoverRow = null;
-
-// Long enough to need intent. A card that arrives while the pointer is merely
-// passing over a row is noise, and at 110ms it arrived on every crossing --
-// the panel is a list you scan, so most crossings mean nothing.
-const CARD_DELAY_MS = 500;
-// A card up and the pointer still for this long pins it.
-const PIN_DELAY_MS = 500;
-let pinTimer = null;
-
-function armPin(row) {
-  clearTimeout(pinTimer);
-  pinTimer = setTimeout(() => {
-    if (hoverRow === row && !card.hidden && card.dataset.row === row.session_id) pinCard(row);
-  }, PIN_DELAY_MS);
-}
-
-function leaveRows() {
-  hoverRow = null;
-  hideCard();
-}
-
-// One listener for the whole list. Following the pointer means reading it on
-// every move, so this must stay cheap: no layout reads beyond the card's own
-// size, and no work at all when the pointer is not over a row.
-document.addEventListener("mousemove", event => {
-  const pinned = card.classList.contains("pinned");
-  if (pinned && event.target.closest && event.target.closest("#card")) {
-    clearTimeout(cardTimer);                        // reached the card: stay
-    return;
-  }
-  const button = event.target.closest ? event.target.closest("button.row") : null;
-  if (!button || !button._row) {
-    leaveRows();
-    return;
-  }
-  const row = button._row;
-  hoverRow = row;
-
-  if (!card.hidden && card.dataset.row === row.session_id) {
-    clearTimeout(cardTimer);
-    if (pinned) return;                             // pinned: hold still
-    placeCard(event.clientX, event.clientY);        // already up: just track
-    armPin(row);
-    return;
-  }
-  const {clientX, clientY} = event;
-  const swap = () => {
-    showCard(row);
-    placeCard(clientX, clientY);
-    armPin(row);
-  };
-  if (!card.hidden && !pinned) {                    // sliding to another row
-    swap();                                         // swap contents, no wait
-    return;
-  }
-  // Nothing up, or a pinned card the pointer may be crossing other rows to
-  // reach: either way another row takes over only once the pointer rests.
-  clearTimeout(cardTimer);
-  cardTimer = setTimeout(() => {
-    // Still the same row under the pointer, or the wait was for nothing.
-    if (hoverRow !== row) return;
-    swap();
-  }, CARD_DELAY_MS);
-}, true);
-
-// Exit events, for when they arrive. mouseleave on document does not fire; it
-// has to be the root element.
-document.documentElement.addEventListener("mouseleave", leaveRows);
-document.addEventListener("mouseout", event => {
-  if (!event.relatedTarget) leaveRows();
-}, true);
-window.addEventListener("blur", leaveRows);
-document.addEventListener("scroll", leaveRows, true);
-
-// And the part that actually holds, because none of the above can be relied
-// on. This page is a WKWebView embedded in a native toolbelt, and a pointer
-// leaving that view often produces no event in the page at all -- the moves
-// simply stop. A card shown on the way out then had nothing left to dismiss
-// it and sat there until something else disturbed the page.
-//
-// So ask instead of waiting to be told: :hover is the browser's own hit test,
-// which it maintains whether or not it sends us anything. Cheap enough to poll
-// -- one selector match, and only while a card is actually up.
-setInterval(() => {
-  if (card.hidden) return;
-  if (!document.querySelector("button.row:hover, #card.pinned:hover")) leaveRows();
-}, 200);
 
 // Returns the menu for a row. The row opens it on right-click, which
 // also fires for Shift+F10 on a focused row, so the keyboard keeps a way in.
@@ -2166,7 +2174,7 @@ function menuFor(row, group) {
   // the control was missing at the moment you went looking for it. A shell
   // has no conversation to compact, so it gets Close alone.
   const items = group.name === "AGENTS"
-    ? [...HOUSEKEEPING.filter(item => item.agents.includes(row.provider || "claude")), CLOSE]
+    ? [DETAILS, ...HOUSEKEEPING.filter(item => item.agents.includes(row.provider || "claude")), CLOSE]
     : [CLOSE];
 
   const menu = document.createElement("div");
@@ -2412,7 +2420,91 @@ function animateRows(before) {
 // announced under the same guard, once: a re-render of a frame already seen
 // would replay its reveals.
 let paintFailure = null;
-function render(snapshot, arrived = false) {
+// A question card under the pointer holds still. A paint asked for while
+// the pointer is on one, by a frame arriving or by a timer, waits until the
+// pointer leaves it: otherwise a card above can grow, or the order change,
+// and the option under the pointer is no longer the one aimed at when the
+// click lands. Whether the held paint was an arrival is kept with it.
+let heldFrame = null;
+let heldArrived = false;
+// Where the pointer last was, and when. A pointer that has not moved for
+// this long no longer holds frames back, so the panel never stays stale.
+let lastPointer = null;
+const HOLD_MAX_MS = 20000;
+
+// :hover is right while nothing is redrawn, so it alone keeps a resting
+// pointer's hold past HOLD_MAX_MS. Just after a redraw it is wrong until the
+// pointer moves; the position from the redraw's mouseover covers that.
+// A card whose answer was picked holds nothing back: the frame that clears
+// its question is the one to show.
+const OPEN_QUESTION = "#groups li.asking:not(:has(.answer.picked))";
+
+function questionUnderPointer() {
+  const hovered = document.querySelector(OPEN_QUESTION + ":hover");
+  if (hovered) return hovered;
+  if (!lastPointer || performance.now() - lastPointer.at > HOLD_MAX_MS) return null;
+  return document.elementFromPoint(lastPointer.x, lastPointer.y)?.closest(OPEN_QUESTION) || null;
+}
+
+// Whether painting a frame waits. Only while the panel is in sight, and
+// only while that frame still asks, on the card under the pointer, the very
+// question the card shows: answered anywhere, or replaced by another, there
+// is nothing left to aim at. That bound matters because :hover can outlive
+// the pointer in the Toolbelt, which often sends nothing when it leaves for
+// the terminal.
+function holdsBack(snapshot) {
+  if (document.hidden) return false;
+  const shown = questionUnderPointer()?.querySelector("button.row")?._row;
+  if (!shown) return false;
+  const row = (snapshot.groups || []).flatMap(g => g.rows || []).find(r => r.session_id === shown.session_id);
+  return !!(row && row.state === "blocked" && row.question
+            && JSON.stringify(row.question) === JSON.stringify(shown.question));
+}
+
+function releaseHeldFrame() {
+  if (!heldFrame || holdsBack(heldFrame)) return;
+  const frame = heldFrame;
+  const arrived = heldArrived;
+  heldFrame = null;
+  heldArrived = false;
+  render(frame, arrived);
+}
+
+// In the Toolbelt a pointer at rest sends no mousemove, but a redraw under it
+// sends mouseover, with its position, so both say where it is. A blur says
+// nothing about it: the view blurs whenever the terminal has the keyboard.
+for (const type of ["mousemove", "mouseover"]) {
+  document.addEventListener(type, event => {
+    lastPointer = {x: event.clientX, y: event.clientY, at: performance.now()};
+    releaseHeldFrame();
+  }, true);
+}
+// Leaving the panel often sends nothing at all, so the hold is also
+// re-asked on a timer, which lets HOLD_MAX_MS end it.
+document.documentElement.addEventListener("mouseleave", () => { lastPointer = null; releaseHeldFrame(); });
+setInterval(releaseHeldFrame, 1000);
+
+// Each card's key -> when it last moved or appeared. An answer clicked this
+// soon after its card moved is dropped: the pointer may not have followed.
+const cardMovedAt = new Map();
+const SETTLE_MS = 700;
+
+function cardSettled(element) {
+  const li = element.closest("li[data-key]");
+  return !li || performance.now() - (cardMovedAt.get(li.dataset.key) || 0) >= SETTLE_MS;
+}
+
+// A click on the question card itself paints at once (now), since the
+// pointer is on it by definition.
+function render(snapshot, arrived = false, now = false) {
+  if (!now && holdsBack(snapshot)) {
+    heldFrame = snapshot;
+    heldArrived = heldArrived || arrived;
+    return;
+  }
+  arrived = arrived || heldArrived;
+  heldFrame = null;
+  heldArrived = false;
   try {
     if (arrived) announce(snapshot);
     paintAll(snapshot);
@@ -2430,6 +2522,7 @@ function render(snapshot, arrived = false) {
 }
 function paintAll(snapshot) {
   const before = measureRows();
+  applyShellFont(snapshot);
   paint(snapshot);
   paintQueue(snapshot);
   paintBudget(snapshot);
@@ -2437,6 +2530,11 @@ function paintAll(snapshot) {
   paintSeams();
   paintVersion();
   paintStatuslineOffer();
+  const now = performance.now();
+  for (const li of document.querySelectorAll("#groups li[data-key]")) {
+    const was = before.get(li.dataset.key);
+    if (!was || Math.abs(was.top - li.offsetTop) >= 1) cardMovedAt.set(li.dataset.key, now);
+  }
   animateRows(before);
 }
 
@@ -2494,9 +2592,9 @@ function taskLine(task) {
   if (task.done) {
     // A tick before the word: the one report that is a result, not a claim.
     const done = el("task-done", "");
-    done.append(metaIcon("checked"), document.createTextNode("Done"));
+    done.append(metaIcon("checked"), document.createTextNode("Complete"));
     status.append(done);
-    spoken.push("Done");
+    spoken.push("Complete");
   } else {
     if (task.activity && on("show_task_activity")) {
       status.append(el("task-activity", task.activity));
@@ -2600,6 +2698,7 @@ function answerRows(row) {
       option.disabled = !!spent;
       if (spent && picked.pick === i + 1) option.classList.add("picked");
       option.addEventListener("click", () => {
+        if (!cardSettled(option)) return;
         const first = row.question.question;
         const before = picked && picked.question === first ? picked.steps : 0;
         pickedAnswers.set(row.session_id, {question: first, pick: i + 1, steps: before + 1});
@@ -2609,7 +2708,7 @@ function answerRows(row) {
         act(row.session_id, "answer", JSON.stringify({pick: i + 1, question: first, step: asked.step}));
         // The next step is drawn now, not on the next snapshot, which the
         // set would not change anyway.
-        if (row.question.set && LATEST) render(LATEST);
+        if (row.question.set && LATEST) render(LATEST, false, true);
       });
     }
     answers.append(option);
@@ -2620,6 +2719,10 @@ function answerRows(row) {
 // The key each agent's permission prompt takes for Yes, by row provider
 // (none is Claude). No is Esc on both. An agent missing here gets no buttons.
 const GATE_YES_KEY = {claude: "1", openai: "y"};
+
+// The agents whose questions take an option's number typed into the pane.
+// omp draws its own dialog, so its card shows the question and no buttons.
+const PICKED_ON_CARD = ["claude", "openai"];
 
 // Yes and No under a permission gate's card, each marked with the key its
 // prompt shows for it. The daemon types that key only onto the gate the
@@ -2639,6 +2742,7 @@ function gateRows(row) {
     option.disabled = !!spent;
     if (spent && picked.pick === gate) option.classList.add("picked");
     option.addEventListener("click", () => {
+      if (!cardSettled(option)) return;
       pickedAnswers.set(row.session_id, {question: meant, pick: gate});
       for (const other of answers.children) other.disabled = true;
       option.classList.add("picked");
@@ -3039,14 +3143,88 @@ function nextSwitchChip(next) {
   return chip;
 }
 
-function paintAccounts(strip, store) {
-  const active = store.accounts.find(a => a.active);
-  if (store.accounts.length > 1) {
+// The foot's head: a click folds the foot or opens it, and the auto-switch
+// setting, with where a near switch would go, sits beside it.
+function limitsHead(store) {
+  const head = Object.assign(document.createElement("div"), {className: "lim-head"});
+  const toggle = Object.assign(document.createElement("button"), {type: "button", className: "lim-toggle"});
+  const folded = !!SETTINGS?.limits_folded;
+  toggle.setAttribute("aria-expanded", String(!folded));
+  toggle.append(Object.assign(document.createElement("span"), {className: "chev", textContent: "›"}),
+                Object.assign(document.createElement("span"), {textContent: "Limits"}));
+  toggle.addEventListener("click", () => push({limits_folded: !SETTINGS?.limits_folded}));
+  head.append(toggle);
+  if (store?.accounts?.length > 1) {
     const row = autoSwitchRow();
     const next = nextSwitchChip(store.next_switch);
     if (next) row.prepend(next);
-    strip.append(row);
+    head.append(row);
   }
+  return head;
+}
+
+// Folded, a source is one tile: its name, then its fullest window as a bar
+// with its figure, the window's short name and the time to its reset. All
+// the windows are on the tile's tooltip. A reading that failed keeps its
+// last figures, as the open foot does, with how old they are in place of
+// the reset; with no figures at all, why not takes their place.
+const foldShort = label => label === "5-hour" ? "5h" : label === "Weekly" ? "wk" : label.slice(0, 3).toLowerCase();
+function foldTile(icon, name, windows, {active = false, status = ""} = {}) {
+  const tile = Object.assign(document.createElement("div"), {className: "fold-tile"});
+  const head = Object.assign(document.createElement("span"), {className: "fold-tile-head"});
+  head.append(icon, Object.assign(document.createElement("span"), {className: "fold-name", textContent: name}));
+  if (active) {
+    tile.classList.add("active");
+    const check = metaIcon("checked");
+    check.setAttribute("class", "acct-badge");
+    check.removeAttribute("aria-hidden");
+    check.setAttribute("role", "img");
+    check.setAttribute("aria-label", "active");
+    head.append(check);
+  }
+  tile.append(head);
+  const fullest = windows.reduce((a, w) => (a && a.used >= w.used ? a : w), null);
+  if (!fullest) {
+    tile.append(Object.assign(document.createElement("span"), {className: "acct-status", textContent: status}));
+    return tile;
+  }
+  const row = meterRow(fullest.label, fullest.used, fullest.resets_at,
+                       {tick: fullest.pace?.expected ?? null, ahead: !!fullest.pace?.ahead});
+  for (const kind of ["climbing", "near", "ahead"]) if (row.classList.contains(kind)) tile.classList.add(kind);
+  if (fullest.reserve) tile.classList.add("reserve");
+  const fig = Object.assign(document.createElement("span"), {className: "fold-fig"});
+  const when = status || [foldShort(fullest.label), row.querySelector(".at").textContent].filter(Boolean).join(" ");
+  fig.append(row.querySelector(".pct"), Object.assign(document.createElement("span"), {className: "when", textContent: when}));
+  tile.append(row.querySelector(".track"), fig);
+  tile.title = [name, ...windows.map(w => `${w.label} ${Math.round(w.used)}%`), status].filter(Boolean).join(" \u00b7 ");
+  return tile;
+}
+
+// An account's windows: the 5-hour, the weekly and every per-model limit.
+function accountWindows(account) {
+  const windows = [];
+  if (account.five_hour) windows.push({label: "5-hour", ...account.five_hour});
+  if (account.seven_day) windows.push({label: "Weekly", ...account.seven_day});
+  for (const m of account.models || []) windows.push({label: m.name, ...m});
+  return windows;
+}
+
+// Folded: the account sessions run on first, then every other one.
+function foldedAccountTiles(store) {
+  return [...store.accounts].sort((a, b) => b.active - a.active).map(account =>
+    foldTile(providerIcon("claude", "Claude"), account.name, accountWindows(account),
+             {active: account.active, status: accountStatus(account)}));
+}
+
+// Codex folded, its reserve counted with its plan's windows.
+function foldedCodexTile(limits) {
+  const windows = limits.windows.map(w => ({...w}));
+  if (limits.reserve) windows.push({...limits.reserve, label: limits.reserve.label === "Luna Reserve" ? "Luna" : limits.reserve.label, reserve: true});
+  return foldTile(providerIcon("openai", "OpenAI"), "Codex", windows);
+}
+
+function paintAccounts(strip, store) {
+  const active = store.accounts.find(a => a.active);
   const head = Object.assign(document.createElement("div"), {className: "acct-line"});
   head.append(providerIcon("claude", "Claude"), active ? accountName(active, "acct-name")
     : Object.assign(document.createElement("span"), {className: "acct-name", textContent: "not a stored login"}));
@@ -3099,8 +3277,9 @@ function paintAccounts(strip, store) {
 // Rate limits from the sessions' own status lines, for when no account is
 // stored yet. Account-wide figures repeat on every session with bridge data;
 // the highest is the safe reading, and a session with none is skipped.
-function paintSessionBudget(strip, reporting) {
+function sessionReadings(reporting) {
   const now = Date.now() / 1000;
+  const readings = [];
   for (const w of BUDGET_WINDOWS) {
     const best = reporting.filter(d => d[w.used] != null)
       .reduce((a, d) => (a && a[w.used] >= d[w.used] ? a : d), null);
@@ -3108,10 +3287,20 @@ function paintSessionBudget(strip, reporting) {
     const used = best[w.used];
     const at = best[w.at];
     const elapsed = at ? Math.max(0, Math.min(1, 1 - (at - now) / w.seconds)) : null;
-    strip.append(meterRow(w.label, used, at, {
-      tick: elapsed == null ? null : elapsed * 100,
-      ahead: elapsed != null && used / 100 > elapsed && used >= 80}));
+    readings.push({label: w.label, used, at, tick: elapsed == null ? null : elapsed * 100,
+                   ahead: elapsed != null && used / 100 > elapsed && used >= 80});
   }
+  return readings;
+}
+
+function paintSessionBudget(strip, reporting, tiles) {
+  const readings = sessionReadings(reporting);
+  if (tiles) {
+    if (readings.length) tiles.append(foldTile(providerIcon("claude", "Claude"), "Claude",
+      readings.map(r => ({label: r.label, used: r.used, resets_at: r.at, pace: {expected: r.tick, ahead: r.ahead}}))));
+    return;
+  }
+  for (const r of readings) strip.append(meterRow(r.label, r.used, r.at, {tick: r.tick, ahead: r.ahead}));
 }
 
 // Provider marks (Simple Icons, CC0), in each brand's colour.
@@ -3226,21 +3415,30 @@ function paintBudget(snapshot) {
   if (renamingAccount && strip.contains(document.activeElement)) return;
   strip.replaceChildren();
 
+  // An error and the add button show whether folded or not: both ask for
+  // something to be done.
+  const folded = !!SETTINGS?.limits_folded && !store?.error;
+  const tiles = folded ? Object.assign(document.createElement("div"), {className: "fold-tiles"}) : null;
+  if (tiles) strip.append(tiles);
   if (store?.error) {
     strip.append(Object.assign(document.createElement("div"), {className: "acct-status",
       textContent: `accounts hidden: ${store.error}`}));
   } else if (store?.accounts?.length) {
-    paintAccounts(strip, store);
+    if (tiles) tiles.append(...foldedAccountTiles(store)); else paintAccounts(strip, store);
   } else {
-    paintSessionBudget(strip, reporting);
+    paintSessionBudget(strip, reporting, tiles);
     if (store) {
       strip.append(addButton(store.live));
       if (accountNotice) strip.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: accountNotice}));
     }
   }
 
-  if (snapshot.codex?.windows?.length || snapshot.codex?.reserve) paintCodex(strip, snapshot.codex);
+  if (snapshot.codex?.windows?.length || snapshot.codex?.reserve) {
+    if (tiles) tiles.append(foldedCodexTile(snapshot.codex)); else paintCodex(strip, snapshot.codex);
+  }
+  if (tiles && !tiles.childElementCount) tiles.remove();
 
+  if (strip.childElementCount) strip.prepend(limitsHead(store));
   strip.hidden = strip.childElementCount === 0;
 }
 
@@ -3596,6 +3794,12 @@ function paint(snapshot) {
         word.textContent = `long ${duration(running)}`;
         b.append(word);
         b.classList.add("long-turn");
+      } else if (row.state === "idle" && !row.depth && row.unseen) {
+        const word = document.createElement("span");
+        word.className = "word unseen";
+        word.textContent = "done";
+        b.append(word);
+        b.classList.add("unseen");
       } else if (row.state === "idle" && !row.depth) {
         const word = document.createElement("span");
         word.className = "word idle";
@@ -3614,10 +3818,11 @@ function paint(snapshot) {
       }
 
 
-      // aria-label only, never title: the hover card says the same thing,
+      // aria-label only, never title: the details card says the same thing,
       // and the OS tooltip is drawn by the window server, above any z-index
-      // this page can reach. Two of them at once is what that looks like.
-      const said = row.state ? STATE_TITLES[row.state] || row.state : null;
+      // this page can reach, so it would sit over an open card.
+      const said = b.classList.contains("unseen") ? "idle, finished while you were elsewhere"
+        : row.state ? STATE_TITLES[row.state] || row.state : null;
       // One label for the whole button: a label on a span inside it is
       // never read, so the task and the facts line are spoken from here.
       b.setAttribute("aria-label",
@@ -3629,7 +3834,8 @@ function paint(snapshot) {
                        .filter(Boolean).join(" \u2014 "));
 
       b.addEventListener("click", () => act(row.session_id, "focus"));
-      watchForCard(b, row);
+      // Carried on the element, for the right-click menu and Details.
+      b._row = row;
       // A repaint puts an open menu back as the same node: its position, its
       // armed second click and its keyboard focus survive, and it does not
       // unfold again.
@@ -3641,18 +3847,20 @@ function paint(snapshot) {
         b.addEventListener("contextmenu", e => openMenuAt(menu, host, e, row.session_id));
       }
 
+      const refusal = refusalLine(row.session_id);
       if (row.depth && li === card) {
         // A teammate: one line inside its parent's card, above the shells.
         b.classList.add("child");
         b.dataset.childKey = "mate\n" + row.session_id;
         const kids = childrenOf(card);
         kids.insertBefore(b, kids.querySelector(":scope > .tail"));
+        if (refusal) b.after(refusal);
         if (menu) card.append(menu);
         continue;
       }
       li.append(b);
       if (menu) li.append(menu);
-      if (hot && row.question?.options?.length) {
+      if (hot && row.question?.options?.length && PICKED_ON_CARD.includes(row.provider || "claude")) {
         li.classList.add("asking");
         li.append(answerRows(row));
       } else if (hot && row.question?.tool && row.question.id && GATE_YES_KEY[row.provider || "claude"]) {
@@ -3672,6 +3880,7 @@ function paint(snapshot) {
         });
         li.append(resume);
       }
+      if (refusal) li.append(refusal);
       // Gathered by agent, the daemon sends each agent's cards together; a
       // head opens each run, and a list of one agent needs none.
       if (group.name === "AGENTS" && agentMark() === "groups" && !row.worktree_of
@@ -3997,6 +4206,8 @@ const SETTING_ROWS = [
    choices: [["terminal", "Follow the terminals"], ["name", "By name"], ["attention", "By attention"]]},
   {k: "provider_mark", label: "Provider badge",
    choices: [["tag", "Tag by the name"], ["corner", "Icon in the corner"], ["groups", "Group by provider"], ["off", "Off"]]},
+  {k: "shell_font", label: "Shell names",
+   choices: [["system", "System"], ["mono", "SF Mono"], ["terminal", "Terminal font"]]},
   {k: "show_branch",  label: "Branch"},
   {k: "show_task",    label: "Task"},
   {k: "show_task_activity", label: "What it is doing", needs: "show_task"},
@@ -4069,6 +4280,12 @@ function settingRow(row, kind) {
     for (const [value, text] of row.choices) pick.append(new Option(text, value));
     pick.addEventListener("change", () => push({[row.k]: pick.value}));
     SETTING_SYNC.push(() => { pick.value = SETTINGS[row.k]; pick.disabled = off(); });
+    // The daemon reads the terminal's font once; when it could not, the
+    // choice says so rather than quietly drawing SF Mono.
+    if (row.k === "shell_font") SETTING_SYNC.push(() => {
+      pick.querySelector('option[value="terminal"]').textContent =
+        LATEST.terminal_font ? "Terminal font" : "Terminal font (not read)";
+    });
     line.append(pick);
   } else if (row.steps) {
     // Minus, the value, plus. Nine sizes is few enough to step through and
@@ -4302,7 +4519,7 @@ function paintStatuslineOffer() {
   later.title = "Stop offering it; Settings > Offer the statusline bridge brings it back";
   later.addEventListener("click", () => { statuslineState = null; push({offer_statusline: false}); });
   head.append(install, later);
-  say("Cards miss their context %, model and effort, and the hover misses cost, limits and cache, "
+  say("Cards miss their context %, model and effort, and the details card misses cost, limits and cache, "
       + "because the statusline bridge is not in ~/.claude/settings.json. Your own statusline keeps running inside it.");
   if (statuslineState && statuslineState !== "installing") say(statuslineState, "refused");
 }

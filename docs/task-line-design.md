@@ -104,7 +104,7 @@ Fix the login bug
 ~35% · Reading code · 40s
 ```
 
-- Percent shows as `~35%`; `100%` shows as `Done` in green with nothing
+- Percent shows as `~35%`; `100%` shows as `Complete` in green with nothing
   after it; unknown shows no percent.
 - Age is `40s`, `3m`, `2h`.
 - Over 300 s and not done: the whole line greys and ends with `· stale`.

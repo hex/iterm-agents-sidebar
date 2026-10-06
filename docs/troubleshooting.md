@@ -41,7 +41,9 @@ defaults write com.googlecode.iterm2 NoSyncDynamicTools -dict-add <old id> \
 
 A heartbeat only proves the daemon is answering, so it carries the result of
 its last read of iTerm2 as well. Without that, a stuck refresh would leave
-every row and every permission badge looking current forever. A frame the
+every row and every permission badge looking current forever. The daemon
+sends one right after the first frame of every connection, so a page opened
+on a stuck daemon shows `STALE` at once. A frame the
 page fails to draw counts the same way: the heartbeats keep coming, but the
 list stays `STALE` until a frame draws.
 

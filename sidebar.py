@@ -67,6 +67,10 @@ UNKNOWN = "?"
 #: sounds, banners, the focus move to a blocked session and back -- are not
 #: here: the daemon decides them from its own reading (alerts.Watch).
 VERBS = ("focus", "send", "close",
+         # text meant as the agent's next input; refused where it cannot
+         # land (prompt_refusal). `send` stays raw keys, for keys typed into
+         # a waiting prompt on purpose.
+         "prompt",
          # reopen an exited agent's conversation where it died; the daemon
          # builds the command, the page sends no text.
          "resume",
@@ -85,6 +89,18 @@ SETTINGS_FILE = Path.home() / ".claude" / "agents-sidebar-settings.json"
 #: The release number, YYYY.M.BUILD, written by release.sh. Nothing else
 #: carries it: the plugin manifest and the panel both read from here.
 VERSION_FILE = Path(__file__).resolve().parent / "VERSION"
+
+
+def terminal_font(normal_font):
+    """iTerm2's "PostScriptName size" for a profile's font -> the name, or None.
+
+    The name goes into the page's stylesheet, so anything that is not a plain
+    font name is refused rather than escaped.
+    """
+    if not isinstance(normal_font, str):
+        return None
+    name = re.sub(r"\s+\d+(\.\d+)?$", "", normal_font.strip())
+    return name if re.fullmatch(r"[A-Za-z0-9._-]+", name) else None
 
 
 def version(path=None):
@@ -130,10 +146,16 @@ DEFAULT_SETTINGS = {
     # name; "attention" gathers them by what they are doing.
     "order": "terminal",
     "expand_shells": False,
+    # The accounts and limits at the foot, folded to the active account and
+    # Codex by a click on their head.
+    "limits_folded": False,
     # A multiplier on the stylesheet's own sizes, so 1.0 means "as designed".
     "ui_scale": 1.0,
     # How a card says which agent runs in it, beyond the glyph on its facts line.
     "provider_mark": "groups",
+    # The face a shell card's name wears: the panel's own, SF Mono, or the
+    # default iTerm2 profile's font.
+    "shell_font": "system",
 }
 
 #: (low, high) for the values that are numbers.
@@ -146,7 +168,8 @@ SETTING_RANGES = {"volume": (0.0, 1.0), "context_threshold": (0, 100),
 
 #: The values a setting that is one of a few words can take.
 SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off"),
-                   "order": ("terminal", "name", "attention")}
+                   "order": ("terminal", "name", "attention"),
+                   "shell_font": ("system", "mono", "terminal")}
 
 
 def _clean(settings):
@@ -213,6 +236,28 @@ ITERM_BUNDLE_ID = "com.googlecode.iterm2"
 #: UNUserNotificationCenter refuses to run outside a bundle. Both reasons the
 #: bundle exists.
 NOTIFIER_APP = Path.home() / ".local" / "share" / "agents-sidebar" / "Agents.app"
+
+#: Where a script finds this daemon: the port and token change on every
+#: restart, and the Toolbelt URL was the only other place they were written.
+ENDPOINT_FILE = NOTIFIER_APP.parent / "endpoint.json"
+
+
+def write_endpoint(path, port, token, pid):
+    """Say where the daemon listens, readable by its own user alone. -> None.
+
+    Written beside and renamed over, so a script reading it mid-restart gets
+    the old file or the new one, never half of one. The token on disk is no
+    more than that user can already do: drive iTerm2 directly.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staged = path.with_name(f"{path.name}.{os.getpid()}")
+    # O_EXCL: a leftover from a run that died mid-write keeps its own mode.
+    staged.unlink(missing_ok=True)
+    descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as out:
+        json.dump({"port": port, "token": token, "pid": pid}, out)
+    os.replace(staged, path)
 
 #: What each moment says. The session's own name is the title, so the message
 #: only has to finish the sentence.
@@ -296,7 +341,8 @@ def notify_response(line, kind, question):
     the text; a reply to a finished turn is the next prompt. Both are sent
     only while the question the buttons were built for still stands, since
     keystrokes into whatever replaced it are the one failure this must not
-    have.
+    have. The next prompt goes as `prompt`, so act refuses it once the
+    session waits on a question or its agent has exited.
     """
     try:
         response = json.loads(line)
@@ -308,7 +354,7 @@ def notify_response(line, kind, question):
     if action == "reply":
         text = response.get("text") or ""
         if kind == "done":
-            return "send", text + "\n"
+            return "prompt", text + "\n"
         if question and "options" in question:
             return "send", f"{len(question['options']) + 1}{text}\n"
         return None, None
@@ -374,8 +420,12 @@ def answer_keys(text, standing, answered, provider=None):
     multi-select question is never answered here, since its digits toggle
     boxes and submit nothing.
 
-    A gate card's click goes to `gate_keys` instead.
+    A gate card's click goes to `gate_keys` instead. An omp card is never
+    answered here: omp draws its own dialogs, and these keys were built for
+    Claude Code's and Codex's prompts.
     """
+    if provider == "omp":
+        return None
     try:
         request = json.loads(text)
     except (ValueError, TypeError):
@@ -406,6 +456,40 @@ def answer_keys(text, standing, answered, provider=None):
     if type(pick) is not int or not 1 <= pick <= len(options):
         return None
     return str(pick)
+
+
+def prompt_refusal(row):
+    """Why text meant as the agent's next input cannot land now, or None.
+
+    `row` is the session's row in the last rebuild, None when it lists none.
+    A waiting prompt would take the text as its answer, and an exited
+    agent's pane is a shell that would run it. Mid-turn the agent queues it.
+    A program in front of the agent (`in_front`, see program_in_front) would
+    take the text in its place: an editor, or the shell of a suspended agent.
+    """
+    if row is None:
+        return "the session has gone"
+    if row.get("state") == "blocked":
+        return "it is waiting on you"
+    if row.get("state") == "exited":
+        return "the agent has exited"
+    if row.get("in_front"):
+        return f"{row['in_front']} is in front"
+    return None
+
+
+def prompt_refusal_in(snapshot, session_id):
+    """prompt_refusal for that session's row in `snapshot`.
+
+    Only an AGENTS row can take a prompt. A pane listed under SESSIONS is a
+    plain shell -- one whose agent exited cleanly lands there with no state,
+    so prompt_refusal alone would let the shell run the text.
+    """
+    agents = {"groups": [group for group in snapshot.get("groups", []) if group.get("name") == "AGENTS"]}
+    row = find_row(agents, session_id)
+    if row is None and find_row(snapshot, session_id) is not None:
+        return "no agent runs there"
+    return prompt_refusal(row)
 
 
 def still_answered(answered, snapshot):
@@ -957,6 +1041,10 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None):
             row["colour"] = session["colour"]
         if session.get("task"):
             row["task"] = session["task"]
+        # The one thing a script inside the pane can name it by: inside tmux
+        # $ITERM_SESSION_ID is whatever the tmux server was started with.
+        if session.get("tty"):
+            row["tty"] = session["tty"]
         if kind == "agent":
             # Claude rows are the page's unmarked default; others name themselves.
             if session.get("provider") not in (None, "claude"):
@@ -979,6 +1067,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None):
                 row["effort"] = session["effort"]
             if session.get("topic"):
                 row["topic"] = session["topic"]
+            if session.get("in_front"):
+                row["in_front"] = session["in_front"]
             # At rest the agent's last stated intent still stands, and on a
             # card that would read as work going on.
             if session.get("doing") and session.get("agent_state") in ("working", "blocked"):
@@ -1618,7 +1708,7 @@ def read_system():
     """Everything a rebuild learns from outside iTerm2, off one ps and one tmux."""
     listing = read_process_listing()
     return (parse_processes(listing), read_tmux_panes(listing), parse_resources(listing),
-            parse_commands(listing), parse_args(listing))
+            parse_commands(listing), parse_args(listing), parse_process_groups(listing))
 
 
 #: Programs that run a script: the script names what is running, not them.
@@ -1664,6 +1754,39 @@ def parse_foreground(out):
             if command:
                 running[tty] = command
     return running
+
+
+def parse_process_groups(out):
+    """The process listing -> {pid: (process group, its tty's foreground group, tty)}
+    for every process on a terminal."""
+    groups = {}
+    for line in (out or "").splitlines():
+        parts = line.split(None, PROCESS_FIELDS)
+        if len(parts) <= PROCESS_FIELDS or parts[4] in ("??", "-"):
+            continue
+        try:
+            groups[int(parts[0])] = (int(parts[2]), int(parts[3]), parts[4])
+        except ValueError:
+            continue
+    return groups
+
+
+def program_in_front(pid, tty, groups, args):
+    """What a pane's foreground runs when it is not the agent `pid`, or None.
+
+    Typed text reaches the tty's foreground process group, so the agent must
+    be in that group. Being its leader is not asked: under a `cs` wrapper bash
+    leads the group, and for Codex the node launcher does.
+    """
+    if pid not in groups:
+        return None
+    group, front, on = groups[pid]
+    if on != tty or group == front:
+        return None
+    # A group outlives its leader (`cat log | less` once cat exits), and then
+    # nothing listed names it. A login shell's args are `-zsh`.
+    name = foreground_command(args.get(front, ""))
+    return name.lstrip("-") if name else "another program"
 
 
 def parse_tmux_panes(out):
@@ -1772,9 +1895,11 @@ def filed_stamps(directory):
     return stamps
 
 
-def filed_codex_state(cwd, since, directory=None):
+def filed_codex_state(cwd, since, directory=None, jobs=frozenset()):
     """The state a Codex filed for a pane in `cwd` whose Codex started at
-    `since`, as the JSON the variable would carry, or None.
+    `since`, as the JSON the variable would carry, or None. `jobs` are Codex
+    sessions the codex plugin runs for a Claude session: they file states too,
+    and never in a pane.
 
     Codex runs its hooks in an app-server daemon that outlives the Codex that
     started it and serves the next one, so those hooks can find no terminal to
@@ -1798,7 +1923,8 @@ def filed_codex_state(cwd, since, directory=None):
         except (OSError, ValueError):
             continue
         if (isinstance(doc, dict) and "transcript_path" in doc and doc.get("cwd") == cwd
-                and isinstance(doc.get("ts"), (int, float)) and doc["ts"] >= since):
+                and isinstance(doc.get("ts"), (int, float)) and doc["ts"] >= since
+                and doc.get("session") not in jobs):
             found.append(doc)
     return json.dumps(found[0]) if len(found) == 1 else None
 
@@ -1836,22 +1962,23 @@ def with_detail(raw, directory=None):
     return json.dumps(dict(envelope, subagents=whole.get("subagents"), tasks=whole.get("tasks")))
 
 
-def agent_variable(claude_raw, codex_raw):
-    """A pane's claudeState and codexState -> (the one that speaks for it, provider).
+def agent_variable(reports):
+    """A pane's state variables, {provider: raw} -> (the one that speaks for it, provider).
 
-    Both are set only when one agent left its variable behind and another
-    started in the same pane (a Claude killed without SessionEnd, then Codex);
-    the newer report is the one still running. Provider is "claude" or
-    "openai", or None when neither reported.
+    More than one is set only when one agent left its variable behind and
+    another started in the same pane (a Claude killed without SessionEnd, then
+    Codex); the newest report is the one still running. A report with no
+    readable time loses to one with, and of equal times the later provider in
+    `reports` wins. (None, None) when none reported.
     """
-    if not codex_raw:
-        return (claude_raw, "claude") if claude_raw else (None, None)
-    if not claude_raw:
-        return codex_raw, "openai"
-    claude_ts, codex_ts = _reported_at(claude_raw), _reported_at(codex_raw)
-    if codex_ts is not None and (claude_ts is None or codex_ts >= claude_ts):
-        return codex_raw, "openai"
-    return claude_raw, "claude"
+    chosen = (None, None)
+    for provider, raw in reports.items():
+        if not raw:
+            continue
+        reported, best = _reported_at(raw), _reported_at(chosen[0]) if chosen[0] else None
+        if chosen[0] is None or (reported is not None and (best is None or reported >= best)):
+            chosen = (raw, provider)
+    return chosen
 
 
 def parse_codex(raw):
@@ -2033,7 +2160,8 @@ def _iso_epoch(value):
 
 def parse_codex_state(raw):
     """A codex plugin state.json -> its jobs: [{id, session, kind, status,
-    phase, pid, since, ended}].
+    phase, pid, since, ended, thread}]. `session` is the Claude session that
+    started the job, `thread` the Codex session the job runs in.
 
     Prompts, results and rendered reviews stay behind: they are the bulk of
     the file and nothing on a card needs them. A file of another version is
@@ -2056,7 +2184,8 @@ def parse_codex_state(raw):
                      "status": item["status"], "phase": text(item.get("phase")),
                      "pid": pid if isinstance(pid, int) and not isinstance(pid, bool) else None,
                      "since": _iso_epoch(item.get("startedAt")) or _iso_epoch(item.get("createdAt")),
-                     "ended": _iso_epoch(item.get("completedAt"))})
+                     "ended": _iso_epoch(item.get("completedAt")),
+                     "thread": text(item.get("threadId"))})
     return jobs
 
 
@@ -2703,6 +2832,14 @@ class Sidebar:
             return self._json(400, {"error": "unknown verb"})
         if text is not None and not isinstance(text, str):
             return self._json(400, {"error": "malformed body"})
+        if verb == "prompt":
+            if not text:
+                return self._json(400, {"error": "a prompt needs its text"})
+            # Here, against the last rebuild, so the page hears why; act
+            # checks again, since a notice's Reply reaches it directly.
+            refusal = prompt_refusal_in(self.snapshot_fn(), session_id)
+            if refusal:
+                return self._json(409, {"error": refusal})
 
         self.action_fn(session_id, verb, text)
         return self._json(200, {"ok": True})
@@ -2766,12 +2903,18 @@ POLL_SECONDS = 2
 #: How often the mirror is asked for a newer release.
 RELEASE_CHECK_SECONDS = 24 * 60 * 60
 
+#: The state the plugin hook writes, one variable per agent: Claude Code's,
+#: Codex's, and omp's through its extension. Each is watched as well as read.
+STATE_VARIABLES = ("user.claudeState", "user.codexState", "user.ompState")
+
 #: Variables Bridge reads per session. `path` and `autoName` drive classify;
 #: `jobName` is display only, and only on shell rows; `jobPid` and `tty` are
-#: an omp row's process and terminal, since omp publishes neither.
+#: the process and terminal of an omp row read from its title alone; `tty` is
+#: also every row's terminal outside tmux, which a script finds its pane by.
 SESSION_VARIABLES = ("path", "autoName", "jobName", "jobPid", "tty", "name", "tmuxWindowPane",
-                     # Written by the plugin hook (Claude Code and Codex) and by claude-status.
-                     "user.claudeState", "user.codexState", "user.claudeStatus")
+                     *STATE_VARIABLES,
+                     # Written by claude-status.
+                     "user.claudeStatus")
 
 
 class Server:
@@ -2804,6 +2947,10 @@ class Server:
             # Current state immediately, so a reconnecting page is never blank
             # while it waits for something to change.
             writer.write(sse_frame(self.sidebar.snapshot_fn()))
+            # And whether it is current, rather than leave a stale reading
+            # looking fresh until the first heartbeat. After the snapshot: the
+            # page marks every snapshot fresh as it arrives.
+            writer.write(heartbeat_frame(self.health_fn()))
             await writer.drain()
             print("sidebar: page connected", flush=True)
             while True:
@@ -2894,11 +3041,16 @@ class Bridge:
         self.meters = meters
         self.app = None
         self.latest = {"groups": []}
+        #: The default profile's font, read once at start: a profile edited
+        #: later shows after the daemon restarts.
+        self.terminal_font = None
         self._last_pushed = None
         #: When a rebuild last completed. None until the first one lands, so a
         #: daemon that has never reached iTerm2 reports unfresh rather than
         #: publishing its empty starting list as though it were an answer.
         self.last_ok = None
+        #: Set once a rebuild has run every step; start_serving waits on it.
+        self.read_once = asyncio.Event()
         self._rebuilding = False
         self._rebuild_again = False
         #: (pid, kind) -> when that session last read heavy, for hold_heavy.
@@ -2923,6 +3075,8 @@ class Bridge:
         self.notices = Notices()
         #: Decides each alert from successive rebuilds.
         self.watch = alerts.Watch()
+        #: The sessions whose turn ended while you were looking elsewhere.
+        self.unseen = alerts.Unseen()
         #: Plays the panel's sounds; main() makes it before the server takes
         #: its first request, since making it writes the tone files.
         self.player = None
@@ -2937,7 +3091,7 @@ class Bridge:
     async def read_sessions(self):
         # Two execs and a walk of the process table: in a thread, or the
         # heartbeat, the settings sheet and every focus click wait behind them.
-        (shells, started, agent_colours, agent_parents), tmux_panes, resources, commands, args = \
+        (shells, started, agent_colours, agent_parents), tmux_panes, resources, commands, args, groups = \
             await asyncio.to_thread(read_system)
         codex_jobs = await asyncio.to_thread(read_codex_jobs)
         rows, pids, live_sessions = [], [], set()
@@ -2955,7 +3109,12 @@ class Bridge:
                     pane = tmux_panes.get(values["tmuxWindowPane"]) or {}
                     # tmux's directory for its own pane over iTerm2's guess.
                     values["path"] = pane.get("path") or values["path"]
-                    raw, provider = agent_variable(values["user.claudeState"], values["user.codexState"])
+                    # tmux's terminal for its own pane over iTerm2's, which
+                    # has none for a pane tmux drives.
+                    tty = (pane.get("tty") or values["tty"] or "").removeprefix("/dev/")
+                    raw, provider = agent_variable({"claude": values["user.claudeState"],
+                                                    "openai": values["user.codexState"],
+                                                    "omp": values["user.ompState"]})
                     raw = with_detail(raw)
                     live_sessions.add(parse_session(raw))
                     # Codex opens its session at the first prompt, so a TUI
@@ -2972,11 +3131,11 @@ class Bridge:
                         # live Codex. The running job speaks for the pane.
                         raw, provider = None, None
                     if provider is None and job == "codex":
-                        tty = (pane.get("tty") or values["tty"] or "").removeprefix("/dev/")
                         codex_pids = [p for p, (_, _, _, on) in resources.items()
                                       if on == tty and commands.get(p) == "codex"]
                         if len(codex_pids) == 1:
-                            filed = filed_codex_state(values["path"], started.get(codex_pids[0]))
+                            filed = filed_codex_state(values["path"], started.get(codex_pids[0]),
+                                                      jobs={job["thread"] for job in codex_jobs if job["thread"]})
                             if filed:
                                 raw = json.dumps(dict(json.loads(filed), pid=codex_pids[0]))
                                 provider = "openai"
@@ -2984,8 +3143,15 @@ class Bridge:
                     codex_tui = provider is None and job == "codex"
                     if codex_tui:
                         provider = "openai"
-                    # omp reports through no hook: its title is its only word,
-                    # and a pane that did publish state speaks for itself.
+                    if (provider == "omp" and omp_title_state(values["autoName"])
+                            and parse_state(raw) == "exited"):
+                        # An omp started again where one was killed: the dead
+                        # run's state stands until the new run's extension
+                        # reports, and the live title speaks for it till then.
+                        raw, provider = None, None
+                    # omp without its extension reports through no hook: its
+                    # title is its only word, and a pane that did publish
+                    # state speaks for itself.
                     titled = omp_title_state(values["autoName"]) if provider is None else None
                     if titled:
                         provider = "omp"
@@ -2998,9 +3164,11 @@ class Bridge:
                         status = dict(parse_status(None), model=published["model"],
                                       **await asyncio.to_thread(codex.read_session,
                                                                 published["transcript_path"]))
-                    elif titled:
-                        # tmux's terminal for its own pane over iTerm2's,
-                        # which has none for a pane tmux drives.
+                    elif provider == "omp":
+                        # Its extension reports state alone; the rest is in
+                        # omp's own files either way. tmux's terminal for its
+                        # own pane over iTerm2's, which has none for a pane
+                        # tmux drives.
                         told = await asyncio.to_thread(
                             omp.read_session, omp.TERMINALS_DIR,
                             pane.get("tty") or (resources.get(pid) or (None,) * 4)[3] or values["tty"])
@@ -3048,8 +3216,14 @@ class Bridge:
                         "agent_job": codex_tui,
                         "provider": provider,
                         "agent_state": agent_state,
+                        # The agent process and the pane's terminal, and what
+                        # that terminal's foreground runs when it is not the
+                        # agent: text typed into the pane would go there.
+                        "agent_pid": pid,
+                        "tty": tty or None,
+                        "in_front": program_in_front(pid, tty, groups, args),
                         # The name the agent gave the conversation, where it keeps one.
-                        "topic": (omp_title_topic(values["autoName"]) if titled
+                        "topic": (omp_title_topic(values["autoName"]) if provider == "omp"
                                   else codex.thread_name(parse_session(raw)) if provider == "openai"
                                   else None),
                         "doing": doing,
@@ -3144,6 +3318,7 @@ class Bridge:
         self.latest = snapshot(await self.read_sessions(), settings["order"],
                                settings["provider_mark"] == "groups")
         self.latest["version"] = version()
+        self.latest["terminal_font"] = self.terminal_font
         self.answered = still_answered(self.answered, self.latest)
         if statusline_offer(statusline.state(CLAUDE_SETTINGS, BRIDGE), settings):
             self.latest["statusline"] = "missing"
@@ -3153,15 +3328,24 @@ class Bridge:
             self.latest["accounts"] = self.meters.snapshot()
         # A few file reads; kept off the loop like every other disk or Keychain read.
         self.latest["codex"] = await asyncio.to_thread(codex.read_limits, codex.SESSIONS_DIR, time.time())
-        # Stamped only on the way out: a refresh that raised has not produced
-        # anything worth calling current.
-        self.last_ok = time.monotonic()
         conversations = {row["session_id"]: row.get("conversation") for row in self.rows}
         self.alert(self.watch.step(self.latest, settings, conversations), settings)
+        # Read in this rebuild, the one that saw the turn end: read later, you
+        # could have moved to it in between.
+        looking_at = self.active_session_id() if self.app.app_active is True else None
+        self.unseen.step(self.watch.ended, self.watch.began, looking_at, self.watch.states)
+        for group in self.latest["groups"]:
+            for row in group["rows"]:
+                if row["session_id"] in self.unseen.sids:
+                    row["unseen"] = True
         frame = sse_frame(self.latest)
         if frame != self._last_pushed:
             self._last_pushed = frame
             self.server.broadcast(frame)
+        # Stamped only on the way out: a rebuild that raised at any step has
+        # not produced anything worth calling current.
+        self.last_ok = time.monotonic()
+        self.read_once.set()
 
     def alert(self, decisions, settings):
         """Carry out what alerts.Watch decided, none of it awaited here: a
@@ -3182,6 +3366,13 @@ class Bridge:
                 asyncio.ensure_future(self.act(session_id, verb, None))
 
     async def act(self, session_id, verb, text):
+        # Before the pane is looked up, so a notice's Reply to a closed pane
+        # is logged as refused too.
+        if verb == "prompt":
+            refusal = prompt_refusal_in(self.latest, session_id)
+            if refusal:
+                self.log("prompt refused", session_id[:8], refusal)
+                return
         session = self.app.get_session_by_id(session_id)
         if session is None:
             # A row can outlive the session it names: the page holds a
@@ -3198,7 +3389,10 @@ class Bridge:
         if verb == "bring":
             self.trips.leave(session_id, self.active_session_id())
         if verb in ("focus", "bring"):
+            # Off with the click, not at the next poll two seconds on.
+            self.unseen.seen(session_id)
             await session.async_activate(select_tab=True, order_window_front=True)
+            await self.rebuild()
         elif verb == "return":
             origin = self.app.get_session_by_id(
                 self.trips.back(session_id, self.active_session_id()) or "")
@@ -3206,7 +3400,7 @@ class Bridge:
                 print(f"sidebar: return from {session_id}: stayed", flush=True)
                 return
             await origin.async_activate(select_tab=True, order_window_front=True)
-        elif verb == "send":
+        elif verb in ("send", "prompt"):
             for stroke in keystrokes(text or ""):
                 await session.async_send_text(stroke)
                 await asyncio.sleep(0.05)
@@ -3257,6 +3451,19 @@ class Bridge:
         self.answered[session_id] = next_answered(standing, self.answered.get(session_id))
         await session.async_send_text(keys)
         self.log("answer", session_id[:8], keys)
+
+    async def read_terminal_font(self):
+        """Keep the default profile's font for shell names that ask for it.
+        On a failure the snapshot says None, and the settings sheet says it
+        was not read."""
+        try:
+            profile = await iterm2.PartialProfile.async_get_default(self.connection, ["Normal Font"])
+            self.terminal_font = terminal_font(profile.normal_font)
+        except Exception as error:                   # noqa: BLE001
+            self.log("terminal font not read:", repr(error))
+            return
+        if self.terminal_font is None:
+            self.log("terminal font refused:", repr(profile.normal_font))
 
     def log(self, *words):
         """Say it in the Script Console and in a file beside the status files.
@@ -3557,6 +3764,34 @@ class Bridge:
             await asyncio.sleep(RELEASE_CHECK_SECONDS)
 
 
+async def start_serving(server, bridge, token, endpoint):
+    """Listen, take the first reading, then say where at `endpoint`. -> the port.
+
+    Said only once a reading has worked, so a script never takes the empty
+    list a daemon starts with for "no sessions". When the first one fails,
+    the first later rebuild that works says it.
+    """
+    port = await server.start()
+    await bridge.rebuild_or_report()
+
+    def say_where():
+        try:
+            write_endpoint(endpoint, port, token, os.getpid())
+        except OSError as error:
+            # The panel works without it; only a script waiting on a session cannot.
+            print(f"sidebar: could not write {endpoint}: {error}", flush=True)
+
+    async def say_where_once_read():
+        await bridge.read_once.wait()
+        say_where()
+
+    if bridge.read_once.is_set():
+        say_where()
+    else:
+        asyncio.ensure_future(say_where_once_read())
+    return port
+
+
 async def main(connection):
     import iterm2
     import iterm2.tool
@@ -3583,9 +3818,9 @@ async def main(connection):
     bridge = Bridge(connection, server, meters)
     bridge.player = sound.Player.for_dir(os.path.join(STATUS_DIR, "tones"), bridge.log)
     bridge.app = await iterm2.async_get_app(connection)
+    await bridge.read_terminal_font()
 
-    port = await server.start()
-    await bridge.rebuild_or_report()
+    port = await start_serving(server, bridge, token, ENDPOINT_FILE)
     await bridge.sweep_notices()
 
     await iterm2.tool.async_register_web_view_tool(
@@ -3594,8 +3829,8 @@ async def main(connection):
     print(f"sidebar: serving on 127.0.0.1:{port}", flush=True)
 
     asyncio.ensure_future(bridge.watch_layout())
-    asyncio.ensure_future(bridge.watch_state("user.claudeState"))
-    asyncio.ensure_future(bridge.watch_state("user.codexState"))
+    for variable in STATE_VARIABLES:
+        asyncio.ensure_future(bridge.watch_state(variable))
     asyncio.ensure_future(bridge.watch_filed_state())
     asyncio.ensure_future(bridge.poll())
     asyncio.ensure_future(bridge.watch_accounts())

@@ -3,8 +3,12 @@
 Every case here comes from the hook trace captured 2026-09-07 in
 ~/.claude/agents-sidebar-events.jsonl across five real sessions.
 """
+import base64
 import importlib.util
 import json
+import os
+import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -52,12 +56,65 @@ def test_a_normal_stop_means_idle():
     assert state_for("Stop", {"stop_hook_active": False}) == "idle"
 
 
-def test_a_reentrant_stop_is_ignored():
-    """Traced in empire-og-client: two consecutive Stop events for one turn,
-    the second with stop_hook_active true, caused by another installed Stop
-    hook. Acting on it flaps the state.
+def test_a_stop_a_stop_hook_led_to_means_idle():
+    """Claude Code sets stop_hook_active on every Stop of a turn a Stop hook
+    kept going or a hook woke, the last one included: over 20 days of hook
+    trace, 109 of the 111 turns a hook's wake started carried it on all their
+    Stops.
     """
-    assert state_for("Stop", {"stop_hook_active": True}) is None
+    assert state_for("Stop", {"stop_hook_active": True}) == "idle"
+
+
+def test_a_turn_a_stop_hook_kept_going_ends_idle():
+    """The traced shapes, each event read by state_for as the handler reads
+    it: a Stop hook blocks the first Stop and the turn works on, or a hook
+    wakes the session and every Stop of the turn carries the flag. Both end
+    idle, and two Stops back to back read idle both times.
+    """
+    def run(events):
+        doc = emit_state.blank_state()
+        seen = []
+        for event, payload in events:
+            doc = emit_state.apply_event(doc, event, payload, state_for(event, payload))
+            seen.append(emit_state.aggregate(doc))
+        return seen
+
+    blocked_then_worked = run([
+        ("UserPromptSubmit", {"prompt": "go"}),
+        ("Stop", {"stop_hook_active": False}),
+        ("PreToolUse", {"tool_use_id": "t1"}),
+        ("PostToolUse", {"tool_use_id": "t1"}),
+        ("Stop", {"stop_hook_active": True}),
+    ])
+    assert blocked_then_worked == ["working", "idle", "working", "working", "idle"]
+
+    woken = run([
+        ("UserPromptSubmit", {"prompt": "<task-notification>"}),
+        ("PreToolUse", {"tool_use_id": "t1"}),
+        ("PostToolUse", {"tool_use_id": "t1"}),
+        ("Stop", {"stop_hook_active": True}),
+        ("Stop", {"stop_hook_active": True}),
+    ])
+    assert woken == ["working", "working", "working", "idle", "idle"]
+
+    # A flagged Stop still leaves the turn working while a shell it started
+    # runs on, and still bounds a question nobody answered.
+    still_running = run([
+        ("UserPromptSubmit", {"prompt": "<task-notification>"}),
+        ("Stop", {"stop_hook_active": True,
+                  "background_tasks": [{"type": "shell", "description": "pytest"}]}),
+    ])
+    assert still_running == ["working", "working"]
+
+    doc = emit_state.blank_state()
+    for event, payload in [
+            ("UserPromptSubmit", {"prompt": "go"}),
+            ("PreToolUse", {"tool_use_id": "q1", "tool_name": "AskUserQuestion"}),
+            ("PermissionRequest", {"tool_name": "AskUserQuestion",
+                                   "tool_input": {"questions": [{"question": "Which?", "options": []}]}}),
+            ("Stop", {"stop_hook_active": True})]:
+        doc = emit_state.apply_event(doc, event, payload, state_for(event, payload))
+    assert (emit_state.aggregate(doc), doc["question"], emit_state.blocked_since(doc)) == ("idle", None, None)
 
 
 def test_session_end_clears_the_variable():
@@ -683,3 +740,124 @@ def test_a_filed_rest_survives_the_next_event(tmp_path, monkeypatch):
     rested = emit_state.read_state("s-9")["idle_since"]
     assert isinstance(rested, float)
     assert emit_state.update("s-9", "PreToolUse", {"tool_name": "Bash"}, "working")["idle_since"] == rested
+
+
+HANDLER = Path(__file__).resolve().parent.parent / "plugin" / "hooks-handlers" / "emit-state.py"
+SET_VAR = re.compile(rb"\]1337;SetUserVar=(\w+)=([A-Za-z0-9+/=]*)")
+OMP_SESSION = "019a0c5e-7d1e-7c55-9a53-2f6f0c1d8e11"
+
+
+def run_handler(home, args, payload, env=None):
+    """Run the handler as an agent does, with a real terminal named by $TTY.
+    -> (exit code, stdout, [(variable, value)] written to the terminal)."""
+    leader, follower = os.openpty()
+    try:
+        done = subprocess.run([sys.executable, "-B", str(HANDLER), *args], input=json.dumps(payload),
+                              capture_output=True, text=True, timeout=20,
+                              env={"HOME": str(home), "PATH": os.environ["PATH"],
+                                   "TTY": os.ttyname(follower), **(env or {})})
+        os.set_blocking(leader, False)
+        written = b""
+        try:
+            while chunk := os.read(leader, 65536):
+                written += chunk
+        except BlockingIOError:
+            pass
+    finally:
+        os.close(leader)
+        os.close(follower)
+    return done.returncode, done.stdout, [(name.decode(), base64.b64decode(value).decode())
+                                          for name, value in SET_VAR.findall(written)]
+
+
+def test_an_omp_event_publishes_omp_state_with_the_pid_omp_sent(tmp_path):
+    """omp's process is bun, so no process name finds it: its extension sends
+    its own pid. It reads no hook output, so nothing goes to stdout."""
+    code, out, written = run_handler(tmp_path, ["UserPromptSubmit", "--agent", "omp"],
+                                     {"session_id": OMP_SESSION, "pid": 4242})
+    assert (code, out) == (0, "")
+    assert [name for name, _ in written] == ["ompState"]
+    value = json.loads(written[0][1])
+    assert (value["state"], value["pid"], value["session"]) == ("working", 4242, OMP_SESSION)
+
+
+def test_omp_state_carries_no_claude_task_list(tmp_path):
+    """A Claude session's list is found by its id's first eight characters;
+    an omp session's id would name a list that is not its own."""
+    listed = tmp_path / ".claude" / "tasks" / f"session-{OMP_SESSION[:8]}"
+    listed.mkdir(parents=True)
+    _task(listed, 1, "in_progress", "Somebody else's task")
+    _, _, written = run_handler(tmp_path, ["UserPromptSubmit", "--agent", "omp"],
+                                {"session_id": OMP_SESSION, "pid": 4242})
+    assert "tasks" not in json.loads(written[0][1])
+
+
+def omp_states(home, *events):
+    """Each (event, payload) through the handler as omp's extension sends it
+    -> the state published after each."""
+    states = []
+    for event, payload in events:
+        _, _, written = run_handler(home, [event, "--agent", "omp"],
+                                    {"session_id": OMP_SESSION, "pid": 4242, **payload})
+        value = json.loads(written[0][1]) if written[0][1] else {}
+        states.append((value.get("state"), value.get("question")))
+    return states
+
+
+def test_an_omp_ask_reads_blocked_with_its_question_until_the_tool_ends(tmp_path):
+    asked = {"questions": [{"header": "Scope", "question": "Which branch?",
+                            "options": [{"label": "main"}, {"label": "dev"}], "multiSelect": False}]}
+    states = omp_states(
+        tmp_path,
+        ("UserPromptSubmit", {}),
+        ("Notification", {"notification_type": "permission_prompt", "tool_use_id": "call_1",
+                          "tool_name": "AskUserQuestion", "tool_input": asked}),
+        ("PostToolUse", {"tool_use_id": "call_1"}),
+        ("Stop", {}))
+    assert states == [("working", None),
+                      ("blocked", {"header": "Scope", "question": "Which branch?",
+                                   "options": ["main", "dev"], "multi": False, "more": 0}),
+                      ("working", None),
+                      ("idle", None)]
+
+
+def test_an_omp_approval_stands_through_another_tool_starting(tmp_path):
+    """omp runs a batch of tools side by side, so a tool starting proves
+    nothing about a prompt still open: only the gated tool's own end does."""
+    states = omp_states(
+        tmp_path,
+        ("UserPromptSubmit", {}),
+        ("PreToolUse", {"tool_use_id": "call_1", "tool_name": "bash"}),
+        ("PermissionRequest", {"tool_use_id": "call_1", "tool_name": "bash",
+                               "tool_input": {"command": "git push"}}),
+        ("PreToolUse", {"tool_use_id": "call_2", "tool_name": "read"}),
+        ("PostToolUse", {"tool_use_id": "call_1"}))
+    assert [state for state, _ in states] == ["working", "working", "blocked", "blocked", "working"]
+    assert {k: v for k, v in states[2][1].items() if k != "id"} == {"tool": "bash", "summary": "git push"}
+
+
+def test_omps_beat_through_a_quiet_turn_keeps_its_clock_and_its_open_prompt(tmp_path):
+    """The extension's beat is a tool start naming no tool: it says the turn
+    is still working and changes nothing else."""
+    def published(event, payload):
+        _, _, written = run_handler(tmp_path, [event, "--agent", "omp"],
+                                    {"session_id": OMP_SESSION, "pid": 4242, **payload})
+        return json.loads(written[0][1])
+    started = published("UserPromptSubmit", {})["turn_started"]
+    asked = published("PermissionRequest", {"tool_use_id": "call_1", "tool_name": "bash"})
+    beat = published("PreToolUse", {})
+    assert (beat["state"], beat["turn_started"], beat["question"]) == ("blocked", started, asked["question"])
+    closed = published("PostToolUse", {"tool_use_id": "call_1"})
+    beat = published("PreToolUse", {})
+    assert (closed["state"], beat["state"], beat["turn_started"]) == ("working", "working", started)
+
+
+def test_an_agent_the_handler_does_not_know_publishes_nothing(tmp_path):
+    for args in (["UserPromptSubmit", "--agent", "aider"], ["UserPromptSubmit", "--agent"]):
+        assert run_handler(tmp_path, args, {"session_id": OMP_SESSION, "pid": 4242}) == (0, "", [])
+
+
+def test_an_omp_event_without_a_usable_pid_publishes_nothing(tmp_path):
+    for pid in (None, 0, -1, "4242", 4242.0, True):
+        assert run_handler(tmp_path, ["Stop", "--agent", "omp"],
+                           {"session_id": OMP_SESSION, "pid": pid}) == (0, "", [])

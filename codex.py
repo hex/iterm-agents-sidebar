@@ -61,11 +61,28 @@ def _rate_limits(line):
     return (limits, _epoch(event.get("timestamp"))) if isinstance(limits, dict) else None
 
 
-#: The limit Codex counts an ordinary request against. Any other limit_id is
-#: a fallback allowance such as Luna Reserve, with its own window and reset.
+#: The limit Codex counts an ordinary request against. Other limit_ids are
+#: further allowances the server reports beside it, such as Luna Reserve.
 PLAN_LIMIT = "codex"
 #: What Codex itself calls the reserve's limit (tui/src/model_catalog.rs).
 LIMIT_NAMES = {"gpt_reserve": "Luna Reserve"}
+#: The model Codex switches to when the plan's usage is used up and it moves
+#: onto Luna Reserve (tui/src/model_catalog.rs LUNA_RESERVE_MODEL). Codex
+#: compares it ignoring case.
+RESERVE_MODEL = "gpt-reserve"
+
+
+def _turn_model(line):
+    """A turn_context line's model, or None for any other line."""
+    try:
+        event = json.loads(line)
+    except ValueError:
+        return None
+    if not isinstance(event, dict) or event.get("type") != "turn_context":
+        return None
+    payload = event.get("payload")
+    model = payload.get("model") if isinstance(payload, dict) else None
+    return model if isinstance(model, str) else None
 
 
 def _windows(limits, now, read_at):
@@ -80,16 +97,20 @@ def limits_from_lines(lines, now):
     resets_at, minutes, pace}, with pace worked out as for account meters. A
     window whose reset time has passed reads as empty.
 
-    Each reading names the limit the request counted against. The plan's
-    windows come from its last reading on the plan limit. When the newest
-    reading is on another limit, the account is drawing on a fallback
-    allowance: that reading is returned as "reserve" {label, used, resets_at,
-    minutes, pace} and the plan's windows are its last own reading in the
-    tail, since the reserve record carries none of them (issue #1 saw a
-    reserve window drawn as the weekly bar).
+    Each reading names one limit, and the plan's windows come from its last
+    reading on the plan limit. Codex logs one limit per line, and when the
+    server reports several the last written wins, so a reading on another
+    limit says nothing about where the account stands. The account is on
+    reserve when its newest turn ran on the reserve model: then the newest
+    reading on another limit is returned as "reserve" {label, used,
+    resets_at, minutes, pace} (issue #1 saw a reserve window drawn as the
+    weekly bar, and later a reserve shown on a plan at 5%).
     """
+    lines = list(lines)
+    model = next((m for m in map(_turn_model, reversed(lines)) if m is not None), None)
+    on_reserve = model is not None and model.lower() == RESERVE_MODEL
     reserve = None
-    for line in reversed(list(lines)):
+    for line in reversed(lines):
         reading = _rate_limits(line)
         if reading is None:
             continue
@@ -102,7 +123,7 @@ def limits_from_lines(lines, now):
         limit_id = limits.get("limit_id") or PLAN_LIMIT
         if limit_id == PLAN_LIMIT:
             return {"windows": windows, **({"reserve": reserve} if reserve else {})}
-        if reserve is None:
+        if on_reserve and reserve is None:
             label = limits.get("limit_name") or LIMIT_NAMES.get(limit_id) or limit_id
             reserve = {**windows[-1], "label": label}
     return {"windows": [], "reserve": reserve} if reserve else None

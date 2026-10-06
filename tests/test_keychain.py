@@ -30,6 +30,15 @@ def test_write_command_quotes_names_with_spaces_and_quotes():
     assert '-a "a\\"b\\\\c" -s "Claude Code-credentials"' in stdin
 
 
+def test_a_named_keychain_ends_the_command_in_either_form():
+    """Named, `security` looks nowhere else: under a HOME with no keychain
+    settings it would otherwise ask in a dialog where to store the item."""
+    _, stdin = write_command("svc", "acct", "v", keychain="/k/login.keychain-db")
+    assert stdin == 'add-generic-password -U -a "acct" -s "svc" -X 76 "/k/login.keychain-db"\n'
+    argv, _ = write_command("svc", "acct", "x" * SECURITY_LINE_LIMIT, keychain="/k/login.keychain-db")
+    assert argv[-1] == "/k/login.keychain-db"
+
+
 def test_write_command_falls_back_to_argv_when_the_line_would_be_truncated():
     value = "x" * SECURITY_LINE_LIMIT
     argv, stdin = write_command("svc", "acct", value)

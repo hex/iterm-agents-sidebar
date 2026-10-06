@@ -10,4 +10,4 @@ Report a rough percentage in five-point steps and a two-to-four-word activity, s
 
 Report after meaningful milestones, changes of activity, blockers, and before a substantive reply. During active work, aim for one check-in per minute at a natural tool boundary. Never invent progress because a timer says so.
 
-Use 100 only once the entire requested outcome and its checks have finished. A tool finishing or a clarification question is not completion. Reported 100 shows `Done` and stays complete; more work needs a new `begin`.
+Use 100 only once the entire requested outcome and its checks have finished. A tool finishing or a clarification question is not completion. Reported 100 shows `Complete` and stays complete; more work needs a new `begin`.

@@ -9,11 +9,9 @@ is asked, or hears the header and text run together.
 import re
 from pathlib import Path
 
+from page_source import function
+
 PAGE = Path(__file__).resolve().parent.parent / "page.html"
-
-
-def function(page, name):
-    return re.search(rf"\nfunction {name}\(.*?\n\}}\n", page, re.S).group(0)
 
 
 def test_a_row_that_sent_no_question_keeps_its_colour_and_claims_no_kind():

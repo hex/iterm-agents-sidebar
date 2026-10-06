@@ -83,6 +83,13 @@ else
   skip statusline "no settings.json"
 fi
 
+# omp's extension, only while it is the file we wrote.
+if removed=$(bash "$repo/omp-extension.sh" --remove 2>&1); then
+  if [ -n "$removed" ]; then ok omp "$(tilde "$removed") removed"; else skip omp "not installed"; fi
+else
+  warn omp "${removed#error: }"
+fi
+
 codex_hooks="$HOME/.codex/hooks.json"
 if [ -f "$codex_hooks" ]; then
   bash "$repo/codex-hooks.sh" --remove "$codex_hooks" "$plugin_dir/hooks-handlers/emit-state.py"
@@ -92,6 +99,16 @@ if [ -f "$codex_hooks" ]; then
   fi
 else
   skip codex "nothing registered"
+fi
+
+# Only a link to this checkout's command: another checkout's, or a file of
+# the same name, is not ours to take.
+command_link="$HOME/.local/bin/agents-sidebar"
+if [ -L "$command_link" ] && [ "$(readlink "$command_link")" = "$repo/agents-sidebar" ]; then
+  rm -f "$command_link"
+  ok command "$(tilde "$command_link") removed"
+else
+  skip command "not installed from here"
 fi
 
 notifier="$HOME/.local/share/agents-sidebar/Agents.app"
@@ -127,7 +144,7 @@ fi
 # checkout in there, and this script may be running from it.
 rm -rf "$HOME/.config/agents-sidebar" "$status_dir" "$HOME/.claude/agents-sidebar-subagents" \
        "$HOME/.claude/agents-sidebar-tasks"
-rm -f "$HOME/.claude/agents-sidebar-settings.json"
+rm -f "$HOME/.claude/agents-sidebar-settings.json" "$HOME/.local/share/agents-sidebar/endpoint.json"
 ok data "settings, state and the account store removed$([ "$items" -gt 0 ] && echo ", $items Keychain items with them")"
 
 printf '\nNext\n'

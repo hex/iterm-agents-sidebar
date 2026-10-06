@@ -34,25 +34,52 @@ only a change to `hooks.json` also needs `/reload-plugins` in a running
 session.
 
 The daemon binds `127.0.0.1` and checks a token of 24 random bytes on every
-request, including the event stream. The panel can ask five things about a
-session: focus, send, close, resume and answer. Alerts are not among them: the
-daemon decides sounds, banners and the focus move from its own reading
-(`alerts.py`), so a page that fell behind cannot replay old ones. The
-server also takes `POST /accounts` (switch, add, rename, read), `/update` and
+request, including the event stream. The panel can ask six things about a
+session: focus, send, prompt, close, resume and answer. Alerts are not among
+them: the daemon decides sounds, banners and the focus move from its own
+reading (`alerts.py`), so a page that fell behind cannot replay old ones.
+
+`send` types raw keys. `prompt` types the agent's next input, and the daemon
+refuses it, with a 409 and the reason, while the session waits on you, after
+its agent has exited, for a pane listed under SESSIONS (a plain shell, where an
+agent that quit cleanly leaves its pane), or while another program is in front of the agent: the
+agent's process group is not its terminal's foreground process group, and the
+reason names that group's leader ("nvim is in front"). Membership is the test,
+not leadership: under a `cs` wrapper bash leads the group, and for Codex its
+node launcher does. Both come off the rebuild's one process listing. For a row
+with no agent pid, such as a Codex that has published nothing yet, the daemon
+asks only whether it waits or has exited.
+
+The server also takes `POST /accounts` (switch, add, rename, read), `/update` and
 `/statusline`. No endpoint runs arbitrary code.
+
+Once a reading of iTerm2 has worked, the first or a later one, the daemon writes its port, token and
+pid to `~/.local/share/agents-sidebar/endpoint.json`, readable by your user
+alone, so `agents-sidebar` can reach `/events`. That puts the token on disk
+where before it lived only in the Toolbelt URL. Anything running as you can
+read it, and anything running as you can already drive iTerm2 through its
+own API, so the file grants nothing new. The command reads `/events` only;
+it sends no action.
 
 ## Releases
 
 The version sits in `VERSION`, in the plugin manifest, at the left of the bar
 and on a `v` tag. `update.py` compares that file with the tags on the
 checkout's `origin` once a day and, on request, fetches, verifies and
-fast-forwards the checkout and re-execs the daemon.
+fast-forwards the checkout and re-execs the daemon. It follows a mirror whose
+history was rewritten with a hard reset instead, when a key the installed
+release lists signed the mirror's newest commit.
 
 Every commit on the mirror is signed with the release key. `release-signers`
 lists the keys a release may be signed with, in git's allowed-signers format
 (`release namespaces="git" ssh-ed25519 …`), and `release-revoked` the public
 keys no longer trusted. Update judges each new commit by the lists in the
-commit before it, so a commit cannot vouch for itself. To rotate, release
+commit before it, so a commit cannot vouch for itself; the installed
+release's lists judge the head of a rewritten history, which has no
+installed commit before it. That head must also revoke every key the installed
+release revoked. Do not rotate or revoke a key on a rewritten history until
+installs have crossed it: an install that skipped the rotating release gets
+only a head signed by a key it never learned, and refuses it. To rotate, release
 once with the old key a commit that adds the new key (and, to retire the old
 one, lists it in `release-revoked`); the release after that is signed with
 the new key.
@@ -107,12 +134,17 @@ read against the source.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
 - `statusline.py`: puts the statusline bridge into Claude Code's settings.
 - `update.py`: checks the mirror for a newer release and takes it.
+- `agents-sidebar`: the command scripts use to list agents and wait on one;
+  standard library only, and it runs on the Python 3.9 macOS ships.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and
-  `statusline-bridge.sh`.
+  `statusline-bridge.sh`; `plugin/omp/` holds omp's extension, which runs the
+  same hook with `--agent omp`, and its `bun test` cases.
 - `install.sh`, `uninstall.sh`: put everything in place, and take it out.
 - `get.sh`: the one-line installer.
 - `codex-hooks.sh`: adds the state hook to Codex's `hooks.json`.
 - `codex-sandbox.py`: lets Codex write the task note, in its `config.toml`.
+- `omp-extension.sh`: writes omp's extension into omp's agent directory, and
+  takes it out.
 - `release.sh`: cuts a release to the public mirror.
 - `assets/`: the README figures and their scripts, and the notifier's source
   (`notifier.swift`) and icon.
@@ -204,8 +236,8 @@ the file back on each rebuild. If the hook can't write the file, the variable sa
 `detail: false` and the card shows its state without its subagents.
 
 The daemon rebuilds the list every two seconds, and at once on three changes:
-a window or tab opening or closing, a hook writing `claudeState` or
-`codexState` into any pane, and a `.published` file being created, replaced or removed.
+a window or tab opening or closing, a hook writing `claudeState`,
+`codexState` or `ompState` into any pane, and a `.published` file being created, replaced or removed.
 The last one is the only word from a Codex whose hooks find no terminal, since
 it writes no variable. A rebuild asked for while one runs folds into one more.
 If a watch stops, the daemon says so in the Script Console and the two-second
@@ -224,6 +256,8 @@ of a guess.
   `daemon.log`.
 - `~/.claude/agents-sidebar-settings.json`: the panel's settings.
 - `~/.config/agents-sidebar/accounts.json`: the accounts the panel knows.
+- `~/.local/share/agents-sidebar/endpoint.json`: the running daemon's port,
+  token and pid, for `agents-sidebar`.
 
 ## Tests
 
@@ -233,7 +267,9 @@ python3 -m pytest tests/ -q
 ```
 
 The daemon needs neither; both are for tests only. `tests/test_integration.py`
-runs a real listener over real sockets.
+runs a real listener over real sockets. The omp extension's own tests run with
+`bun test` in `plugin/omp/`; `tests/test_omp_extension.py` runs them as part
+of the suite, and skips only on a machine without bun.
 
 `Bridge` is the only part that talks to iTerm2, and its tests pin how it takes
 its readings (`tests/test_rebuild.py`: one process listing per rebuild, read in
@@ -313,5 +349,7 @@ on since, so read the source for what runs now.
   accounts on their own before a limit stalls a session.
 - [superpowers/specs/2026-09-21-agent-providers-design.md](superpowers/specs/2026-09-21-agent-providers-design.md): how more
   agents could get cards, and how omp got one.
+- [superpowers/specs/2026-10-05-unseen-guard-wait-omp-design.md](superpowers/specs/2026-10-05-unseen-guard-wait-omp-design.md): an
+  unseen finish, omp's own events, a guarded prompt and a wait command.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.

@@ -114,9 +114,10 @@ def _git(git, here, *args, check=True):
     return ran
 
 
-def _verify(git, here, commit, scratch):
+def _verify(git, here, commit, scratch, judge=None):
     """Refuse unless `commit` carries an SSH signature by a key its parent
-    lists and has not revoked.
+    lists and has not revoked; `judge` names another commit whose lists
+    decide instead.
 
     The lists are the parent's, never the working tree's and never the
     commit's own: a commit cannot vouch for itself, and a key rotation, being
@@ -127,10 +128,11 @@ def _verify(git, here, commit, scratch):
     body = _git(git, here, "cat-file", "commit", commit).stdout
     if "\ngpgsig -----BEGIN SSH SIGNATURE-----" not in body.partition("\n\n")[0]:
         raise Refused(f"refused: {commit[:12]} carries no SSH signature\n")
+    judge, named = (judge, judge[:12]) if judge else (f"{commit}^", f"{commit[:12]}^")
     for name in (SIGNERS, REVOKED):
-        listed = _git(git, here, "show", f"{commit}^:{name}", check=False)
+        listed = _git(git, here, "show", f"{judge}:{name}", check=False)
         if listed.returncode != 0:
-            raise Refused(f"refused: {commit[:12]}^ has no {name}\n")
+            raise Refused(f"refused: {named} has no {name}\n")
         (scratch / name).write_text(listed.stdout)
     # GPG and X.509 verifiers are switched off: git judges the first signature
     # header, and a GPG one ahead of an SSH one would be judged by the user's
@@ -170,8 +172,66 @@ def _fast_forward(here, offered, git):
     _git(git, here, "fetch", "-q", "origin", "HEAD")
     target = _git(git, here, "rev-parse", "--verify", "FETCH_HEAD^{commit}").stdout.strip()
     installed_commit = _git(git, here, "rev-parse", "--verify", "HEAD").stdout.strip()
-    if _git(git, here, "merge-base", "--is-ancestor", "HEAD", target, check=False).returncode != 0:
-        raise Refused("refused: the mirror's history does not continue this checkout's\n")
+    continues = _git(git, here, "merge-base", "--is-ancestor", "HEAD", target, check=False).returncode == 0
+    with tempfile.TemporaryDirectory() as scratch:
+        if continues:
+            _verify_line(git, here, target, Path(scratch))
+        else:
+            _verify_rewrite(git, here, installed_commit, target, Path(scratch))
+    # What is taken is the signed VERSION, never the tag that offered it:
+    # tags are unsigned, and one must not be able to hold a release back.
+    mirrored = _git(git, here, "show", f"{target}:VERSION").stdout.strip()
+    installed = _git(git, here, "show", "HEAD:VERSION").stdout.strip()
+    if _parts(mirrored) <= _parts(installed):
+        raise Refused(f"refused: {mirrored} is not newer than the installed {installed}\n")
+    if continues:
+        _git(git, here, "merge", "-q", "--ff-only", target)
+    else:
+        _git(git, here, "reset", "-q", "--hard", target)
+    return installed_commit
+
+
+def _verify_rewrite(git, here, installed_commit, target, scratch):
+    """Refuse unless `target`, the head of a rewritten history that continues
+    nothing here, may replace the installed release.
+
+    No chain of parents leads back to the installed release, so it vouches
+    for the head itself, as a parent vouches for its child: the head must be
+    signed by a key the installed release lists and has not revoked. Only a
+    signed release vouches: commits made in the checkout also continue
+    nothing on the mirror, and a reset would drop them.
+    """
+    # Judged as it was taken, by its parent's lists; a release with no
+    # parent, by its own.
+    has_parent = _git(git, here, "rev-parse", "-q", "--verify", f"{installed_commit}^", check=False).returncode == 0
+    try:
+        _verify(git, here, installed_commit, scratch, judge=None if has_parent else installed_commit)
+    except Refused:
+        raise Refused("refused: the mirror's history does not continue this checkout's, "
+                      "which is not a signed release\n") from None
+    _verify(git, here, target, scratch, judge=installed_commit)
+    # The head's own lists judge every release after it: one that leaves out
+    # a key the installed release revoked would trust that key again.
+    if not _revoked(git, here, installed_commit) <= _revoked(git, here, target):
+        raise Refused(f"refused: {target[:12]} takes back a key the installed release revoked\n")
+    # A fast-forward stops at an untracked file it would replace; the reset
+    # that takes a rewrite would replace it without a word.
+    added = set(_git(git, here, "diff", "--name-only", "-z", "--diff-filter=A",
+                     installed_commit, target).stdout.split("\0")) - {""}
+    untracked = set(_git(git, here, "ls-files", "--others", "-z").stdout.split("\0")) - {""}
+    for path in sorted(added & untracked):
+        raise Refused(f"refused: the release would overwrite untracked {path}\n")
+
+
+def _revoked(git, here, commit):
+    """-> the keys `commit` lists in release-revoked, one entry per line."""
+    listed = _git(git, here, "show", f"{commit}:{REVOKED}", check=False).stdout
+    return {line.strip() for line in listed.splitlines() if line.strip()}
+
+
+def _verify_line(git, here, target, scratch):
+    """Refuse unless the commits from HEAD to `target` are a straight line,
+    each signed by a key its parent lists."""
     commits = _git(git, here, "rev-list", "--reverse", f"HEAD..{target}").stdout.split()
     if not commits:
         raise Refused("refused: the mirror has nothing newer\n")
@@ -180,17 +240,8 @@ def _fast_forward(here, offered, git):
     # before it, back to the installed HEAD.
     for merge in _git(git, here, "rev-list", "--min-parents=2", f"HEAD..{target}").stdout.split():
         raise Refused(f"refused: {merge[:12]} is a merge; releases are a straight line\n")
-    with tempfile.TemporaryDirectory() as scratch:
-        for commit in commits:
-            _verify(git, here, commit, Path(scratch))
-    # What is taken is the signed VERSION, never the tag that offered it:
-    # tags are unsigned, and one must not be able to hold a release back.
-    mirrored = _git(git, here, "show", f"{target}:VERSION").stdout.strip()
-    installed = _git(git, here, "show", "HEAD:VERSION").stdout.strip()
-    if _parts(mirrored) <= _parts(installed):
-        raise Refused(f"refused: {mirrored} is not newer than the installed {installed}\n")
-    _git(git, here, "merge", "-q", "--ff-only", target)
-    return installed_commit
+    for commit in commits:
+        _verify(git, here, commit, scratch)
 
 
 def _install(here):
@@ -202,7 +253,11 @@ def _install(here):
         return f"install.sh gave up after {TAKE_TIMEOUT} s"
     except OSError as failed:
         return f"install.sh could not run: {failed}\n"
-    return None if ran.returncode == 0 else ran.stdout + ran.stderr
+    if ran.returncode == 0:
+        return None
+    # An empty text would read as success to the caller, and the daemon would
+    # restart onto a half-installed release.
+    return ran.stdout + ran.stderr or f"install.sh exited with status {ran.returncode} and printed nothing\n"
 
 
 def take(here, offered, git="git"):
@@ -223,7 +278,7 @@ def take(here, offered, git="git"):
         except Refused as refused:
             return (False, str(refused))
         failed = _install(here)
-        if failed:
+        if failed is not None:
             # Back to the release that runs: its VERSION keeps the offer up,
             # and the next press verifies and installs again. The tree was
             # clean before the merge, so nothing of the user's is lost.

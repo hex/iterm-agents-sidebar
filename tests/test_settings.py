@@ -181,6 +181,15 @@ def test_no_version_file_means_no_version(tmp_path):
     assert sidebar.version(tmp_path / "VERSION") is None
 
 
+def test_the_limits_foot_starts_open_and_stays_folded_once_folded(tmp_path):
+    """The accounts and limits at the panel's foot show in full until their
+    head is clicked; folded, they stay folded across a save and a reload."""
+    assert sidebar.DEFAULT_SETTINGS["limits_folded"] is False
+    store = tmp_path / "s.json"
+    save_settings({"limits_folded": True}, store)
+    assert load_settings(store)["limits_folded"] is True
+
+
 def test_switching_accounts_automatically_is_off_until_asked_for():
     assert DEFAULT_SETTINGS["auto_switch"] is False
 
@@ -199,6 +208,20 @@ def test_a_way_of_marking_the_agent_that_is_not_one_of_them_is_refused():
     """Refused as a number that is not one is: the default stands."""
     for junk in ("stripe", "", None, 3, True, ["tag"]):
         assert sidebar._clean({"provider_mark": junk})["provider_mark"] == "groups"
+
+
+def test_shell_names_keep_the_panel_face_until_another_is_chosen(tmp_path):
+    """One of three: the panel's own face, SF Mono, or the terminal's font."""
+    store = tmp_path / "settings.json"
+    assert DEFAULT_SETTINGS["shell_font"] == "system"
+    for choice in ("mono", "terminal", "system"):
+        assert save_settings({"shell_font": choice}, store)["shell_font"] == choice
+        assert load_settings(store)["shell_font"] == choice
+
+
+def test_a_face_for_shell_names_that_is_not_one_of_them_is_refused():
+    for junk in ("Menlo", "", None, 1, True, ["mono"]):
+        assert sidebar._clean({"shell_font": junk})["shell_font"] == "system"
 
 
 def test_a_stored_muted_flag_is_ignored(tmp_path):

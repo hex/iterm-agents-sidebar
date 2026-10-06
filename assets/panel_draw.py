@@ -14,6 +14,7 @@ BG, FG, DIM, RULE = "#1c1c1e", "#f2f2f7", "#98989d", "#3a3a3c"
 CARD, CARD_BORDER = "#2c2c2e", "#3a3a3c"
 BLOCKED_BG, BLOCKED_BORDER, BADGE_INK = "#3a2500", "#ff9f0a", "#3a2500"
 BLOCKED_TEXT = "#ffd60a"
+SEV_OK, ACCENT_INK = "#30d158", "#1c1c1e"
 LIT, LIT_INK, ALERT = "#8ec07c", "#8ec07c", "#fb8b5e"
 TERM_BG, TERM_FG, TERM_DIM = "#141416", "#e5e5ea", "#8e8e93"
 CLAUDE_MARK = "#d97757"
@@ -148,12 +149,13 @@ def working_dots(x, top, hue):
           f'begin="{i*0.18:.2f}s" repeatCount="indefinite"/></circle>')
 
 
-def badge(right, top, word, filled=False, animation=""):
-    """The state word in a card's top corner, its right edge at `right`."""
+def badge(right, top, word, filled=False, animation="", fill=BLOCKED_BORDER, ink=BADGE_INK):
+    """The state word in a card's top corner, its right edge at `right`;
+    a filled one is `ink` on `fill`, WAITING's amber unless told otherwise."""
     w = 70 if len(word) > 4 else 52
     x = right - w
-    fill = BLOCKED_BORDER if filled else "none"
-    ink = BADGE_INK if filled else DIM
+    fill = fill if filled else "none"
+    ink = ink if filled else DIM
     A(f'  <g>{animation}<rect x="{x}" y="{top}" width="{w}" height="21" rx="4" fill="{fill}" '
       f'stroke="{"none" if filled else DIM}"/>'
       f'<text x="{x + w/2}" y="{top+15}" fill="{ink}" font-size="10" font-weight="700" '
