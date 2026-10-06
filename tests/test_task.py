@@ -1,6 +1,6 @@
 """Tests for the task note a session writes about its own work.
 
-The rules follow herdr-agent-progress (read 2026-09-16): a title per
+The rules follow another tool's agent-progress skill (read 2026-09-16): a title per
 request, a rough percent that may fall, a short activity, 100 locks.
 """
 import importlib.util

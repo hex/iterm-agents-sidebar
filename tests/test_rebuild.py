@@ -5,11 +5,14 @@ the endpoint agents, so a rebuild must not block the loop while it runs and a
 burst of layout changes must not fan out into a listing each.
 """
 import asyncio
+import functools
 import importlib.util
 import json
 import os
 import time
 from pathlib import Path
+
+import pytest
 
 spec = importlib.util.spec_from_file_location(
     "sidebar", Path(__file__).resolve().parent.parent / "sidebar.py")
@@ -17,9 +20,23 @@ sidebar = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sidebar)
 
 
+@pytest.fixture(autouse=True)
+def own_settings(monkeypatch, tmp_path):
+    """Every rebuild reads the panel's settings, Claude's and the codex
+    plugin's job store, and an omp row omp's own files: point all of them at
+    this test's own directory, never at this machine's."""
+    monkeypatch.setattr(sidebar, "SETTINGS_FILE", tmp_path / "agents-sidebar-settings.json")
+    monkeypatch.setattr(sidebar, "CLAUDE_SETTINGS", str(tmp_path / "claude-settings.json"))
+    monkeypatch.setattr(sidebar, "CODEX_JOBS_DIR", str(tmp_path / "codex-jobs"))
+    monkeypatch.setattr(sidebar.omp, "TERMINALS_DIR", str(tmp_path / "omp-terminals"))
+    monkeypatch.setattr(sidebar.omp, "read_session",
+                        functools.partial(sidebar.omp.read_session, models_db=str(tmp_path / "omp-models.db")))
+
+
 class NoWindows:
     terminal_windows = ()
     current_terminal_window = None
+    app_active = None
 
     async def async_refresh(self):
         pass
@@ -34,12 +51,28 @@ def bridge(monkeypatch, readings, started=None):
     """A Bridge over no iTerm2; `started` is the process listing's start time by pid."""
     def read_system():
         readings.append(1)
-        return ({}, started or {}, {}, {}), {}, {}, {}, {}
+        return ({}, started or {}, {}, {}), {}, {}, {}, {}, {}
     monkeypatch.setattr(sidebar, "read_system", read_system)
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
     b.app = NoWindows()
     return b
+
+
+class GoneAway(NoWindows):
+    """iTerm2 refreshes, then cannot say whether it is the active app."""
+    @property
+    def app_active(self):
+        raise ConnectionError("iTerm2 closed the connection")
+
+
+def test_a_rebuild_that_fails_after_its_snapshot_is_not_counted_as_fresh(monkeypatch, capsys):
+    """Only a rebuild that ran every step is current."""
+    b = bridge(monkeypatch, [])
+    b.app = GoneAway()
+    asyncio.run(b.rebuild_or_report())
+    assert b.healthy() is False
+    assert capsys.readouterr().out == "sidebar: rebuild failed: ConnectionError('iTerm2 closed the connection')\n"
 
 
 def test_the_process_listing_is_read_off_the_event_loop(monkeypatch):
@@ -51,7 +84,7 @@ def test_the_process_listing_is_read_off_the_event_loop(monkeypatch):
             seen.append("on the loop")
         except RuntimeError:
             seen.append("in a thread")
-        return ({}, {}, {}, {}), {}, {}, {}, {}
+        return ({}, {}, {}, {}), {}, {}, {}, {}, {}
     monkeypatch.setattr(sidebar, "read_system", read_system)
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
@@ -212,7 +245,7 @@ def test_an_omp_row_is_the_process_iterm2_names_as_the_panes_job(monkeypatch):
     foreground job, which is where the row's start time comes from."""
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system",
-                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, {}, {}, {}))
+                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, {}, {}, {}, {}))
     b.app = one_session(OmpSessionWithAJob())
     [row] = asyncio.run(b.read_sessions())
     assert row["started_at"] == 1789980000
@@ -224,7 +257,7 @@ def test_a_job_pid_that_is_no_pid_leaves_the_omp_row_without_a_process(monkeypat
             return True if name == "jobPid" else await super().async_get_variable(name)
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system",
-                        lambda: (({}, {1: 1789980000}, {}, {}), {}, {}, {}, {}))
+                        lambda: (({}, {1: 1789980000}, {}, {}), {}, {}, {}, {}, {}))
     b.app = one_session(Odd())
     [row] = asyncio.run(b.read_sessions())
     assert row["started_at"] is None
@@ -236,7 +269,7 @@ def test_a_light_session_never_asks_what_its_busiest_process_is_called(monkeypat
     b = bridge(monkeypatch, [])
     resources = {4242: (1, 0.5, 9000, "ttys001")}
     monkeypatch.setattr(sidebar, "read_system",
-                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, resources, {4242: None}, {}))
+                        lambda: (({}, {4242: 1789980000}, {}, {}), {}, resources, {4242: None}, {}, {}))
     asked = []
     monkeypatch.setattr(sidebar, "read_program_names", lambda pids: asked.append(pids) or {})
     b.app = one_session(OmpSessionWithAJob())
@@ -298,7 +331,7 @@ def test_an_omp_pane_inside_tmux_is_on_the_terminal_tmux_gave_it(monkeypatch):
     seen = []
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system", lambda: (
-        ({}, {}, {}, {}), {72: {"tty": "ttys011", "path": "/Users/x/atlas"}}, {}, {}, {}))
+        ({}, {}, {}, {}), {72: {"tty": "ttys011", "path": "/Users/x/atlas"}}, {}, {}, {}, {}))
     monkeypatch.setattr(sidebar.omp, "read_session",
                         lambda _, tty: seen.append(tty) or {"model": None, "effort": None,
                                                             "context": None, "cost": None, "doing": None, "jobs": [], "agents": []})
@@ -313,13 +346,105 @@ def test_an_omp_pane_iterm2_names_no_terminal_for_is_on_its_processs_terminal(mo
     seen = []
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system", lambda: (
-        ({}, {}, {}, {}), {}, {4242: (1, 0.0, 0, "ttys014")}, {}, {}))
+        ({}, {}, {}, {}), {}, {4242: (1, 0.0, 0, "ttys014")}, {}, {}, {}))
     monkeypatch.setattr(sidebar.omp, "read_session",
                         lambda _, tty: seen.append(tty) or {"model": None, "effort": None,
                                                             "context": None, "cost": None, "doing": None, "jobs": [], "agents": []})
     b.app = one_session(OmpSessionWithAJob())
     asyncio.run(b.read_sessions())
     assert seen == ["ttys014"]
+
+
+class PaneOnATerminal(Session):
+    """A pane iTerm2 names a terminal for, and tmux a pane of its own when
+    `tmux_pane` is set."""
+    tmux_pane = None
+
+    async def async_get_variable(self, name):
+        if name == "tty":
+            return "/dev/ttys008"
+        if name == "tmuxWindowPane":
+            return self.tmux_pane
+        return await super().async_get_variable(name)
+
+
+class TmuxPaneOnATerminal(PaneOnATerminal):
+    tmux_pane = 72
+
+
+def test_each_row_is_on_the_terminal_a_script_in_its_pane_runs_on(monkeypatch):
+    """`agents-sidebar wait current` finds its pane by this. A pane tmux
+    drives is on tmux's terminal for it, not the one iTerm2 names."""
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "read_system", lambda: (
+        ({}, {}, {}, {}), {72: {"tty": "ttys011", "path": "/Users/x/atlas"}}, {}, {}, {}, {}))
+    terminals = []
+    for pane in (PaneOnATerminal(), TmuxPaneOnATerminal(), Session()):
+        b.app = one_session(pane)
+        [row] = asyncio.run(b.read_sessions())
+        terminals.append(row["tty"])
+    assert terminals == ["ttys008", "ttys011", None]
+
+
+OMP_TOLD = {"model": "gpt-5.6-luna", "effort": "high", "context": 16, "cost": 1.75,
+            "doing": "Validate shell scripts", "jobs": [], "agents": []}
+
+
+class OmpReporting(OmpSession):
+    """An omp pane whose extension published state: the title says idle,
+    the extension that it waits on an approval."""
+    reported = {"state": "blocked", "pid": os.getpid(), "session": "019a0c5e-7d1e-7c55-9a53-2f6f0c1d8e11",
+                "blocked_since": 1789480800, "question": {"tool": "bash", "summary": "git push", "id": "ab12"}}
+
+    async def async_get_variable(self, name):
+        if name == "user.ompState":
+            return json.dumps(dict(self.reported, ts=round(time.time())))
+        if name == "autoName":
+            return "π > Fix login"
+        return await super().async_get_variable(name)
+
+
+def test_an_omp_pane_its_extension_reports_on_takes_its_state_from_the_extension(monkeypatch):
+    """The extension's report outranks the title, and omp's own files still
+    give the card its model, effort, context and cost."""
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "read_system",
+                        lambda: (({}, {os.getpid(): 1789980000}, {}, {}), {}, {}, {}, {}, {}))
+    monkeypatch.setattr(sidebar.omp, "read_session", lambda *_: OMP_TOLD)
+    b.app = one_session(OmpReporting())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["provider"], row["agent_state"], row["topic"]) == ("omp", "blocked", "Fix login")
+    assert row["question"] == {"tool": "bash", "summary": "git push", "id": "ab12"}
+    assert row["blocked_since"] == 1789480800
+    assert row["started_at"] == 1789980000
+    assert (row["model"], row["effort"], row["context"], row["details"]) == ("gpt-5.6-luna", "high", 16,
+                                                                           {"cost": 1.75})
+    assert row["doing"] == "Validate shell scripts"
+
+
+class OmpReportedThenDied(OmpReporting):
+    """The omp that published this state was killed, so it never cleared it."""
+    reported = dict(OmpReporting.reported, state="working", pid=999999)
+
+
+def test_an_omp_started_again_in_its_pane_is_not_the_run_that_died(monkeypatch):
+    """Until the new run's extension reports, its title speaks for it."""
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar.omp, "read_session", lambda *_: OMP_TOLD)
+    b.app = one_session(OmpReportedThenDied())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["provider"], row["agent_state"], row["question"]) == ("omp", "idle", None)
+
+
+def test_a_dead_omp_whose_pane_moved_on_reads_exited(monkeypatch):
+    class Gone(OmpReportedThenDied):
+        async def async_get_variable(self, name):
+            return "x@host:~/atlas" if name == "autoName" else await super().async_get_variable(name)
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar.omp, "read_session", lambda *_: OMP_TOLD)
+    b.app = one_session(Gone())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["provider"], row["agent_state"]) == ("omp", "exited")
 
 
 class ClaudeSessionIterm2Misplaced(Session):
@@ -359,6 +484,34 @@ def test_a_claude_row_without_a_statusline_keeps_the_path_iterm2_reports(monkeyp
     b.app = one_session(ClaudeSessionIterm2Misplaced())
     [row] = asyncio.run(b.read_sessions())
     assert row["path"] == "/Users/x/.claude-sessions/wap@testing-infrastructure"
+
+
+class ClaudeBehindAnEditor(Session):
+    """A live Claude whose pane has an editor in its tty's foreground group."""
+    session_id = "s7"
+
+    async def async_get_variable(self, name):
+        if name == "user.claudeState":
+            return json.dumps({"state": "idle", "pid": os.getpid(), "ts": time.time(),
+                               "session": "c7"})
+        if name == "tty":
+            return "/dev/ttys007"
+        return None
+
+
+def test_a_claude_row_says_what_is_in_front_of_its_agent_on_its_panes_terminal(monkeypatch, tmp_path):
+    """Read off the rebuild's one process listing: the agent's process group
+    against its terminal's foreground group, named by that group's leader."""
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(sidebar, "read_system", lambda: (
+        ({}, {}, {}, {}), {}, {}, {}, {9200: "nvim /tmp/claude-prompt.md"},
+        {os.getpid(): (9100, 9200, "ttys007"), 9200: (9200, 9200, "ttys007")}))
+    b.app = one_session(ClaudeBehindAnEditor())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["agent_pid"], row["tty"], row["in_front"]) == (os.getpid(), "ttys007", "nvim")
+    card = sidebar.find_row(sidebar.snapshot([row]), "s7")
+    assert sidebar.prompt_refusal(card) == "nvim is in front"
 
 
 class CodexReopened(Session):
@@ -428,7 +581,7 @@ def codex_pane(monkeypatch, tmp_path, started=CODEX_STARTED):
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system", lambda: (
         ({}, {os.getpid(): started}, {}, {}), {}, {os.getpid(): (1, 0.0, 0, "ttys007")},
-        {os.getpid(): "codex"}, {}))
+        {os.getpid(): "codex"}, {}, {}))
     b.app = one_session(CodexOnADaemon())
     return b
 
@@ -448,6 +601,24 @@ def test_two_filed_codex_sessions_in_one_directory_pair_with_neither(monkeypatch
     filed(tmp_path, "codex-b", "/Users/x/atlas", ts=CODEX_STARTED + 27)
     [row] = asyncio.run(codex_pane(monkeypatch, tmp_path).read_sessions())
     assert (row["agent_state"], row["conversation"]) == (None, None)
+
+
+def test_a_codex_plugin_job_in_the_same_directory_does_not_hide_the_panes_codex(monkeypatch, tmp_path):
+    """Seen 2026-10-05: a /codex:rescue from a Claude session in the same
+    directory filed its own Codex state there, and the pane's Codex sat on a
+    bare card for as long as the job ran. A job's Codex runs in the plugin's
+    own app-server, never in a pane, and the plugin names it by threadId."""
+    states, jobs = tmp_path / "states", tmp_path / "jobs" / "atlas-0123456789abcdef"
+    states.mkdir()
+    jobs.mkdir(parents=True)
+    filed(states, "codex-pane", "/Users/x/atlas", ts=CODEX_STARTED + 20)
+    filed(states, "codex-job", "/Users/x/atlas", ts=CODEX_STARTED + 27)
+    (jobs / "state.json").write_text(json.dumps({"version": 1, "jobs": [
+        {"id": "task-aaa-111", "sessionId": "claude-session", "status": "running",
+         "threadId": "codex-job", "pid": None}]}))
+    monkeypatch.setattr(sidebar, "CODEX_JOBS_DIR", str(tmp_path / "jobs"))
+    [row] = asyncio.run(codex_pane(monkeypatch, states).read_sessions())
+    assert (row["agent_state"], row["conversation"]) == ("working", "codex-pane")
 
 
 def test_a_filed_codex_session_older_than_the_panes_codex_is_not_its(monkeypatch, tmp_path):
@@ -476,7 +647,7 @@ def test_a_newer_mirror_release_rides_every_snapshot_and_an_absent_one_leaves_no
     """`latest` is rebuilt from scratch each cycle, so the offer has to be
     copied in every time; and a panel that is current sees no key at all,
     rather than a null to interpret."""
-    monkeypatch.setattr(sidebar, "read_system", lambda: (({}, {}, {}, {}), {}, {}, {}, {}))
+    monkeypatch.setattr(sidebar, "read_system", lambda: (({}, {}, {}, {}), {}, {}, {}, {}, {}))
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
     b.app = NoWindows()
@@ -606,7 +777,7 @@ def test_a_codex_card_stops_waiting_once_its_approved_command_runs(monkeypatch):
     monkeypatch.setattr(sidebar, "read_system", lambda: (
         ({}, {SHELL: ASKED_AT + 8}, {}, {}), {},
         {SHELL: (DAEMON, 0.0, 0, None), DAEMON: (1, 0.0, 0, None)}, {DAEMON: "codex"},
-        {SHELL: "/bin/zsh -lc bash tests/codex-watcher/run.sh"}))
+        {SHELL: "/bin/zsh -lc bash tests/codex-watcher/run.sh"}, {}))
     b.app = one_session(CodexAsking())
     [row] = asyncio.run(b.read_sessions())
     assert row["agent_state"] == "working"
@@ -747,3 +918,100 @@ def test_an_omp_rows_clocks_hold_from_one_rebuild_to_the_next(monkeypatch):
     [second] = asyncio.run(b.read_sessions())
     assert first["agent_state"] == "blocked" and first["turn_started"] is not None
     assert second["turn_started"] == first["turn_started"]
+
+
+class OmpPaneRetitled(OmpSession):
+    """An omp pane whose title the test sets between rebuilds."""
+    title = "π ⠋ Fix login"
+
+    async def async_get_variable(self, name):
+        return self.title if name == "autoName" else await super().async_get_variable(name)
+
+
+class Frames:
+    def __init__(self):
+        self.sent = []
+
+    def broadcast(self, frame):
+        self.sent.append(json.loads(frame[len(b"data: "):]))
+
+
+def quiet_finishes():
+    """Settings on disk that make a finish neither sound nor post a banner."""
+    sidebar.SETTINGS_FILE.write_text(json.dumps({"sound_done": False, "notify_done": False}))
+
+
+def test_a_turn_that_ends_out_of_sight_is_pushed_as_unseen(monkeypatch):
+    quiet_finishes()
+    b = bridge(monkeypatch, [])
+    b.server = Frames()
+    pane = OmpPaneRetitled()
+    b.app = one_session(pane)
+    asyncio.run(b.rebuild())
+    pane.title = "π > Fix login"
+    asyncio.run(b.rebuild())
+    [first, second] = b.server.sent
+    assert sidebar.find_row(first, "s3").get("unseen") is None
+    assert sidebar.find_row(second, "s3")["unseen"] is True
+
+
+def in_front(app, pane):
+    """iTerm2 frontmost, with `pane` the session of its key window."""
+    tab = type("FrontTab", (), {"current_session": pane})()
+    app.current_terminal_window = type("FrontWindow", (), {"current_tab": tab})()
+    app.app_active = True
+    return app
+
+
+def test_a_turn_that_ends_in_front_of_you_is_not_pushed_as_unseen(monkeypatch):
+    quiet_finishes()
+    b = bridge(monkeypatch, [])
+    b.server = Frames()
+    pane = OmpPaneRetitled()
+    b.app = in_front(one_session(pane), pane)
+    asyncio.run(b.rebuild())
+    pane.title = "π > Fix login"
+    asyncio.run(b.rebuild())
+    assert sidebar.find_row(b.server.sent[-1], "s3")["state"] == "idle"
+    assert "unseen" not in sidebar.find_row(b.server.sent[-1], "s3")
+
+
+def test_a_turn_that_ends_in_the_key_window_while_iterm2_is_behind_is_pushed_as_unseen(monkeypatch):
+    """The pane is iTerm2's current session, but another app is in front:
+    nobody was looking, whether iTerm2 says so or cannot say."""
+    quiet_finishes()
+    for active in (False, None):
+        b = bridge(monkeypatch, [])
+        b.server = Frames()
+        pane = OmpPaneRetitled()
+        b.app = in_front(one_session(pane), pane)
+        b.app.app_active = active
+        asyncio.run(b.rebuild())
+        pane.title = "π > Fix login"
+        asyncio.run(b.rebuild())
+        assert (active, sidebar.find_row(b.server.sent[-1], "s3").get("unseen")) == (active, True)
+
+
+class OmpPaneBroughtForward(OmpPaneRetitled):
+    activated = 0
+
+    async def async_activate(self, select_tab, order_window_front):
+        self.activated += 1
+
+
+def test_a_card_clicked_or_brought_forward_loses_its_mark_in_the_next_frame(monkeypatch):
+    """Not two seconds later, at the next poll: the click is the look."""
+    quiet_finishes()
+    for verb in ("focus", "bring"):
+        b = bridge(monkeypatch, [])
+        b.server = Frames()
+        pane = OmpPaneBroughtForward()
+        b.app = one_session(pane)
+        b.app.get_session_by_id = lambda sid: pane if sid == "s3" else None
+        asyncio.run(b.rebuild())
+        pane.title = "π > Fix login"
+        asyncio.run(b.rebuild())
+        assert sidebar.find_row(b.server.sent[-1], "s3")["unseen"] is True
+        asyncio.run(b.act("s3", verb, None))
+        assert (verb, pane.activated, len(b.server.sent)) == (verb, 1, 3)
+        assert "unseen" not in sidebar.find_row(b.server.sent[-1], "s3")

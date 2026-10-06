@@ -17,7 +17,12 @@ working tree or from the commit it judges, rather than from that commit's
 parent; an installed checkout with no signers file falling back to an
 unsigned pull; a mirror head whose VERSION is not the release offered, or
 is not newer than the installed one (an old signed release re-offered under
-a new name); history that does not fast-forward; a checkout with local edits,
+a new name); history that does not fast-forward, unless it is a rewritten
+history whose head is signed by a key the installed release lists and has
+not revoked (never by its own lists), that revokes every key the installed
+release revoked, overwrites no untracked file, and replaces a checkout that
+is itself a signed release, never one with commits of its own; an install
+script that fails without printing anything; a checkout with local edits,
 whose code would run unsigned; a git too old for SSH signatures failing with
 git's own opaque error; two updates at once; a fetch that brings nothing new.
 Any refusal leaves the checkout where it was and installs nothing.
@@ -166,6 +171,19 @@ class Mirror:
             (self.seed / name).chmod(mode)
         run("git", "add", name, cwd=self.seed)
 
+    def rewrite(self, version, signed_with="release"):
+        """Replace the mirror's history with a new root holding the staged
+        tree at `version`, as a history rewrite and force-push would."""
+        self.write("VERSION", version + "\n")
+        tree = run("git", "write-tree", cwd=self.seed)
+        sign = [] if signed_with is None else [
+            "-c", "gpg.format=ssh", "-c", f"user.signingkey={self.tmp / signed_with}"]
+        root = run("git", *sign, "commit-tree", tree, *(["-S"] if signed_with else []),
+                   "-m", "rewritten", cwd=self.seed)
+        run("git", "reset", "-q", root, cwd=self.seed)
+        run("git", "push", "-q", "-f", "origin", "HEAD:main", cwd=self.seed)
+        return root
+
     def publish(self, version=None, signed_with="release", message="release"):
         """Commit what is staged, signed as release.sh signs, and push it."""
         if version:
@@ -208,6 +226,13 @@ def test_a_failing_install_reports_its_output_and_can_be_retried(tmp_path, templ
     assert head(here) == before
     assert (here / "VERSION").read_text() == "2026.9.19\n"
     assert update.take(here, "2026.9.20") == (False, "error: iterm2env-3.10 not found\n")
+
+
+def test_an_install_that_fails_silently_is_still_a_failure(tmp_path, template):
+    here = checkout(tmp_path, template, "exit 3\n")
+    before = head(here)
+    assert update.take(here, "2026.9.20") == (False, "install.sh exited with status 3 and printed nothing\n")
+    assert head(here) == before
 
 
 def head(here):
@@ -328,13 +353,99 @@ def test_an_old_signed_release_offered_again_is_refused(tmp_path, template):
     assert_refused(mirror, "2026.9.18", "refused: 2026.9.18 is not newer than the installed 2026.9.19\n")
 
 
-def test_history_that_does_not_continue_the_install_is_refused(tmp_path, template):
+def test_a_checkout_with_its_own_commits_is_not_reset_onto_a_rewritten_history(tmp_path, template):
+    """Commits made in the checkout also continue nothing on the mirror; a
+    reset would drop them, so only a signed release is moved."""
     mirror = Mirror(tmp_path, template)
-    tree = run("git", "write-tree", cwd=mirror.seed)
-    rewritten = run("git", "-c", "gpg.format=ssh", "-c", f"user.signingkey={tmp_path / 'release'}",
-                    "commit-tree", tree, "-S", "-m", "rewritten", cwd=mirror.seed)
-    run("git", "push", "-q", "-f", "origin", f"{rewritten}:refs/heads/main", cwd=mirror.seed)
-    assert_refused(mirror, "2026.9.19", "refused: the mirror's history does not continue this checkout's\n")
+    (mirror.here / "mine.py").write_text("mine\n")
+    run("git", "add", "mine.py", cwd=mirror.here)
+    run("git", "commit", "-q", "-m", "mine", cwd=mirror.here)
+    mirror.rewrite("2026.9.20")
+    assert_refused(mirror, "2026.9.20",
+                   "refused: the mirror's history does not continue this checkout's, "
+                   "which is not a signed release\n")
+    assert (mirror.here / "mine.py").read_text() == "mine\n"
+
+
+def test_a_rewritten_history_that_is_not_newer_is_refused(tmp_path, template):
+    """A rewrite replaying the installed release is not a newer one."""
+    mirror = Mirror(tmp_path, template)
+    mirror.rewrite("2026.9.19")
+    assert_refused(mirror, "2026.9.19", "refused: 2026.9.19 is not newer than the installed 2026.9.19\n")
+
+
+def test_an_unsigned_rewritten_history_is_refused(tmp_path, template):
+    mirror = Mirror(tmp_path, template)
+    root = mirror.rewrite("2026.9.20", signed_with=None)
+    assert_refused(mirror, "2026.9.20", f"refused: {root[:12]} carries no SSH signature\n")
+
+
+def test_a_rewritten_history_signed_by_an_unlisted_key_is_refused(tmp_path, template):
+    mirror = Mirror(tmp_path, template)
+    root = mirror.rewrite("2026.9.20", signed_with="stranger")
+    assert_refused(mirror, "2026.9.20", f"refused: {root[:12]} is not signed with a release key\n")
+
+
+def test_a_rewritten_history_cannot_list_the_key_it_is_signed_with(tmp_path, template):
+    """With no parent to judge it, the installed release's lists decide,
+    never the rewritten head's own."""
+    mirror = Mirror(tmp_path, template)
+    mirror.write("release-signers", signer_line(tmp_path / "stranger"))
+    root = mirror.rewrite("2026.9.20", signed_with="stranger")
+    assert_refused(mirror, "2026.9.20", f"refused: {root[:12]} is not signed with a release key\n")
+
+
+def test_a_rewritten_history_signed_by_a_key_the_install_revoked_is_refused(tmp_path, template):
+    mirror = Mirror(tmp_path, template)
+    mirror.write("release-revoked", Path(str(tmp_path / "release") + ".pub").read_text())
+    mirror.write("release-signers", signer_line(tmp_path / "release") + signer_line(tmp_path / "stranger"))
+    mirror.publish("2026.9.20", signed_with="release")
+    run("git", "pull", "-q", "origin", "main", cwd=mirror.here)
+    root = mirror.rewrite("2026.9.21", signed_with="release")
+    assert_refused(mirror, "2026.9.21", f"refused: {root[:12]} is not signed with a release key\n")
+
+
+def test_a_rewritten_history_cannot_take_back_a_revocation(tmp_path, template):
+    """A signed head from a divergent line that never revoked a key would,
+    once taken, let that key sign the releases after it."""
+    mirror = Mirror(tmp_path, template)
+    mirror.write("release-revoked", Path(str(tmp_path / "stranger") + ".pub").read_text())
+    mirror.publish("2026.9.20")
+    run("git", "pull", "-q", "origin", "main", cwd=mirror.here)
+    mirror.write("release-revoked", "")
+    root = mirror.rewrite("2026.9.21")
+    assert_refused(mirror, "2026.9.21", f"refused: {root[:12]} takes back a key the installed release revoked\n")
+
+
+def test_a_rewrite_does_not_overwrite_an_untracked_file(tmp_path, template):
+    """A fast-forward stops at an untracked file the release would replace;
+    the reset that follows a rewrite must stop there too."""
+    mirror = Mirror(tmp_path, template)
+    (mirror.here / "notes.txt").write_text("mine\n")
+    mirror.write("notes.txt", "the release's\n")
+    mirror.rewrite("2026.9.20")
+    assert_refused(mirror, "2026.9.20", "refused: the release would overwrite untracked notes.txt\n")
+    assert (mirror.here / "notes.txt").read_text() == "mine\n"
+
+
+def test_a_failing_install_after_a_rewrite_goes_back_to_the_installed_release(tmp_path, template):
+    mirror = Mirror(tmp_path, template, "echo 'error: broken' >&2; exit 1\n")
+    before = head(mirror.here)
+    mirror.rewrite("2026.9.20")
+    assert update.take(mirror.here, "2026.9.20") == (False, "error: broken\n")
+    assert head(mirror.here) == before
+    assert (mirror.here / "VERSION").read_text() == "2026.9.19\n"
+
+
+def test_a_rewritten_history_signed_by_a_trusted_key_is_taken(tmp_path, template):
+    """The mirror's history was rewritten: its head continues nothing here,
+    but it is a newer release signed by a key the installed one lists."""
+    mirror = Mirror(tmp_path, template)
+    root = mirror.rewrite("2026.9.20")
+    assert update.take(mirror.here, "2026.9.20") == (True, "")
+    assert head(mirror.here) == root
+    assert (mirror.here / "VERSION").read_text() == "2026.9.20\n"
+    assert (mirror.here / "marker").read_text() == "installed\n"
 
 
 def test_local_changes_to_tracked_files_stop_the_update(tmp_path, template):

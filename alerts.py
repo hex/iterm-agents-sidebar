@@ -22,6 +22,10 @@ class Watch:
         #: session id -> the turn it last finished, whether or not that was
         #: announced, so a setting turned back on cannot announce it late.
         self.finished = {}
+        #: The sessions whose turn ended at the last reading, and those that
+        #: began a new one, whatever the settings let through; Unseen reads them.
+        self.ended = set()
+        self.began = set()
 
     def step(self, snapshot, settings, conversations):
         """-> [(verb, session id, kind or None)], in the order to carry out.
@@ -37,6 +41,7 @@ class Watch:
                 if row.get("working_since") is not None:
                     self.turns[row["session_id"]] = row["working_since"]
         before_all, self.states = self.states, now
+        self.ended, self.began = set(), set()
         if before_all is None:
             return []
 
@@ -54,6 +59,10 @@ class Watch:
             new_turn = state == "working" and turn is not None and turn != finished
             if turn_done and turn is not None:
                 self.finished[sid] = turn
+            if turn_done:
+                self.ended.add(sid)
+            if new_turn:
+                self.began.add(sid)
             conversation = conversations.get(sid)
             moment = (conversation, state)
             if conversation is not None and moment in announced and (state == "blocked" or turn_done):
@@ -90,3 +99,31 @@ class Watch:
             self.finished.pop(sid, None)
             out.append(("notify", sid, "clear"))
         return out
+
+
+class Unseen:
+    """The sessions whose turn ended while you were not looking at them.
+
+    Pure, like Watch, and fed by it: a mark stays until you look at the
+    session, until it starts another turn, blocks, exits or goes. Nothing
+    else takes it off, since a Stop hook that runs a command flips the
+    session to working and back without a new turn, and the flip back ends
+    nothing that would mark it again.
+    """
+
+    def __init__(self):
+        self.sids = set()
+
+    def step(self, ended, began, looking_at, states):
+        """Takes one reading: Watch's `ended` and `began`, the session in
+        front while iTerm2 is (None when that is not known), and Watch's
+        `states`, session id -> state."""
+        self.sids = {sid for sid in self.sids - began
+                     if sid in states and states[sid] not in ("blocked", "exited")}
+        self.sids |= ended
+        self.sids.discard(looking_at)
+
+    def seen(self, sid):
+        """Takes the mark off before the next reading: the panel is about to
+        put that session in front."""
+        self.sids.discard(sid)

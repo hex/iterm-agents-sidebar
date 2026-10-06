@@ -343,7 +343,7 @@ Everything from here down is plan A. Where the reviews proved a claim wrong it h
 **Goal.** Make the per-agent facts a table instead of `if codex:`, so a new agent CLI is one table row plus (only if it has enrichable state) one sibling reader module. Two agents exist today and the branch count is already 27 (`sidebar.py` 14, `emit-state.py` 6, `page.html` 7); a third agent multiplies the places to edit, not the code.
 
 **Non-goals.**
-- No screen scraping, no OSC-title rules, no pane-capture ruleset. herdr's and AoE's open issues are the argument: #3029 (idle Claude read as codex from overlapping title rules), #3871/#4429 (permission menus read as idle), #3530 (still generating, read as done), AoE #2606 (fixtures 16 minor versions stale). That is a different product with a maintenance treadmill; the panel's state comes from the agent reporting it.
+- No screen scraping, no OSC-title rules, no pane-capture ruleset. Other tools' open issues are the argument: idle Claude read as Codex from overlapping title rules, permission menus read as idle, a reply still generating read as done, fixtures sixteen minor versions stale. That is a different product with a maintenance treadmill; the panel's state comes from the agent reporting it.
 - No plugin loading from outside the checkout. The daemon holds the iTerm2 connection and can `async_send_text` into any pane (`sidebar.py:2386-2389`) and `async_close(force=True)` (`:2394`); `docs/development.md:15-17` says no endpoint runs arbitrary code.
 - No generic limits/budget rewrite. `page.html:2105-2330` (account chrome, auto-switch, add/rename/switch) is working code for N=1.
 - Not the Codex *job* store. `CODEX_JOBS_DIR` (`sidebar.py:1417`), `merge_codex_rows` (`:1485`), `sub.provider === "codex"` (`page.html:2793`) are a subagent kind — a Codex job a Claude session spawned through the codex Claude Code plugin — not a second agent in a pane. It stays where it is, reached through one provider method.
@@ -460,7 +460,7 @@ nested_agent(environ, codex) -> bool              # emit-state.py:756-765, untou
 
 `main()` reads `row["variable"]` at `:797` and passes `row` at `:846`.
 
-Registration cannot be data alone — Claude wants `${CLAUDE_PLUGIN_ROOT}` in `hooks.json`, Codex wants a jq merge that preserves herdr's entries (`codex-hooks.sh:26-27`). `codex-hooks.sh` keeps its name and gains the event list as arguments; a second agent gets its own `<name>-hooks.sh` of the same shape, with `install.sh` dispatching on `--agent <id>` rather than growing the branch at `install.sh:109-127` per agent.
+Registration cannot be data alone — Claude wants `${CLAUDE_PLUGIN_ROOT}` in `hooks.json`, Codex wants a jq merge that preserves other tools' entries (`codex-hooks.sh:26-27`). `codex-hooks.sh` keeps its name and gains the event list as arguments; a second agent gets its own `<name>-hooks.sh` of the same shape, with `install.sh` dispatching on `--agent <id>` rather than growing the branch at `install.sh:109-127` per agent.
 
 ### Daemon side
 

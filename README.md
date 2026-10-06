@@ -25,7 +25,7 @@ The install also points `statusLine.command` in `~/.claude/settings.json` at
 `plugin/statusline-bridge.sh`, because that payload is the only place Claude
 Code says how full the context is; the bridge publishes it and then renders
 the statusline you had, so your line stays. The install backs the file up first.
-Without it, cards show no context %, model or effort, and the hover no cost,
+Without it, cards show no context %, model or effort, and the details card no cost,
 limits or cache. Whenever `settings.json` lacks the bridge (installed with
 `--no-statusline`, or replaced by another tool), the foot of the panel says so
 and offers Install, which does the same step, or Not now; Settings > Offer the
@@ -36,17 +36,25 @@ If Codex CLI is on the machine, the install also adds the state hook to
 writable directory in `~/.codex/config.toml`; Codex asks once to trust the
 hook. Without Codex, nothing of that happens.
 
+If omp is on the machine (on your `PATH`, or `~/.omp/agent` exists), the install
+also writes `agents-sidebar.ts` into omp's extensions directory, so omp
+sessions report their turns through the same hook. It never replaces a file
+of that name it did not write.
+
 ```sh
 ./install.sh --no-statusline   # leave settings.json alone; cards show no context figure
 ./install.sh --no-codex        # leave Codex's files alone
 ./install.sh --codex           # insist, and fail if Codex is not there
+./install.sh --no-omp          # leave omp's directory alone
+./install.sh --omp             # insist: fail if omp is not there or its extension cannot be written
 ```
 
 Through the one-liner, a flag goes after `bash -s --`. See
 [docs/integrations.md](docs/integrations.md) for the detail and how to undo
 any of it. `./uninstall.sh` takes it out again: the script, the hook,
-your own statusline back, our entries out of Codex's hooks, the notifier,
-and the panel's settings, state and account store with the Keychain items
+your own statusline back, our entries out of Codex's hooks, the omp extension,
+the notifier, the `agents-sidebar` command, and the panel's settings, state and
+account store with the Keychain items
 behind it. It leaves the checkout, the `.before-agents-sidebar` backups and
 the writable directory line in `~/.codex/config.toml`.
 
@@ -74,13 +82,14 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 
 ### What a card says
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Four cards: one amber with a WAITING badge, its question and a button per answer, one at work with a report and ticks, one grey with an IDLE outline, and one at work for 25 minutes with a warm long badge">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Five cards: one amber with a WAITING badge, its question and a button per answer, one at work with a report and ticks, one grey with an IDLE outline, one grey with a green DONE badge, and one at work for 25 minutes with a warm long badge">
 
 | State | How it looks |
 | --- | --- |
 | Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question with a button per answer (a question that takes more than one answer lists them without buttons), or the reason it gave, the tool and the command it wants to run, with Yes and No |
 | Working | Dark name, working dots |
 | Idle | Grey name, IDLE outline |
+| Finished while you looked elsewhere | A green DONE badge in place of IDLE, until you look at that session |
 | Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
 | Exited | Faded, with an EXITED outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
 | Unknown | A hollow square: a turn silent for five minutes with no command or tool running under it |
@@ -90,14 +99,14 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 Under the name, an agent reports its own task: a title, then
 `Reading code · 40s`, then ticks for how far it says it has got. The
 percentage is the model's estimate, not a measurement, so a report older than
-five minutes reads `stale`, and a finished one reads `Done`.
+five minutes reads `stale`, and a finished one reads `Complete`.
 
 The line below carries the branch, the model with its effort letter (`[l]`,
 `[m]`, `[h]`, `[xh]`, `[mx]`), the context percentage, and a `CPU` or `Mem`
 chip when the session's process tree is using a lot of the machine. While a
-chip shows, the hover card adds a `CPU` or `Memory` row with the figure and the
-name of the program using the most of it. Rest the pointer on a Claude card
-and its hover card offers Context breakdown, `/context` for that session
+chip shows, the details card adds a `CPU` or `Memory` row with the figure and the
+name of the program using the most of it. Details in a Claude card's right-click
+menu opens a card that offers Context breakdown, `/context` for that session
 drawn as a bar ([usage](docs/usage.md#what-fills-the-context)). A Codex
 card wears the OpenAI mark instead of the Claude one, and has no teammates and
 no background-shell line. Codex opens its session at your first prompt, so
@@ -105,9 +114,11 @@ until then its card shows the name, the branch and a `Codex` mark, and no
 state. Once Codex titles the conversation, the title its status line shows
 sits under the card's name, in place of the title of any task it reports.
 
-An omp session needs nothing installed. omp writes its state into its own tab
-title: `π >` at your turn, `π !` while an approval or a question waits, and a
-spinner while it works. The panel reads that, and takes the rest from omp's own
+An omp session reports its state through the extension the install writes:
+when a turn starts and ends, when an approval or a question waits on you, and
+when the session ends. Without the extension the panel reads omp's tab title
+instead: `π >` at your turn, `π !` while an approval or a question waits, and a
+spinner while it works. Either way it takes the rest from omp's own
 files under `~/.omp`: the model, the effort, the context figure and what the
 session has cost. The name omp gave the session sits under the card's name, and
 while omp works, what it says the running tool is for sits under that. Commands
@@ -115,10 +126,12 @@ omp sent to the background show as running commands do on a Claude Code card.
 Subagents omp spawns with its `task` tool get a row each, under the name omp
 gave them, with their model, context, spend, how long they have run and,
 while they run, what their running tool is for. A finished one keeps its row
-until your next prompt. The card has no task line, and a waiting
-question shows as blocked without its text. Inside plain tmux the title never
-reaches iTerm2, so the row stays a plain terminal. omp posts its own
-notifications, so the panel adds none for it.
+until your next prompt. The card has no task line. With the extension, a
+waiting approval shows its tool and the start of its command, and a question
+its text and options; you answer both in omp, so the card has no buttons for
+them. From the title alone, a wait shows as blocked without its text, and
+inside plain tmux the title never reaches iTerm2, so the row stays a plain
+terminal. omp posts its own notifications, so the panel adds none for it.
 
 Teammates nest inside the card, and while one of them is working the lead's
 line carries the busy dots and a count, since a teammate runs in its own pane
@@ -148,7 +161,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 | A permission prompt's Yes or No | Yes types `y` on Codex and `1` on Claude Code; No presses Esc. Other choices stay in the terminal |
 | Other | Picks that option, then types your text |
 | Allow, on a permission gate | Answers Yes. It shows the command's first line and approves the whole command, so No stays in the terminal |
-| Reply, on a finished turn | Your text becomes the session's next prompt |
+| Reply, on a finished turn | Your text becomes the session's next prompt. The panel types nothing if the session has since started waiting on you, its agent has exited, or another program is in front of its agent |
 
 ### Settings
 
@@ -162,7 +175,7 @@ A setting indented under another works only while that one is on.
 | Sound | Play sounds; under it When a session is blocked, When one finishes, Volume |
 | Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
 | Focus | Bring a blocked session forward; under it Go back once it resumes |
-| Rows | Warn above, CPU heavy at, Memory heavy at, Order, Provider badge, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
+| Rows | Warn above, CPU heavy at, Memory heavy at, Order, Provider badge, Shell names, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
 
 Some have limits the picture doesn't show:
 
@@ -173,7 +186,7 @@ Some have limits the picture doesn't show:
 | Memory heavy at | 0.5 to 8 GB |
 | Text size | Minus and plus buttons over nine sizes, 0.8 to 1.6 times the size as designed |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
 
 The foot lists the sessions waiting on you, oldest first, each with what it
 asks: the question's header and text, or the tool and its command. Under them are your
@@ -187,24 +200,45 @@ While Auto-switch is on, you have two or more accounts and a switch is near,
 a chip reads the account's name and `soon`, and gives the reason on hover. Codex's own limits sit under them, read from
 its session log: a 5-hour and a weekly window, or weekly alone, depending on
 the plan, and a row for the fallback allowance while Codex draws on one, such
-as Luna Reserve. See [docs/accounts.md](docs/accounts.md).
+as Luna Reserve. Click **Limits** over them to fold the lot to a tile per
+account and Codex, each with its fullest window as one bar. See [docs/accounts.md](docs/accounts.md).
 
 The bar at the bottom names the release you run, and two buttons: reload and
 the gear. At start, once a day and on every reload press, the daemon lists
 the releases on the repository it was cloned from; when one is
 newer, the bar adds an Update button that names it in its tooltip. Pressing it takes that
-release only if every commit in it is signed with a release key the installed
-copy already trusts, then runs `install.sh` and restarts the daemon, after which the panel
+release only if a release key the installed copy already trusts signed it,
+then runs `install.sh` and restarts the daemon, after which the panel
 needs reopening from View > Toolbelt. See
 [docs/usage.md](docs/usage.md#updating).
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/menu.svg" width="100%" alt="An idle card with its right-click menu open: /compact, /rotate, /clear, then Close">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/menu.svg" width="100%" alt="An idle card with its right-click menu open: Details, /compact, /rotate, /clear, then Close">
 
 Right-click an agent row, or press Shift+F10 on a selected one, for
-`/compact`, `/rotate`, `/clear` and Close. Close and `/clear` ask for a second
-click. A Codex row gets `/compact` and Close, since Codex has no `/rotate` or
-`/clear`. An omp row gets `/compact`, `/clear` and Close. A plain terminal's
-row gets Close alone.
+Details, `/compact`, `/rotate`, `/clear` and Close. Details opens the row's
+details card and keeps it open until Escape or a click elsewhere; nothing
+else opens the card. Close and `/clear` ask for a second
+click. A Codex row gets Details, `/compact` and Close, since Codex has no `/rotate` or
+`/clear`. An omp row gets Details, `/compact`, `/clear` and Close. A plain terminal's
+row gets Close alone. A command is not typed while the session waits on you,
+since the prompt would take it as your answer, after its agent has exited, or
+while another program (an editor, or the shell of a suspended agent) is in
+front of the agent. The card says why for a few seconds.
+
+### From a script
+
+The install links an `agents-sidebar` command into `~/.local/bin`, which
+reads the running panel:
+
+```sh
+agents-sidebar status                          # session id, label, provider, state
+agents-sidebar wait atlas                      # until atlas waits on you or is idle
+agents-sidebar wait current --until done --timeout 600
+```
+
+`wait` exits 0 with the session's row as JSON once it reaches a state you
+named, and 1 on a timeout, a closed session or no panel. See
+[docs/usage.md](docs/usage.md#from-a-script) for the states and targets.
 
 ## More
 

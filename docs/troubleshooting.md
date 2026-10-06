@@ -5,7 +5,7 @@
 | Every row dims, `STALE` banner | The daemon missed two heartbeats, a heartbeat says it can't read iTerm2, or the page failed to draw the latest frame (then `daemon.log` has a `page error` line, below) | Quit the running script first, in Scripts > Manage > Console or by killing the `venvs/3.10/bin/python` process that runs `agents_sidebar.py`. Then start it from the Scripts menu. Starting it while one runs makes a second daemon |
 | A row shows `?` for its directory | iTerm2 can't report that one session's directory. The row leaves out a job it can't read | Nothing; one session costs its own row, not the list |
 | The panel is white and nothing loads | Two tool identifiers named "Agents", and the menu opened the dead one | Rename the stale entry, below |
-| Codex cards stop appearing | A herdr update rewrote `~/.codex/hooks.json` | `./install.sh --codex` |
+| Codex cards stop appearing | Another tool's update rewrote `~/.codex/hooks.json` | `./install.sh --codex` |
 | Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | Install in the panel's foot, or `./install.sh`. After **Not now** the foot offers nothing until Settings > Offer the statusline bridge brings it back |
 | No context percentage, and no offer in the foot | `~/.claude/settings.json` is not valid JSON, so the panel offers nothing | Fix the file; the offer then shows |
 | Install in the foot shows red text | `~/.claude/settings.json` stopped being valid JSON after the offer showed, so the panel wrote nothing | Fix the file, then press Install again |
@@ -41,7 +41,9 @@ defaults write com.googlecode.iterm2 NoSyncDynamicTools -dict-add <old id> \
 
 A heartbeat only proves the daemon is answering, so it carries the result of
 its last read of iTerm2 as well. Without that, a stuck refresh would leave
-every row and every permission badge looking current forever. A frame the
+every row and every permission badge looking current forever. The daemon
+sends one right after the first frame of every connection, so a page opened
+on a stuck daemon shows `STALE` at once. A frame the
 page fails to draw counts the same way: the heartbeats keep coming, but the
 list stays `STALE` until a frame draws.
 

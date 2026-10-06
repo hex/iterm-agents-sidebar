@@ -1,6 +1,6 @@
-"""A finished task's Done wears the same mark as the active account.
+"""A finished task's Complete wears the same mark as the active account.
 
-Ways it could go wrong: Done keeps the bare tick while the account shows the
+Ways it could go wrong: Complete keeps the bare tick while the account shows the
 filled circle, so the panel has two marks for "this is settled"; the account
 badge carries its own copy of the path and the two drift apart.
 """
@@ -23,5 +23,5 @@ def test_the_checked_mark_is_drawn_from_one_place():
 
 def test_done_and_the_active_account_both_wear_it():
     page = PAGE.read_text(encoding="utf-8")
-    assert 'done.append(metaIcon("checked"), document.createTextNode("Done"));' in page
+    assert 'done.append(metaIcon("checked"), document.createTextNode("Complete"));' in page
     assert 'const check = metaIcon("checked");' in page

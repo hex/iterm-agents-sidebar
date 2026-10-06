@@ -1,10 +1,11 @@
 # Integrations
 
-What `./install.sh` changes outside its own files, the statusline bridge and
-the Codex hooks, and how to undo them. `./uninstall.sh` undoes most of it at
-once, the panel's own data included; below says what it leaves. The bridge
-and the hooks each have an opt-out, `--no-statusline` and `--no-codex`. The
-README has the short version.
+What `./install.sh` changes outside its own files, the statusline bridge, the
+Codex hooks and the omp extension, and how to undo them. `./uninstall.sh`
+undoes most of it at once, the panel's own data included; below says what it
+leaves. The bridge, the hooks and the extension each have an opt-out,
+`--no-statusline`, `--no-codex` and `--no-omp`. The README has the short
+version.
 
 ## What the install writes
 
@@ -12,9 +13,11 @@ README has the short version.
 | --- | --- |
 | `~/Library/Application Support/iTerm2/Scripts/AutoLaunch/agents_sidebar.py` | A stub that loads `sidebar.py` from the checkout, so iTerm2 starts the panel |
 | `~/.claude/skills/agents-sidebar` | A copy of `plugin/`, the state hook. Claude Code runs this copy, not the checkout, so after editing `plugin/` run `./install.sh` again |
+| `~/.local/bin/agents-sidebar` | A link to the checkout's `agents-sidebar` command. The install creates the directory, says so when your `PATH` lacks it, and leaves a file of that name alone unless that file is a link |
 | `~/.local/share/agents-sidebar/Agents.app` | The app that posts the macOS notices. It needs `swiftc`; without it the install warns and builds nothing. macOS asks once to allow its notifications |
 | `~/.claude/settings.json` | The statusline bridge, below |
 | `~/.codex/hooks.json` and `~/.codex/config.toml` | The Codex hooks, below |
+| `~/.omp/agent/extensions/agents-sidebar.ts` | The omp extension, below. A profile or a moved agent directory puts it elsewhere |
 
 `--statusline` also exists. The bridge goes in by default, so the flag only
 cancels an earlier `--no-statusline` on the same command line.
@@ -93,11 +96,11 @@ background daemon, and one first started from a Claude tool keeps that tool's
 environment after the tool ends; its hooks have no Claude parent, so every
 Codex it serves, your own included, still reports.
 
-Entries other tools put in `hooks.json` (herdr registers its own) stay where
+Entries other tools put in `hooks.json` stay where
 they are, and the first install copies each file to
 `hooks.json.before-agents-sidebar` and `config.toml.before-agents-sidebar`; a
-re-run keeps those first copies. A file that did not exist gets no copy. A
-herdr update can rewrite the hooks file, so run `./install.sh` again if Codex
+re-run keeps those first copies. A file that did not exist gets no copy.
+Another tool's update can rewrite the hooks file, so run `./install.sh` again if Codex
 cards stop showing up.
 
 To undo, run `./uninstall.sh`. It takes only our entries out of `hooks.json`
@@ -120,8 +123,12 @@ See `docs/codex-rows-design.md` for what a Codex card reads and from where.
 `./uninstall.sh` takes no flags. It stops the daemon and removes:
 
 - the AutoLaunch stub, the plugin copy and `Agents.app`
+- the `agents-sidebar` link, when it points at this checkout, and the
+  daemon's `endpoint.json`
 - the bridge from `settings.json`, putting back only the `statusLine` key
 - our entries from `~/.codex/hooks.json`, through `codex-hooks.sh --remove`
+- the omp extension, through `omp-extension.sh --remove`, while its third line
+  is still the panel's marker
 - the panel's settings, state and account store, and the Keychain items of
   every stored login
 
@@ -130,9 +137,74 @@ It leaves the `writable_roots` entry in `~/.codex/config.toml`, the
 
 ## omp
 
-Nothing to install, and nothing to undo. omp has no shell hooks to register. It
-does write its state into the tab title, and the panel reads that title from
-iTerm2's `autoName`, the same variable that carries Claude Code's marker.
+omp has no shell hooks to register. It loads TypeScript extensions into its
+own process instead, so the install writes one, and an omp session reports
+its state through the same state hook as Claude Code and Codex. Without the
+extension, the panel reads omp's tab title.
+
+### The extension
+
+When `omp` is on your `PATH` or omp's agent directory exists, the install
+writes `agents-sidebar.ts` into that directory's `extensions/`. The
+directory is the one omp reads: `~/.omp/profiles/<name>/agent` when
+`OMP_PROFILE` (or else `PI_PROFILE`) names a profile, else
+`PI_CODING_AGENT_DIR` when set, else `~/.omp/agent`; `PI_CONFIG_DIR` stands
+in for `.omp`. A profile name omp would refuse writes nothing. `--omp`
+installs only where omp is, and stops the whole install before it writes
+anything when omp is missing. With `--omp`, the install also fails when
+`omp-extension.sh` refuses to write the extension; without it, the install
+warns and goes on. That failure comes late: the install exits nonzero, but
+what it wrote before the extension stays in place (the AutoLaunch script,
+the state hook plugin, the `agents-sidebar` command, the statusline bridge
+and the Codex hooks); it never reaches the notifier app, which it builds
+after. Run the install again once `omp-extension.sh` can write the extension.
+`--no-omp` leaves omp's directory alone.
+
+`omp-extension.sh` does the writing. The file's third line, after its two
+description lines, is exactly
+`// agents-sidebar-omp-extension: written by the Agents panel's install.sh, which owns this file.`,
+which marks it as the panel's; the description may change from release to
+release, the marker never does. The script writes the file by rename, never
+over a file whose third line is not that marker, and fills in the absolute paths of the state hook and of the `python3`
+the install found. omp sessions started after the install load it.
+
+The extension reports state only, and runs the hook once per event, one
+child at a time, with the event on stdin:
+
+| omp event | Reported as |
+|---|---|
+| `session_start`, `session_switch`, `session_branch` | session start: idle |
+| `agent_start` | turn start: working |
+| `tool_execution_start` | tool start; for the `ask` tool, a question waiting on you, with its text and options |
+| `tool_approval_requested` | an approval waiting on you, with the tool and its command or path |
+| `tool_approval_resolved`, `tool_execution_end` | that wait or tool ends |
+| `agent_end`, unless omp continues on its own | turn end: idle |
+| `session_shutdown` | the session's end: the card goes |
+
+While a turn runs, the extension reports the turn as still working every two
+minutes, since the panel reads a working card that has gone five minutes
+without a report as unknown. A subagent's copy of the extension, omp in its
+`print` or `rpc` mode, and an omp started from another omp's shell (omp marks
+those with `OMPCODE=1`) report nothing. The hook gets `HOME`, `PATH`, `TMUX`
+and `TTY` from omp's environment and nothing else, and finds the pane's
+terminal from its parent process. The extension kills a run of the hook that
+takes over ten seconds. At shutdown omp waits up to two seconds for the
+session's end to reach the hook. The card
+shows a waiting question's text and an approval's command; you answer both in
+omp, so the card has no buttons for them.
+
+To undo, run `./uninstall.sh`, or to take out only the extension, run this in
+the checkout:
+
+```sh
+bash omp-extension.sh --remove
+```
+
+### The title
+
+The panel reads the title from iTerm2's `autoName`, the same variable that
+carries Claude Code's marker. It gives the state of an omp session whose
+extension has not reported, and the session's name either way.
 
 | Title | The card says |
 |---|---|
@@ -142,16 +214,20 @@ iTerm2's `autoName`, the same variable that carries Claude Code's marker.
 | `π: label`, or `π` alone | omp, state unknown (title states are off) |
 
 The format is omp's own (`src/utils/title-generator.ts` in omp 18.2.5), and a
-later omp can change it. If omp rows stop showing a state, check the title
-first. An extension that calls `setTitle()` replaces the title whole, and the
-row then reads as a plain terminal.
+later omp can change it. If an omp row whose extension has not reported stops
+showing a state, check the title first: another extension that calls
+`setTitle()` replaces the title whole, and such a row then reads as a plain
+terminal. A session whose extension has reported takes its state from those
+reports, whatever the title says.
 
-The title carries the state and the session's name. The rest of the card comes
-from files omp already writes, read and never written:
+### The rest of the card
+
+The rest of the card comes from files omp already writes, read and never
+written, with the extension or without it:
 
 | On the card | Read from |
 |---|---|
-| Uptime, CPU and memory | the pane's foreground job, iTerm2's `jobPid`. `ps` calls omp `bun`, so no name match finds it |
+| Uptime, CPU and memory | the pid the extension reports, or else the pane's foreground job, iTerm2's `jobPid`. `ps` calls omp `bun`, so no name match finds it |
 | Model and effort | the session log. `~/.omp/agent/terminal-sessions/<tty>` names the log the omp on that terminal is writing |
 | Context % | the last answer's `contextSnapshot.promptTokens` against the model's `contextWindow` in `~/.omp/agent/models.db`. A model with a dearer long-context tier counts against that tier's `inputThreshold`, as omp does. With omp's `extendedContext` on, omp's own window is larger and the card reads high |
 | The line under the topic | the `intent` of the tool omp last started, the line omp shows above its own status bar. Shown while omp is working or blocked |
@@ -161,15 +237,23 @@ from files omp already writes, read and never written:
 
 The log runs to megabytes, so the panel reads it from where the last reading
 stopped. omp never deletes a `terminal-sessions` file, so the panel trusts one
-only for a pane whose title says omp is running there.
+only for a pane where omp has reported through its extension or whose title
+says omp is running there.
 
 omp also files each subagent its own log, `<subagent id>.jsonl` in a folder
 named after the session log, in the session log's own shapes. A subagent row
 reads its context, cost and intent line from that log the way the card reads
 its own; the hub's word on the model stands until the log names one.
 
-Not on the card: the task line and the text of a waiting question. Both need
-an extension inside omp.
+Not on the card: the task line, and from the title alone, the text of a
+waiting question.
+
+The panel reads these files from `~/.omp/agent` only. An omp whose agent
+directory is elsewhere, a profile's or `PI_CODING_AGENT_DIR`'s, still reports
+its state through the extension, but its card has no model, effort,
+context, cost, commands or subagents from that directory; when an omp on the
+default directory once ran on the same terminal, the card can show that
+one's instead.
 
 A pane that has published state through a hook speaks for itself, so a Claude
 Code or Codex session whose title happens to start with `π` keeps its own row.

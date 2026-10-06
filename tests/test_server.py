@@ -39,11 +39,11 @@ def test_missing_token_is_refused(tmp_path):
     assert build(tmp_path).handle("GET", "/", b"")[0] == 403
 
 
-def record(tmp_path):
+def record(tmp_path, snapshot=None):
     calls = []
     page = tmp_path / "page.html"
     page.write_text("x")
-    server = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+    server = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: snapshot or {"groups": []},
                      action_fn=lambda session_id, verb, text: calls.append((session_id, verb, text)))
     return server, calls
 
@@ -62,6 +62,58 @@ def test_send_verb_carries_its_text(tmp_path):
     server.handle("POST", f"/action?token={TOKEN}",
                   b'{"session_id": "abc", "verb": "send", "text": "ls\\n"}')
     assert calls == [("abc", "send", "ls\n")]
+
+
+def snapshot_of(state):
+    """A snapshot listing one agent row, "abc", in that state."""
+    return {"groups": [{"name": "AGENTS", "rows": [{"session_id": "abc", "state": state}]}]}
+
+
+def test_a_prompt_to_a_session_waiting_on_you_is_refused_with_the_reason(tmp_path):
+    """Checked against the last rebuild before anything is typed, so the
+    page can say why on the card."""
+    server, calls = record(tmp_path, snapshot_of("blocked"))
+    status, _, body = server.handle("POST", f"/action?token={TOKEN}",
+                                    b'{"session_id": "abc", "verb": "prompt", "text": "/compact\\n"}')
+    assert (status, json.loads(body)) == (409, {"error": "it is waiting on you"})
+    assert calls == []
+
+
+def test_a_prompt_to_an_idle_session_carries_its_text(tmp_path):
+    server, calls = record(tmp_path, snapshot_of("idle"))
+    status, _, _ = server.handle("POST", f"/action?token={TOKEN}",
+                                 b'{"session_id": "abc", "verb": "prompt", "text": "/compact\\n"}')
+    assert status == 200
+    assert calls == [("abc", "prompt", "/compact\n")]
+
+
+def test_a_prompt_to_a_pane_whose_agent_has_left_is_refused(tmp_path):
+    """Once its agent exits the pane is a plain shell, listed under SESSIONS,
+    and the shell would run the text as a command."""
+    snapshot = {"groups": [{"name": "AGENTS", "rows": []},
+                           {"name": "SESSIONS", "rows": [{"session_id": "abc", "label": "zsh"}]}]}
+    server, calls = record(tmp_path, snapshot)
+    status, _, body = server.handle("POST", f"/action?token={TOKEN}",
+                                    b'{"session_id": "abc", "verb": "prompt", "text": "/compact\\n"}')
+    assert (status, json.loads(body)) == (409, {"error": "no agent runs there"})
+    assert calls == []
+
+
+def test_a_prompt_to_an_agent_that_has_reported_no_state_yet_carries_its_text(tmp_path):
+    """A Codex TUI before its first report is an AGENTS row with no state."""
+    server, calls = record(tmp_path, {"groups": [{"name": "AGENTS", "rows": [{"session_id": "abc"}]}]})
+    status, _, _ = server.handle("POST", f"/action?token={TOKEN}",
+                                 b'{"session_id": "abc", "verb": "prompt", "text": "/compact\\n"}')
+    assert status == 200
+    assert calls == [("abc", "prompt", "/compact\n")]
+
+
+def test_a_prompt_without_text_is_refused_and_dispatches_nothing(tmp_path):
+    server, calls = record(tmp_path, snapshot_of("idle"))
+    status, _, body = server.handle("POST", f"/action?token={TOKEN}",
+                                    b'{"session_id": "abc", "verb": "prompt"}')
+    assert (status, json.loads(body)) == (400, {"error": "a prompt needs its text"})
+    assert calls == []
 
 
 def test_close_verb_dispatches(tmp_path):

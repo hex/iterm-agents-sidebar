@@ -164,6 +164,15 @@ def test_rows_carry_the_task_the_session_reported():
     assert "task" not in snapshot([dict(LIVE[1], task=None)])["groups"][0]["rows"][0]
 
 
+def test_rows_carry_their_terminal_so_a_script_can_find_its_own():
+    """A script asking for the session it runs in knows its tty and nothing
+    else iTerm2 would recognise inside tmux; a row whose tty was not read has
+    no key."""
+    got = snapshot([dict(LIVE[1], tty="ttys009"), dict(LIVE[0], tty=None)])["groups"]
+    assert [[row.get("tty") for row in group["rows"]] for group in got] == [["ttys009"], [None]]
+    assert "tty" not in got[1]["rows"][0]
+
+
 def test_codex_rows_say_which_agent_they_are():
     row = dict(LIVE[1], agent_state="working", provider="openai", model="gpt-6-astra", effort="medium")
     got = snapshot([row])["groups"][0]
@@ -190,6 +199,15 @@ def test_agent_rows_carry_when_their_turn_began():
     assert snapshot([row])["groups"][0]["rows"][0]["working_since"] == 1789462000
     idle = dict(LIVE[1], agent_state="idle", working_since=None)
     assert "working_since" not in snapshot([idle])["groups"][0]["rows"][0]
+
+
+def test_agent_rows_carry_the_program_in_front_of_their_agent():
+    """The prompt guard reads it off the snapshot row; an agent in front of
+    its own pane has no key."""
+    behind = dict(LIVE[1], agent_state="idle", in_front="nvim")
+    assert snapshot([behind])["groups"][0]["rows"][0]["in_front"] == "nvim"
+    in_front = dict(LIVE[1], agent_state="idle", in_front=None)
+    assert "in_front" not in snapshot([in_front])["groups"][0]["rows"][0]
 
 
 def test_no_subagents_and_no_gate_are_absent():

@@ -16,7 +16,7 @@ Measured on this machine against Codex 0.154.0.
 
 - **Codex has hooks shaped like Claude Code's.** `~/.codex/hooks.json` uses the
   same `{"hooks": {Event: [{"hooks": [{type, command, timeout}]}]}}` layout,
-  `[features] hooks = true` is on, and herdr already owns one `SessionStart`
+  `[features] hooks = true` is on, and another tool already owns one `SessionStart`
   entry there. Codex records trust per hook in `config.toml`
   (`[hooks.state."<file>:<event>:i:j"] trusted_hash`), so a new hook is approved
   once in Codex before it runs.
@@ -69,7 +69,7 @@ working_since) is the part worth not duplicating.
 
 `install.sh --codex` (opt-in, like `--statusline`, because the file is shared) merges seven entries into `~/.codex/hooks.json` (the probe's
 events, pointing at the installed copy with `--codex`), keeping every entry it
-did not write, herdr's included. It skips the step when `~/.codex` does not
+did not write, other tools' included. It skips the step when `~/.codex` does not
 exist. Codex then asks once to trust the hooks.
 
 ### Daemon: `sidebar.py`
@@ -103,7 +103,7 @@ exist. Codex then asks once to trust the hooks.
 
 ## Open
 
-- **herdr owns `hooks.json` too.** A herdr update may rewrite the file and drop
+- **Other tools own `hooks.json` too.** Another tool's update may rewrite the file and drop
   these entries; rerunning `install.sh` restores them. Codex keys trust by
   position (`<file>:<event>:i:j`), so any reorder asks for approval again.
 - **Context % baseline.** Codex's `/status` leaves a fixed 12,000 tokens out of
@@ -117,6 +117,6 @@ exist. Codex then asks once to trust the hooks.
 - `codex.read_session`: fixture rollout tail -> effort, context %.
 - `snapshot`: a session with `codexState` becomes an AGENTS row with
   `provider: "openai"`.
-- Install merge: a hooks.json with herdr's entry keeps it; running twice adds
+- Install merge: a hooks.json with another tool's entry keeps it; running twice adds
   nothing.
 - Live: one Codex turn in a tmux pane shows working, then idle, in the panel.

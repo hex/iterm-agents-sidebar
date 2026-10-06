@@ -171,3 +171,12 @@ def test_an_answer_that_is_neither_yes_nor_no_sends_nothing():
 
 def test_a_gate_click_on_a_question_sends_nothing():
     assert answer_keys(gate_click("yes"), ASKED, None, None) is None
+
+
+def test_an_omp_card_is_never_answered_from_the_panel():
+    """omp's ask and approval prompts are its own dialogs: the digits and keys
+    the card types were built for Claude Code's and Codex's prompts."""
+    assert answer_keys(click(2), ASKED, None, "omp") is None
+    gate = {"tool": "bash", "summary": "git push", "id": "ab12"}
+    assert answer_keys(json.dumps({"gate": "yes", "id": "ab12"}), gate, None, "omp") is None
+    assert answer_keys(json.dumps({"gate": "no", "id": "ab12"}), gate, None, "omp") is None

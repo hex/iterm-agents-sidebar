@@ -2,8 +2,8 @@
 
 > Design record. Changed since (noted 2026-09-23): `reminded` lives in the emit-state state document only, never in the note.
 
-Approved 2026-09-16, after reading herdr-agent-progress
-(github.com/eliasstravik/herdr-agent-progress), whose shape this follows.
+Approved 2026-09-16, after reading another tool's agent-progress skill,
+whose shape this follows.
 
 ## The line
 
@@ -104,7 +104,7 @@ Fix the login bug
 ~35% · Reading code · 40s
 ```
 
-- Percent shows as `~35%`; `100%` shows as `Done` in green with nothing
+- Percent shows as `~35%`; `100%` shows as `Complete` in green with nothing
   after it; unknown shows no percent.
 - Age is `40s`, `3m`, `2h`.
 - Over 300 s and not done: the whole line greys and ends with `· stale`.
@@ -113,7 +113,7 @@ Fix the login bug
 
 ## Codex
 
-Same hooks, same output; herdr returns the same JSON to Codex. Verified
+Same hooks, same output; other tools return the same JSON to Codex. Verified
 live as part of the proof; if Codex ignores it, Codex rows show nothing.
 
 ## Tests

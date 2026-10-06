@@ -124,7 +124,9 @@ def test_a_reply_to_a_question_picks_other_and_types_the_text():
 
 
 def test_a_reply_to_a_finished_turn_is_the_next_prompt():
-    assert notify_response('{"action": "reply", "text": "run the tests"}', "done", None) == ("send", "run the tests\n")
+    """A prompt, not raw keys: the session may have gone on to wait on a
+    question or exited since the notice went up, and the daemon refuses then."""
+    assert notify_response('{"action": "reply", "text": "run the tests"}', "done", None) == ("prompt", "run the tests\n")
 
 
 def test_a_button_for_a_question_that_has_gone_sends_nothing():

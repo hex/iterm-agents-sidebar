@@ -20,5 +20,5 @@ def test_no_label_reserves_badge_room_with_padding():
 def test_the_label_is_narrowed_by_the_room_each_badge_needs():
     css = PAGE.read_text(encoding="utf-8")
     assert re.search(r"\.label \{\s*max-width: calc\(100% - var\(--badge-room, 0px\)\)", css)
-    for state in ("hot", "resting", "long-turn", "cornered"):
+    for state in ("hot", "resting", "unseen", "long-turn", "cornered"):
         assert re.search(rf"button\.row\.{state} \{{ --badge-room:", css), state

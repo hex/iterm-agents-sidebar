@@ -25,11 +25,10 @@ not guesswork:
     PostToolUse                            -> working, closes its own gate
     PostToolUseFailure, PermissionDenied   -> closes its own gate
     Notification type=idle_prompt          -> the parent is done
-    Stop (stop_hook_active false)          -> the parent is done, and its
+    Stop                                   -> the parent is done, and its
                                               background_tasks list replaces
                                               what is held in flight
-    Stop (stop_hook_active TRUE)           -> ignored, see below
-    PreCompact                             -> working
+    PreCompact                            -> working
     SessionStart                           -> the parent is done
     SubagentStart / SubagentStop           -> adds or removes one child
     SessionEnd                             -> cleared
@@ -43,9 +42,10 @@ not guesswork:
          other than a monitor              -> working
     else                                   -> idle
 
-A Stop hook that itself triggers Stop arrives with stop_hook_active true. The
-trace showed two consecutive Stop events for one turn from another installed
-hook, so acting on those would flap the state.
+A Stop arrives with stop_hook_active true on every Stop of a turn that a Stop
+hook kept going or that a hook woke, the turn's last Stop included, so every
+Stop is read as the end. Two back to back read idle both times, and the work a
+blocked Stop leads to reads working until the next one.
 
 There is deliberately no "error" or "interrupted" state. The Stop payload
 carries no exit reason, and eight council providers agreed it cannot be derived
@@ -681,8 +681,10 @@ def state_for(event, payload):
             return "idle"
         return None
     if event == "Stop":
-        # A Stop hook re-entering Stop. Acting on it flaps the state.
-        return None if payload.get("stop_hook_active") else "idle"
+        # Whatever stop_hook_active says: a turn a Stop hook kept going, or
+        # a hook woke, carries it on every Stop including its last, and that
+        # one is the only end the turn reports.
+        return "idle"
     if event == "PreCompact":
         # /compact emits no UserPromptSubmit, so without this the row reads
         # idle for the whole churn -- traced across both compactions in this
@@ -876,12 +878,13 @@ def open_tasks(directory):
     return [item for _, item in sorted(items, key=lambda pair: pair[0])]
 
 
-def published(doc, pid, payload, codex, now):
+def published(doc, pid, payload, codex, now, tasks=True):
     """The JSON the session variable carries, from the folded state document.
 
     Codex has no statusline to bridge, so its variable also carries the model
     (on every Codex payload but SessionEnd) and the rollout the daemon reads
-    effort and context from. A Claude session's carries its open tasks.
+    effort and context from. A Claude session's carries its open tasks, and
+    `tasks` false leaves them out for an agent that keeps no Claude task list.
     """
     value = {"state": aggregate(doc), "pid": pid, "session": session_of(payload),
              "agents": live_agents(doc), "subagents": subagents(doc),
@@ -899,7 +902,7 @@ def published(doc, pid, payload, codex, now):
         # process listing ties them to a pane, so the hook's own count is
         # what keeps a long one from reading as a session gone quiet.
         value["tools_running"] = len(doc.get("running") or {})
-    else:
+    elif tasks:
         # Codex keeps no task list; a Claude session's is read whole on
         # every event, since the tool calls that change it are the events.
         listed = task_list_of(os.environ, value["session"])
@@ -994,15 +997,46 @@ def nested_agent(environ, codex, ancestors):
     return environ.get("CLAUDE_PID", "") in {str(pid) for pid in ancestors()}
 
 
+#: The agents this handler speaks for, each by the session variable it writes.
+VARIABLES = {"claude": "claudeState", "codex": "codexState", "omp": "ompState"}
+
+
+def agent_of(args):
+    """The handler's arguments after the event -> the agent whose event this
+    is, or None for an --agent this handler does not know."""
+    if "--codex" in args:
+        return "codex"
+    if "--agent" not in args:
+        return "claude"
+    named = args[args.index("--agent") + 1:][:1]
+    return named[0] if named and named[0] in VARIABLES else None
+
+
+def pid_sent(payload):
+    """The pid an omp payload carries -> a positive integer, or None.
+
+    omp runs as `bun`, so no process name finds it; its extension sends its
+    own. Anything but a positive integer is no pid: zero and negatives
+    address process groups."""
+    pid = payload.get("pid")
+    return pid if type(pid) is int and pid > 0 else None
+
+
 def main():
     event = sys.argv[1] if len(sys.argv) > 1 else ""
     # Codex runs this same handler: its hook events and payloads have the
-    # shape Claude Code's do, measured by a probe hook on 2026-09-15.
-    codex = "--codex" in sys.argv[2:]
+    # shape Claude Code's do, measured by a probe hook on 2026-09-15. omp's
+    # extension translates its own events into that shape.
+    agent = agent_of(sys.argv[2:])
+    if agent is None:
+        return
+    codex = agent == "codex"
     # A nested run speaks for no pane; the agent that started it does.
     if nested_agent(os.environ, codex, ancestor_pids):
         return
     payload = read_payload()
+    if agent == "omp" and pid_sent(payload) is None:
+        return
     state = state_for(event, payload)
 
     session_id = session_of(payload)
@@ -1022,8 +1056,8 @@ def main():
     state = "" if event == "SessionEnd" else aggregate(doc)
 
     tty = find_tty()
-    pid = agent_pid(tty, "codex" if codex else "claude")
-    variable = "codexState" if codex else "claudeState"
+    pid = pid_sent(payload) if agent == "omp" else agent_pid(tty, agent)
+    variable = VARIABLES[agent]
 
     # Keep tracing while the interrupt question is open: an Esc or Ctrl+C
     # during ordinary use gets captured, and the fourth state can then be
@@ -1037,10 +1071,10 @@ def main():
                                  "_trigger": payload.get("trigger"),
                                  "cwd": payload.get("cwd"),
                                  "_state": state,
-                                 # Does a subagent's hook carry an agent id? The
-                                 # herdr integration tests exactly this field to
-                                 # bail out of subagent events, which implies it
-                                 # exists. Verifying rather than assuming.
+                                 # Does a subagent's hook carry an agent id?
+                                 # Another tool's integration tests exactly this
+                                 # field to bail out of subagent events, which
+                                 # implies it exists. Verifying rather than assuming.
                                  "_session": session_id,
                                  "_agent_id": payload.get("agent_id"),
                                  "_agent_name": payload.get("agent_name"),
@@ -1084,7 +1118,13 @@ def main():
         except OSError:
             pass
     else:
-        emit(carried(published(doc, pid, payload, codex, time.time()), session_id), tty, variable)
+        emit(carried(published(doc, pid, payload, codex, time.time(), tasks=agent == "claude"),
+                     session_id), tty, variable)
+
+    # omp takes nothing back from its extension's child, and the task line's
+    # commands are written for an agent that runs its own hooks.
+    if agent == "omp":
+        return
 
     # The task line: what the agent should be told about reporting its work.
     context = whisper(event, payload, read_note(session_id), time.time(), doc.get("reminded") or 0,

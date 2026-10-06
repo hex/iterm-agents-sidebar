@@ -43,7 +43,7 @@ By attention moves a card only once its new state has held for thirty
 seconds: a tool pause that reads as idle, or a turn that just ended, leaves it
 where it was, and a turn or a rest shorter than that never moves it at all. A
 card waiting on a prompt counts as working and goes there at once, without the
-wait; the foot's Waiting on you is where the ask itself shows. omp publishes no times, so its cards are timed from when the panel
+wait; the foot's Waiting on you is where the ask itself shows. omp without its extension publishes no times, so the panel times those cards from when it
 saw each state begin. Whatever the order, a teammate stays under its
 lead and a worktree card stays docked to its session, because each card
 travels with the rows under it.
@@ -62,6 +62,19 @@ Claude Code, Codex or omp:
 
 With a tag or a corner mark the glyph leaves the facts line, so a card says it
 once. The Order choice still applies inside each group.
+
+## Shell names
+
+Shell names, under Rows in settings, picks the face of a shell card's name
+in the Sessions group, which is a path or a command:
+
+| Choice | What you get |
+|---|---|
+| System | The panel's own face, as agent names have. The default |
+| SF Mono | SF Mono, a size smaller, since its letters run wider |
+| Terminal font | The font of your default iTerm2 profile, at the panel's size. The daemon reads it when it starts, so a profile font you change later shows after the next iTerm2 start, or a [daemon restart](development.md#the-install-and-the-port). When the panel could not read it, the choice reads `Terminal font (not read)` and the names use SF Mono |
+
+Agent names and the rows under a card keep their face whichever you pick.
 
 ## A long name
 
@@ -95,8 +108,11 @@ A waiting card says what it waits on, under the name: the first question of an
 AskUserQuestion (three lines at most, with "+1 more" when it asked several), or
 the tool a permission prompt is for and the first line of what it would run,
 under the reason the agent gave for it when it gave one (Codex's escalation
-reason, Claude's command description). The line goes when the prompt is answered. An omp session reports only that it is
-blocked, so its card shows no question.
+reason, Claude's command description). The line goes when the prompt is answered. An omp card shows its
+question, or the tool and the command, the same way, through omp's extension,
+but no buttons under them: omp draws its own prompts, so you answer in omp.
+An omp session without the extension reports only that it waits, so its card
+shows no question.
 
 Under a question the card lists its options, a button each. The one the agent
 suggests, whose label ends in "(Recommended)", is tinted green. Clicking one types
@@ -122,10 +138,17 @@ buttons; answer it in the terminal. While a card asks, it
 drops its task line, model line and folds, so its height barely moves; they
 come back once you answer.
 
+A card that asks holds still under the pointer. An update that would move it,
+a card above it growing or the order changing, waits until the pointer leaves
+the card, you answer the question, on the card or in the terminal, another
+question replaces it, or the panel goes out of sight. The card ignores a click on an
+answer, Yes or No in the 0.7 seconds after it moved, so the option that slid
+under the pointer is never the one that counts.
+
 ## What fills the context
 
-Rest the pointer on a Claude card for about a second and its hover card holds
-still and takes clicks. Context breakdown then runs Claude Code's own
+Pick Details from a Claude card's right-click menu: its details card opens
+and stays until Escape or a click elsewhere. Context breakdown then runs Claude Code's own
 `/context` on a throwaway fork of that conversation: hooks off, nothing saved,
 no model call. It takes a few seconds, and the result stays in the card until
 you read it again.
@@ -163,8 +186,28 @@ waiting on something other than a question or a tool it wants to run says it
 
 macOS shows a single action inline and folds two or more into an Options menu,
 so a question is always a menu. The banner sends keystrokes only while its question is still open, so a prompt you already answered in the
-terminal gets nothing. omp sessions get no banner from the panel, since omp
-posts its own.
+terminal gets nothing. A Reply to a finished turn types nothing once the
+session waits on you, its agent has exited, or another program is in front of
+its agent. omp sessions get
+no banner from the panel, since omp posts its own.
+
+## A finish you have not seen
+
+A banner lasts five seconds. A card whose turn ended while you were not
+looking at that session wears a green DONE badge in place of IDLE until you do.
+Looking means the same as for banners: the session is in front of its window
+while iTerm2 is the frontmost app. The sound and banner switches don't change
+it, and omp cards get it too.
+
+Going to the session from its card, or a banner or a block bringing it
+forward, takes the mark off at once. Moving to the session inside iTerm2 takes it off at the next
+reading, within two seconds. A new prompt takes it off, and so do a block, an
+exit and closing the session. A Stop hook that runs a command and briefly
+flips the session back to working does not, since that is not a new turn.
+
+The marks live in the daemon's memory, so a daemon restart clears them. A
+turn that went unknown before it ended is not counted as finished. Two panes
+showing one conversation each keep their own mark.
 
 ## Focus
 
@@ -184,7 +227,7 @@ name, and it goes quiet when it's back at its prompt.
 ## The task line
 
 The session writes its own report: a task title, what it's doing now, and a rough percentage. A report older than five minutes turns grey and reads
-`stale`. A hundred percent shows `Done` with a green tick and stays until a new
+`stale`. A hundred percent shows `Complete` with a green tick and stays until a new
 request starts a new task.
 
 The ticks show the estimate as a count you can glance at. They are not the
@@ -230,9 +273,16 @@ they were:
 - git is 2.34 or newer, the first that checks SSH signatures
 - no tracked file in the checkout has local edits, which would run unsigned
 - the new commits continue the checkout's history in a straight line, with
-  no merge commits
-- every new commit carries an SSH signature by a key the commit before it
-  lists in `release-signers` and does not list in `release-revoked`
+  no merge commits, and every one carries an SSH signature by a key the
+  commit before it lists in `release-signers` and does not list in
+  `release-revoked`
+- or, when the mirror's history was rewritten and continues nothing in the
+  checkout, its newest commit carries an SSH signature by a key the
+  installed release lists and does not revoke, it revokes every key the
+  installed release revoked, and it adds no file that sits untracked in the
+  checkout. The checkout must itself be a signed release, so commits of
+  your own are never dropped. The checkout then moves to that commit
+  instead of fast-forwarding
 - the new `VERSION` is newer than the installed one. It is read from the
   signed commit, not from the tag that offered it, so a stray tag cannot hold
   a release back
@@ -261,3 +311,58 @@ before its first reply has nothing to resume), and it is not open in another pan
 a click it stays away until the agent reports again, or for a minute if the
 pane comes back to its prompt without one. An agent
 that ends with `/exit` leaves no card behind, and omp sessions have no Resume.
+
+## From a script
+
+`install.sh` links the `agents-sidebar` command into `~/.local/bin`. It reads
+what the panel reads, from the running daemon, so the panel has to be running.
+
+```sh
+agents-sidebar status                 # one line per agent
+agents-sidebar status --json          # the rows as the panel has them
+agents-sidebar wait atlas             # until atlas waits on you or is idle
+agents-sidebar wait current --until done --timeout 600
+```
+
+`status` prints each agent as its session id, label, provider and state,
+separated by tabs. A Claude agent's provider is `claude`, and an agent whose
+state the panel cannot read shows `unknown`. When the daemon says its reading
+is stale (the panel's `STALE` banner), `status` still prints the rows, says on
+stderr that they may be out of date, and exits 1.
+
+`wait` returns once the session is in one of the states you ask for and prints
+its row as JSON. `--until` takes `working`, `blocked`, `idle`, `done`,
+`unknown` or `exited`, once or more; without it the wait is for `blocked` or
+`idle`. `done` is a turn that ended while you were not looking at that
+session, the card's unseen mark. `idle` matches it too.
+
+The target says which session:
+
+| Target | Which session |
+| --- | --- |
+| An iTerm2 session id | That one, as `status` prints it |
+| A label | The one agent with that label. Two tabs on the same repo share one, so when two agents carry it the command lists both and stops |
+| `current` | The pane the command runs in, found by its terminal |
+
+`current` goes by the terminal, not by `$ITERM_SESSION_ID`. Inside tmux that
+variable comes from whichever pane started the tmux server. Codex runs its
+hooks in one process shared by every Codex pane, and there it names the pane
+that started that process. Either way it can name another pane that is still
+open, so a command with no terminal anywhere above it stops with exit 1
+rather than wait on the wrong agent. A command an agent runs has no terminal
+of its own, so the terminal of the nearest process above it counts, which is
+the agent's pane. Two agents on that one terminal stop it the way a shared
+label does.
+
+A state that already holds returns at once. While the daemon says its reading
+is stale (the panel's `STALE` banner), nothing matches until the reading is
+fresh again, and that holds from the moment the wait connects. If the daemon restarts, for an update say, the wait connects to
+the new one when it answers within 10 s and carries on. The wait settles on a
+session at the start, so a label that later moves to another pane does not
+move the wait.
+
+| Exit | When |
+| --- | --- |
+| 0 | The session is in a state asked for |
+| 1 | The timeout passed, the session closed, nothing answers to the target, the daemon is not running, or `status` printed a stale reading; stderr says which |
+| 2 | An argument it cannot use, a label more than one agent carries, or two agents on the terminal `current` names |

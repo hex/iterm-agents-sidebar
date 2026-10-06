@@ -8,7 +8,7 @@ PX, PW = 24, 430
 IX, IW = PX + 20, PW - 40      # the content's edges inside the panel
 LX = PX + PW + 40
 BLOCKED_TEXT, WARN = "#ffd60a", "#de935f"
-SEV_OK, SEV_WARN, SEV_CRIT = "#87af87", "#d7af5f", "#d75f5f"
+SEV_OK, SEV_WARN, SEV_CRIT = "#30d158", "#d7af5f", "#d75f5f"
 ACCENT = "#3478f6"
 
 
@@ -51,7 +51,7 @@ def switch(x, y, on, w=20, h=12):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the Auto-switch control, the active account\'s '
+  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the Limits head that folds it and the Auto-switch control, the active account\'s '
   f'5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, '
   f'Codex\'s own limits, and the bar with the release, reload and the gear">')
 A('  <title>The foot of the panel</title>')
@@ -78,16 +78,21 @@ for i, (name, kind, ago, head, asks, face) in enumerate(waiting):
 note(IX + IW + 12, y + 43, "Who is waiting, oldest first; a click brings one forward")
 note(IX + IW + 12, y + 59, "What each asks: a question, or a tool to allow")
 
-# The budget: auto-switch, then the account the sessions run on.
+# The budget: its head, with the fold and auto-switch, then the account the
+# sessions run on.
 y += 104
 hairline(y)
+# The head's chevron, turned down while the foot is open.
+A(f'  <text x="{IX + 3}" y="{y + 13}" fill="{DIM}" font-size="10.5" font-family="{MONO}" '
+  f'transform="rotate(90 {IX + 3} {y + 12.5})" text-anchor="middle">›</text>')
+mono(IX + 11, y + 17, "Limits", size=10.5)
 text(IX + IW - 28, y + 17, "Auto-switch", fill=DIM, size=10.5, extra=' text-anchor="end"')
 switch(IX + IW - 20, y + 8, True)
 # The chip that stands while a switch is near, in the alert colour; the
 # reason is its tooltip, so the figure names only the target.
-A(f'  <rect x="{IX}" y="{y + 5}" width="82" height="15" rx="5" fill="{ALERT}" fill-opacity="0.12"/>')
-text(IX + 6, y + 16, "→ spare soon", fill=ALERT, size=10, weight=600)
-note(IX + IW + 12, y + 14, "Auto-switch: leave an account before a limit stops it")
+A(f'  <rect x="{IX + 60}" y="{y + 5}" width="82" height="15" rx="5" fill="{ALERT}" fill-opacity="0.12"/>')
+text(IX + 66, y + 16, "→ spare soon", fill=ALERT, size=10, weight=600)
+note(IX + IW + 12, y + 14, "Click Limits to fold; Auto-switch leaves a filling account")
 note(IX + IW + 12, y + 30, "While a switch is near: where it would go; hover for why")
 
 ay = y + 48

@@ -8,16 +8,32 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-statusline=1; codex=auto
+statusline=1; codex=auto; omp=auto
 for arg in "$@"; do
   case "$arg" in
     --no-statusline) statusline=0 ;;
     --statusline) statusline=1 ;;
     --codex) codex=1 ;;
     --no-codex) codex=0 ;;
-    *) echo "usage: ./install.sh [--no-statusline] [--codex | --no-codex]" >&2; exit 1 ;;
+    --omp) omp=1 ;;
+    --no-omp) omp=0 ;;
+    *) echo "usage: ./install.sh [--no-statusline] [--codex | --no-codex] [--omp | --no-omp]" >&2; exit 1 ;;
   esac
 done
+# omp is here when it is on PATH or its agent directory exists. Asked for by
+# name and missing, nothing is installed at all: decided before any write.
+omp_agent_dir="$(bash "$repo/omp-extension.sh" --where 2>/dev/null || true)"
+omp_here=0
+if command -v omp >/dev/null 2>&1 || { [ -n "$omp_agent_dir" ] && [ -d "$omp_agent_dir" ]; }; then omp_here=1; fi
+if [ "$omp" = 1 ] && [ "$omp_here" = 0 ]; then
+  where="the agent directory omp would read"
+  [ -n "$omp_agent_dir" ] && where="${omp_agent_dir/#$HOME/~}"
+  echo "error: --omp, but omp is not on PATH and $where does not exist; nothing installed." >&2
+  exit 1
+fi
+omp_insisted=0
+[ "$omp" = 1 ] && omp_insisted=1
+[ "$omp" = auto ] && omp=$omp_here
 autolaunch="$HOME/Library/Application Support/iTerm2/Scripts/AutoLaunch"
 stub="$autolaunch/agents_sidebar.py"
 
@@ -70,17 +86,35 @@ next+=("Start it:   Scripts > AutoLaunch > agents_sidebar"
 # The state hook ships as a Claude Code plugin, NOT as an edit to
 # ~/.claude/settings.json. Eight council providers agreed there is no safe way
 # for a third-party tool to co-edit that file: no hooks.d, no lock, no owner
-# field, and other tools here (cs, herdr) rewrite it from templates. A plugin
+# field, and other tools here (cs among them) rewrite it from templates. A plugin
 # touches nothing shared, and uninstall is one command.
 plugin_dir="$HOME/.claude/skills/agents-sidebar"
 if [ -d "$repo/plugin" ]; then
   rm -rf "$plugin_dir"
   mkdir -p "$plugin_dir"
   # --exclude keeps __pycache__ out; the tests import the handler directly.
-  (cd "$repo/plugin" && /usr/bin/tar cf - --exclude __pycache__ .) | (cd "$plugin_dir" && tar xf -)
+  # omp's extension is written into omp's own directory below, not here.
+  (cd "$repo/plugin" && /usr/bin/tar cf - --exclude __pycache__ --exclude ./omp .) | (cd "$plugin_dir" && tar xf -)
   ok hook "$(tilde "$plugin_dir")"
   next+=("Hooks load in sessions started from now on; /reload-plugins for a running one.")
   undo+=("hook        claude plugin disable agents-sidebar@skills-dir")
+fi
+
+# The command a script lists agents and waits on one with. A link, so editing
+# the checkout needs no reinstall, as with the stub; a file by that name that
+# is not a link belongs to something else and stays.
+bin_dir="$HOME/.local/bin"
+command_link="$bin_dir/agents-sidebar"
+mkdir -p "$bin_dir"
+if [ -e "$command_link" ] && [ ! -L "$command_link" ]; then
+  warn command "$(tilde "$command_link") is not ours; left alone"
+else
+  ln -sfn "$repo/agents-sidebar" "$command_link"
+  ok command "$(tilde "$command_link")"
+  case ":$PATH:" in
+    *":$bin_dir:"*) ;;
+    *) more "$(tilde "$bin_dir") is not on your PATH; add it to run agents-sidebar by name" ;;
+  esac
 fi
 
 # The context figure on a card comes only from the statusline payload, so
@@ -106,8 +140,8 @@ fi
 # Codex sessions as panel rows: on when Codex is here (its directory or its
 # binary), so a machine without it sees nothing about it. --codex installs
 # anyway, creating ~/.codex; --no-codex leaves Codex's files alone. Two files
-# change: ~/.codex/hooks.json, which other tools write too (herdr registers
-# its own entries there), so only our entries move; and config.toml, where
+# change: ~/.codex/hooks.json, which other tools write too (some register
+# their own entries there), so only our entries move; and config.toml, where
 # Codex's sandbox learns the task directory. Codex asks once to trust the hooks.
 if [ "$codex" = auto ]; then
   if [ -d "$HOME/.codex" ] || command -v codex >/dev/null 2>&1; then codex=1; else codex=0; fi
@@ -135,6 +169,27 @@ if [ "$codex" = 1 ]; then
   [ -f "$codex_hooks.before-agents-sidebar" ] && undo+=("codex       cp $(tilde "$codex_hooks").before-agents-sidebar $(tilde "$codex_hooks")   (or --no-codex next time)")
 else
   skip codex "not here"
+fi
+
+# omp sessions report their turns: an extension omp loads into its own
+# process, which runs the same state hook. On when omp is here; the title
+# omp writes stays the fallback for a session without it. The file is ours
+# alone, and one of that name we did not write is left as it is. Not written,
+# --omp fails the install; found on its own, omp is a warning.
+if [ "$omp" = 1 ]; then
+  if written=$(bash "$repo/omp-extension.sh" "$repo/plugin/omp/agents-sidebar.ts" \
+                 "$plugin_dir/hooks-handlers/emit-state.py" "$(command -v python3)" 2>&1); then
+    ok omp "$(tilde "$written")"
+    next+=("omp sessions started from now on report their turns.")
+    undo+=("omp         rm $(tilde "$written")   (or --no-omp next time)")
+  elif [ "$omp_insisted" = 1 ]; then
+    echo "error: --omp, but ${written#error: }" >&2
+    exit 1
+  else
+    warn omp "${written#error: }"
+  fi
+else
+  skip omp "not here"
 fi
 
 # The macOS notice for a finished turn or a question. A notification wears its

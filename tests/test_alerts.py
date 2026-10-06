@@ -20,6 +20,13 @@ Ways it could go wrong, each covered below:
 - a session that first appears already blocked says nothing;
 - one conversation shown in two panes (two tmux clients on one session) sounds,
   posts and takes focus twice for one moment.
+
+The unseen mark a finished turn leaves on its card could go wrong too:
+- a Stop hook's flip to working and back erases it for good;
+- a turn that ends in front of you is marked, or a marked one stays marked
+  once you look at it;
+- it outlives a new turn, a block, an exit or the session;
+- it depends on the alert settings, or only one pane of a conversation gets it.
 """
 import alerts
 
@@ -159,3 +166,89 @@ def test_panes_whose_conversation_is_unknown_are_each_their_own():
               reading(("a", "blocked", None), ("b", "blocked", None)),
               settings={**ON, "sound": False}, conversations={"a": None})
     assert out[1] == [("notify", "a", "blocked"), ("notify", "b", "blocked")]
+
+
+def marks(*readings, looking_at=None, settings=ON, conversations=None):
+    """The unseen set after each reading, Watch and Unseen stepped together."""
+    watch, unseen = alerts.Watch(), alerts.Unseen()
+    out = []
+    for snap in readings:
+        watch.step(snap, settings, conversations or {})
+        unseen.step(watch.ended, watch.began, looking_at, watch.states)
+        out.append(set(unseen.sids))
+    return out
+
+
+def test_a_stop_hook_that_flips_the_session_to_working_keeps_its_unseen_finish():
+    """A Stop hook that runs a command does this on every turn: cleared on the
+    flip, the mark would never come back, since the flip back to idle ends
+    no new turn."""
+    out = marks(reading(("a", "working", 100)),
+                reading(("a", "idle", None)),
+                reading(("a", "working", 100)),
+                reading(("a", "idle", None)))
+    assert out == [set(), {"a"}, {"a"}, {"a"}]
+
+
+def test_a_turn_that_ends_in_front_of_you_is_not_marked():
+    out = marks(reading(("a", "working", 100), ("b", "working", 100)),
+                reading(("a", "idle", None), ("b", "idle", None)),
+                looking_at="a")
+    assert out == [set(), {"b"}]
+
+
+def test_looking_at_a_marked_session_takes_its_mark_off():
+    watch, unseen = alerts.Watch(), alerts.Unseen()
+    idle = reading(("a", "idle", None))
+    for snap, looking_at in ((reading(("a", "working", 100)), None), (idle, None), (idle, "a")):
+        watch.step(snap, ON, {})
+        unseen.step(watch.ended, watch.began, looking_at, watch.states)
+    assert unseen.sids == set()
+
+
+def test_a_new_turn_takes_the_mark_off_and_its_end_marks_again():
+    out = marks(reading(("a", "working", 100)),
+                reading(("a", "idle", None)),
+                reading(("a", "working", 200)),
+                reading(("a", "idle", None)))
+    assert out == [set(), {"a"}, set(), {"a"}]
+
+
+def test_blocking_exiting_or_closing_takes_the_mark_off():
+    rows = (("a", "working", 100), ("b", "working", 100), ("c", "working", 100), ("d", "working", 100))
+    ended = tuple((sid, "idle", None) for sid, _, _ in rows)
+    out = marks(reading(*rows), reading(*ended),
+                reading(("a", "blocked", None), ("b", "exited", None), ("d", "idle", None)))
+    assert out[1:] == [{"a", "b", "c", "d"}, {"d"}]
+
+
+def test_a_mark_outlasts_a_state_nobody_can_read():
+    out = marks(reading(("a", "working", 100)),
+                reading(("a", "idle", None)),
+                reading(("a", "unknown", None)),
+                reading(("a", "idle", None)))
+    assert out == [set(), {"a"}, {"a"}, {"a"}]
+
+
+def test_a_session_seen_from_the_panel_loses_its_mark_at_once():
+    watch, unseen = alerts.Watch(), alerts.Unseen()
+    for snap in (reading(("a", "working", 100), ("b", "working", 100)),
+                 reading(("a", "idle", None), ("b", "idle", None))):
+        watch.step(snap, ON, {})
+        unseen.step(watch.ended, watch.began, None, watch.states)
+    unseen.seen("a")
+    unseen.seen("c")
+    assert unseen.sids == {"b"}
+
+
+def test_a_finish_is_marked_with_every_alert_turned_off():
+    quiet = {**ON, "sound": False, "notify": False}
+    out = marks(reading(("a", "working", 100)), reading(("a", "idle", None)), settings=quiet)
+    assert out == [set(), {"a"}]
+
+
+def test_both_panes_of_one_conversation_are_marked():
+    out = marks(reading(("a", "working", 100), ("b", "working", 100)),
+                reading(("a", "idle", None), ("b", "idle", None)),
+                conversations={"a": "conv-1", "b": "conv-1"})
+    assert out == [set(), {"a", "b"}]

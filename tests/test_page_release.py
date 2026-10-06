@@ -7,11 +7,9 @@ the button; the offered version moves into the button's tooltip.
 import re
 from pathlib import Path
 
+from page_source import function
+
 PAGE = Path(__file__).resolve().parent.parent / "page.html"
-
-
-def function(page, name):
-    return re.search(rf"\nfunction {name}\(.*?\n\}}\n", page, re.S).group(0)
 
 
 def test_the_offered_version_is_the_buttons_tooltip_not_words_on_the_bar():

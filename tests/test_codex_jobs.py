@@ -32,7 +32,7 @@ def test_a_state_file_reads_as_jobs_without_their_prompts_or_results():
     [got] = sidebar.parse_codex_state(state(job(result="{...}", rendered="# Review")))
     assert got == {"id": "task-aaa-111", "session": SESSION, "kind": "rescue",
                    "status": "running", "phase": "verifying", "pid": 4242,
-                   "since": 1789657201, "ended": None}
+                   "since": 1789657201, "ended": None, "thread": None}
 
 
 def test_a_finished_job_ends_when_it_completed():

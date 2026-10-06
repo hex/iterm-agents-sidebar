@@ -2,7 +2,7 @@
 # ABOUTME: Registers the Agents panel state hook in a Codex hooks.json.
 # ABOUTME: Usage: codex-hooks.sh [--remove] <hooks.json> <emit-state.py>; keeps every entry it did not write.
 #
-# Other tools write this file too (herdr registers its own SessionStart entry),
+# Other tools write this file too (some register their own SessionStart entry),
 # so entries are replaced only when their command runs this handler, and a
 # file that is not valid JSON is never overwritten.
 set -euo pipefail
