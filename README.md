@@ -144,7 +144,7 @@ running in the background stays through it. Past three of them,
 they fold into one line ("30 finished") that opens on a click, and the ones
 still running stay in sight.
 A session's open tasks, the checklist it keeps
-with TaskCreate, fold into one line ("6 tasks · 1 in progress") that opens
+with TaskCreate or the open steps of a Codex plan, fold into one line ("6 tasks · 1 in progress") that opens
 to a row per task, the running ones with the dots and what is being done.
 Background shells fold into
 one line ("2 commands running") that opens on a click, and clicking a shell

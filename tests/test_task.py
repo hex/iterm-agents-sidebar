@@ -52,7 +52,7 @@ def test_a_hundred_means_done_and_locks_the_task(tmp_path, monkeypatch, capsys):
     run(["--session", "s1", "begin", "--title", "Fix"], tmp_path, monkeypatch, capsys)
     run(["--session", "s1", "report", "--activity", "All checks pass", "--percent", "100"], tmp_path, monkeypatch, capsys)
     got = note(tmp_path)
-    assert (got["done"], got["percent"], got["activity"]) == (True, 100, "Done")
+    assert (got["done"], got["percent"], got["activity"]) == (True, 100, "Complete")
     code, out = run(["--session", "s1", "report", "--activity", "More work", "--percent", "70"], tmp_path, monkeypatch, capsys)
     assert code == 1 and "done" in out.err.lower()
     assert note(tmp_path)["percent"] == 100
