@@ -102,7 +102,7 @@ def blank_state():
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
             "agent_info": {}, "gates": {}, "last_tool": None, "last_tool_ran": False,
             "turn_started": None, "idle_since": None, "reminded": 0, "question": None, "asks": {},
-            "background": [], "running": {}}
+            "background": [], "running": {}, "plan": []}
 
 
 def live_agents(doc):
@@ -343,8 +343,13 @@ def apply_event(doc, event, payload, said, codex=False):
            "question": doc.get("question"),
            "asks": dict(doc.get("asks") or {}),
            "background": list(doc.get("background") or []),
-           "running": dict(doc.get("running") or {})}
+           "running": dict(doc.get("running") or {}),
+           "plan": list(doc.get("plan") or [])}
     now = round(time.time(), 3)
+
+    if codex and event == "PostToolUse" and payload.get("tool_name") == "update_plan":
+        # Each call carries the whole plan, so it replaces the last one.
+        doc["plan"] = open_steps(payload.get("tool_input"))
 
     if event == "UserPromptSubmit":
         # The one event that starts a turn; tool calls inside it keep this clock.
@@ -535,7 +540,8 @@ def read_state(session_id):
             "question": doc.get("question") if isinstance(doc.get("question"), dict) else None,
             "asks": doc.get("asks") if isinstance(doc.get("asks"), dict) else {},
             "running": doc.get("running") if isinstance(doc.get("running"), dict) else {},
-            "background": doc.get("background") if isinstance(doc.get("background"), list) else []}
+            "background": doc.get("background") if isinstance(doc.get("background"), list) else [],
+            "plan": doc.get("plan") if isinstance(doc.get("plan"), list) else []}
 
 
 def update(session_id, event, payload, said, codex=False):
@@ -878,13 +884,37 @@ def open_tasks(directory):
     return [item for _, item in sorted(items, key=lambda pair: pair[0])]
 
 
+def open_steps(tool_input):
+    """An update_plan call's input -> its steps still to do, in plan order:
+    [{id, status, subject, doing}], the shape a Claude task list publishes.
+
+    The id is the step's place in the plan. A step that is not a step with
+    a status Codex documents is skipped rather than guessed at.
+    """
+    plan = tool_input.get("plan") if isinstance(tool_input, dict) else None
+    if not isinstance(plan, list):
+        return []
+    steps = []
+    for place, item in enumerate(plan, 1):
+        if not isinstance(item, dict) or item.get("status") not in ("pending", "in_progress"):
+            continue
+        subject = item.get("step")
+        if not isinstance(subject, str) or not subject.strip():
+            continue
+        if len(subject) > SUBJECT_MAX:
+            subject = subject[:SUBJECT_MAX - 1] + "…"
+        steps.append({"id": str(place), "status": item["status"], "subject": subject, "doing": ""})
+    return steps
+
+
 def published(doc, pid, payload, codex, now, tasks=True):
     """The JSON the session variable carries, from the folded state document.
 
     Codex has no statusline to bridge, so its variable also carries the model
     (on every Codex payload but SessionEnd) and the rollout the daemon reads
-    effort and context from. A Claude session's carries its open tasks, and
-    `tasks` false leaves them out for an agent that keeps no Claude task list.
+    effort and context from, and the open steps of its plan. A Claude
+    session's carries its open tasks, and `tasks` false leaves them out for an
+    agent that keeps no Claude task list.
     """
     value = {"state": aggregate(doc), "pid": pid, "session": session_of(payload),
              "agents": live_agents(doc), "subagents": subagents(doc),
@@ -902,9 +932,12 @@ def published(doc, pid, payload, codex, now, tasks=True):
         # process listing ties them to a pane, so the hook's own count is
         # what keeps a long one from reading as a session gone quiet.
         value["tools_running"] = len(doc.get("running") or {})
+        # Its plan, kept from the last update_plan call; none until there is one.
+        if doc.get("plan"):
+            value["tasks"] = doc["plan"]
     elif tasks:
-        # Codex keeps no task list; a Claude session's is read whole on
-        # every event, since the tool calls that change it are the events.
+        # A Claude session's list is read whole on every event, since the
+        # tool calls that change it are the events.
         listed = task_list_of(os.environ, value["session"])
         value["tasks"] = open_tasks(os.path.join(TASKS_DIR, listed)) if listed else []
     return value

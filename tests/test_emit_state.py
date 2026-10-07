@@ -656,6 +656,62 @@ def test_a_codex_prompt_is_answered_once_codex_issues_its_next_tool():
         assert (doc["question"] is None) == (after == "working")
 
 
+def _plan(*steps):
+    """A Codex update_plan PostToolUse payload: (step, status) pairs."""
+    return {"tool_name": "update_plan", "tool_use_id": "p",
+            "tool_input": {"plan": [{"step": step, "status": status} for step, status in steps]}}
+
+
+def test_a_codex_plan_publishes_its_open_steps_until_the_next_one():
+    """Codex keeps its plan in the update_plan tool, not in files, so the
+    hook holds the latest one and publishes its open steps as the session's
+    tasks, in plan order, on every event after it."""
+    doc = emit_state.blank_state()
+    doc = emit_state.apply_event(doc, "PostToolUse", _plan(("Alpha step", "completed"),
+                                 ("Beta step", "in_progress"), ("Gamma step", "pending")), "working", codex=True)
+    for event, payload, said in (("PreToolUse", {"tool_name": "Bash", "tool_use_id": "b"}, "working"),
+                                 ("Stop", {"stop_hook_active": False}, "idle")):
+        doc = emit_state.apply_event(doc, event, payload, said, codex=True)
+        assert emit_state.published(doc, 1, {}, codex=True, now=1)["tasks"] == [
+            {"id": "2", "status": "in_progress", "subject": "Beta step", "doing": ""},
+            {"id": "3", "status": "pending", "subject": "Gamma step", "doing": ""}], event
+
+
+def test_a_new_codex_plan_replaces_the_last_and_a_finished_one_leaves_no_tasks():
+    doc = emit_state.apply_event(emit_state.blank_state(), "PostToolUse",
+                                 _plan(("Alpha step", "in_progress"), ("Beta step", "pending")), "working", codex=True)
+    doc = emit_state.apply_event(doc, "PostToolUse", _plan(("Write it", "in_progress")), "working", codex=True)
+    assert [t["subject"] for t in emit_state.published(doc, 1, {}, codex=True, now=1)["tasks"]] == ["Write it"]
+    doc = emit_state.apply_event(doc, "PostToolUse", _plan(("Write it", "completed")), "working", codex=True)
+    assert "tasks" not in emit_state.published(doc, 1, {}, codex=True, now=1)
+
+
+def test_a_malformed_codex_plan_publishes_only_the_steps_it_can_read():
+    """Each malformed step is skipped, and a plan that is not a list keeps
+    nothing; the hook never fails on what the model sent."""
+    doc = emit_state.blank_state()
+    for tool_input in (None, "a plan", {"plan": "Alpha"}, {"plan": [None, 3, {"step": "No status"},
+                                                                     {"step": "", "status": "pending"},
+                                                                     {"step": 7, "status": "pending"},
+                                                                     {"step": "Odd", "status": "blocked"}]}):
+        doc = emit_state.apply_event(doc, "PostToolUse", {"tool_name": "update_plan", "tool_input": tool_input},
+                                     "working", codex=True)
+        assert "tasks" not in emit_state.published(doc, 1, {}, codex=True, now=1), tool_input
+    doc = emit_state.apply_event(doc, "PostToolUse", {"tool_name": "update_plan", "tool_input": {"plan": [
+        {"step": "Kept", "status": "pending"}, "junk", {"step": "Also kept", "status": "in_progress"}]}},
+        "working", codex=True)
+    assert emit_state.published(doc, 1, {}, codex=True, now=1)["tasks"] == [
+        {"id": "1", "status": "pending", "subject": "Kept", "doing": ""},
+        {"id": "3", "status": "in_progress", "subject": "Also kept", "doing": ""}]
+
+
+def test_a_codex_step_is_cut_to_the_subject_limit():
+    doc = emit_state.apply_event(emit_state.blank_state(), "PostToolUse",
+                                 _plan(("x" * 1000, "pending")), "working", codex=True)
+    subject = emit_state.published(doc, 1, {}, codex=True, now=1)["tasks"][0]["subject"]
+    assert len(subject) == emit_state.SUBJECT_MAX and subject.endswith("…")
+
+
 def test_the_state_counts_the_tools_started_and_not_finished():
     """Codex runs tools side by side, so the newest one finishing says
     nothing of an older one still running; each is counted until its own

@@ -84,7 +84,7 @@ def report(note, activity, percent, now):
     if percent is not None and not 0 <= percent <= 100:
         raise ValueError("percent must be 0 to 100")
     done = percent == 100
-    return dict(note, activity="Done" if done else activity, percent=percent,
+    return dict(note, activity="Complete" if done else activity, percent=percent,
                 done=done, ts=round(now))
 
 

@@ -244,7 +244,19 @@ first eight characters of the session id. The hook reads the list on every
 event, since the tool calls that change it are the events, and hands the
 panel the pending and running items; a list is never pruned, so completed
 ones never show. A subject is clipped to 240 characters and the whole of
-what the panel got sits in the row's tooltip. Codex keeps no task list.
+what the panel got sits in the row's tooltip.
+
+Codex keeps its plan in its `update_plan` tool instead. Each call carries the
+whole plan, so the hook keeps the pending and running steps of the latest one
+and shows them in the same fold until the next call replaces them; a plan
+with every step completed leaves no fold. Codex 0.160 ships the tool off, so
+its sessions make no plan until `~/.codex/config.toml` has:
+
+```toml
+[tools.update_plan]
+enabled = true
+```
+
 Settings > Rows > Task > Task list turns the fold off; that switch hides while
 Task is off.
 

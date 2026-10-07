@@ -215,6 +215,9 @@
        centre of the mark on the row above. */
     --nest: calc(var(--depth, 0) * (var(--elbow) + 6px + var(--mark) / 2));
     padding: 3px var(--row-pad) 3px calc(var(--child-indent) + var(--nest)); min-height: 22px;
+    /* Its padding and name are smaller than a card's, so the state badge
+       comes up with them to sit centred on the name. */
+    --badge-top: 3px;
     /* The dots' ink is two pixels in an eight-pixel slot, so the name sits
        closer than the session's own gap would put it. */
     gap: 6px;
@@ -934,27 +937,27 @@
      name's line only: as a flex column it took its width out of the details
      line too, and at larger text sizes that cut the context figure off. */
   .word.blocked { color: var(--badge-ink); background: var(--blocked-border); font-family: -apple-system, sans-serif; }
-  button.row.hot > .word.blocked { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  button.row.hot > .word.blocked { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
   button.row.hot { --badge-room: calc(62px + var(--corner, 0px)); }
   /* Idle is the resting state, so its badge is an outline in the dim ink: it
      says the session is free for a prompt without competing with "waiting". */
   .word.idle { color: var(--dim); border: var(--hair) solid var(--dim);
     padding: calc(3px - var(--hair)) calc(5px - var(--hair));
     font-family: -apple-system, sans-serif; font-weight: 600; }
-  button.row.resting > .word.idle { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  button.row.resting > .word.idle { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
   /* An agent whose process is gone: the idle outline without its sweep, and
      the card behind it faded, since nothing on it is live any more. */
   .word.exited { color: var(--dim); border: var(--hair) solid var(--dim);
     padding: calc(3px - var(--hair)) calc(5px - var(--hair));
     font-family: -apple-system, sans-serif; font-weight: 600; }
-  button.row.resting > .word.exited { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  button.row.resting > .word.exited { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
   /* An idle card whose turn ended while you were looking elsewhere, until
      you look at it: IDLE's badge filled in the calm green, news that does
      not compete with the amber of "waiting". */
   .word.unseen { color: var(--accent-ink); background: var(--sev-ok); border: var(--hair) solid var(--sev-ok);
     padding: calc(3px - var(--hair)) calc(5px - var(--hair));
     font-family: -apple-system, sans-serif; font-weight: 600; }
-  button.row.unseen > .word.unseen { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  button.row.unseen > .word.unseen { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
   button.row.unseen { --badge-room: calc(40px + var(--corner, 0px)); }
   li.line.card.exited > button.row, li.line.card.exited > .children,
   li.line.card.exited > .shell-sum { opacity: .55; }
@@ -1003,7 +1006,7 @@
      so it stays below "waiting", which is the one state that needs you. */
   .word.long { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn);
     font-family: -apple-system, sans-serif; }
-  button.row.long-turn > .word.long { position: absolute; top: 6px; right: calc(10px + var(--corner, 0px)); }
+  button.row.long-turn > .word.long { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
   button.row.long-turn { --badge-room: calc(70px + var(--corner, 0px)); }
 
 
