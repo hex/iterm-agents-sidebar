@@ -205,6 +205,33 @@ tool back. While a session is not linked they say so; while linking is off
 they say that and where to turn it on. A subagent's call is
 refused.
 
+### Remote control after a switch
+
+For every Claude Code card the panel reads `~/.claude/sessions/<pid>.json`,
+the state file Claude Code keeps for each running session, and takes two
+fields: `pid`, which must be the card's agent process, and `bridgeSessionId`,
+a string while Remote Control runs and `null` or absent otherwise. The panel
+logs a file it cannot read that way in `daemon.log`, once per process and
+fault. With Keep remote control after a switch on (see
+`docs/usage.md`), a switch the panel makes leaves these files in the session's
+links folder:
+
+| File | Written by | What it holds |
+|---|---|---|
+| `remote-control.json` | panel | `{switch_at, expires}`: turn Remote Control back on, written once the session reads off after the switch, live for five minutes. It names no command |
+| `remote-control-taken.json` | mod | the same file, renamed when the mod takes it, so it runs once |
+| `remote-control-result.json` | mod | `{switch_at, outcome, reason}`, the outcome `done`, `already-on` or `failed` |
+
+The mod runs `/remote-control` through `$.command.run` only while its own
+state file says `idle` and `bridgeSessionId` is still unset: run while on,
+the command opens its menu instead. The panel moves an untaken
+`remote-control.json` to the new conversation's folder after a `/clear`,
+forgets the debt when another agent starts in the pane, and removes an ask
+not yet taken when you turn the setting off. A result nothing will read (one
+already taken still runs, and a session can answer after the panel saw it
+back) is removed once a minute old. What it owes lives in memory only, so
+a daemon restart forgets it.
+
 ## Uninstall
 
 `./uninstall.sh` takes no flags. It stops the daemon and removes:

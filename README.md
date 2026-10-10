@@ -113,6 +113,8 @@ no background-shell line. Codex opens its session at your first prompt, so
 until then its card shows the name, the branch and a `Codex` mark, and no
 state. Once Codex titles the conversation, the title its status line shows
 sits under the card's name, in place of the title of any task it reports.
+A Claude card whose session has Remote Control on shows a small grey
+broadcast glyph after its name ([usage](docs/usage.md#remote-control)).
 
 An omp session reports its state through the extension the install writes:
 when a turn starts and ends, when an approval or a question waits on you, and
@@ -176,7 +178,7 @@ A setting indented under another works only while that one is on.
 | Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
 | Focus | Bring a blocked session forward; under it Go back once it resumes |
 | Rows | Warn above, CPU heavy at, Memory heavy at, Order, Provider badge, Shell names, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
-| Experimental | Link cards, off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions) |
+| Experimental | Link cards and Keep remote control after a switch, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions) and [Remote control](docs/usage.md#remote-control) |
 | Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |
 
 Some have limits the picture doesn't show:

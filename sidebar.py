@@ -31,6 +31,7 @@ import context_usage  # noqa: E402
 import links  # noqa: E402
 import omp  # noqa: E402
 import partners  # noqa: E402
+import remote  # noqa: E402
 from sidebar_rules import prompt_refusal  # noqa: E402
 import sound  # noqa: E402
 import statusline  # noqa: E402
@@ -165,6 +166,9 @@ DEFAULT_SETTINGS = {
     # Experimental: dragging a card onto another links the two. Off, nothing
     # is linked and a link already made ends.
     "links": False,
+    # Experimental: after the panel switches accounts, Claude sessions that had
+    # Remote Control on get it back once idle.
+    "keep_remote": False,
 }
 
 #: (low, high) for the values that are numbers.
@@ -587,6 +591,11 @@ class Notices:
         if self._procs.get(session_id) is proc:
             del self._procs[session_id]
             self._asked.pop(session_id, None)
+
+
+def card_label(frame_row):
+    """What a card is called in log lines and refusals: its label, or its pane id when it has none."""
+    return frame_row.get("label") or frame_row["session_id"]
 
 
 def find_row(snapshot, session_id):
@@ -3158,6 +3167,8 @@ class Bridge:
         self.partners = partners.Partners()
         for line in self.partners.load(time.time()) + self.partners.restart(time.time()):
             self.log(line)
+        #: Who is owed Remote Control after a panel switch, and whose did not come back.
+        self.keeper = remote.Keeper()
         #: Session id -> (when a resume was typed into it, the job it was typed
         #: at), until its agent reports; see still_resuming.
         self.resuming = {}
@@ -3433,6 +3444,7 @@ class Bridge:
         self.alert(self.watch.step(self.latest, settings, conversations), settings)
         self.step_partners(settings["links"])
         self.step_links(settings["links"])
+        await self.step_remote(settings["keep_remote"])
         # Read in this rebuild, the one that saw the turn end: read later, you
         # could have moved to it in between.
         looking_at = self.active_session_id() if self.app.app_active is True else None
@@ -3576,7 +3588,7 @@ class Bridge:
         if frame_row is None or inner is None:
             return None
         return {"pane": pane, "agent": inner.get("conversation"), "provider": frame_row.get("provider") or "claude",
-                "label": frame_row.get("label") or pane, "state": frame_row.get("state"),
+                "label": card_label(frame_row), "state": frame_row.get("state"),
                 "depth": frame_row.get("depth", 0), "worktree_of": frame_row.get("worktree_of"),
                 "in_front": frame_row.get("in_front"), "rollout": inner.get("rollout"), "colour": frame_row.get("colour")}
 
@@ -3659,11 +3671,29 @@ class Bridge:
                 if not on:
                     frame_row["link_refusal"] = LINKS_OFF
                 elif pane in labels:
-                    frame_row["link_refusal"] = partners.linked_with(frame_row.get("label") or pane, labels[pane])
+                    frame_row["link_refusal"] = partners.linked_with(card_label(frame_row), labels[pane])
                 elif end:
                     frame_row["link_refusal"] = links.own_refusal(end, ready)
                 else:
                     frame_row["link_refusal"] = "only Claude, Codex and omp sessions can link"
+
+    async def step_remote(self, keep):
+        """Reads each Claude session's Remote Control off the loop, moves the keeper on, and puts `remote` on every
+        row: what the card's mark and line show."""
+        labels = {row["session_id"]: card_label(row) for group in self.latest["groups"] for row in group["rows"]}
+        ends = {row["session_id"]: {"agent": row["conversation"], "agent_pid": row["agent_pid"],
+                                    "label": labels.get(row["session_id"], row["session_id"])}
+                for row in self.rows
+                if row.get("provider") == "claude" and row.get("agent_pid") and row.get("conversation")}
+        now = time.time()
+        readings = await asyncio.to_thread(remote.read_all, remote.SESSIONS_DIR,
+                                           {pane: end["agent_pid"] for pane, end in ends.items()}, now)
+        switch = self.meters.last_switch if self.meters is not None else None
+        for line in self.keeper.step(ends, readings, switch["at"] if switch else None, keep, now):
+            self.log(line)
+        for group in self.latest["groups"]:
+            for row in group["rows"]:
+                row["remote"] = self.keeper.remote(row["session_id"]) if row["session_id"] in ends else None
 
     def log(self, *words):
         """Say it in the Script Console and in a file beside the status files.
