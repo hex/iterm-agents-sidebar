@@ -28,7 +28,10 @@ import accounts  # noqa: E402
 import alerts  # noqa: E402
 import codex  # noqa: E402
 import context_usage  # noqa: E402
+import links  # noqa: E402
 import omp  # noqa: E402
+import partners  # noqa: E402
+from sidebar_rules import prompt_refusal  # noqa: E402
 import sound  # noqa: E402
 import statusline  # noqa: E402
 import update  # noqa: E402
@@ -145,6 +148,9 @@ DEFAULT_SETTINGS = {
     # does, and nothing a session does moves it. "name" orders the cards by
     # name; "attention" gathers them by what they are doing.
     "order": "terminal",
+    # The order the cards were dragged into, by name, top first. Used while
+    # "order" is "hand"; a name not on screen keeps its place for its return.
+    "hand_order": [],
     "expand_shells": False,
     # The accounts and limits at the foot, folded to the active account and
     # Codex by a click on their head.
@@ -156,6 +162,9 @@ DEFAULT_SETTINGS = {
     # The face a shell card's name wears: the panel's own, SF Mono, or the
     # default iTerm2 profile's font.
     "shell_font": "system",
+    # Experimental: dragging a card onto another links the two. Off, nothing
+    # is linked and a link already made ends.
+    "links": False,
 }
 
 #: (low, high) for the values that are numbers.
@@ -165,10 +174,18 @@ SETTING_RANGES = {"volume": (0.0, 1.0), "context_threshold": (0, 100),
                   # a row no longer fits the 250px the Toolbelt gives us.
                   "ui_scale": (0.8, 1.6)}
 
+#: How many card names the hand order remembers, closed sessions included.
+HAND_ORDER_MAX = 200
+
+
+#: Why no card links while the experimental setting is off, and why a link
+#: made before it was turned off ended.
+LINKS_OFF = "linking is off in Settings"
+LINKS_TURNED_OFF = "linking was turned off"
 
 #: The values a setting that is one of a few words can take.
 SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off"),
-                   "order": ("terminal", "name", "attention"),
+                   "order": ("terminal", "name", "attention", "hand"),
                    "shell_font": ("system", "mono", "terminal")}
 
 
@@ -179,6 +196,11 @@ def _clean(settings):
         if key not in settings:
             continue
         value = settings[key]
+        if isinstance(default, list):
+            if isinstance(value, list):
+                names = [name for name in value if isinstance(name, str) and name]
+                out[key] = list(dict.fromkeys(names))[:HAND_ORDER_MAX]
+            continue
         if isinstance(default, bool):
             out[key] = bool(value)
         elif key in SETTING_CHOICES:
@@ -456,26 +478,6 @@ def answer_keys(text, standing, answered, provider=None):
     if type(pick) is not int or not 1 <= pick <= len(options):
         return None
     return str(pick)
-
-
-def prompt_refusal(row):
-    """Why text meant as the agent's next input cannot land now, or None.
-
-    `row` is the session's row in the last rebuild, None when it lists none.
-    A waiting prompt would take the text as its answer, and an exited
-    agent's pane is a shell that would run it. Mid-turn the agent queues it.
-    A program in front of the agent (`in_front`, see program_in_front) would
-    take the text in its place: an editor, or the shell of a suspended agent.
-    """
-    if row is None:
-        return "the session has gone"
-    if row.get("state") == "blocked":
-        return "it is waiting on you"
-    if row.get("state") == "exited":
-        return "the agent has exited"
-    if row.get("in_front"):
-        return f"{row['in_front']} is in front"
-    return None
 
 
 def prompt_refusal_in(snapshot, session_id):
@@ -807,7 +809,7 @@ def _blocks(rows):
     """
     blocks = []
     for row in rows:
-        if blocks and (row["depth"] or row.get("worktree_of")):
+        if blocks and (row["depth"] or row.get("worktree_of") or row.get("partner_of")):
             blocks[-1].append(row)
         else:
             blocks.append([row])
@@ -817,6 +819,34 @@ def _blocks(rows):
 def by_name(rows):
     """Top-level cards in name order, each with everything nested in it."""
     blocks = sorted(_blocks(rows), key=lambda block: block[0]["label"].casefold())
+    return [row for block in blocks for row in block]
+
+
+def dock_partners(rows, pairs):
+    """Each pair's lower card, with everything nested in it, moved to just after the upper card's block, so every
+    order keeps the two together. A pair one of whose cards is not a top-level card here is left as it is."""
+    for upper, lower in pairs:
+        blocks = _blocks(rows)
+        top = {block[0]["session_id"]: block for block in blocks}
+        if upper not in top or lower not in top:
+            continue
+        moved = top[lower]
+        gone = {id(row) for row in moved}
+        rest = [row for row in rows if id(row) not in gone]
+        at = next(i for i, row in enumerate(rest) if row is top[upper][-1]) + 1
+        rows[:] = rest[:at] + moved + rest[at:]
+        top[upper][0]["partner"] = {"side": "upper", "with": lower}
+        moved[0]["partner"] = {"side": "lower", "with": upper}
+        moved[0]["partner_of"] = upper
+    return rows
+
+
+def by_hand(rows, names):
+    """Top-level cards in the order they were dragged into, each with
+    everything nested in it. A card whose name was never placed goes after
+    every placed one, in the order it came."""
+    place = {name: at for at, name in enumerate(names)}
+    blocks = sorted(_blocks(rows), key=lambda block: place.get(block[0]["label"], len(place)))
     return [row for block in blocks for row in block]
 
 
@@ -894,16 +924,20 @@ def by_attention(rows, now):
     The keys are the clocks of the states themselves, so two cards keep
     their order for as long as both stay put; one with no clock goes last.
     """
-    def key(block):
-        head = block[0]
+    def judged(head):
         bucket = placement(head, now)
         clock = head.get("turn_started") if bucket == "working" else head.get("idle_since")
         return (bucket == "idle", clock is None, clock or 0)
-    blocks = sorted(_blocks(rows), key=key)
+
+    def lead(block):
+        """The head a block is judged by: its own, or its partner card's when that one is more urgent."""
+        return min([block[0]] + [row for row in block if row.get("partner_of")], key=judged)
+
+    blocks = sorted(_blocks(rows), key=lambda block: judged(lead(block)))
     for block in blocks:
-        head = block[0]
-        head["bucket"] = placement(head, now)
-        rested = head.get("idle_since")
+        head, winner = block[0], lead(block)
+        head["bucket"] = placement(winner, now)
+        rested = winner.get("idle_since")
         if head["bucket"] == "idle" and rested is not None:
             passed = sum(1 for limit in RESTED_SECONDS if now - rested >= limit)
             if passed:
@@ -919,16 +953,19 @@ def by_provider(rows):
     return [row for block in sorted(_blocks(rows), key=place) for row in block]
 
 
-def snapshot(sessions, order="terminal", group_by_provider=False, now=None):
+def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand_order=(), pairs=()):
     """Raw session dicts -> the payload the page renders.
 
     Agents first, then everything else. Order within a group is the order
     handed in, which is the order iTerm2 enumerates windows, tabs and panes,
     so a card sits where its terminal does and nothing a session does moves
     it; `order` "name" puts the top-level cards in name order instead, and
-    "attention" gathers them by what they are doing, judged at `now`. Each
-    input dict needs session_id, window_id, tab_id, path, auto_name and
-    job_name.
+    "attention" gathers them by what they are doing, judged at `now`; "hand"
+    puts the agent cards in the order of the names in `hand_order`, which
+    the payload carries back so the page can tell a frame sorted before a
+    drop from one sorted after it. `pairs` lists (upper pane, lower pane)
+    partnerships, each drawn as one block in every order. Each input dict
+    needs session_id, window_id, tab_id, path, auto_name and job_name.
     """
     # A tab is only worth numbering by pane when it actually has more than one,
     # and a window prefix is noise until a second window exists.
@@ -1165,11 +1202,14 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None):
             at += 1
         rows["agent"].insert(at, row)
 
+    dock_partners(rows["agent"], pairs)
     if order == "name":
         for kind in rows:
             rows[kind] = by_name(rows[kind])
     elif order == "attention":
         rows["agent"] = by_attention(rows["agent"], time.time() if now is None else now)
+    elif order == "hand":
+        rows["agent"] = by_hand(rows["agent"], hand_order)
     if group_by_provider:
         rows["agent"] = by_provider(rows["agent"])
     mark_busy_teammates(rows["agent"])
@@ -1179,7 +1219,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None):
         {"name": "SESSIONS", "rows": rows["shell"]},
     ]
     # A header over nothing reads as breakage, and costs a row of a narrow panel.
-    return {"groups": [group for group in groups if group["rows"]]}
+    return {"groups": [group for group in groups if group["rows"]],
+            "hand_order": list(hand_order) if order == "hand" else []}
 
 
 def mark_busy_teammates(rows):
@@ -2747,7 +2788,8 @@ class Sidebar:
 
     def __init__(self, token, page_path, snapshot_fn, action_fn,
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
-                 context_fn=None, log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
+                 context_fn=None, link_fn=None, github_fn=None, untie_fn=None,
+                 log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
         self.snapshot_fn = snapshot_fn
@@ -2760,6 +2802,12 @@ class Sidebar:
         self.statusline_fn = statusline_fn
         #: session id -> context_usage.parse()'s breakdown; raises context_usage.Refused.
         self.context_fn = context_fn
+        #: (source pane, target pane) -> the link's frame; raises links.Refused.
+        self.link_fn = link_fn
+        #: pane -> None: ends that card's partnership; raises links.Refused.
+        self.untie_fn = untie_fn
+        #: page name -> None: opens that GitHub page; raises update.Refused when there is none.
+        self.github_fn = github_fn
         #: line -> None: where the page's own failures are written down.
         self.log_fn = log_fn
 
@@ -2811,19 +2859,33 @@ class Sidebar:
         if method == "POST" and path == "/context":
             return self._context(body)
 
+        if method == "POST" and path == "/link":
+            return self._link(body)
+
+        if method == "POST" and path == "/untie":
+            return self._untie(body)
+
+        if method == "POST" and path == "/github":
+            return self._github(body)
+
         if method == "POST" and path == "/page-error":
             return self._page_error(body)
 
         # Read the page from disk per request, so editing it needs no restart.
         return (200, "text/html; charset=utf-8", self.page_path.read_bytes())
 
-    def _action(self, body):
+    @staticmethod
+    def _body(body):
+        """A request's JSON object, or None when the body is not one."""
         try:
             request = json.loads(body or b"{}")
         except ValueError:
-            return self._json(400, {"error": "malformed body"})
+            return None
+        return request if isinstance(request, dict) else None
 
-        if not isinstance(request, dict):
+    def _action(self, body):
+        request = self._body(body)
+        if request is None:
             return self._json(400, {"error": "malformed body"})
         verb = request.get("verb")
         session_id = request.get("session_id")
@@ -2848,20 +2910,17 @@ class Sidebar:
         """The page could not paint a frame. Its console cannot be read, so the
         error is written to the daemon's log: on one line, since the page is
         not allowed to start lines of its own there, and clipped."""
-        try:
-            error = json.loads(body or b"{}").get("error")
-        except (ValueError, AttributeError):
-            error = None
+        error = (self._body(body) or {}).get("error")
         if not isinstance(error, str):
             return self._json(400, {"error": "a page error needs an error string"})
         self.log_fn(" | ".join(part.strip() for part in error.splitlines() if part.strip())[:PAGE_ERROR_LIMIT])
         return self._json(200, {"ok": True})
 
     def _context(self, body):
-        try:
-            session_id = json.loads(body or b"{}").get("session_id")
-        except (ValueError, AttributeError):
+        request = self._body(body)
+        if request is None:
             return self._json(400, {"error": "malformed body"})
+        session_id = request.get("session_id")
         if not isinstance(session_id, str) or self.context_fn is None:
             return self._json(400, {"error": "a context read needs a session_id"})
         try:
@@ -2870,12 +2929,41 @@ class Sidebar:
             return self._json(409, {"error": str(refusal)})
         return self._json(200, {"ok": True, "context": breakdown})
 
-    def _accounts(self, body):
+    def _github(self, body):
+        page = (self._body(body) or {}).get("page")
+        if page not in update.GITHUB_PAGES or self.github_fn is None:
+            return self._json(400, {"error": "a GitHub page is repository or releases"})
         try:
-            request = json.loads(body or b"{}")
-            op = request.get("op")
-        except (ValueError, AttributeError):
+            self.github_fn(page)
+        except update.Refused as refusal:
+            return self._json(409, {"error": str(refusal)})
+        return self._json(200, {"ok": True})
+
+    def _link(self, body):
+        request = self._body(body)
+        if (request is None or not isinstance(request.get("from"), str)
+                or not isinstance(request.get("to"), str) or self.link_fn is None):
+            return self._json(400, {"error": "a link needs from and to"})
+        try:
+            return self._json(200, {"ok": True, "link": self.link_fn(request["from"], request["to"])})
+        except links.Refused as refusal:
+            return self._json(409, {"error": str(refusal)})
+
+    def _untie(self, body):
+        request = self._body(body)
+        if request is None or not isinstance(request.get("pane"), str) or self.untie_fn is None:
+            return self._json(400, {"error": "an untie needs a pane"})
+        try:
+            self.untie_fn(request["pane"])
+        except links.Refused as refusal:
+            return self._json(409, {"error": str(refusal)})
+        return self._json(200, {"ok": True})
+
+    def _accounts(self, body):
+        request = self._body(body)
+        if request is None:
             return self._json(400, {"error": "malformed body"})
+        op = request.get("op")
         if op not in ACCOUNT_OPS or self.accounts_fn is None:
             return self._json(400, {"error": "unknown account op"})
         if op in ("switch", "rename") and not isinstance(request.get("account_id"), str):
@@ -2987,11 +3075,11 @@ class Server:
             return
 
         path = urlsplit(target).path
-        if path in ("/accounts", "/update", "/context"):
+        if path in ("/accounts", "/update", "/context", "/github"):
             # Account ops wait on the Keychain, Claude Code's locks and the
-            # network, for seconds, an update on a pull and install.sh, and a
-            # context read on a fork of claude; off the loop, the heartbeat
-            # keeps going.
+            # network, for seconds, an update on a pull and install.sh, a
+            # context read on a fork of claude, and a GitHub page on `open`;
+            # off the loop, the heartbeat keeps going.
             status, content_type, payload = await asyncio.to_thread(
                 self.sidebar.handle, method, target, body)
         else:
@@ -3064,6 +3152,12 @@ class Bridge:
         #: Session id -> (state, turn began, last rest) for agents that publish no clocks.
         self.clocks = {}
         self.context_reads = context_usage.Reads()
+        #: The open links between cards: one session handing its result to another.
+        self.links = links.Book()
+        #: The partnerships between Claude cards, and the tasks between them.
+        self.partners = partners.Partners()
+        for line in self.partners.load(time.time()) + self.partners.restart(time.time()):
+            self.log(line)
         #: Session id -> (when a resume was typed into it, the job it was typed
         #: at), until its agent reports; see still_resuming.
         self.resuming = {}
@@ -3072,6 +3166,8 @@ class Bridge:
         self.notifier_missing_said = False
         #: The mirror release newer than this checkout, or None; set by watch_releases.
         self.update = None
+        #: This checkout's GitHub repository page, or None; set by watch_releases.
+        self.repository = None
         self.notices = Notices()
         #: Decides each alert from successive rebuilds.
         self.watch = alerts.Watch()
@@ -3265,6 +3361,8 @@ class Bridge:
                         # the process: the statusline's dies with it.
                         "conversation": parse_session(raw),
                         "rollout": parse_codex(raw)["transcript_path"] if provider == "openai" else None,
+                        # A Claude session's transcript, for its partner's partner_read.
+                        "transcript": status["transcript"] if provider == "claude" else None,
                         "branch": git_branch(values["path"]),
                         "worktree_of": git_main_worktree(values["path"]),
                     })
@@ -3316,7 +3414,8 @@ class Bridge:
         await self.app.async_refresh()
         settings = load_settings()
         self.latest = snapshot(await self.read_sessions(), settings["order"],
-                               settings["provider_mark"] == "groups")
+                               settings["provider_mark"] == "groups",
+                               hand_order=settings["hand_order"], pairs=self.partners.pairs())
         self.latest["version"] = version()
         self.latest["terminal_font"] = self.terminal_font
         self.answered = still_answered(self.answered, self.latest)
@@ -3324,12 +3423,16 @@ class Bridge:
             self.latest["statusline"] = "missing"
         if self.update:
             self.latest["update"] = self.update
+        if self.repository:
+            self.latest["repository"] = self.repository
         if self.meters is not None:
             self.latest["accounts"] = self.meters.snapshot()
         # A few file reads; kept off the loop like every other disk or Keychain read.
         self.latest["codex"] = await asyncio.to_thread(codex.read_limits, codex.SESSIONS_DIR, time.time())
         conversations = {row["session_id"]: row.get("conversation") for row in self.rows}
         self.alert(self.watch.step(self.latest, settings, conversations), settings)
+        self.step_partners(settings["links"])
+        self.step_links(settings["links"])
         # Read in this rebuild, the one that saw the turn end: read later, you
         # could have moved to it in between.
         looking_at = self.active_session_id() if self.app.app_active is True else None
@@ -3464,6 +3567,103 @@ class Bridge:
             return
         if self.terminal_font is None:
             self.log("terminal font refused:", repr(profile.normal_font))
+
+    def link_end(self, pane):
+        """One card as a link end: its frame row's facts plus the agent's own session id."""
+        frame_row = next((r for g in self.latest.get("groups", []) if g["name"] == "AGENTS"
+                          for r in g["rows"] if r["session_id"] == pane), None)
+        inner = next((r for r in self.rows if r["session_id"] == pane), None)
+        if frame_row is None or inner is None:
+            return None
+        return {"pane": pane, "agent": inner.get("conversation"), "provider": frame_row.get("provider") or "claude",
+                "label": frame_row.get("label") or pane, "state": frame_row.get("state"),
+                "depth": frame_row.get("depth", 0), "worktree_of": frame_row.get("worktree_of"),
+                "in_front": frame_row.get("in_front"), "rollout": inner.get("rollout"), "colour": frame_row.get("colour")}
+
+    def link(self, source_pane, target_pane):
+        """Two Claude cards become partners; any other two get a one-shot hand-off -> the frame; raises links.Refused."""
+        if not load_settings()["links"]:
+            raise links.Refused(LINKS_OFF)
+        source, target = self.link_end(source_pane), self.link_end(target_pane)
+        now = time.time()
+        ready = lambda agent: links.is_ready(self.links.root, agent, now)
+        partnered = self.partners.partnered()
+        if source and target and source["provider"] == "claude" and target["provider"] == "claude":
+            reason = partners.refusal(source, target, partnered, self.partners.labels(), ready)
+            if reason:
+                raise links.Refused(reason)
+            made = self.partners.make(source, target, now)
+            self.log(f"partner {made.id[:8]} made {source['label']} + {target['label']}")
+            self.latest["partners"] = self.partners.frames()
+            return {"partnership": next(f for f in self.partners.frames() if f["id"] == made.id)}
+        for one in (source, target):
+            if one and one["pane"] in partnered:
+                raise links.Refused(partners.linked_with(one["label"], self.partners.labels()[one["pane"]]))
+        reason = links.refusal(source, target, self.links.sources(), ready)
+        if reason:
+            raise links.Refused(reason)
+        end = lambda e: links.End(e["pane"], e["agent"], e["provider"], e["label"], e.get("rollout"), e.get("colour"))
+        made = self.links.open(end(source), end(target), now)
+        self.log(f"link {made.id[:8]} asked {source['label']} -> {target['label']}")
+        self.latest["links"] = self.links.frames()
+        return next(f for f in self.links.frames() if f["id"] == made.id)
+
+    def partner_end(self, pane):
+        """A partnered card as partners.step reads it: link_end's facts plus what its partner's profile shows."""
+        one = self.link_end(pane)
+        inner = next((r for r in self.rows if r["session_id"] == pane), None)
+        if one is None or inner is None:
+            return None
+        task = inner.get("task") or {}
+        return {**one, "model": inner.get("model"), "cwd": inner.get("path"), "branch": inner.get("branch"),
+                "task": task.get("title") if not task.get("done") else None,
+                "todos": [t.get("subject") for t in inner.get("tasks") or [] if t.get("status") != "completed"],
+                "context": inner.get("context"), "working_since": inner.get("working_since"),
+                "idle_since": inner.get("idle_since"), "blocked_since": inner.get("blocked_since"),
+                "transcript": inner.get("transcript")}
+
+    def step_partners(self, on):
+        """Moves each partnership on; with linking off, unties every one first."""
+        ends = {pane: self.partner_end(pane) for pane in self.partners.partnered()}
+        now = time.time()
+        if not on:
+            for upper, _ in self.partners.pairs():
+                self.log(self.partners.untie(upper, now, LINKS_TURNED_OFF, ends))
+        for line in self.partners.step(ends, now):
+            self.log(line)
+        self.latest["partners"] = self.partners.frames()
+
+    def untie(self, pane):
+        """Ends the partnership the card is in; raises links.Refused when it is in none."""
+        self.log(self.partners.untie(pane, time.time()))
+        self.latest["partners"] = self.partners.frames()
+
+    def step_links(self, on):
+        """Moves each open link on from what its ends filed, and says on every card
+        why it cannot link whatever the other card is. With linking off, every open
+        link ends and every card says linking is off."""
+        alive = {row.get("conversation") for row in self.rows if row.get("conversation")}
+        if not on:
+            for line in self.links.end_all(time.time(), LINKS_TURNED_OFF):
+                self.log(line)
+        for line in self.links.step(time.time(), alive, codex.asked_reply):
+            self.log(line)
+        self.latest["links"] = self.links.frames()
+        now = time.time()
+        ready = lambda agent: links.is_ready(self.links.root, agent, now)
+        labels = self.partners.labels()
+        for group in self.latest["groups"]:
+            for frame_row in group["rows"]:
+                pane = frame_row["session_id"]
+                end = self.link_end(pane) if on and group["name"] == "AGENTS" else None
+                if not on:
+                    frame_row["link_refusal"] = LINKS_OFF
+                elif pane in labels:
+                    frame_row["link_refusal"] = partners.linked_with(frame_row.get("label") or pane, labels[pane])
+                elif end:
+                    frame_row["link_refusal"] = links.own_refusal(end, ready)
+                else:
+                    frame_row["link_refusal"] = "only Claude, Codex and omp sessions can link"
 
     def log(self, *words):
         """Say it in the Script Console and in a file beside the status files.
@@ -3747,6 +3947,7 @@ class Bridge:
         page connect and the next rebuild both find it. A check that cannot
         answer offers nothing."""
         mirror = update.origin(VERSION_FILE.parent)
+        self.repository = update.repository_page(mirror)
         self.update = update.offer(update.check(mirror=mirror) if mirror else None, version())
         if self.update:
             print(f"sidebar: release {self.update} is on the mirror", flush=True)
@@ -3812,6 +4013,9 @@ async def main(connection):
         update_fn=lambda: update.take(here, bridge.update),
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
         context_fn=lambda session_id: bridge.read_context(session_id),
+        link_fn=lambda source, target: bridge.link(source, target),
+        untie_fn=lambda pane: bridge.untie(pane),
+        github_fn=lambda page: update.open_github(update.origin(here), page),
         log_fn=lambda line: bridge.log("page error", line),
     )
     server = Server(sidebar, health_fn=lambda: bridge.healthy(), restart_fn=restart)

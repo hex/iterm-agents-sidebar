@@ -4,6 +4,7 @@ import pathlib, sys
 from panel_draw import *  # noqa: F401,F403
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from sidebar import DEFAULT_SETTINGS  # noqa: E402
+from update import repository_page  # noqa: E402
 
 W = 880
 GUT, COL_W = 24, (W - 3 * 24) // 2
@@ -11,6 +12,25 @@ COLS = (GUT, GUT + COL_W + GUT)
 SHEET = "#242426"          # color-mix(--fg 4%, --bg)
 GUIDE = "#3e3e41"          # color-mix(--fg 14%, transparent) over the card
 TITLE_H, PLAIN_H, CHILD_H = 33, 31, 27
+# A row's note: 11px type in lines 15px apart, under the row's name and across the card.
+NOTE_SIZE, NOTE_LINE = 11, 15
+
+
+def note_lines(row):
+    """The row's note, broken into lines that fit the card, or none."""
+    lines = []
+    for word in row.get("note", "").split():
+        if lines and width_of(lines[-1] + " " + word, NOTE_SIZE) <= COL_W - 20:
+            lines[-1] += " " + word
+        else:
+            lines.append(word)
+    return lines
+
+
+def row_height(row):
+    """The row's name and control, and under them its note if it has one."""
+    notes = note_lines(row)
+    return (CHILD_H if row.get("needs") else PLAIN_H) + (len(notes) * NOTE_LINE + 4 if notes else 0)
 
 
 def switch(right, mid, on):
@@ -83,8 +103,7 @@ def control(row, right, mid, kind):
 
 def sheet_card(x, y, title, master, kids):
     """One topic as a card: the title with its switch, then its rows."""
-    h = TITLE_H + sum(CHILD_H if r.get("needs") else PLAIN_H for r in kids) + \
-        (8 if kids and kids[-1].get("needs") else 0)
+    h = TITLE_H + sum(row_height(r) for r in kids) + (8 if kids and kids[-1].get("needs") else 0)
     A(f'  <rect x="{x}" y="{y}" width="{COL_W}" height="{h}" rx="8" fill="{CARD}" stroke="{CARD_BORDER}"/>')
     text(x + 10, y + 21, title, fill=FG, size=12.5, weight=600)
     right = x + COL_W - 10
@@ -93,10 +112,11 @@ def sheet_card(x, y, title, master, kids):
     ry = y + TITLE_H
     for i, row in enumerate(kids):
         child = bool(row.get("needs"))
-        rh = CHILD_H if child else PLAIN_H
+        rh = row_height(row)
+        line_h = CHILD_H if child else PLAIN_H
         if not child:
             A(f'  <line x1="{x}" y1="{ry}" x2="{x+COL_W}" y2="{ry}" stroke="{FG}" opacity="0.14" stroke-dasharray="1 2"/>')
-        mid = ry + rh / 2
+        mid = ry + line_h / 2
         if child:
             # The guide: down from the title, an elbow into each option.
             last = i + 1 == len(kids) or not kids[i + 1].get("needs")
@@ -108,10 +128,34 @@ def sheet_card(x, y, title, master, kids):
             A('  <g opacity="0.4">')
         text(x + (22 if child else 10), mid + 4, row["label"], fill=FG, size=12)
         control(row, right, mid, "child" if child else "plain")
+        for k, words in enumerate(note_lines(row)):
+            text(x + (22 if child else 10), ry + line_h - 4 + NOTE_SIZE + k * NOTE_LINE, words, fill=DIM, size=NOTE_SIZE)
         if dimmed:
             A('  </g>')
         ry += rh
     return h
+
+
+# The drawer's last card: where the install comes from, two rows that each
+# open a page on GitHub, an arrow where a control would sit. The figure shows
+# the public mirror, which an install with no origin of its own leads to.
+REPOSITORY_ROWS = [repository_page(None).removeprefix("https://"), "Release notes"]
+REPOSITORY_H = TITLE_H + PLAIN_H * len(REPOSITORY_ROWS)
+
+
+def repository_card(x, y):
+    A(f'  <rect x="{x}" y="{y}" width="{COL_W}" height="{REPOSITORY_H}" rx="8" fill="{CARD}" stroke="{CARD_BORDER}"/>')
+    text(x + 10, y + 21, "Repository", fill=FG, size=12.5, weight=600)
+    ry = y + TITLE_H
+    for label in REPOSITORY_ROWS:
+        A(f'  <line x1="{x}" y1="{ry}" x2="{x+COL_W}" y2="{ry}" stroke="{FG}" opacity="0.14" stroke-dasharray="1 2"/>')
+        mid = ry + PLAIN_H / 2
+        text(x + 10, mid + 4, label, fill=FG, size=12)
+        # The page's 256-unit arrow, drawn 12 px wide at the row's right end.
+        A(f'  <path transform="translate({x + COL_W - 22} {mid - 6}) scale(0.046875)" fill="{DIM}" '
+          f'd="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>')
+        ry += PLAIN_H
+    return REPOSITORY_H
 
 
 # Group the rows as settingsBody does: a head opens a card, a master row sits
@@ -129,15 +173,16 @@ while i < len(rows):
     else:
         cards[-1][2].append(row)
 
-# Sound, Notifications and Focus on the left; Rows, the tall one, on the right.
-left, right = cards[:3], cards[3:]
-H = 24 + 20 + max(sum(TITLE_H + sum(CHILD_H if r.get("needs") else PLAIN_H for r in kids)
+# Sound, Notifications, Focus, Experimental and Repository on the left; Rows, the tall one, on the right.
+left, right = cards[:3] + cards[4:], cards[3:4]
+H = 24 + 20 + max(sum(TITLE_H + sum(row_height(r) for r in kids)
                       + (8 if kids and kids[-1].get("needs") else 0) + 9 for _, _, kids in col)
+                  + (REPOSITORY_H + 9 if col is left else 0)
                   for col in (left, right)) + 30
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The settings drawer: a card each for sounds, notifications, focus and the rows, '
-  f'every setting with its default">')
+  f'aria-label="The settings drawer: a card each for sounds, notifications, focus, the rows and experiments, '
+  f'every setting with its default, and the repository the install comes from">')
 A('  <title>Settings</title>')
 A(f'''  <defs>
     <pattern id="tickmask" width="6" height="4" patternUnits="userSpaceOnUse">
@@ -151,6 +196,8 @@ for col, x in ((left, COLS[0]), (right, COLS[1])):
     y = 44
     for title, master, kids in col:
         y += sheet_card(x, y, title, master, kids) + 9
+    if col is left:
+        repository_card(x, y)
 A('</svg>')
 pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
              pathlib.Path(__file__).resolve().parent / "settings.svg").write_text("\n".join(out) + "\n")

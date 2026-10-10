@@ -50,8 +50,9 @@ node launcher does. Both come off the rebuild's one process listing. For a row
 with no agent pid, such as a Codex that has published nothing yet, the daemon
 asks only whether it waits or has exited.
 
-The server also takes `POST /accounts` (switch, add, rename, read), `/update` and
-`/statusline`. No endpoint runs arbitrary code.
+The server also takes `POST /accounts` (switch, add, rename, read), `/update`,
+`/statusline`, `/context`, `/link`, `/untie`, `/github` (opens the repository
+or releases page the daemon builds) and `/page-error`. No endpoint runs arbitrary code.
 
 Once a reading of iTerm2 has worked, the first or a later one, the daemon writes its port, token and
 pid to `~/.local/share/agents-sidebar/endpoint.json`, readable by your user
@@ -97,10 +98,12 @@ print(update.take("/tmp/clone", "<newest>"))'
 
 A checkout with no `origin`, this one included, is offered nothing, and
 Update there refuses with `no release is on offer`: it tests the failure
-path only. `./release.sh "summary"` bumps it, runs the tests
+path only. `./release.sh "summary" [notes.md]` bumps it, runs the tests
 on main and again on the public tree, pushes one squashed commit to the
-mirror, and makes a GitHub release page with the summary and a compare link
-to the release before. It needs a local branch `public`, a remote named
+mirror, and makes a GitHub release page with the summary, the notes file's
+Markdown when one is given, and a compare link to the release before. The
+notes go through the same check for addresses and scrub words as the public
+tree, before anything is pushed. It needs a local branch `public`, a remote named
 `github`, `gh` logged in, and the release key: `RELEASE_SIGNING_KEY` names
 it, `~/.ssh/release-signing.pub` by default. That is the public half of a key
 an ssh-agent holds (Bitwarden's, run with `SSH_AUTH_SOCK` pointing at it), so
@@ -129,16 +132,21 @@ read against the source.
 - `sidebar.py`: the daemon, run by iTerm2; the rows, the server and the notices.
 - `page.html`: the panel itself, one page with its own script and styles.
 - `accounts.py`: account usage meters, switching and the Keychain logins.
-- `codex.py`: Codex rate limits, read from Codex's own session logs.
+- `codex.py`: Codex rate limits, read from Codex's own session logs, and a linked
+  Codex session's reply, read from its rollout.
 - `omp.py`: what an omp session says about itself, read from its own files.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
 - `statusline.py`: puts the statusline bridge into Claude Code's settings.
 - `update.py`: checks the mirror for a newer release and takes it.
+- `links.py`: links between two cards, the one-shot hand-off, through each session's links folder.
+- `partners.py`: partner sessions: the record, each end's `partner.json`, and the tasks between them.
 - `agents-sidebar`: the command scripts use to list agents and wait on one;
   standard library only, and it runs on the Python 3.9 macOS ships.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and
   `statusline-bridge.sh`; `plugin/omp/` holds omp's extension, which runs the
-  same hook with `--agent omp`, and its `bun test` cases.
+  same hook with `--agent omp`, and its `bun test` cases. `hooks/link.tsx` is
+  the mod for linked cards and partners, with its helper `partner-text.ts` and
+  its `*.test.tsx` kit tests.
 - `install.sh`, `uninstall.sh`: put everything in place, and take it out.
 - `get.sh`: the one-line installer.
 - `codex-hooks.sh`: adds the state hook to Codex's `hooks.json`.
@@ -252,8 +260,10 @@ of a guess.
 - `~/.claude/agents-sidebar-subagents/<session id>`: the hook's record for
   each session, with its `.lock` and, for a large state, its `.published` file.
 - `~/.claude/agents-sidebar-tasks/`: each session's task note.
-- `~/.claude/agents-sidebar-status/`: the statusline payloads and lines, and
-  `daemon.log`.
+- `~/.claude/agents-sidebar-status/`: the statusline payloads and lines,
+  `daemon.log` and `partners.json`.
+- `~/.claude/agents-sidebar-links/<session id>/`: each session's link and
+  partner files.
 - `~/.claude/agents-sidebar-settings.json`: the panel's settings.
 - `~/.config/agents-sidebar/accounts.json`: the accounts the panel knows.
 - `~/.local/share/agents-sidebar/endpoint.json`: the running daemon's port,
@@ -270,6 +280,9 @@ The daemon needs neither; both are for tests only. `tests/test_integration.py`
 runs a real listener over real sockets. The omp extension's own tests run with
 `bun test` in `plugin/omp/`; `tests/test_omp_extension.py` runs them as part
 of the suite, and skips only on a machine without bun.
+`tests/test_link_mod.py` runs the mod's kit tests with `claude plugin test`
+on `plugin/` as the install ships it, and skips only on a machine without
+`claude`.
 
 `Bridge` is the only part that talks to iTerm2, and its tests pin how it takes
 its readings (`tests/test_rebuild.py`: one process listing per rebuild, read in
@@ -296,7 +309,33 @@ at start to sweep old notices, and `git ls-remote` once a day for updates.
 `accounts.py` runs `/usr/bin/security` each time it reads or writes a login
 in the Keychain. The statusline bridge execs `mv` and `mkdir` on every tick,
 and on a tick that renders also `sh` for your own statusline, a second `mv`
-and `rmdir`: five, plus whatever your statusline runs.
+and `rmdir`: five, plus whatever your statusline runs. While a partner task
+is out, the mod execs `sleep` every two seconds, for up to ten minutes.
+
+## What the panel costs the GPU
+
+The panel stays open all day, so whatever in it moves without end sets its
+GPU cost. `tests/test_page_motion_cost.py`, part of the suite `release.sh`
+runs, holds `page.html` to three rules:
+
+- every endless animation, in CSS or started from script, changes only
+  `transform` or `opacity`
+- every one pauses when the panel hides and when its row leaves the list's
+  view
+- every blur and filter is on the test's list, and each one got a
+  measurement before joining it
+
+The test reads source, not the GPU. When it fails on a new blur, filter or
+endless animation, measure the panel with that change on screen, and while
+it moves if it does:
+
+```sh
+sudo powermetrics --samplers gpu_power,tasks --show-process-gpu -i 1000 -n 10
+```
+
+Watch the GPU's active residency and the `com.apple.WebKit.GPU` and
+`WindowServer` rows, then add the change to the list. Other apps use the same
+GPU, so compare against a reading with the panel closed.
 
 ## The figures
 
@@ -309,7 +348,8 @@ for f in card-states card-anatomy foot settings menu; do python3 assets/make-$f.
 Each script redraws one SVG the README shows. The marks come from `page.html`
 through `assets/panel_draw.py`; the colours are the page's dark-theme tokens,
 copied into that module, so a token change there needs a change here. `make-settings.py` reads its rows out of `SETTING_ROWS` and its
-defaults out of `sidebar.py`; `make-menu.py` reads its items out of
+defaults out of `sidebar.py` and the repository row out of `update.py`;
+`make-menu.py` reads its items out of
 `HOUSEKEEPING`. I made the session names up.
 
 `tests/test_figures.py` holds each committed SVG to what its script draws, and
@@ -351,5 +391,17 @@ on since, so read the source for what runs now.
   agents could get cards, and how omp got one.
 - [superpowers/specs/2026-10-05-unseen-guard-wait-omp-design.md](superpowers/specs/2026-10-05-unseen-guard-wait-omp-design.md): an
   unseen finish, omp's own events, a guarded prompt and a wait command.
+- [superpowers/specs/2026-10-07-drag-order-design.md](superpowers/specs/2026-10-07-drag-order-design.md): dragging
+  a card to set an order the panel keeps.
+- [superpowers/specs/2026-10-07-linked-cards-design.md](superpowers/specs/2026-10-07-linked-cards-design.md): linking
+  two cards so one session hands its result to another.
+- [superpowers/specs/2026-10-09-partner-sessions-design.md](superpowers/specs/2026-10-09-partner-sessions-design.md):
+  two linked Claude sessions as partners that read each other and hand each other tasks.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.
+- [superpowers/plans/2026-10-07-drag-order.md](superpowers/plans/2026-10-07-drag-order.md): the step-by-step
+  plan that built the drag order.
+- [superpowers/plans/2026-10-08-linked-cards.md](superpowers/plans/2026-10-08-linked-cards.md): the step-by-step
+  plan for linking two cards.
+- [superpowers/plans/2026-10-09-partner-sessions.md](superpowers/plans/2026-10-09-partner-sessions.md): the step-by-step
+  plan for partner sessions.

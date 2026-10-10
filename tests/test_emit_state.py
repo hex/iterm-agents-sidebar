@@ -917,3 +917,50 @@ def test_an_omp_event_without_a_usable_pid_publishes_nothing(tmp_path):
     for pid in (None, 0, -1, "4242", 4242.0, True):
         assert run_handler(tmp_path, ["Stop", "--agent", "omp"],
                            {"session_id": OMP_SESSION, "pid": pid}) == (0, "", [])
+
+
+def drop(folder, link, role, text, expires=2000.0):
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    (folder / f"ask-{link}.json").write_text(json.dumps(
+        {"link": link, "nonce": "n" * 16, "role": role, "text": text, "expires": expires}))
+
+
+def test_a_codex_prompt_takes_its_asks_and_deliveries_once(tmp_path):
+    folder = tmp_path / "s1"
+    drop(folder, "L1", "ask", "Write your latest result ... (link nnnn)")
+    drop(folder, "L2", "deliver", "A report from ... (link nnnn)")
+    text = emit_state.link_context("s1", 1000.0, root=tmp_path)
+    assert text == "Write your latest result ... (link nnnn)\n\nA report from ... (link nnnn)"
+    assert sorted(p.name for p in folder.iterdir()) == ["started-L2.json", "taken-L1.json", "taken-L2.json"]
+    assert oct((folder / "started-L2.json").stat().st_mode & 0o777) == "0o600"
+    assert emit_state.link_context("s1", 1001.0, root=tmp_path) is None
+
+
+def test_an_expired_or_unreadable_drop_is_left_for_the_daemon(tmp_path):
+    folder = tmp_path / "s1"
+    drop(folder, "L1", "ask", "late", expires=999.0)
+    (folder / "ask-L2.json").write_text('{"link": "L2", "ro')
+    (folder / "ask-L3.json").write_text('{"link": "L3", "text": "x", "expires": "later"}')
+    assert emit_state.link_context("s1", 1000.0, root=tmp_path) is None
+    assert sorted(p.name for p in folder.iterdir()) == ["ask-L1.json", "ask-L2.json", "ask-L3.json"]
+
+
+def test_no_folder_or_a_bad_session_id_gives_nothing(tmp_path):
+    assert emit_state.link_context("s1", 1000.0, root=tmp_path) is None
+    assert emit_state.link_context("../x", 1000.0, root=tmp_path) is None
+
+
+def test_a_codex_prompt_hands_its_link_drop_to_codex_after_the_task_line(tmp_path):
+    session = "019a0c5e-7d1e-7c55-9a53-2f6f0c1d8e22"
+    drop(tmp_path / ".claude" / "agents-sidebar-links" / session, "L1", "deliver",
+         "A report from the session “alpha” ... (link nnnn)", expires=time.time() + 600)
+    code, out, _ = run_handler(tmp_path, ["UserPromptSubmit", "--codex"], {"session_id": session})
+    instructions = (HANDLER.parent / "task-instructions.md").read_text().strip()
+    bound = f"python3 {HANDLER.parent / 'task.py'} --session {session}"
+    assert code == 0
+    assert json.loads(out) == {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": (
+        f"{instructions}\n\nCurrent task: none\n\nCommands:\n"
+        f"{bound} begin --title 'Task title'\n"
+        f"{bound} report --activity 'Reading code' --percent 25\n"
+        f"{bound} report --activity 'Assessing task' --unknown\n"
+        "\n\nA report from the session “alpha” ... (link nnnn)")}}

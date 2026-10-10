@@ -159,6 +159,41 @@
   li.line.card:has(> button.row:hover) { background: var(--card-hover); }
   li.line.card > button.row { border-radius: 7px; }
   li.line.card > button.row:hover { background: none; }
+  /* A dragged card: its ghost rises over the list and follows the pointer,
+     and the card itself stays behind, faded, in the place it would drop. */
+  .drag-ghost {
+    position: fixed; left: 0; top: 0; z-index: 50; margin: 0; padding: 0;
+    list-style: none; pointer-events: none; opacity: .92;
+  }
+  .drag-ghost li.line.card {
+    transition: none;
+    box-shadow: var(--card-edge),
+      0 8px 28px -6px color-mix(in srgb, var(--fg) 34%, transparent),
+      0 2px 6px -2px color-mix(in srgb, var(--fg) 18%, transparent);
+  }
+  li.line.card.placeholder { opacity: .35; transition: none; }
+  /* A dragged card held over another links the two: the tether between them
+     is drawn over the whole panel, and a card that cannot link says why
+     beside the pointer instead. */
+  #link-overlay, #link-confirm {
+    position: fixed; left: 0; top: 0; width: 100%; height: 100%; z-index: 51;
+    pointer-events: none; overflow: visible;
+  }
+  /* An amber chip just above the pointer, as wide as the panel lets it be:
+     the warning's own colours and icon, one line where the reason fits. */
+  .link-refusal {
+    position: fixed; left: 0; top: 0; z-index: 52; pointer-events: none;
+    display: flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 8px;
+    background: var(--warn-bg); color: var(--warn);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 28%, transparent),
+      0 4px 14px -4px color-mix(in srgb, var(--fg) 25%, transparent);
+    font: 500 11px/1.35 -apple-system, sans-serif;
+  }
+  .link-refusal .mi { width: 13px; height: 13px; flex: none; }
+  :is(#link-overlay, #link-confirm) .tether-face { fill: var(--card); }
+  :is(#link-overlay, #link-confirm) .tether-ring { fill: none; stroke: var(--fg); stroke-opacity: .35; stroke-width: 1.5; }
+  :is(#link-overlay, #link-confirm) .tether-badge .mi { color: var(--fg); }
+  #link-confirm .tether-ripple { fill: none; stroke-width: 2; }
   /* A session in a linked worktree of the card above: its own card, docked
      under that one with no gap and a dashed seam, so the pair reads as one
      object holding two sessions, washed lightly in the main session's
@@ -178,6 +213,26 @@
     position: absolute; z-index: 1; overflow: visible; pointer-events: none;
     left: 0; top: -1px; width: 100%; height: 1px; color: var(--card-border);
   }
+  /* A partner card: the second of two linked sessions, docked under the first as one card. The join is a hairline
+     (the card border between them), and the badge sits on it, its ring half in each session's colour. */
+  li.line.card:has(+ li.line.card.partner) {
+    margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+  }
+  li.line.card.partner {
+    margin-top: -1px; border-top-left-radius: 0; border-top-right-radius: 0;
+  }
+  li.line.card.partner > svg.pair-badge {
+    position: absolute; z-index: 2; pointer-events: none; overflow: visible;
+    width: 32px; height: 32px; left: calc(50% - 16px); top: -16px;
+    transform-box: fill-box; transform-origin: center;
+  }
+  .pair-face { fill: var(--card); }
+  .pair-mark { color: var(--fg); opacity: .7; }
+  /* While a task is open between the two, the badge breathes: scale and opacity only, paused when unseen. */
+  @media (prefers-reduced-motion: no-preference) {
+    .pair-badge.open { animation: pair-breathe 1.9s ease-in-out infinite; animation-delay: var(--breathe-delay, 0ms); }
+  }
+  @keyframes pair-breathe { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: .75; } }
   /* A light wash of the colour of the session it belongs to; its own colour
      stays on its mark and the band. A session without a colour leaves the
      card plain. */
@@ -324,6 +379,10 @@
       0 2px 6px -2px color-mix(in srgb, var(--fg) 18%, transparent);
     transform-origin: top left;
   }
+  /* An open right-click menu floats over the list, not inside its card: a
+     card that slides or resizes would carry the menu, and the item under the
+     pointer would change. */
+  .menu.floating { position: fixed; }
   @media (prefers-reduced-motion: no-preference) {
     /* Scale from the corner at the pointer, so it reads as unfolding from the
        click rather than appearing beside it. */
@@ -977,30 +1036,65 @@
     margin: 2px 10px 8px var(--child-indent, 44px);
     font: 400 11px/1.4 -apple-system, sans-serif; color: var(--warn);
   }
+  /* How a link this card sent or received is going, while it is open and
+     for a few seconds after it ends. */
+  li.line.card > .link-line, li.line.card > .children > .link-line {
+    margin: 2px 10px 8px var(--child-indent, 44px);
+    font: 400 11px/1.4 -apple-system, sans-serif; color: var(--dim);
+  }
   /* A highlight sweeps through the letters: the dim ink stays the base and a
-     band of light passes over it, towards white in either theme. The page rebuilds rows on every
-     update, so each badge starts at the point the clock says the sweep has
-     reached, and every badge sweeps in step. */
+     band of light passes over it, towards white in either theme. The band is
+     a window (.sweep) holding a copy of the word in the light ink; the window
+     slides one way while the copy slides back by the same amount, so the copy
+     stays over the word and only the band moves. Both move by transform
+     alone, which the compositor runs without repainting the text: painting
+     a moving gradient into the letters kept the GPU busy at the display's
+     refresh rate. The page rebuilds rows on every update, so each band starts
+     where the clock says the sweep has reached, and every band sweeps in step. */
+  .word.idle, .shimmer { position: relative; contain: paint; }
+  /* The word clips to its own box, and glyph descenders sit below a
+     line-height of 1, so the box takes the font's own line height. */
+  .shimmer { display: inline-block; color: var(--dim); line-height: normal; }
+  .sweep { display: none; }
   @media (prefers-reduced-motion: no-preference) {
     .word.idle, .shimmer {
-      --spread: calc(3ch + 40px);
+      --band: calc(3ch + 40px);
       --light: color-mix(in srgb, var(--dim) 35%, #fff);
-      background: linear-gradient(110deg,
-                  var(--dim) calc(50% - var(--spread)),
-                  color-mix(in srgb, var(--light), var(--dim)) calc(50% - var(--spread) * .5),
-                  var(--light) 50%,
-                  color-mix(in srgb, var(--light), var(--dim)) calc(50% + var(--spread) * .5),
-                  var(--dim) calc(50% + var(--spread)))
-                  0 0 / calc(200% + var(--spread) * 2) 100% no-repeat;
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-      animation: idle-shimmer 2s linear infinite; animation-delay: var(--shimmer-delay, 0ms);
     }
-    /* Glyph descenders sit below a line-height of 1, where the clipped
-       background would cut them off. */
-    .shimmer { line-height: normal; }
-    @keyframes idle-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
-    .shell-sum:hover .shimmer { animation: none; background: none; color: inherit; }
+    .sweep {
+      display: block; position: absolute; top: 0; bottom: 0;
+      left: calc(-1 * var(--band)); width: calc(100% + 2 * var(--band));
+      overflow: hidden; pointer-events: none; will-change: transform;
+      /* Passed on to the copy, so its letters start where the word's do. */
+      padding: inherit;
+      -webkit-mask: linear-gradient(90deg, transparent, #000, transparent) center / var(--band) 100% no-repeat;
+      mask: linear-gradient(90deg, transparent, #000, transparent) center / var(--band) 100% no-repeat;
+      animation: sweep-across 2s linear infinite; animation-delay: var(--shimmer-delay, 0ms);
+    }
+    .sweep > span {
+      position: absolute; top: 0; bottom: 0; left: var(--band); width: calc(100% - 2 * var(--band));
+      padding: inherit; color: var(--light); white-space: nowrap; will-change: transform;
+      animation: sweep-hold 2s linear infinite; animation-delay: var(--shimmer-delay, 0ms);
+    }
+    /* The window is the word plus a band on each side, so these carry the
+       band from just before the word's left edge to just past its right. */
+    @keyframes sweep-across { from { transform: translateX(-50%); } to { transform: translateX(50%); } }
+    @keyframes sweep-hold {
+      from { transform: translateX(calc(50% + var(--band))); }
+      to { transform: translateX(calc(-50% - var(--band))); }
+    }
+    .shell-sum:hover .shimmer { color: inherit; }
+    .shell-sum:hover .shimmer > .sweep { display: none; }
   }
+  /* Endless motion rests where nobody can see it: across the whole page while
+     it is hidden, and on a row while it is scrolled out of the list's view.
+     Paused rather than removed, so each picks up from the same phase. Each
+     selector outranks the rule that starts its animation, since an
+     `animation` shorthand sets the play state back to running. */
+  html.hidden-page .sweep, html.hidden-page .sweep > span, html.hidden-page .busy i, html.hidden-page .word.blocked,
+  html.hidden-page .pair-badge.open,
+  .out-of-view > .sweep, .out-of-view > .sweep > span, .busy.out-of-view i, .word.blocked.out-of-view,
+  .pair-badge.open.out-of-view { animation-play-state: paused; }
   button.row.resting { --badge-room: calc(40px + var(--corner, 0px)); }
   /* A turn that has run long enough to be worth a look: warm outline, no fill,
      so it stays below "waiting", which is the one state that needs you. */
@@ -1052,6 +1146,10 @@
     overflow: hidden; text-overflow: ellipsis;
   }
   #release .take { flex: none; }
+  #release .notes {
+    width: auto; height: 18px; min-width: 0; padding: 0 4px; margin-left: -4px;
+    border-radius: 5px; font: inherit; overflow: hidden; text-overflow: ellipsis;
+  }
   #release .take {
     width: auto; height: 18px; padding: 0 7px; border-radius: 5px;
     font: 500 10px/1 -apple-system, sans-serif; color: #fff;
@@ -1195,6 +1293,23 @@
     border-top: 1px dotted color-mix(in srgb, var(--fg) 14%, transparent);
   }
   .set.child { padding: 6px 10px 6px 22px; }
+  /* What a setting does, under its name and across the row. Placed on the
+     second line outright, so the control stays the row's last child and
+     keeps its place in the final column. */
+  .set > .set-note {
+    grid-row: 2; grid-column: 1 / -1; justify-self: stretch;
+    color: var(--dim); font-size: 11px; line-height: 1.35;
+  }
+  /* A row that opens a page: the whole row is the button, its arrow where a
+     control would sit. */
+  button.set.out {
+    width: 100%; margin: 0; border-width: 1px 0 0; background: none; text-align: left;
+    font: inherit; font-size: 12px; cursor: default;
+    transition: background var(--quick) ease;
+  }
+  button.set.out:hover { background: var(--tint-row); }
+  button.set.out:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
+  button.set.out > svg { width: 12px; height: 12px; fill: var(--dim); }
   .set.child > span:first-child { color: var(--fg); }
   /* The guide: a line down from the title, an elbow into each option, in
      the weight the subagent rows use. */
@@ -1661,6 +1776,7 @@ const META_ICONS = {
   warning: '<path d="M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM222.93,203.8a8.5,8.5,0,0,1-7.48,4.2H40.55a8.5,8.5,0,0,1-7.48-4.2,7.59,7.59,0,0,1,0-7.72L120.52,44.21a8.75,8.75,0,0,1,15,0l87.45,151.87A7.59,7.59,0,0,1,222.93,203.8ZM120,144V104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm20,36a12,12,0,1,1-12-12A12,12,0,0,1,140,180Z"/>',
   reload: '<path d="M240,56v48a8,8,0,0,1-8,8H184a8,8,0,0,1,0-16H211.4L184.81,71.64l-.25-.24a80,80,0,1,0-1.67,114.78,8,8,0,0,1,11,11.63A95.44,95.44,0,0,1,128,224h-1.32A96,96,0,1,1,195.75,60L224,85.8V56a8,8,0,1,1,16,0Z"/>',
   gear: '<path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84q.06-2.16,0-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.25,8,8,0,0,0-6-3.93l-23.72-2.64q-1.48-1.56-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.25-10.87,8,8,0,0,0-7.06,1.49L130.16,40Q128,40,125.84,40L107.2,25.11a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.89,34.51a8,8,0,0,0-3.93,6L67.32,64.27q-1.56,1.49-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.25,8,8,0,0,0,1.49,7.06L40,125.84Q40,128,40,130.16L25.11,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.25,8,8,0,0,0,6,3.93l23.72,2.64q1.49,1.56,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.25,10.87,8,8,0,0,0,7.06-1.49L125.84,216q2.16.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.25-10.88,8,8,0,0,0,3.93-6l2.64-23.72q1.56-1.48,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.25,8,8,0,0,0-1.49-7.06Zm-16.1-6.5a73.93,73.93,0,0,1,0,8.68,8,8,0,0,0,1.74,5.48l14.19,17.73a91.57,91.57,0,0,1-6.23,15L187,173.11a8,8,0,0,0-5.1,2.64,74.11,74.11,0,0,1-6.14,6.14,8,8,0,0,0-2.64,5.1l-2.51,22.58a91.32,91.32,0,0,1-15,6.23l-17.74-14.19a8,8,0,0,0-5-1.75h-.48a73.93,73.93,0,0,1-8.68,0,8,8,0,0,0-5.48,1.74L100.45,215.8a91.57,91.57,0,0,1-15-6.23L82.89,187a8,8,0,0,0-2.64-5.1,74.11,74.11,0,0,1-6.14-6.14,8,8,0,0,0-5.1-2.64L46.43,170.6a91.32,91.32,0,0,1-6.23-15l14.19-17.74a8,8,0,0,0,1.74-5.48,73.93,73.93,0,0,1,0-8.68,8,8,0,0,0-1.74-5.48L40.2,100.45a91.57,91.57,0,0,1,6.23-15L69,82.89a8,8,0,0,0,5.1-2.64,74.11,74.11,0,0,1,6.14-6.14A8,8,0,0,0,82.89,69L85.4,46.43a91.32,91.32,0,0,1,15-6.23l17.74,14.19a8,8,0,0,0,5.48,1.74,73.93,73.93,0,0,1,8.68,0,8,8,0,0,0,5.48-1.74L155.55,40.2a91.57,91.57,0,0,1,15,6.23L173.11,69a8,8,0,0,0,2.64,5.1,74.11,74.11,0,0,1,6.14,6.14,8,8,0,0,0,5.1,2.64l22.58,2.51a91.32,91.32,0,0,1,6.23,15l-14.19,17.74A8,8,0,0,0,199.87,123.66Z"/>',
+  link: '<path d="M240,88.23a54.43,54.43,0,0,1-16,37L189.25,160a54.27,54.27,0,0,1-38.63,16h-.05A54.63,54.63,0,0,1,96,119.84a8,8,0,0,1,16,.45A38.62,38.62,0,0,0,150.58,160h0a38.39,38.39,0,0,0,27.31-11.31l34.75-34.75a38.63,38.63,0,0,0-54.63-54.63l-11,11A8,8,0,0,1,135.7,59l11-11A54.65,54.65,0,0,1,224,48,54.86,54.86,0,0,1,240,88.23ZM109,185.66l-11,11A38.41,38.41,0,0,1,70.6,208h0a38.63,38.63,0,0,1-27.29-65.94L78,107.31A38.63,38.63,0,0,1,144,135.71a8,8,0,0,0,16,.45A54.86,54.86,0,0,0,144,96a54.65,54.65,0,0,0-77.27,0L32,130.75A54.62,54.62,0,0,0,70.56,224h0a54.28,54.28,0,0,0,38.64-16l11-11A8,8,0,0,0,109,185.66Z"/>',
   tasks: '<path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/>',
   check: '<path d="M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z"/>',
   // Settled: the account sessions run on, and a task reported done.
@@ -1700,6 +1816,48 @@ const SHIMMER_MS = 2000;
 const BREATHE_MS = 1900;
 function syncShimmer(el) {
   el.style.setProperty("--shimmer-delay", `-${Date.now() % SHIMMER_MS}ms`);
+}
+// What moves without end: the idle and running-commands sweeps, busy dots,
+// the waiting badge's breath and a long name's glide. Each pauses while out of
+// the list's view; rows are rebuilt on every update, so the watch is renewed
+// after every paint.
+const ENDLESS = ".word.idle, .shimmer, .busy, .word.blocked, .label > .run, .pair-badge.open";
+const outOfViewWatch = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    entry.target.classList.toggle("out-of-view", !entry.isIntersecting);
+    steerScripted(entry.target.getAnimations());
+  }
+}, {root: document.getElementById("groups")});
+function watchMotion() {
+  outOfViewWatch.disconnect();
+  for (const el of document.querySelectorAll(`#groups :is(${ENDLESS})`)) outOfViewWatch.observe(el);
+}
+// And all of it pauses while the page is hidden.
+function noteVisibility() {
+  document.documentElement.classList.toggle("hidden-page", document.visibilityState !== "visible");
+  steerScripted(document.getAnimations());
+}
+// Motion started from script, the glide, is out of reach of the CSS pause
+// rules, so the same rule is applied to it here: it runs only while the page
+// shows and its element is in the list's view.
+function steerScripted(animations) {
+  const hidden = document.documentElement.classList.contains("hidden-page");
+  for (const a of animations) {
+    if (a instanceof CSSAnimation || a.effect?.getTiming().iterations !== Infinity) continue;
+    if (hidden || a.effect.target.classList.contains("out-of-view")) a.pause();
+    else a.play();
+  }
+}
+document.addEventListener("visibilitychange", noteVisibility);
+noteVisibility();
+
+// The band of light over a shimmering word: a window holding a copy of the
+// word in the light ink, hidden from screen readers, which read the word once.
+function addSweep(el) {
+  const band = Object.assign(document.createElement("span"), {className: "sweep"});
+  band.setAttribute("aria-hidden", "true");
+  band.append(Object.assign(document.createElement("span"), {textContent: el.textContent}));
+  el.append(band);
 }
 // Same for the breath: a badge rebuilt every snapshot would otherwise start
 // each breath from the top, twice a second short of a full one.
@@ -1800,6 +1958,12 @@ const DETAILS = {label: "Details", hint: "model, context, limits and what it is 
 const CLOSE = {label: "Close", hint: "close this pane", destructive: true,
                run: row => act(row.session_id, "close")};
 
+function untieShown(pane) {
+  postUntie(pane);
+  // SETTINGS.order is the Order setting's own key (the settings sheet's `{k: "order"}` row).
+  if (SETTINGS?.order === "hand") push({order: "hand", hand_order: dropOrder()});
+}
+
 // One menu at a time, and it closes on anything that means "not this". Two
 // menus were open at once because opening one never told the others to shut.
 let openMenu = null;
@@ -1808,11 +1972,16 @@ let openMenuKey = null;
 function closeMenu() {
   if (!openMenu) return;
   openMenu.hidden = true;
+  if (openMenu.classList.contains("floating")) openMenu.remove();
   openMenu = null;
   openShellKey = null;
   openMenuKey = null;
 }
 document.addEventListener("pointerdown", () => { closeMenu(); hideCard(); });
+// A scroll moves the cards out from under a floating menu.
+document.addEventListener("wheel", e => {
+  if (openMenu?.classList.contains("floating") && !openMenu.contains(e.target)) closeMenu();
+}, {passive: true});
 document.addEventListener("keydown", e => { if (e.key === "Escape") { closeMenu(); hideCard(); } });
 
 // The details card. One element reused by every row: a card per row would be
@@ -2176,8 +2345,11 @@ function menuFor(row, group) {
   // The menu was once gated on idle and a high context figure, which meant
   // the control was missing at the moment you went looking for it. A shell
   // has no conversation to compact, so it gets Close alone.
+  const partner = row.partner && (group.rows || []).find(r => r.session_id === row.partner.with);
+  const UNTIE = partner && {label: `Untie from ${quotedLabel(partner.label)}`, hint: "end the link; both sessions go on alone",
+                           run: r => untieShown(r.session_id)};
   const items = group.name === "AGENTS"
-    ? [DETAILS, ...HOUSEKEEPING.filter(item => item.agents.includes(row.provider || "claude")), CLOSE]
+    ? [DETAILS, ...(UNTIE ? [UNTIE] : []), ...HOUSEKEEPING.filter(item => item.agents.includes(row.provider || "claude")), CLOSE]
     : [CLOSE];
 
   const menu = document.createElement("div");
@@ -2284,12 +2456,26 @@ function openMenuAt(menu, li, event, key) {
   // A keyboard-opened contextmenu reports no pointer; hang it off the row.
   const x = event.clientX || box.left + 12;
   const y = event.clientY || box.bottom;
+  menu.classList.add("floating");
+  menu.style.left = menu.style.top = "0px";
+  document.body.append(menu);
   menu.hidden = false;
+  // Where a fixed box lands under the text size's zoom differs by engine,
+  // so it is put at the origin, measured, and moved to the pointer. The
+  // unfold is held off while measuring, since it scales the box.
+  menu.style.animation = "none";
+  const origin = menu.getBoundingClientRect();
+  const scale = origin.height / menu.offsetHeight;
+  menu.style.animation = "";
   // Clamp inside the panel, which is often narrower than row + menu.
-  const maxX = document.documentElement.clientWidth - menu.offsetWidth - 4;
-  menu.style.left = Math.max(4, Math.min(x, maxX)) - box.left + "px";
-  menu.style.top = y - box.top + "px";
-  menu.classList.remove("kept");
+  const maxX = window.innerWidth - origin.width - 4 * scale;
+  menu.style.left = (Math.max(4 * scale, Math.min(x, maxX)) - origin.left) / scale + "px";
+  // Opens upward when there is no room below: scrolling closes it, so a menu
+  // past the foot would keep its last items out of reach.
+  const up = y + origin.height > window.innerHeight - 4 * scale;
+  const top = up ? Math.max(4 * scale, y - origin.height) : y;
+  menu.style.top = (top - origin.top) / scale + "px";
+  menu.style.transformOrigin = up ? "bottom left" : "";
   openMenu = menu;
   openMenuKey = key;
   menu.querySelector("button").focus();
@@ -2497,9 +2683,910 @@ function cardSettled(element) {
   return !li || performance.now() - (cardMovedAt.get(li.dataset.key) || 0) >= SETTLE_MS;
 }
 
+// A card dragged up or down takes the place it is dropped in, and the daemon
+// keeps that order (Order: By hand). Only agent cards drag, inside their
+// provider group, each with its teammates (lines inside its li) and the
+// worktree cards docked under it. In the Toolbelt plain moves can stop
+// arriving, but moves with the button held come through, and the row holds
+// pointer capture so they keep coming once the pointer leaves it.
+const DRAG_START_PX = 5;
+// How long after a drop a frame sorted by any other order is refused: long
+// enough for the daemon's next reading, short enough that a save that never
+// landed cannot hold the panel still.
+const STALE_FRAME_MS = 5000;
+const HAND_ORDER_MAX = 200;
+let pressed = null;
+let dragging = null;
+let swallowClick = false;
+let dropped = null;
+let droppedAt = 0;
+// The newest frame refused after a drop. If the save never reached the
+// daemon, nothing newer comes; it is painted once the window closes.
+let refusedFrame = null;
+
+function frameIsStale(frame) {
+  return !!dropped && performance.now() - droppedAt < STALE_FRAME_MS
+    && JSON.stringify(frame.hand_order || []) !== JSON.stringify(dropped);
+}
+
+// The daemon's _blocks: a row starts a block unless it is a teammate or a
+// worktree docked to the card above.
+function rowBlocks(rows) {
+  const blocks = [];
+  for (const row of rows) {
+    if (blocks.length && (row.depth || row.worktree_of || row.partner_of)) blocks[blocks.length - 1].push(row);
+    else blocks.push([row]);
+  }
+  return blocks;
+}
+
+const topCards = () => [...document.querySelectorAll("#groups li.line.card:not(.worktree)")]
+  .filter(li => li.querySelector(":scope > button.row.agent"));
+const cardBlock = li => {
+  const block = [li];
+  for (let next = li.nextElementSibling; next && next.matches("li.line.card.worktree"); next = next.nextElementSibling) block.push(next);
+  return block;
+};
+const cardRow = li => li.querySelector(":scope > button.row.agent")._row;
+// The agent cards' names as shown, each once: the daemon keeps one place per
+// name, so two cards of one name cannot be put in an order of their own.
+const shownNames = () => [...new Set(topCards().map(li => cardRow(li).label).filter(Boolean))];
+
+// Every agent card's name as now shown, top first, then the remembered names
+// not on screen, so a closed session keeps its place for its return.
+function dropOrder() {
+  const names = [...new Set([...shownNames(), ...(SETTINGS?.hand_order || [])])];
+  return names.slice(0, HAND_ORDER_MAX);
+}
+
+function startDrag(event) {
+  const li = pressed.li;
+  const kind = agentKindOf(cardRow(li));
+  const group = topCards().filter(card => agentMark() !== "groups" || agentKindOf(cardRow(card)) === kind)
+    .map(cardBlock);
+  const block = cardBlock(li);
+  const end = block[block.length - 1];
+  const last = group[group.length - 1];
+  const tail = last[last.length - 1];
+  pressed.dragged = true;
+  dragging = {
+    block, ul: li.parentElement, origin: [...li.parentElement.children],
+    namesBefore: shownNames().join("\n"),
+    grabTop: li.offsetTop, grabY: pressed.startY,
+    // The card it is partnered with: dropped anywhere but back in place, the drag unties the two.
+    partner: cardRow(li).partner?.with || null,
+    // Pointer positions are in viewport pixels and offsets in the page's own,
+    // which differ by the text size's zoom; engines disagree on which side
+    // the zoom lands, so the ratio is measured rather than assumed.
+    zoom: li.parentElement.getBoundingClientRect().height / li.parentElement.offsetHeight,
+    movedAt: performance.now(),
+    height: end.offsetTop + end.offsetHeight - li.offsetTop,
+    top: group[0][0].offsetTop, bottom: tail.offsetTop + tail.offsetHeight,
+  };
+  dragging.ghost = ghostOf(block);
+  // Where in the card it was taken, in the list's own pixels.
+  dragging.grabOffset = (pressed.startY - li.getBoundingClientRect().top) / dragging.zoom;
+  dragging.arming = null;
+  dragging.armed = null;
+  for (const card of block) card.classList.add("placeholder");
+  moveDrag(event);
+  requestAnimationFrame(now => linkTick(dragging, now));
+}
+
+// A see-through copy of the dragged block that follows the pointer, outside
+// the list, while the block itself waits in the list as a placeholder. It
+// takes no pointer events, so whatever is under the pointer is a real card.
+function ghostOf(block) {
+  const ghost = document.createElement("ul");
+  ghost.className = "drag-ghost";
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.append(...block.map(card => card.cloneNode(true)));
+  ghost.style.width = block[0].offsetWidth + "px";
+  document.body.append(ghost);
+  // Where a fixed box lands under the text size's zoom differs by engine,
+  // so it is put at the origin, measured, and moved over the card.
+  const origin = ghost.getBoundingClientRect();
+  const scale = origin.height / ghost.offsetHeight;
+  const card = block[0].getBoundingClientRect();
+  ghost.style.left = (card.left - origin.left) / scale + "px";
+  ghost.style.top = (card.top - origin.top) / scale + "px";
+  return ghost;
+}
+
+// The card beside a block, up or down, in the same group, with its docked
+// worktrees; a provider head or the end of the list stops it. The Working
+// and Idle heads of By attention, and the worktrees of the card above, are
+// stepped over: the drop leaves By attention anyway.
+function neighbour(block, up) {
+  let at = up ? block[0].previousElementSibling : block[block.length - 1].nextElementSibling;
+  const stop = "li.phead:not(.bucket)";
+  while (at && !at.matches(stop) && !(at.matches("li.line.card:not(.worktree)") && at.querySelector(":scope > button.row.agent"))) {
+    at = up ? at.previousElementSibling : at.nextElementSibling;
+  }
+  if (!at || at.matches(stop)) return null;
+  if (agentMark() === "groups" && agentKindOf(cardRow(at)) !== agentKindOf(cardRow(block[0]))) return null;
+  return cardBlock(at);
+}
+const middle = cards => (cards[0].offsetTop + cards[cards.length - 1].offsetTop + cards[cards.length - 1].offsetHeight) / 2;
+
+function moveDrag(event) {
+  const {block, grabTop, grabY, zoom, height, top, bottom} = dragging;
+  dragging.movedAt = performance.now();
+  // The ghost goes wherever the pointer does, so it can be held over any
+  // card; the place the block would drop in stays inside its group.
+  const free = grabTop + (event.clientY - grabY) / zoom;
+  const want = Math.min(Math.max(free, top), bottom - height);
+  if (dragging.pointer && event.clientY !== dragging.pointer.y) dragging.heading = Math.sign(event.clientY - dragging.pointer.y);
+  dragging.pointer = {x: event.clientX, y: event.clientY};
+  // Found before any card steps: a neighbour steps as the ghost passes its
+  // middle, which would carry the card out from under a pointer resting on it.
+  const target = cardUnder(event.clientX, event.clientY);
+  // With linking off in Settings a card held over another only takes its place.
+  const linkable = SETTINGS?.links ? target : null;
+  if (linkable !== dragging.arming?.li) {
+    disarm();
+    dragging.arming = linkable ? {li: linkable, since: performance.now(), y: event.clientY} : null;
+  } else if (linkable && !dragging.armed && Math.abs(event.clientY - dragging.arming.y) > ARM_STILL_PX) {
+    // Still moving across the card: the wait starts again where it rests.
+    disarm();
+    dragging.arming = {li: linkable, since: performance.now(), y: event.clientY};
+  }
+  // A neighbour steps over once the dragged block's leading edge passes its
+  // middle, so a tall card can pass a short one at the end of its group,
+  // and once the pointer has passed over it, so a card being reached for
+  // never moves away before the pointer gets there and an armed one stays
+  // put. The neighbours step over the dragged block, never the other way
+  // round: moving the block's own nodes would drop the row's pointer capture.
+  const at = free + dragging.grabOffset;
+  const last = cards => cards[cards.length - 1];
+  const was = new Map();
+  for (;;) {
+    const below = neighbour(block, false);
+    const above = neighbour(block, true);
+    const pass = below && !below.includes(target) && at >= below[0].offsetTop && middle(below) < want + height ? below
+      : above && !above.includes(target) && at <= last(above).offsetTop + last(above).offsetHeight && middle(above) > want ? above
+      : null;
+    if (!pass) break;
+    for (const card of pass) if (!was.has(card)) was.set(card, card.offsetTop);
+    if (pass === below) block[0].before(...pass);
+    else block[block.length - 1].after(...pass);
+  }
+  if (MOTION.matches) {
+    for (const [card, top] of was) {
+      const dy = top - card.offsetTop;
+      if (Math.abs(dy) >= 1) card.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}], MOVE);
+    }
+  }
+  dragging.ghost.style.transform = `translateY(${free - grabTop}px)`;
+}
+
+// Held over another agent card for this long, a dragged card links to it;
+// a pointer that moves more than ARM_STILL_PX is passing over, not holding.
+const ARM_MS = 400;
+const ARM_STILL_PX = 6;
+// The link badge's radius, and the springs the link moves on, as [stiffness,
+// damping]: the badge's size follows how deep the held card has gone without
+// overshooting it, and the two cards melt together.
+const RING_R = 14;
+const SPRING_DEPTH = [400, 40];
+const SPRING_MELT = [200, 16];
+// How far the held card goes over the card it reaches for, as a share of the
+// shorter of the two, for the badge to stand at full size.
+const DEPTH_FULL = 0.5;
+// Over the target the held card casts a shadow above and below it, none at the
+// sides, so the two read apart: how far it reaches, in px, and how dark it is
+// at full depth, as a share of the text colour.
+const LIFT_PX = 8;
+const LIFT_INK = 38;
+// A release that links: the badge bounces once on a spring and a ring in the
+// held card's colour ripples out from it and fades, as a drop landing; then
+// the badge shrinks away. The bounce's kick is its starting speed, in scales
+// per second; the ripple's reach is how far past the ring it travels, in radii.
+const SPRING_BOUNCE = [520, 14];
+const BOUNCE_KICK = 9;
+// How long the release's rings run: a landing's two, 200 ms apart, 560 ms each (LAND_* below).
+const RIPPLE_MS = 760;
+const CONFIRM_FADE_MS = 220;
+// How far the cards' shapes reach for each other during the hold, of the way
+// they fuse once armed; and how far the molded shape stands out past them.
+const MELT_REACH = 0.5;
+const MELT_GROW = 5;
+// How far past a card's edge the rim is cut back and the shared background
+// reaches, so their edges never meet on the card's own.
+const SEAM_PX = 1.5;
+// How close, in pixels, the ghost's leading edge comes to a card before the
+// two start to reach for each other.
+const APPROACH_PX = 40;
+
+// The agent card under the pointer, the dragged block's own excepted.
+function cardUnder(x, y) {
+  const li = document.elementFromPoint(x, y)?.closest("#groups li.line.card:not(.worktree):not(.placeholder)");
+  return li && li.querySelector(":scope > button.row.agent") ? li : null;
+}
+
+// A card label as the daemon quotes it: one line in curly quotes, cut short.
+const quotedLabel = label => `\u201c${String(label ?? "").replace(/["`]/g, "'").split(/\s+/).filter(Boolean).join(" ").slice(0, 60)}\u201d`;
+
+// Puts a fixed element at a point in viewport pixels, which differ from its
+// own by the text size's zoom: measured at the origin, as ghostOf does.
+function placeFixed(element, x, y) {
+  const origin = element.getBoundingClientRect();
+  const scale = origin.height / element.offsetHeight || 1;
+  element.style.left = (x - origin.left) / scale + "px";
+  element.style.top = (y - origin.top) / scale + "px";
+}
+
+// The refusal chip: over the pointer, centred on it, kept inside the panel
+// with a 12 px gutter, and below the pointer when there is no room above.
+const REFUSAL_GUTTER = 12;
+function placeRefusal(label, pointer) {
+  const scale = label.getBoundingClientRect().height / label.offsetHeight || 1;
+  label.style.maxWidth = (window.innerWidth - 2 * REFUSAL_GUTTER) / scale + "px";
+  const box = label.getBoundingClientRect();
+  const x = Math.min(Math.max(pointer.x - box.width / 2, REFUSAL_GUTTER), window.innerWidth - REFUSAL_GUTTER - box.width);
+  const above = pointer.y - 10 - box.height;
+  placeFixed(label, x, above >= REFUSAL_GUTTER ? above : pointer.y + 22);
+}
+
+// Arms the card held under the pointer once ARM_MS have passed, or says why it
+// cannot link; then draws the tether each frame until the drag ends.
+function linkTick(drag, now) {
+  if (dragging !== drag) return;
+  const arming = drag.arming;
+  if (arming && !drag.armed && !arming.judged && now - arming.since >= ARM_MS) {
+    arming.judged = true;
+    const reason = cardRow(drag.block[0]).link_refusal || cardRow(arming.li).link_refusal;
+    if (reason) {
+      const label = Object.assign(document.createElement("div"), {className: "link-refusal"});
+      label.setAttribute("role", "status");
+      label.append(metaIcon("warning"), Object.assign(document.createElement("span"), {textContent: reason}));
+      document.body.append(label);
+      placeRefusal(label, drag.pointer);
+    } else {
+      drag.armed = arming.li;
+      drag.armedAt = now;
+      arming.li.classList.add("link-target");
+    }
+  }
+  drawTether(drag, now);
+  requestAnimationFrame(next => linkTick(drag, next));
+}
+
+// A value moving toward `to` on a spring of [stiffness, damping]; it lands at
+// once when motion is reduced.
+function spring(x, [k, c]) { return {x, v: 0, to: x, k, c}; }
+function stepSpring(s, dt) {
+  if (!MOTION.matches) { s.x = s.to; s.v = 0; return; }
+  s.v += (s.k * (s.to - s.x) - s.c * s.v) * dt;
+  s.x += s.v * dt;
+}
+
+// Tether: like two drops of water. While the dragged card is held over one it
+// can link to, their shapes reach for each other; once armed they fuse into
+// one shape around both cards, shading from the target's colour to the held
+// card's. A plain link badge sits on the held card's edge that faces the
+// target, at its horizontal centre, and grows as the held card goes deeper
+// into the target, full once armed. Leaving lets it all spring apart.
+function drawTether(drag, now) {
+  const fluid = drag.fluid ??= {scale: spring(0, SPRING_DEPTH), melt: spring(0, SPRING_MELT),
+                                side: spring(0, SPRING_DEPTH), li: null, last: now};
+  const dt = Math.min(0.032, (now - fluid.last) / 1000);
+  fluid.last = now;
+  const ghostCard = drag.ghost.firstElementChild;
+  const nearing = drag.armed ? null : approached(drag, ghostCard);
+  const toward = drag.armed || nearing?.li || null;
+  // A new card takes over only once the shape has let go of the last one.
+  if (toward !== fluid.li && fluid.melt.x < 0.05 && fluid.scale.x < 0.05) {
+    if (fluid.li) unseam(fluid.li);
+    fluid.li = toward;
+    fluid.sided = false;
+  }
+  fluid.melt.to = toward !== fluid.li ? 0 : drag.armed ? 1 : nearing ? MELT_REACH * nearing.closeness : 0;
+  const from = ghostCard.getBoundingClientRect(), to = fluid.li?.getBoundingClientRect();
+  const overlap = to ? Math.max(0, Math.min(from.bottom, to.bottom) - Math.max(from.top, to.top)) : 0;
+  const depth = to ? Math.min(1, overlap / (DEPTH_FULL * Math.min(from.height, to.height))) : 0;
+  fluid.scale.to = toward !== fluid.li ? 0 : drag.armed && fluid.li === drag.armed ? 1 : depth;
+  let svg = document.getElementById("link-overlay");
+  const resting = Math.abs(fluid.melt.x) < 0.005 && Math.abs(fluid.scale.x) < 0.005;
+  if (!fluid.li || (resting && fluid.melt.to === 0 && fluid.scale.to === 0)) {
+    if (fluid.li) unseam(fluid.li);
+    svg?.remove();
+    return;
+  }
+  const up = (to.top + to.bottom) / 2 < (from.top + from.bottom) / 2;
+  // The badge rides the held card's edge facing the target: 0 its top, 1 its
+  // bottom. Once the held card's middle passes the target's, it slides to the
+  // other edge rather than jumping; it starts on its edge without sliding.
+  fluid.side.to = up ? 0 : 1;
+  if (!fluid.sided) Object.assign(fluid.side, {x: fluid.side.to, v: 0}), fluid.sided = true;
+  const fresh = !svg;
+  if (fresh) svg = tetherOverlay();
+  const box = svg.getBoundingClientRect();
+  svg.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
+  const centre = (from.left + from.right) / 2 - box.left;
+  for (const s of [fluid.scale, fluid.melt, fluid.side]) stepSpring(s, dt);
+  // Pinned to the held card, with no lag: it moves as the card does.
+  const badge = svg.querySelector(".tether-badge");
+  const size = Math.max(0, fluid.scale.x);
+  const edge = from.top + fluid.side.x * from.height - box.top;
+  badge.setAttribute("transform", `translate(${centre} ${edge}) scale(${size})`);
+  badge.style.display = size < 0.01 ? "none" : "";
+  // The molded shape: both cards' silhouettes, grown out past them as they
+  // melt, and a neck across the join; the blur and threshold fuse them with
+  // rounded corners, and the mask leaves only what stands outside the cards.
+  const melt = Math.max(0, fluid.melt.x), grow = MELT_GROW * melt;
+  // The cards' own corner radius, read before the seam squares any off.
+  fluid.radius ??= parseFloat(getComputedStyle(fluid.li).borderTopLeftRadius);
+  const radius = card => fluid.radius * (card.getBoundingClientRect().height / card.offsetHeight || 1);
+  const place = (rect, area, inflate, rx) => {
+    rect.setAttribute("x", area.left - box.left - inflate);
+    rect.setAttribute("y", area.top - box.top - inflate);
+    rect.setAttribute("width", area.width + 2 * inflate);
+    rect.setAttribute("height", area.height + 2 * inflate);
+    rect.setAttribute("rx", rx + inflate);
+  };
+  const [targetRx, heldRx] = [radius(fluid.li), radius(ghostCard)];
+  // The rim grows out from where the background stops, so cutting the seam
+  // never thins it.
+  place(svg.querySelector(".goo-target"), to, SEAM_PX + grow, targetRx);
+  place(svg.querySelector(".goo-held"), from, SEAM_PX + grow, heldRx);
+  place(svg.querySelector(".edge-target"), to, SEAM_PX + grow, targetRx);
+  place(svg.querySelector(".edge-held"), from, SEAM_PX + grow, heldRx);
+  place(svg.querySelector(".body-edge-target"), to, SEAM_PX, targetRx);
+  place(svg.querySelector(".body-edge-held"), from, SEAM_PX, heldRx);
+  // Two edges meeting on one pixel each half cover it and let what is under
+  // them show through as a line. So the rim's holes reach past each card's
+  // edge, the background's holes stop inside it, and the background grows past
+  // the edge to cover the rim's: every seam lies under solid card colour.
+  place(svg.querySelector(".cut-target"), to, SEAM_PX, targetRx);
+  place(svg.querySelector(".cut-held"), from, SEAM_PX, heldRx);
+  place(svg.querySelector(".body-cut-target"), to, -1, targetRx);
+  place(svg.querySelector(".body-cut-held"), from, -1, heldRx);
+  place(svg.querySelector(".body-target"), to, SEAM_PX, targetRx);
+  place(svg.querySelector(".body-held"), from, SEAM_PX, heldRx);
+  // The neck spans the gap from the upper card's bottom to the lower card's
+  // top, reaching a little into each, and never past the two cards together:
+  // with one card deep over the other those edges are the pair's outside.
+  const [upper, lower] = from.top < to.top ? [from, to] : [to, from];
+  const neckTop = Math.max(Math.min(upper.bottom, lower.top) - 12 * melt, upper.top) - box.top;
+  const neckBottom = Math.min(Math.max(upper.bottom, lower.top) + 12 * melt, Math.max(upper.bottom, lower.bottom)) - box.top;
+  // Fully fused, the join is as wide as the cards, so the sides run straight.
+  const neckWidth = Math.min(from.width, to.width) * Math.min(1, melt) ** 2;
+  for (const neck of svg.querySelectorAll(".tether-neck, .body-neck")) {
+    neck.setAttribute("x", centre - neckWidth / 2);
+    neck.setAttribute("y", neckTop);
+    neck.setAttribute("width", neckWidth);
+    neck.setAttribute("height", Math.max(0, neckBottom - neckTop));
+  }
+  const fill = svg.querySelector("#tether-goo-fill");
+  fill.setAttribute("y1", (to.top + to.bottom) / 2 - box.top);
+  fill.setAttribute("y2", (from.top + from.bottom) / 2 - box.top);
+  const hueOf = li => li.dataset.hue || "var(--dim)";
+  const [targetStop, heldStop] = fill.querySelectorAll("stop");
+  targetStop.style.stopColor = hueOf(fluid.li);
+  heldStop.style.stopColor = hueOf(drag.block[0]);
+  svg.querySelector(".tether-goo").style.opacity = String(Math.min(1, melt * 2) * 0.85);
+  svg.querySelector(".tether-body").style.opacity = String(Math.min(1, melt * 2));
+  // As they fuse the facing corners square off and the cards stop drawing
+  // their own edges, so the two read as one card inside the rim.
+  const facing = Math.min(1, melt) > 0.98 ? 0 : fluid.radius * (1 - Math.min(1, melt));
+  const plain = melt > 0.6;
+  seam(fluid.li, up ? "Bottom" : "Top", facing, plain);
+  seam(ghostCard, up ? "Top" : "Bottom", facing, plain);
+  if (overlap > 0) {
+    const ink = `color-mix(in srgb, var(--fg) ${Math.round(LIFT_INK * depth)}%, transparent)`;
+    ghostCard.style.boxShadow = `0 -${LIFT_PX}px ${2 * LIFT_PX}px -${LIFT_PX}px ${ink}, 0 ${LIFT_PX}px ${2 * LIFT_PX}px -${LIFT_PX}px ${ink}`;
+  }
+  // One card is solid: the held card stops letting the list show through it.
+  drag.ghost.style.opacity = plain ? "1" : "";
+}
+
+// A card's two corners on one side set to `radius` px, the other side's its
+// own (the side can change as the ghost crosses the target's middle), and its
+// own edge and shadow dropped while `plain`; unseam gives it all back.
+function seam(card, side, radius, plain) {
+  const other = side === "Top" ? "Bottom" : "Top";
+  card.style[`border${other}LeftRadius`] = card.style[`border${other}RightRadius`] = "";
+  card.style[`border${side}LeftRadius`] = `${radius}px`;
+  card.style[`border${side}RightRadius`] = `${radius}px`;
+  card.style.boxShadow = plain ? "none" : "";
+}
+function unseam(card) {
+  for (const corner of ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius", "boxShadow"]) card.style[corner] = "";
+}
+
+// The card the ghost is nearing, and how near: the nearest agent card ahead of
+// it in the direction it last moved, within APPROACH_PX of its leading edge or
+// under it, closeness 0 at that distance to 1 at touching. None when that card,
+// or the dragged one, cannot link: the nearest card is the one in the way.
+function approached(drag, ghostCard) {
+  if (!SETTINGS?.links || !drag.heading || cardRow(drag.block[0]).link_refusal) return null;
+  const ghost = ghostCard.getBoundingClientRect();
+  let best = null;
+  for (const li of document.querySelectorAll("#groups li.line.card:not(.worktree):not(.placeholder)")) {
+    if (!li.querySelector(":scope > button.row.agent") || drag.block.includes(li)) continue;
+    const box = li.getBoundingClientRect();
+    if (drag.heading > 0 ? box.bottom <= ghost.top : box.top >= ghost.bottom) continue;
+    const gap = drag.heading > 0 ? box.top - ghost.bottom : ghost.top - box.bottom;
+    if (gap > APPROACH_PX) continue;
+    const ahead = drag.heading > 0 ? box.top : -box.bottom;
+    if (!best || ahead < best.ahead) best = {li, gap, ahead};
+  }
+  if (!best || cardRow(best.li).link_refusal) return null;
+  return {li: best.li, closeness: Math.min(1, Math.max(0, (APPROACH_PX - best.gap) / APPROACH_PX))};
+}
+
+// The link's overlay, made once per approach: the molded shape (two card
+// silhouettes and a neck, fused by a blur-and-threshold filter, cut to what
+// lies outside the cards) as a coloured rim with one card background inside
+// it, and the badge with its link mark.
+function tetherOverlay() {
+  const NS = "http://www.w3.org/2000/svg";
+  const make = (tag, attrs, parent) => {
+    const node = document.createElementNS(NS, tag);
+    for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+    parent.append(node);
+    return node;
+  };
+  const svg = document.createElementNS(NS, "svg");
+  svg.id = "link-overlay";
+  svg.setAttribute("aria-hidden", "true");
+  const defs = make("defs", {}, svg);
+  const goo = make("filter", {id: "tether-goo-filter", x: "-20%", y: "-20%", width: "140%", height: "140%"}, defs);
+  make("feGaussianBlur", {in: "SourceGraphic", stdDeviation: 7, result: "blur"}, goo);
+  make("feColorMatrix", {in: "blur", mode: "matrix", values: "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9"}, goo);
+  const fill = make("linearGradient", {id: "tether-goo-fill", gradientUnits: "userSpaceOnUse", x1: 0, x2: 0}, defs);
+  make("stop", {offset: 0}, fill);
+  make("stop", {offset: 1}, fill);
+  const cut = make("mask", {id: "tether-goo-cut", maskUnits: "userSpaceOnUse", x: "-50%", y: "-50%", width: "200%", height: "200%"}, defs);
+  make("rect", {x: "-50%", y: "-50%", width: "200%", height: "200%", fill: "white"}, cut);
+  make("rect", {class: "cut-target", fill: "black"}, cut);
+  make("rect", {class: "cut-held", fill: "black"}, cut);
+  const bodyCut = make("mask", {id: "tether-body-cut", maskUnits: "userSpaceOnUse", x: "-50%", y: "-50%", width: "200%", height: "200%"}, defs);
+  make("rect", {x: "-50%", y: "-50%", width: "200%", height: "200%", fill: "white"}, bodyCut);
+  make("rect", {class: "body-cut-target", fill: "black"}, bodyCut);
+  make("rect", {class: "body-cut-held", fill: "black"}, bodyCut);
+  const shape = make("g", {class: "tether-goo", mask: "url(#tether-goo-cut)"}, svg);
+  const fused = make("g", {filter: "url(#tether-goo-filter)", fill: "url(#tether-goo-fill)"}, shape);
+  make("rect", {class: "goo-target"}, fused);
+  make("rect", {class: "goo-held"}, fused);
+  make("rect", {class: "tether-neck", rx: 10}, fused);
+  // The blur rounds the shape's outer corners far past the cards' own, so the
+  // cards' outlines are drawn again unblurred beside it: the rim and the
+  // background then follow each card's corners, and the blur shapes the join.
+  const rimEdge = make("g", {fill: "url(#tether-goo-fill)"}, shape);
+  make("rect", {class: "edge-target"}, rimEdge);
+  make("rect", {class: "edge-held"}, rimEdge);
+  // Inside the rim, one card background: the cards' own shapes and the neck,
+  // fused the same way in the card colour, so the join reads as one card.
+  const body = make("g", {class: "tether-body", mask: "url(#tether-body-cut)"}, svg);
+  const one = make("g", {filter: "url(#tether-goo-filter)", fill: "var(--card)"}, body);
+  make("rect", {class: "body-target"}, one);
+  make("rect", {class: "body-held"}, one);
+  make("rect", {class: "body-neck", rx: 10}, one);
+  const bodyEdge = make("g", {fill: "var(--card)"}, body);
+  make("rect", {class: "body-edge-target"}, bodyEdge);
+  make("rect", {class: "body-edge-held"}, bodyEdge);
+  const badge = make("g", {class: "tether-badge"}, svg);
+  make("circle", {class: "tether-face", r: RING_R}, badge);
+  make("circle", {class: "tether-ring", r: RING_R}, badge);
+  const icon = metaIcon("link");
+  icon.classList.add("tether-mark");
+  for (const [name, value] of Object.entries({x: -8, y: -8, width: 16, height: 16})) icon.setAttribute(name, value);
+  badge.append(icon);
+  document.body.append(svg);
+  return svg;
+}
+
+// Undoes an armed link, or a refusal shown, on the card under the pointer.
+function disarm() {
+  dragging.armed?.classList.remove("link-target");
+  dragging.armed = null;
+  document.querySelector(".link-refusal")?.remove();
+}
+
+// What the target says for a moment after a link is sent, by session id: {text, until}.
+const linkSent = new Map();
+const LINK_SENT_MS = 2000;
+
+// A release while armed: the badge confirms where it was let go, the list
+// goes back as it was, and the daemon is asked to have the dragged card's
+// session hand its latest result over.
+function linkDrag() {
+  const from = cardRow(dragging.block[0]), to = cardRow(dragging.armed);
+  const hue = dragging.block[0].dataset.hue || "var(--dim)";
+  // Out of the drag's hands before it ends, so the end does not take it away.
+  const overlay = document.getElementById("link-overlay");
+  if (overlay) overlay.id = "link-confirm";
+  cancelDrag();
+  if (overlay) confirmLink(overlay, hue);
+  postLink(from, to);
+}
+
+// The badge bounces once while two quiet rings in `hue` leave it, as when work lands in a pair (the landing's own
+// rings, measured from the release), then it shrinks away and the overlay goes. With reduced motion the two rings
+// stand at their reach for as long, and go.
+function confirmLink(svg, hue) {
+  for (const part of svg.querySelectorAll(":scope > :not(.tether-badge)")) part.remove();
+  const badge = svg.querySelector(".tether-badge");
+  const at = badge.getAttribute("transform").replace(/ scale\([^)]*\)/, "");
+  const rings = Array.from({length: LAND_RINGS}, () => {
+    const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    ring.setAttribute("class", "tether-ripple");
+    ring.setAttribute("transform", at);
+    ring.style.stroke = hue;
+    svg.insertBefore(ring, badge);
+    return ring;
+  });
+  // The landing's rings leave a badge of radius LAND_R; these leave the drag badge's own edge.
+  const scale = RING_R / LAND_R;
+  if (!MOTION.matches) {
+    rings.forEach((ring, i) => {
+      ring.setAttribute("r", RING_R * (1 + (LAND_REACH - 1) * (i + 1) / LAND_RINGS));
+      ring.style.strokeWidth = String(LAND_WIDTH);
+      ring.style.opacity = String(LAND_ALPHA);
+    });
+    setTimeout(() => svg.remove(), RIPPLE_MS);
+    return;
+  }
+  const bounce = spring(1, SPRING_BOUNCE);
+  bounce.v = BOUNCE_KICK;
+  const start = performance.now();
+  let last = start;
+  (function frame(now) {
+    const t = (now - start) / RIPPLE_MS;
+    let size;
+    if (t < 1) {
+      stepSpring(bounce, Math.min(0.032, (now - last) / 1000));
+      size = bounce.x;
+      landingFrame(LAND_TURN_MS + (now - start), true).rings.forEach((one, i) => {
+        rings[i].setAttribute("r", one.r * scale);
+        rings[i].style.strokeWidth = String(one.width);
+        rings[i].style.opacity = String(one.opacity);
+      });
+    } else {
+      for (const ring of rings) ring.remove();
+      const fade = Math.min(1, (now - start - RIPPLE_MS) / CONFIRM_FADE_MS);
+      size = 1 - (1 - (1 - fade) ** 3);
+      if (fade >= 1) { svg.remove(); return; }
+    }
+    last = now;
+    badge.setAttribute("transform", `${at} scale(${Math.max(0, size)})`);
+    requestAnimationFrame(frame);
+  })(start);
+}
+
+function postLink(from, to) {
+  fetch(`/link?token=${encodeURIComponent(TOKEN)}`, {
+    method: "POST",
+    body: JSON.stringify({from: from.session_id, to: to.session_id}),
+  }).then(r => r.json().then(reply => ({status: r.status, reply})))
+    .then(({status, reply}) => {
+      if (status === 409 && reply?.error) {
+        refusedPrompts.set(from.session_id, {text: `not linked: ${reply.error}`, until: Date.now() + REFUSAL_SHOWN_MS});
+        render(LATEST);
+        setTimeout(() => render(LATEST), REFUSAL_SHOWN_MS + 50);
+      } else if (status === 200 && reply?.ok) {
+        if (!reply.link?.partnership) {
+          linkSent.set(to.session_id, {text: `Sent · from ${quotedLabel(from.label)}`, until: Date.now() + LINK_SENT_MS});
+          render(LATEST);
+          setTimeout(() => render(LATEST), LINK_SENT_MS + 50);
+        }
+      } else {
+        console.log("sidebar: link not made", status, reply);
+      }
+    })
+    .catch(err => console.log("sidebar: link failed", err));
+}
+
+// The badge on a pair's join: the link mark on a card-coloured face, its ring two halves, the upper session's colour
+// on top and the lower's below. The halves turn when work crosses (Task 10), the mark never does.
+function pairBadge(upperHue, lowerHue) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "pair-badge");
+  svg.setAttribute("viewBox", "-16 -16 32 32");
+  svg.setAttribute("aria-hidden", "true");
+  const face = document.createElementNS(NS, "circle");
+  face.setAttribute("class", "pair-face");
+  face.setAttribute("r", 14);
+  const ring = document.createElementNS(NS, "g");
+  ring.setAttribute("class", "pair-ring");
+  const r = 14 - 1.25;
+  for (const [d, hue] of [[`M ${-r} 0 A ${r} ${r} 0 0 1 ${r} 0`, upperHue], [`M ${r} 0 A ${r} ${r} 0 0 1 ${-r} 0`, lowerHue]]) {
+    const half = document.createElementNS(NS, "path");
+    half.setAttribute("d", d);
+    half.setAttribute("fill", "none");
+    half.setAttribute("stroke", hue || "var(--dim)");
+    half.setAttribute("stroke-width", 2.5);
+    ring.append(half);
+  }
+  const mark = metaIcon("link");
+  mark.classList.add("pair-mark");
+  for (const [name, value] of Object.entries({x: -8, y: -8, width: 16, height: 16})) mark.setAttribute(name, value);
+  svg.append(face, ring, mark);
+  return svg;
+}
+
+// The line on a card about a task between partners: asked while it is open, then how it ended, for a few seconds.
+function pairLine(row, partners) {
+  const text = (partners || []).map(pair => pair.lines?.[row.session_id]).find(Boolean);
+  if (!text) return null;
+  const line = Object.assign(document.createElement("p"), {className: "link-line", textContent: text});
+  line.setAttribute("role", "status");
+  return line;
+}
+
+function postUntie(pane) {
+  fetch(`/untie?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify({pane})})
+    .then(r => r.json().then(reply => ({status: r.status, reply})))
+    .then(({status, reply}) => { if (status !== 200) console.log("sidebar: untie refused", status, reply); })
+    .catch(err => console.log("sidebar: untie failed", err));
+}
+
+// Work crossing a pair (S6 of the ripple lab): the ring turns half way in 520 ms so the sender's colour lands on the
+// receiver's side, two quiet rings in the sender's colour leave the badge 200 ms apart, then the ring turns home in
+// 720 ms. A function of the time since the landing began, so a repaint that rebuilds the badge picks it up mid-way.
+const LAND_TURN_MS = 520, LAND_HOME_MS = 720, LAND_RING_MS = 560, LAND_STAGGER_MS = 200;
+const LAND_RINGS = 2, LAND_WIDTH = 2.5, LAND_TAPER = .5, LAND_REACH = 1.4, LAND_ALPHA = .45, LAND_R = 14;
+const LAND_MS = LAND_TURN_MS + LAND_STAGGER_MS * (LAND_RINGS - 1) + LAND_RING_MS + LAND_HOME_MS;
+function landingFrame(ms, clockwise) {
+  const dir = clockwise ? 1 : -1;
+  const ringsFrom = LAND_TURN_MS, homeFrom = LAND_TURN_MS + LAND_STAGGER_MS * (LAND_RINGS - 1) + LAND_RING_MS;
+  let angle;
+  if (ms < LAND_TURN_MS) {
+    const t = ms / LAND_TURN_MS;
+    // Ease out with a few degrees past the mark near the end, then back onto it.
+    angle = dir * 180 * (1 - (1 - t) ** 3 + Math.sin(t * Math.PI) * 0.06 * (1 - t));
+  } else if (ms < homeFrom) {
+    angle = dir * 180;
+  } else {
+    const t = Math.min(1, (ms - homeFrom) / LAND_HOME_MS);
+    angle = dir * 180 * (1 - t * t * (3 - 2 * t));
+  }
+  // The badge's spring bounce as the rings leave: x'' = 520 (1 - x) - 14 x', from x = 1 with x' = 9.
+  const s = Math.max(0, (ms - ringsFrom) / 1000), wd = Math.sqrt(520 - 49);
+  const bounce = ms < ringsFrom ? 1 : 1 + Math.exp(-7 * s) * (9 / wd) * Math.sin(wd * s);
+  const rings = [];
+  for (let i = 0; i < LAND_RINGS; i++) {
+    const t = (ms - ringsFrom - i * LAND_STAGGER_MS) / LAND_RING_MS;
+    if (t < 0 || t > 1) { rings.push({r: LAND_R, width: LAND_WIDTH, opacity: 0}); continue; }
+    const e = 1 - (1 - t) ** 3;
+    rings.push({r: LAND_R + LAND_WIDTH / 2 + LAND_R * (LAND_REACH - 1) * e,
+                width: LAND_WIDTH * (1 - (1 - LAND_TAPER) * e), opacity: LAND_ALPHA * (1 - t)});
+  }
+  return {angle, bounce, rings};
+}
+
+// Pair id -> landings already seen, and the landing playing: {start, clockwise, hue}. The first frame a pair is
+// seen in only records its count, so loading the panel plays nothing.
+const pairLandings = new Map();
+const landingNow = new Map();
+function playLandings(partners) {
+  for (const pair of partners || []) {
+    const seen = pairLandings.get(pair.id);
+    pairLandings.set(pair.id, pair.landings);
+    if (seen === undefined || pair.landings <= seen || !pair.landed) continue;
+    const from = document.querySelector(`li.line.card[data-key="${CSS.escape(pair.landed.from)}"]`);
+    landingNow.set(pair.id, {start: performance.now(), clockwise: pair.landed.from === pair.upper,
+                             hue: from?.dataset.hue || "var(--dim)", lower: pair.lower});
+    stepLanding(pair.id);
+  }
+}
+function stepLanding(id) {
+  const landing = landingNow.get(id);
+  if (!landing) return;
+  const ms = performance.now() - landing.start;
+  const svg = document.querySelector(`li.line.card.partner[data-key="${CSS.escape(landing.lower)}"] > svg.pair-badge`);
+  const total = MOTION.matches ? LAND_MS : LAND_STAGGER_MS * (LAND_RINGS - 1) + LAND_RING_MS;
+  if (svg) {
+    for (const old of svg.querySelectorAll(".pair-ripple")) old.remove();
+    const f = landingFrame(MOTION.matches ? ms : LAND_TURN_MS, landing.clockwise);
+    const ring = svg.querySelector(".pair-ring");
+    if (MOTION.matches) ring.setAttribute("transform", `rotate(${f.angle}) scale(${f.bounce})`);
+    if (ms < total) {
+      f.rings.forEach((one, i) => {
+        // Reduced motion: no turn, the rings stand at their reach for as long as they would have run.
+        const r = MOTION.matches ? one.r : LAND_R * (1 + (LAND_REACH - 1) * (i + 1) / LAND_RINGS);
+        const opacity = MOTION.matches ? one.opacity : LAND_ALPHA;
+        if (!opacity) return;
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("class", "pair-ripple");
+        c.setAttribute("r", r);
+        c.setAttribute("fill", "none");
+        c.setAttribute("stroke", landing.hue);
+        c.setAttribute("stroke-width", MOTION.matches ? one.width : LAND_WIDTH);
+        c.style.opacity = String(opacity);
+        svg.insertBefore(c, svg.firstChild);
+      });
+    }
+  }
+  if (ms >= total) {
+    landingNow.delete(id);
+    svg?.querySelector(".pair-ring")?.removeAttribute("transform");
+    return;
+  }
+  // One frame loop per landing: a repaint's call draws the new badge at once but never starts a second loop.
+  if (!landing.scheduled) {
+    landing.scheduled = true;
+    requestAnimationFrame(() => { landing.scheduled = false; stepLanding(id); });
+  }
+}
+
+// The line on a card about a link it is in, from the frame's open links, or null.
+function linkLine(row, links) {
+  const sent = linkSent.get(row.session_id);
+  let text = null;
+  if (sent && sent.until > Date.now()) text = sent.text;
+  else linkSent.delete(row.session_id);
+  for (const link of text ? [] : links || []) {
+    const to = quotedLabel(link.to_label);
+    if (link.from === row.session_id) {
+      text = {
+        asked: `Asked to send to ${to}` + (link.waits === link.from ? "; waits for your next prompt here" : ""),
+        sent: link.waits === link.to ? `Sent; waits for your next prompt in ${to}` : "Sent",
+        delivered: `Delivered to ${to}`,
+        refused: `Refused: ${link.reason}`,
+        expired: "Expired",
+      }[link.state] || null;
+    } else if (link.to === row.session_id && link.state === "delivered") {
+      text = `From ${quotedLabel(link.from_label)}`;
+    }
+    if (text) break;
+  }
+  if (!text) return null;
+  const line = Object.assign(document.createElement("p"), {className: "link-line", textContent: text});
+  line.setAttribute("role", "status");
+  return line;
+}
+
+// Ends the drag and says where its ghost was, for the card to slide from.
+function endDrag() {
+  disarm();
+  if (dragging.fluid?.li) unseam(dragging.fluid.li);
+  document.getElementById("link-overlay")?.remove();
+  const left = {top: dragging.ghost.getBoundingClientRect().top, zoom: dragging.zoom};
+  for (const card of dragging.block) card.classList.remove("placeholder");
+  dragging.ghost.remove();
+  dragging = null;
+  return left;
+}
+
+// A card that lands, dropped or sent back, slides from where its ghost was.
+// Its own id, not the repaint's "flip", so the repaint that follows a drop
+// does not cut it short.
+const SETTLE = {...MOVE, id: "settle"};
+// -> once the slide is over.
+function slideFrom(block, from) {
+  if (!MOTION.matches) return Promise.resolve();
+  const dy = (from.top - block[0].getBoundingClientRect().top) / from.zoom;
+  if (Math.abs(dy) < 1) return Promise.resolve();
+  const slides = block.map(card => card.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}], SETTLE));
+  // A repaint that replaces the card cancels its slide; that is an end too.
+  return Promise.all(slides.map(slide => slide.finished.catch(() => null)));
+}
+
+function cancelDrag() {
+  const {ul, origin, block} = dragging;
+  const others = origin.filter(el => !block.includes(el) && el.matches("li.line.card"));
+  const was = new Map(others.map(card => [card, card.getBoundingClientRect().top]));
+  ul.append(...origin);
+  const from = endDrag();
+  slideFrom(block, from);
+  if (MOTION.matches) {
+    for (const [card, top] of was) {
+      const dy = (top - card.getBoundingClientRect().top) / from.zoom;
+      if (Math.abs(dy) >= 1) card.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}], SETTLE);
+    }
+  }
+  releaseHeldFrame();
+}
+
+function dropDrag() {
+  // An order the daemon can keep did not change: put the list back as it was.
+  if (shownNames().join("\n") === dragging.namesBefore) { cancelDrag(); return; }
+  // A card dragged out of its pair and dropped somewhere else unties it, there and then.
+  if (dragging.partner) {
+    const pane = cardRow(dragging.block[0]).session_id;
+    postUntie(pane);
+    for (const group of LATEST.groups || []) for (const row of group.rows) {
+      if (row.session_id === pane || row.partner_of === pane) { delete row.partner_of; delete row.partner; }
+      if (row.partner?.with === pane) delete row.partner;
+    }
+    LATEST.partners = (LATEST.partners || []).filter(p => p.upper !== pane && p.lower !== pane);
+  }
+  const block = dragging.block;
+  const from = endDrag();
+  const names = dropOrder();
+  const place = new Map(names.map((name, at) => [name, at]));
+  for (const group of LATEST.groups || []) {
+    if (group.name !== "AGENTS") continue;
+    const blocks = rowBlocks(group.rows);
+    // Grouped by agent, a card the drop never placed (one that arrived
+    // mid-drag) goes to the bottom of its own agent's group.
+    const kinds = [...new Set(blocks.map(block => agentKindOf(block[0])))];
+    const rank = block => agentMark() === "groups" ? kinds.indexOf(agentKindOf(block[0])) : 0;
+    blocks.sort((a, b) => rank(a) - rank(b)
+      || (place.get(a[0].label) ?? names.length) - (place.get(b[0].label) ?? names.length));
+    group.rows = blocks.flat();
+    // By hand has no Working and Idle runs, nor their washes.
+    for (const row of group.rows) { delete row.bucket; delete row.rested; }
+  }
+  LATEST.hand_order = names;
+  dropped = names;
+  droppedAt = performance.now();
+  heldFrame = null;
+  heldArrived = false;
+  refusedFrame = null;
+  // The list already stands in the new order, so the save, and the repaint
+  // that comes with it, wait for the card to land.
+  slideFrom(block, from).then(() => push({order: "hand", hand_order: names}));
+}
+
+document.addEventListener("pointerdown", event => {
+  // Control-press is the Mac's right click: it opens the menu, never drags.
+  if (event.button !== 0 || event.ctrlKey || dragging) return;
+  const row = event.target.closest("button.row.agent:not(.child)");
+  const li = row?.closest("li.line.card");
+  if (!li || li.classList.contains("worktree")) return;
+  pressed = {li, startY: event.clientY};
+  try { row.setPointerCapture(event.pointerId); } catch (err) { console.log("sidebar: no pointer capture", err); }
+}, true);
+document.addEventListener("pointermove", event => {
+  // A move with no button held means the release never reached the page.
+  if (!(event.buttons & 1)) {
+    if (dragging) cancelDrag();
+    return;
+  }
+  if (dragging) moveDrag(event);
+  else if (pressed && Math.abs(event.clientY - pressed.startY) > DRAG_START_PX) startDrag(event);
+}, true);
+document.addEventListener("pointerup", event => {
+  const wasDrag = pressed?.dragged;
+  pressed = null;
+  // Captured, the release still comes here when it happens over the
+  // terminal; a card let go outside the panel goes back.
+  const outside = event.clientX < 0 || event.clientY < 0
+    || event.clientX > window.innerWidth || event.clientY > window.innerHeight;
+  if (dragging) outside ? cancelDrag() : dragging.armed ? linkDrag() : dropDrag();
+  // The click that follows the release is part of the drag, dropped or
+  // cancelled, not a focus. It comes in the same turn as the release.
+  if (wasDrag) {
+    swallowClick = true;
+    setTimeout(() => { swallowClick = false; }, 0);
+  }
+}, true);
+document.addEventListener("lostpointercapture", () => {
+  pressed = null;
+  if (dragging) cancelDrag();
+}, true);
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && dragging) cancelDrag();
+}, true);
+// A hidden panel, or a drag with no move for DRAG_IDLE_MS, lost its release
+// some other way; holding frames past that would freeze the list. A blur
+// says nothing: the Toolbelt blurs whenever the terminal has the keyboard.
+const DRAG_IDLE_MS = 20000;
+document.addEventListener("visibilitychange", () => { if (document.hidden && dragging) cancelDrag(); });
+setInterval(() => { if (dragging && performance.now() - dragging.movedAt > DRAG_IDLE_MS) cancelDrag(); }, 1000);
+document.addEventListener("click", event => {
+  if (!swallowClick) return;
+  swallowClick = false;
+  event.stopImmediatePropagation();
+  event.preventDefault();
+}, true);
+
 // A click on the question card itself paints at once (now), since the
 // pointer is on it by definition.
 function render(snapshot, arrived = false, now = false) {
+  // A drag holds every frame until the drop, and a frame sorted before the
+  // drop would put the card back for a moment.
+  if (dragging) {
+    heldFrame = snapshot;
+    heldArrived = heldArrived || arrived;
+    return;
+  }
+  if (frameIsStale(snapshot)) return;
   if (!now && holdsBack(snapshot)) {
     heldFrame = snapshot;
     heldArrived = heldArrived || arrived;
@@ -2532,7 +3619,12 @@ function paintAll(snapshot) {
   fitMeta();
   paintSeams();
   paintVersion();
+  paintRepository();
   paintStatuslineOffer();
+  watchMotion();
+  // Work crossing a pair: a new landing starts, and one already playing draws onto the rebuilt badge at once.
+  for (const id of landingNow.keys()) stepLanding(id);
+  playLandings(snapshot.partners);
   const now = performance.now();
   for (const li of document.querySelectorAll("#groups li[data-key]")) {
     const was = before.get(li.dataset.key);
@@ -3514,6 +4606,7 @@ function glide(run, width) {
     {transform: "translateX(-50%)"},
   ], {duration: total, iterations: Infinity, id: "glide"});
   motion.currentTime = Date.now() % total;
+  steerScripted([motion]);
 }
 window.addEventListener("resize", () => { fitMeta(); paintSeams(); });
 
@@ -3570,8 +4663,11 @@ function paint(snapshot) {
   const keepId = focused && focused.dataset ? focused.dataset.sessionId : null;
   const menuFocus = openMenu && openMenu.contains(focused) ? focused : null;
   root.textContent = "";
+  // Whether the session with the open right-click menu is still listed.
+  let menuKept = false;
 
   if (!snapshot.groups.length) {
+    closeMenu();
     const p = document.createElement("p");
     p.id = "empty";
     p.textContent = "No sessions.";
@@ -3610,6 +4706,22 @@ function paint(snapshot) {
           if (SESSION_COLOURS[row.colour]) li.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
           li.append(document.createElementNS("http://www.w3.org/2000/svg", "svg"));
           li.lastChild.setAttribute("class", "seam");
+        }
+        // The second card of a partnership, docked under the first: its block follows the first's in every order.
+        const upper = row.partner_of && ul.querySelector(`li.line.card[data-key="${CSS.escape(row.partner_of)}"]`);
+        if (upper) {
+          li.classList.add("partner");
+          li.id = `card-${row.session_id}`;
+          const pair = (snapshot.partners || []).find(p => p.lower === row.session_id);
+          const badge = pairBadge(upper.dataset.hue, li.dataset.hue);
+          if (pair?.open) badge.classList.add("open");
+          li.dataset.pair = pair?.id || "";
+          upper.dataset.pair = pair?.id || "";
+          li.append(badge);
+          const upperLabel = (group.rows.find(r => r.session_id === row.partner_of) || {}).label;
+          upper.setAttribute("role", "group");
+          upper.setAttribute("aria-label", `${quotedLabel(upperLabel)} linked with ${quotedLabel(row.label)}`);
+          upper.setAttribute("aria-owns", li.id);
         }
         card = li;
       }
@@ -3808,6 +4920,7 @@ function paint(snapshot) {
         word.className = "word idle";
         word.textContent = "idle";
         syncShimmer(word);
+        addSweep(word);
         b.append(word);
         b.classList.add("resting");
       } else if (row.state === "exited" && !row.depth) {
@@ -3839,17 +4952,18 @@ function paint(snapshot) {
       b.addEventListener("click", () => act(row.session_id, "focus"));
       // Carried on the element, for the right-click menu and Details.
       b._row = row;
-      // A repaint puts an open menu back as the same node: its position, its
-      // armed second click and its keyboard focus survive, and it does not
-      // unfold again.
+      // An open menu floats outside the list, so a repaint leaves it where it
+      // is: its armed second click and its keyboard focus survive, and the
+      // repainted row opens that same node.
       const keptMenu = openMenuKey === row.session_id && openMenu;
       const menu = keptMenu || menuFor(row, group);
-      if (keptMenu) keptMenu.classList.add("kept");
+      if (keptMenu) menuKept = true;
       const host = card;       // `card` moves on with the loop; the menu stays
       if (menu) {
         b.addEventListener("contextmenu", e => openMenuAt(menu, host, e, row.session_id));
       }
 
+      const linked = pairLine(row, snapshot.partners) || linkLine(row, snapshot.links);
       const refusal = refusalLine(row.session_id);
       if (row.depth && li === card) {
         // A teammate: one line inside its parent's card, above the shells.
@@ -3858,11 +4972,12 @@ function paint(snapshot) {
         const kids = childrenOf(card);
         kids.insertBefore(b, kids.querySelector(":scope > .tail"));
         if (refusal) b.after(refusal);
-        if (menu) card.append(menu);
+        if (linked) b.after(linked);
+        if (menu && !keptMenu) card.append(menu);
         continue;
       }
       li.append(b);
-      if (menu) li.append(menu);
+      if (menu && !keptMenu) li.append(menu);
       if (hot && row.question?.options?.length && PICKED_ON_CARD.includes(row.provider || "claude")) {
         li.classList.add("asking");
         li.append(answerRows(row));
@@ -3884,6 +4999,7 @@ function paint(snapshot) {
         li.append(resume);
       }
       if (refusal) li.append(refusal);
+      if (linked) li.append(linked);
       // Gathered by agent, the daemon sends each agent's cards together; a
       // head opens each run, and a list of one agent needs none.
       if (group.name === "AGENTS" && agentMark() === "groups" && !row.worktree_of
@@ -4100,6 +5216,7 @@ function paint(snapshot) {
         const count = Object.assign(document.createElement("span"),
                                     {className: "shimmer", textContent: `${n} command${n > 1 ? "s" : ""} running`});
         syncShimmer(count);
+        addSweep(count);
         sum.append(metaIcon("shells"), count, chev);
         sum.setAttribute("aria-expanded", String(open));
         sum.setAttribute("aria-controls", "shells-" + row.session_id);
@@ -4145,6 +5262,7 @@ function paint(snapshot) {
   }
 
   // A shell that has exited, or a session that closed, took its menu with it.
+  if (openMenuKey && !menuKept) closeMenu();
   if (openMenu && !openMenu.isConnected) { openMenu = null; openShellKey = null; openMenuKey = null; }
   if (menuFocus && menuFocus.isConnected) menuFocus.focus();
 
@@ -4206,7 +5324,7 @@ const SETTING_ROWS = [
   {k: "cpu_threshold", label: "CPU heavy at", range: [25, 400, 25], pct: true},
   {k: "memory_threshold", label: "Memory heavy at", range: [0.5, 8, 0.5], unit: " GB"},
   {k: "order", label: "Order",
-   choices: [["terminal", "Follow the terminals"], ["name", "By name"], ["attention", "By attention"]]},
+   choices: [["terminal", "Follow the terminals"], ["name", "By name"], ["attention", "By attention"], ["hand", "By hand"]]},
   {k: "provider_mark", label: "Provider badge",
    choices: [["tag", "Tag by the name"], ["corner", "Icon in the corner"], ["groups", "Group by provider"], ["off", "Off"]]},
   {k: "shell_font", label: "Shell names",
@@ -4224,6 +5342,9 @@ const SETTING_ROWS = [
   {k: "ui_scale",     label: "Text size",
    steps: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]},
   {k: "offer_statusline", label: "Offer the statusline bridge"},
+  {head: "Experimental"},
+  {k: "links",        label: "Link cards",
+   note: "Hold a dragged card over another to link them. Two Claude Code sessions become partners that hand each other tasks; with Codex or omp, one hands the other its latest result."},
 ];
 
 // Each control keeps a closure that repaints it from SETTINGS, so a change
@@ -4275,6 +5396,9 @@ function settingRow(row, kind) {
   const name = document.createElement("span");
   name.textContent = row.label;
   line.append(name);
+  const note = row.note && Object.assign(document.createElement("span"),
+                                         {className: "set-note", id: `set-note-${row.k}`, textContent: row.note});
+  if (note) line.append(note);
   const off = () => !!(row.needs && !SETTINGS[row.needs]);
 
   if (row.choices) {
@@ -4370,6 +5494,7 @@ function settingRow(row, kind) {
   } else {
     line.append(settingSwitch(row));
   }
+  if (note) line.querySelector("button, select, input").setAttribute("aria-describedby", note.id);
   return line;
 }
 
@@ -4418,7 +5543,36 @@ function settingsBody() {
       card.append(kids.kids);
     }
   }
+  box.append(repositoryCard());
   syncSettings();
+}
+
+// The last card: where this install comes from, read off the git remote it
+// updates from, so there is nothing here to set. Each row opens its page.
+function repositoryCard() {
+  const card = settingCard("Repository");
+  card.id = "set-repo";
+  card.append(githubRow("repository"), githubRow("releases"));
+  paintRepository(card);
+  return card;
+}
+function githubRow(page) {
+  const row = Object.assign(document.createElement("button"), {type: "button", className: "set plain out"});
+  row.dataset.page = page;
+  row.append(document.createElement("span"));
+  row.insertAdjacentHTML("beforeend", '<svg class="mi" viewBox="0 0 256 256" aria-hidden="true"><path d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/></svg>');
+  row.addEventListener("click", () => openGithub(page));
+  return row;
+}
+function paintRepository(card = document.getElementById("set-repo")) {
+  if (!card) return;
+  card.hidden = !LATEST.repository;
+  if (!LATEST.repository) return;
+  const names = {repository: LATEST.repository.replace(/^https:\/\//, ""), releases: "Release notes"};
+  for (const row of card.querySelectorAll("button.out")) {
+    row.firstChild.textContent = names[row.dataset.page];
+    row.setAttribute("aria-label", `Open ${names[row.dataset.page]} on GitHub`);
+  }
 }
 
 // A new text size rescales the drawer around the control being pressed; scroll
@@ -4446,13 +5600,27 @@ function syncSettings() {
 // the repaint two seconds later.
 let releaseShown = null;
 let releaseState = null;   // null, "taking", "restarting", or the refusal text
+let githubRefusal = null;  // why a GitHub page did not open, or null
 function paintVersion() {
-  const key = `${LATEST.version}|${LATEST.update}|${releaseState}`;
+  const key = `${LATEST.version}|${LATEST.update}|${LATEST.repository}|${releaseState}|${githubRefusal}`;
   if (key === releaseShown) return;
   releaseShown = key;
   const bar = document.getElementById("release");
   bar.replaceChildren();
-  bar.append(LATEST.version || "unreleased checkout");
+  const label = LATEST.version || "unreleased checkout";
+  // The number leads to the release notes, opened in the browser by the
+  // daemon, which also chose where they are.
+  if (LATEST.repository) {
+    const notes = Object.assign(document.createElement("button"),
+                                {className: "notes", type: "button", textContent: label});
+    notes.title = "Release notes on GitHub";
+    notes.addEventListener("click", () => openGithub("releases"));
+    bar.append(notes);
+  } else bar.append(label);
+  if (githubRefusal) {
+    bar.append(" · ", Object.assign(document.createElement("span"),
+                                    {className: "refused", textContent: githubRefusal, title: githubRefusal}));
+  }
   if (!LATEST.update) return;
   if (releaseState === "restarting") {
     bar.append(" · restarting, reopen the panel");
@@ -4474,6 +5642,18 @@ function paintVersion() {
   take.setAttribute("aria-label", `Update to ${LATEST.update}`);
   take.addEventListener("click", takeRelease);
   bar.append(take);
+}
+
+// The panel names the page, "repository" or "releases"; the daemon knows
+// the repository and opens the page in the browser. A refusal shows on the bar.
+function openGithub(page) {
+  fetch(`/github?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify({page})})
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      githubRefusal = r.ok ? null : (body.error || `could not open the ${page} page (${r.status})`);
+    })
+    .catch(err => { githubRefusal = String(err); })
+    .then(paintVersion);
 }
 
 function takeRelease() {
@@ -4662,10 +5842,25 @@ events.addEventListener("heartbeat", event => {
   else document.body.classList.add("stale");
 });
 events.onmessage = event => {
-  LATEST = JSON.parse(event.data);
-  render(LATEST, true);
+  const frame = JSON.parse(event.data);
   markFresh();
+  // Never LATEST: settings and other repaints draw LATEST again, and this
+  // one was sorted before the last drop.
+  if (frameIsStale(frame)) {
+    refusedFrame = frame;
+    setTimeout(paintRefused, STALE_FRAME_MS - (performance.now() - droppedAt) + 50);
+    return;
+  }
+  refusedFrame = null;
+  LATEST = frame;
+  render(LATEST, true);
 };
+function paintRefused() {
+  if (!refusedFrame || frameIsStale(refusedFrame)) return;
+  LATEST = refusedFrame;
+  refusedFrame = null;
+  render(LATEST, true);
+}
 events.onerror = () => document.body.classList.add("stale");
 markFresh();
 </script>

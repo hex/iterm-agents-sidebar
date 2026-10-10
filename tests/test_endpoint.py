@@ -70,7 +70,8 @@ def daemon(monkeypatch, tmp_path):
 def read_of_nothing(sidebar):
     """The snapshot a whole rebuild makes over no windows, on a machine whose
     Claude settings lack the statusline bridge."""
-    return {"groups": [], "version": sidebar.version(), "terminal_font": None, "statusline": "missing", "codex": {}}
+    return {"groups": [], "hand_order": [], "version": sidebar.version(), "terminal_font": None,
+            "statusline": "missing", "codex": {}, "links": [], "partners": []}
 
 
 async def test_the_daemon_says_where_it_listens_once_it_has_read_iterm2(monkeypatch, tmp_path, daemon):

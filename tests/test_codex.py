@@ -244,3 +244,50 @@ def test_a_codex_session_is_named_as_codex_named_its_thread(tmp_path):
     assert codex.thread_name("absent", str(db)) is None
     assert codex.thread_name("01a0edc0-8f4a", str(tmp_path / "missing.sqlite")) is None
     assert codex.thread_name(None, str(db)) is None
+
+
+def rollout_lines(*items):
+    return "\n".join(json.dumps(item) for item in items) + "\n"
+
+
+def turn(turn_id, developer_text, answer, filler=0):
+    yield {"type": "event_msg", "payload": {"type": "task_started", "turn_id": turn_id}}
+    yield {"type": "response_item", "payload": {"type": "message", "role": "developer",
+                                                 "content": [{"type": "input_text", "text": developer_text}]}}
+    for _ in range(filler):
+        yield {"type": "response_item", "payload": {"type": "reasoning", "summary": [{"text": "x" * 1000}]}}
+    if answer is not None:
+        yield {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": turn_id, "last_agent_message": answer}}
+
+
+def test_the_asked_reply_is_the_last_message_of_the_turn_whose_context_carries_the_nonce(tmp_path):
+    path = tmp_path / "rollout.jsonl"
+    path.write_text(rollout_lines(*turn("t1", "Task line ...", "earlier"),
+                                  *turn("t2", "Write your latest result ... (link 00aa11bb22cc33dd)", "the result", filler=300),
+                                  *turn("t3", "Task line ...", "later")))
+    assert codex.asked_reply(str(path), "00aa11bb22cc33dd") == "the result"
+
+
+def test_no_reply_until_the_asked_turn_completes_and_none_for_another_nonce(tmp_path):
+    path = tmp_path / "rollout.jsonl"
+    path.write_text(rollout_lines(*turn("t2", "... (link 00aa11bb22cc33dd)", None)))
+    assert codex.asked_reply(str(path), "00aa11bb22cc33dd") is None
+    assert codex.asked_reply(str(path), "ffffffffffffffff") is None
+    assert codex.asked_reply(None, "00aa11bb22cc33dd") is None
+    assert codex.asked_reply(str(tmp_path / "missing.jsonl"), "00aa11bb22cc33dd") is None
+
+
+def test_an_empty_last_message_is_returned_empty_for_the_book_to_refuse(tmp_path):
+    path = tmp_path / "rollout.jsonl"
+    path.write_text(rollout_lines(*turn("t2", "(link 00aa11bb22cc33dd)", None),
+                                  {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t2",
+                                                                    "last_agent_message": None}}))
+    assert codex.asked_reply(str(path), "00aa11bb22cc33dd") == ""
+
+
+def test_an_interrupted_asked_turn_is_an_empty_reply_for_the_book_to_refuse(tmp_path):
+    path = tmp_path / "rollout.jsonl"
+    path.write_text(rollout_lines(*turn("t2", "(link 00aa11bb22cc33dd)", None),
+                                  {"type": "event_msg", "payload": {"type": "turn_aborted", "turn_id": "t2",
+                                                                    "reason": "interrupted"}}))
+    assert codex.asked_reply(str(path), "00aa11bb22cc33dd") == ""

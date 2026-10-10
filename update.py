@@ -84,6 +84,52 @@ def origin(here, git="git"):
     return told.stdout.strip() or None if told.returncode == 0 else None
 
 
+#: A GitHub remote in either form git writes it, an https URL (perhaps with
+#: credentials in it) or ssh's `git@github.com:`, down to owner and repo.
+GITHUB_REMOTE = re.compile(
+    r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)"
+    r"([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+
+
+def repository_page(remote):
+    """-> the GitHub page of the repository `remote` names, or None for a
+    remote that is not on GitHub. A checkout with no origin, such as one whose
+    remote has another name, updates from the mirror, so it leads there.
+
+    Built from owner and repo alone: anything else in the remote, a token
+    among it, never reaches the page.
+    """
+    found = GITHUB_REMOTE.match(remote or MIRROR)
+    return f"https://github.com/{found[1]}/{found[2]}" if found else None
+
+
+def releases_page(remote):
+    """-> the GitHub page listing the releases `remote` publishes, or None."""
+    repository = repository_page(remote)
+    return f"{repository}/releases" if repository else None
+
+
+#: The pages the panel may ask the daemon to open, by name.
+GITHUB_PAGES = {"repository": repository_page, "releases": releases_page}
+#: `open` hands the URL to the default browser and returns.
+OPEN_TIMEOUT = 10
+
+
+def open_github(remote, page, run=subprocess.run):
+    """Open `remote`'s GitHub page named `page`, one of GITHUB_PAGES, in the
+    default browser. The panel names the page and the daemon builds its URL,
+    so the URL is never the page's to choose."""
+    url = GITHUB_PAGES[page](remote)
+    if url is None:
+        raise Refused(f"this checkout's origin is not on GitHub, so it has no {page} page")
+    try:
+        run(["open", url], check=True, timeout=OPEN_TIMEOUT, capture_output=True, text=True)
+    except subprocess.CalledProcessError as failed:
+        raise Refused(f"could not open {url}: {failed.stderr.strip()}") from failed
+    except (subprocess.TimeoutExpired, OSError) as failed:
+        raise Refused(f"could not open {url}: {failed}") from failed
+
+
 #: install.sh writes a handful of files; the fetch is the only network step.
 TAKE_TIMEOUT = 120
 #: The public keys a release may be signed with, and those no longer trusted,

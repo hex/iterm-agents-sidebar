@@ -1,7 +1,7 @@
 // ABOUTME: Tests the omp extension: which session it speaks for, what each event sends, the queue that
 // ABOUTME: runs the state hook one child at a time, and the child itself. Run with `bun test` in this directory.
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { accepted, childEnv, givenTo, type Hook, hookFor, register, Reporter, spawnHandler } from "./agents-sidebar.ts";
@@ -424,5 +424,54 @@ describe("the child", () => {
   test("a python that is not there costs the report and nothing else", async () => {
     const { handler } = recordingHandler("never.py");
     await spawnHandler(join(scratch, "no-python"), handler, {})({ event: "Stop", payload: common });
+  });
+});
+
+describe("links", () => {
+  const nonce = "0123456789abcdef";
+  const ctx = session("omp-session-1");
+  const setup = () => {
+    const root = mkdtempSync(join(tmpdir(), "links-"));
+    const host = ompHost();
+    register(host.pi, {}, async () => {}, 4242, root);
+    return { host, folder: join(root, "omp-session-1") };
+  };
+  const dropFile = (folder: string, link: string, role: string, expires = Date.now() / 1000 + 60) => {
+    mkdirSync(folder, { recursive: true, mode: 0o700 });
+    writeFileSync(join(folder, `ask-${link}.json`), JSON.stringify({ link, nonce, role, text: `${role} text (link ${nonce})`, expires }));
+  };
+
+  test("an ask joins the next prompt once and its loop's reply is the result", () => {
+    const { host, folder } = setup();
+    host.fire({ type: "session_start" }, ctx);
+    dropFile(folder, "L1", "ask");
+    const added = host.fire({ type: "before_agent_start", prompt: "hi" }, ctx);
+    expect(added).toEqual({ message: { customType: "agents-sidebar-link", content: `ask text (link ${nonce})`, display: true } });
+    expect(host.fire({ type: "before_agent_start", prompt: "again" }, ctx)).toBeUndefined();
+    host.fire({ type: "agent_end", messages: [{ role: "assistant", content: [{ type: "text", text: "the result" }] }], willContinue: true }, ctx);
+    expect(existsSync(join(folder, "result-L1.json"))).toBe(false);
+    host.fire({ type: "agent_end", messages: [{ role: "assistant", content: [{ type: "text", text: "the result" }] }] }, ctx);
+    expect(JSON.parse(readFileSync(join(folder, "result-L1.json"), "utf8"))).toEqual({ link: "L1", nonce, text: "the result" });
+  });
+
+  test("a delivery joins the prompt and marks started; an empty reply fails the ask", () => {
+    const { host, folder } = setup();
+    host.fire({ type: "session_start" }, ctx);
+    dropFile(folder, "L2", "deliver");
+    host.fire({ type: "before_agent_start", prompt: "hi" }, ctx);
+    expect(existsSync(join(folder, "started-L2.json"))).toBe(true);
+    dropFile(folder, "L3", "ask");
+    host.fire({ type: "before_agent_start", prompt: "go" }, ctx);
+    host.fire({ type: "agent_end", messages: [{ role: "assistant", content: [] }] }, ctx);
+    expect(JSON.parse(readFileSync(join(folder, "failed-L3.json"), "utf8"))).toEqual({ link: "L3", reason: "the turn ended without an answer" });
+  });
+
+  test("an expired or half-written drop is left alone", () => {
+    const { host, folder } = setup();
+    host.fire({ type: "session_start" }, ctx);
+    dropFile(folder, "L4", "ask", 1);
+    writeFileSync(join(folder, "ask-L5.json"), '{"link": "L5", "ro');
+    expect(host.fire({ type: "before_agent_start", prompt: "hi" }, ctx)).toBeUndefined();
+    expect(readdirSync(folder).sort()).toEqual(["ask-L4.json", "ask-L5.json"]);
   });
 });

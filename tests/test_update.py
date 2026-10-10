@@ -562,3 +562,65 @@ def test_the_release_comes_from_origin_whatever_the_branch_tracks(tmp_path, temp
     mirror.publish("2026.9.20")
     assert update.take(mirror.here, "2026.9.20") == (True, "")
     assert (mirror.here / "VERSION").read_text() == "2026.9.20\n"
+
+
+# Where the panel's version number leads. Failure modes: a `.git` suffix or a
+# trailing slash carried into the page's URL; an ssh origin left as ssh; a
+# token in an https origin reaching the page; an origin that is not GitHub
+# (a local clone, another host) given a GitHub-shaped link; a checkout with
+# no origin, like the maintainer's own, whose remote is named `github`,
+# getting no link.
+
+def test_the_releases_page_of_an_https_origin_drops_the_git_suffix():
+    assert (update.releases_page("https://github.com/alice/example-repo.git")
+            == "https://github.com/alice/example-repo/releases")
+
+
+def test_the_releases_page_of_an_ssh_origin_is_its_https_page():
+    assert (update.releases_page("git@github.com:alice/example-repo.git")
+            == "https://github.com/alice/example-repo/releases")
+
+
+def test_the_releases_page_never_carries_the_origins_credentials():
+    assert (update.releases_page("https://alice:ghp_secret@github.com/alice/example-repo/")
+            == "https://github.com/alice/example-repo/releases")
+
+
+def test_an_origin_off_github_has_no_releases_page():
+    assert update.releases_page("/Users/alice/clones/example-repo") is None
+    assert update.releases_page("https://gitlab.com/alice/example-repo.git") is None
+
+
+def test_a_checkout_without_an_origin_leads_to_the_mirrors_releases():
+    assert update.releases_page(None) == "https://github.com/hex/iterm-agents-sidebar/releases"
+
+
+def test_the_repository_page_is_the_releases_pages_parent():
+    assert (update.repository_page("git@github.com:alice/example-repo.git")
+            == "https://github.com/alice/example-repo")
+    assert update.repository_page("/Users/alice/clones/example-repo") is None
+
+
+@pytest.mark.parametrize("page, url", [("releases", "https://github.com/alice/example-repo/releases"),
+                                       ("repository", "https://github.com/alice/example-repo")])
+def test_opening_a_github_page_hands_macos_open_that_page_alone(page, url):
+    ran = []
+    update.open_github("git@github.com:alice/example-repo.git", page,
+                       run=lambda argv, **kwargs: ran.append(argv))
+    assert ran == [["open", url]]
+
+
+def test_an_origin_off_github_opens_nothing_and_says_why():
+    ran = []
+    with pytest.raises(update.Refused) as refused:
+        update.open_github("/Users/alice/clones/example-repo", "releases",
+                           run=lambda argv, **kwargs: ran.append(argv))
+    assert (str(refused.value), ran) == ("this checkout's origin is not on GitHub, so it has no releases page", [])
+
+
+def test_an_open_that_fails_is_refused_with_its_own_words():
+    def fail(argv, **kwargs):
+        raise subprocess.CalledProcessError(1, argv, stderr="LSOpenURLsWithRole() failed with error -10814")
+    with pytest.raises(update.Refused) as refused:
+        update.open_github("git@github.com:alice/example-repo.git", "releases", run=fail)
+    assert str(refused.value) == "could not open https://github.com/alice/example-repo/releases: LSOpenURLsWithRole() failed with error -10814"

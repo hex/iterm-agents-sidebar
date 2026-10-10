@@ -99,6 +99,9 @@ if [ -d "$repo/plugin" ]; then
   next+=("Hooks load in sessions started from now on; /reload-plugins for a running one.")
   undo+=("hook        claude plugin disable agents-sidebar@skills-dir")
 fi
+# Linked cards: the panel drops a link's ask or delivery in each session's own
+# folder under here, so only you may read or write it.
+install -d -m 700 "$HOME/.claude/agents-sidebar-links"
 
 # The command a script lists agents and waits on one with. A link, so editing
 # the checkout needs no reinstall, as with the stub; a file by that name that

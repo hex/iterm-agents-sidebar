@@ -51,9 +51,9 @@ def switch(x, y, on, w=20, h=12):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the Limits head that folds it and the Auto-switch control, the active account\'s '
-  f'5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, '
-  f'Codex\'s own limits, and the bar with the release, reload and the gear">')
+  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account\'s '
+  f'5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, '
+  f'Codex\'s own limits, and the bar with the release, the Update button for a newer one, reload and the gear">')
 A('  <title>The foot of the panel</title>')
 A(f'  <rect width="{W}" height="{H}" rx="16" fill="{BG}"/>')
 A(f'  <rect x="{PX}" y="0" width="{PW}" height="{H}" fill="{BG}"/>')

@@ -685,11 +685,11 @@ def test_each_rebuild_decides_the_alerts_and_carries_them_out(monkeypatch, tmp_p
     settings.write_text(json.dumps({"notify_done": False, "sound_blocked": False}))
     monkeypatch.setattr(sidebar, "SETTINGS_FILE", settings)
     monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
-    readings = iter([{"groups": [{"rows": [{"session_id": "a", "state": "working", "working_since": 100},
+    readings = iter([{"groups": [{"name": "AGENTS", "rows": [{"session_id": "a", "state": "working", "working_since": 100},
                                            {"session_id": "b", "state": "working", "working_since": 100}]}]},
-                     {"groups": [{"rows": [{"session_id": "a", "state": "blocked"},
+                     {"groups": [{"name": "AGENTS", "rows": [{"session_id": "a", "state": "blocked"},
                                            {"session_id": "b", "state": "idle"}]}]}])
-    monkeypatch.setattr(sidebar, "snapshot", lambda *_: next(readings))
+    monkeypatch.setattr(sidebar, "snapshot", lambda *_, **__: next(readings))
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
     b.app = NoWindows()
@@ -1015,3 +1015,151 @@ def test_a_card_clicked_or_brought_forward_loses_its_mark_in_the_next_frame(monk
         asyncio.run(b.act("s3", verb, None))
         assert (verb, pane.activated, len(b.server.sent)) == (verb, 1, 3)
         assert "unseen" not in sidebar.find_row(b.server.sent[-1], "s3")
+
+
+def fresh_ready(root, agent):
+    folder = root / agent
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    (folder / "ready").write_text(agent)
+
+
+def linking(monkeypatch, tmp_path, alpha_state="idle", ready=("a-id", "b-id"), bravo_provider="claude", links_on=True):
+    """A Bridge whose rebuild reads two idle cards, alpha on Claude and bravo on `bravo_provider`, and a shell,
+    with linking turned on in its settings unless `links_on` says otherwise."""
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    sidebar.save_settings({"links": links_on})
+    frame = {"groups": [{"name": "AGENTS", "rows": [
+        {"session_id": "p1", "label": "alpha", "state": alpha_state, "depth": 0},
+        {"session_id": "p2", "label": "bravo", "state": "idle", "depth": 0, "provider": bravo_provider}]},
+        {"name": "SESSIONS", "rows": [{"session_id": "p3", "label": "zsh", "depth": 0}]}]}
+    inner = [{"session_id": "p1", "provider": "claude", "conversation": "a-id", "rollout": None},
+             {"session_id": "p2", "provider": bravo_provider, "conversation": "b-id", "rollout": None},
+             {"session_id": "p3", "provider": None, "conversation": None, "rollout": None}]
+    monkeypatch.setattr(sidebar, "snapshot", lambda *_, **__: json.loads(json.dumps(frame)))
+    monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
+    b = sidebar.Bridge(None, Quiet())
+    b.app = NoWindows()
+
+    async def read_sessions():
+        b.rows = inner
+        return inner
+    b.read_sessions = read_sessions
+    b.links = sidebar.links.Book(tmp_path / "links")
+    for agent in ready:
+        fresh_ready(tmp_path / "links", agent)
+    asyncio.run(b._rebuild_once())
+    return b
+
+
+def test_a_link_between_two_ready_idle_cards_drops_the_ask_for_the_first(monkeypatch, tmp_path):
+    b = linking(monkeypatch, tmp_path, bravo_provider="openai")
+    made = b.link("p1", "p2")
+    assert (made["from"], made["to"], made["state"], made["waits"]) == ("p1", "p2", "asked", None)
+    assert (tmp_path / "links" / "a-id" / f"ask-{made['id']}.json").exists()
+    with pytest.raises(sidebar.links.Refused, match="^“alpha” already has a link open$"):
+        b.link("p1", "p2")
+
+
+def test_a_link_from_a_card_waiting_on_you_is_refused(monkeypatch, tmp_path):
+    b = linking(monkeypatch, tmp_path, alpha_state="blocked", bravo_provider="openai")
+    with pytest.raises(sidebar.links.Refused, match="^“alpha”: it is waiting on you$"):
+        b.link("p1", "p2")
+    assert list((tmp_path / "links" / "a-id").glob("ask-*.json")) == []
+
+
+def test_each_rebuild_steps_the_links_and_puts_them_in_the_frame(monkeypatch, tmp_path):
+    b = linking(monkeypatch, tmp_path, bravo_provider="openai")
+    made = b.link("p1", "p2")
+    (tmp_path / "links" / "a-id" / f"result-{made['id']}.json").write_text(
+        json.dumps({"link": made["id"], "nonce": b.links.links[made["id"]].nonce, "text": "done"}))
+    asyncio.run(b._rebuild_once())
+    assert [link["state"] for link in b.latest["links"]] == ["sent"]
+    assert b.latest["links"] == b.links.frames()
+    logged = [line.split(" ", 2)[2] for line in (tmp_path / "daemon.log").read_text().splitlines()]
+    assert logged == [f"link {made['id'][:8]} asked alpha -> bravo", f"link {made['id'][:8]} sent"]
+
+
+def test_each_card_says_why_it_cannot_link_whatever_the_other_card(monkeypatch, tmp_path):
+    b = linking(monkeypatch, tmp_path, ready=("a-id",))
+    refusals = {row["session_id"]: row["link_refusal"] for group in b.latest["groups"] for row in group["rows"]}
+    assert refusals == {"p1": None, "p2": "“bravo” can’t link yet: run /reload-plugins there",
+                        "p3": "only Claude, Codex and omp sessions can link"}
+
+
+def partnering(monkeypatch, tmp_path):
+    b = linking(monkeypatch, tmp_path)
+    b.partners = sidebar.partners.Partners(tmp_path / "partners.json", tmp_path / "links")
+    return b
+
+
+def test_a_link_between_two_claude_cards_makes_them_partners_not_a_hand_off(monkeypatch, tmp_path):
+    b = partnering(monkeypatch, tmp_path)
+    made = b.link("p1", "p2")
+    assert (made["partnership"]["upper"], made["partnership"]["lower"]) == ("p1", "p2")
+    assert list((tmp_path / "links" / "a-id").glob("ask-*.json")) == []
+    with pytest.raises(sidebar.links.Refused, match="^“alpha” is linked with “bravo”: untie it first$"):
+        b.link("p1", "p2")
+
+
+def test_a_card_waiting_on_you_can_be_partnered(monkeypatch, tmp_path):
+    b = linking(monkeypatch, tmp_path, alpha_state="blocked")
+    b.partners = sidebar.partners.Partners(tmp_path / "partners.json", tmp_path / "links")
+    assert b.link("p1", "p2")["partnership"]["upper"] == "p1"
+
+
+def test_each_rebuild_steps_the_partners_and_says_why_a_partnered_card_cannot_link(monkeypatch, tmp_path):
+    b = partnering(monkeypatch, tmp_path)
+    made = b.link("p1", "p2")["partnership"]
+    asyncio.run(b._rebuild_once())
+    assert b.latest["partners"] == b.partners.frames()
+    refusals = {row["session_id"]: row["link_refusal"] for group in b.latest["groups"] for row in group["rows"]}
+    assert (refusals["p1"], refusals["p2"]) == ("“alpha” is linked with “bravo”: untie it first",
+                                                "“bravo” is linked with “alpha”: untie it first")
+    assert (tmp_path / "links" / "a-id" / "partner.json").exists()
+    logged = [line.split(" ", 2)[2] for line in (tmp_path / "daemon.log").read_text().splitlines()]
+    assert logged[0] == f"partner {made['id'][:8]} made alpha + bravo"
+
+
+def test_untie_from_the_bridge_ends_the_partnership(monkeypatch, tmp_path):
+    b = partnering(monkeypatch, tmp_path)
+    b.link("p1", "p2")
+    b.untie("p2")
+    assert b.partners.pairs() == [] and b.latest["partners"] == []
+
+
+def every_refusal(b):
+    return {row["session_id"]: row["link_refusal"] for group in b.latest["groups"] for row in group["rows"]}
+
+
+def test_with_linking_off_no_card_can_link_and_a_link_asked_for_is_refused(monkeypatch, tmp_path):
+    b = linking(monkeypatch, tmp_path, links_on=False)
+    assert every_refusal(b) == {"p1": "linking is off in Settings", "p2": "linking is off in Settings",
+                                "p3": "linking is off in Settings"}
+    with pytest.raises(sidebar.links.Refused, match="^linking is off in Settings$"):
+        b.link("p1", "p2")
+    assert b.links.links == {} and b.partners.pairs() == []
+
+
+def test_turning_linking_off_unties_partners_and_answers_their_open_task(monkeypatch, tmp_path):
+    b = partnering(monkeypatch, tmp_path)
+    made = b.link("p1", "p2")["partnership"]
+    (tmp_path / "links" / "a-id" / "delegate-d1.json").write_text(json.dumps(
+        {"id": "d1", "partnership": made["id"], "task": "Run the tests", "why": "it owns the repo"}))
+    asyncio.run(b._rebuild_once())
+    assert b.partners.of("p1").open is not None
+    sidebar.save_settings({"links": False})
+    asyncio.run(b._rebuild_once())
+    assert b.partners.pairs() == [] and b.latest["partners"] == []
+    answer = json.loads((tmp_path / "links" / "a-id" / "answer-d1.json").read_text())
+    assert answer["result"] == "“bravo” could not finish the task: linking was turned off"
+    logged = [line.split(" ", 2)[2] for line in (tmp_path / "daemon.log").read_text().splitlines()]
+    assert logged[-1] == f"partner {made['id'][:8]} untied: linking was turned off"
+
+
+def test_turning_linking_off_ends_an_open_hand_off(monkeypatch, tmp_path):
+    b = linking(monkeypatch, tmp_path, bravo_provider="openai")
+    made = b.link("p1", "p2")
+    sidebar.save_settings({"links": False})
+    asyncio.run(b._rebuild_once())
+    assert [(link["state"], link["reason"]) for link in b.latest["links"]] == [("refused", "linking was turned off")]
+    assert not (tmp_path / "links" / "a-id" / f"ask-{made['id']}.json").exists()

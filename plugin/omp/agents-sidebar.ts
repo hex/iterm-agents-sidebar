@@ -2,7 +2,9 @@
 // ABOUTME: Each omp event becomes a Claude-shaped payload for the panel's state hook, run one child at a time.
 // agents-sidebar-omp-extension: written by the Agents panel's install.sh, which owns this file.
 
-import { dirname } from "node:path";
+import { readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 type Env = Record<string, string | undefined>;
 
@@ -322,7 +324,7 @@ const GIVEN_MAX = 64;
  * nothing. Every handler returns without waiting, but the shutdown's, which
  * omp waits on (two seconds at most) while the session's end reaches the hook.
  */
-export function register(pi: Api, env: Env, run: Runner, pid: number): Reporter {
+export function register(pi: Api, env: Env, run: Runner, pid: number, linksDir = LINKS_DIR): Reporter {
   const reporter = new Reporter(run);
   let session: string | undefined;
   const given = new Map<string, Record<string, string>>();
@@ -358,8 +360,44 @@ export function register(pi: Api, env: Env, run: Runner, pid: number): Reporter 
     return undefined;
   };
 
+  // Linked cards: drops join the next prompt; the reply of the loop an ask opened is filed for the panel.
+  let asked: { folder: string; link: string; nonce: string } | null = null;
+  const folderOf = (): string | null => (session && SESSION_ID.test(session) ? join(linksDir, session) : null);
+  pi.on("before_agent_start", (_event, ctx) => {
+    try {
+      session ??= idOf(ctx);
+      const folder = folderOf();
+      if (!folder) return undefined;
+      const drops = takeDrops(folder, Date.now() / 1000);
+      if (drops.length === 0) return undefined;
+      for (const drop of drops) {
+        if (drop.role === "deliver") writeWhole(folder, `started-${drop.link}.json`, {});
+        else asked = { folder, link: drop.link, nonce: drop.nonce };
+      }
+      return { message: { customType: "agents-sidebar-link", content: drops.map(d => d.text).join("\n\n"), display: true } };
+    } catch {
+      // A throw here reaches omp; the panel's expiry ends the link instead.
+      return undefined;
+    }
+  });
+  const fileAsked = (event: OmpEvent): void => {
+    if (!asked || event.willContinue === true) return;
+    const { folder, link, nonce } = asked;
+    asked = null;
+    const text = lastText(Array.isArray(event.messages) ? event.messages : []);
+    if (text.trim()) writeWhole(folder, `result-${link}.json`, { link, nonce, text });
+    else writeWhole(folder, `failed-${link}.json`, { link, reason: "the turn ended without an answer" });
+  };
+
   for (const name of EVENTS) {
     pi.on(name, (event, ctx) => {
+      if (event.type === "agent_end") {
+        try {
+          fileAsked(event);
+        } catch {
+          // A throw here reaches omp; the panel's expiry ends the link instead.
+        }
+      }
       try {
         return handle(event, ctx);
       } catch {
@@ -369,6 +407,48 @@ export function register(pi: Api, env: Env, run: Runner, pid: number): Reporter 
     });
   }
   return reporter;
+}
+
+/** Linked cards: the panel's drops for this session, in a folder no Codex sandbox can write. */
+export const LINKS_DIR = join(homedir(), ".claude", "agents-sidebar-links");
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+type Drop = { link: string; nonce: string; role: string; text: string; expires: number };
+type Message = { role?: unknown; content?: unknown };
+
+/** Takes each unexpired, whole drop once by renaming it ask- to taken-. */
+function takeDrops(folder: string, now: number): Drop[] {
+  let names: string[];
+  try { names = readdirSync(folder).filter(n => n.startsWith("ask-") && n.endsWith(".json")).sort(); }
+  catch { return []; }
+  const taken: Drop[] = [];
+  for (const name of names) {
+    let drop: Drop;
+    try { drop = JSON.parse(readFileSync(join(folder, name), "utf8")); }
+    catch { continue; }
+    if (typeof drop?.text !== "string" || typeof drop.link !== "string" || typeof drop.nonce !== "string"
+        || !(drop.expires >= now)) continue;
+    try { renameSync(join(folder, name), join(folder, `taken-${drop.link}.json`)); }
+    catch { continue; }
+    taken.push(drop);
+  }
+  return taken;
+}
+
+/** Written to a dot-file, then renamed, so the panel never reads half a file. */
+function writeWhole(folder: string, name: string, value: unknown): void {
+  const staged = join(folder, `.${name}.${process.pid}`);
+  writeFileSync(staged, JSON.stringify(value), { mode: 0o600 });
+  renameSync(staged, join(folder, name));
+}
+
+/** The text of the loop's last assistant message. */
+function lastText(messages: Message[]): string {
+  const last = [...messages].reverse().find(m => m?.role === "assistant");
+  if (!last) return "";
+  if (typeof last.content === "string") return last.content;
+  if (!Array.isArray(last.content)) return "";
+  return last.content.filter((c: any) => c?.type === "text" && typeof c.text === "string").map((c: any) => c.text).join("");
 }
 
 /** Filled in by install.sh: the python it found and the state hook it installed. */
