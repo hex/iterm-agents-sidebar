@@ -240,6 +240,33 @@ tool output) can do through this, and could not before:
 Partners are Claude Code with Claude Code only, and a worktree card cannot be
 partnered: it stays docked inside its session's card.
 
+## Remote control
+
+A Claude Code card whose session has Remote Control on shows a small
+broadcast glyph after its name. The panel reads that from the session's own
+state file, so the glyph shows whatever turned Remote Control on, and goes
+away with it.
+
+Switching accounts drops Remote Control in every Claude Code session that
+had it: Claude Code turns it off when the login changes. Keep remote control
+after a switch, under Experimental in settings, turns it back on for you. It
+starts off. With it on, after a switch the panel makes, by hand or on its
+own, each session that had Remote Control on just before gets it back at its
+next idle moment, never during a turn or while a prompt waits. The glyph shows
+dimmed until then. It comes back under the account switched to, so
+the session then shows in that account's sessions, on the web and on its
+phones, and no longer in the old one's.
+
+If it does not come back, the card says `Remote control did not come back:
+run /remote-control` for up to ten minutes, and `daemon.log` says why: the
+session stayed busy for five minutes, it never found its own state file in
+that time, the plugin is not loaded there, the session took the request and
+never answered, Claude Code refused the command (with its message), or the
+command ran and did not connect. The panel leaves alone a session you
+disconnected yourself before the switch. One you disconnect in the two
+minutes after a switch that Claude Code did not drop it for, the panel turns
+back on, since it cannot tell that apart from a drop.
+
 ## Which agent a card runs
 
 Provider badge, under Rows in settings, picks how a card says whether it runs

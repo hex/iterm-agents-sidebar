@@ -9,7 +9,9 @@ import functools
 import importlib.util
 import json
 import os
+import threading
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -1163,3 +1165,94 @@ def test_turning_linking_off_ends_an_open_hand_off(monkeypatch, tmp_path):
     asyncio.run(b._rebuild_once())
     assert [(link["state"], link["reason"]) for link in b.latest["links"]] == [("refused", "linking was turned off")]
     assert not (tmp_path / "links" / "a-id" / f"ask-{made['id']}.json").exists()
+
+
+def remoting(monkeypatch, tmp_path, keep=True):
+    """A Bridge over one Claude card (pid 4242, conversation a-id), a Codex card and a shell, with remote control
+    kept after a switch unless `keep` says otherwise, its state files in tmp_path / "sessions"."""
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(sidebar.remote, "SESSIONS_DIR", tmp_path / "sessions")
+    (tmp_path / "sessions").mkdir()
+    sidebar.save_settings({"keep_remote": keep})
+    frame = {"groups": [{"name": "AGENTS", "rows": [
+        {"session_id": "p1", "label": "alpha", "state": "idle", "depth": 0},
+        {"session_id": "p2", "label": "bravo", "state": "idle", "depth": 0, "provider": "openai"}]},
+        {"name": "SESSIONS", "rows": [{"session_id": "p3", "label": "zsh", "depth": 0}]}]}
+    inner = [{"session_id": "p1", "provider": "claude", "conversation": "a-id", "agent_pid": 4242, "rollout": None},
+             {"session_id": "p2", "provider": "openai", "conversation": "b-id", "agent_pid": 5353, "rollout": None},
+             {"session_id": "p3", "provider": None, "conversation": None, "agent_pid": None, "rollout": None}]
+    monkeypatch.setattr(sidebar, "snapshot", lambda *_, **__: json.loads(json.dumps(frame)))
+    monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
+    b = sidebar.Bridge(None, Quiet())
+    b.app = NoWindows()
+    b.meters = types.SimpleNamespace(last_switch=None, snapshot=lambda: {})
+
+    async def read_sessions():
+        b.rows = inner
+        return inner
+    b.read_sessions = read_sessions
+    b.links = sidebar.links.Book(tmp_path / "links")
+    b.keeper = sidebar.remote.Keeper(tmp_path / "links")
+    return b
+
+
+def set_bridge(tmp_path, pid, bridge):
+    (tmp_path / "sessions" / f"{pid}.json").write_text(json.dumps({"pid": pid, "bridgeSessionId": bridge}))
+
+
+def remotes(b):
+    return {row["session_id"]: row["remote"] for group in b.latest["groups"] for row in group["rows"]}
+
+
+def test_each_claude_row_says_whether_remote_control_is_on_and_no_other_row_does(monkeypatch, tmp_path):
+    b = remoting(monkeypatch, tmp_path)
+    set_bridge(tmp_path, 4242, "session_01x")
+    set_bridge(tmp_path, 5353, "session_01y")
+    asyncio.run(b._rebuild_once())
+    assert remotes(b) == {"p1": "on", "p2": None, "p3": None}
+    set_bridge(tmp_path, 4242, None)
+    asyncio.run(b._rebuild_once())
+    assert remotes(b) == {"p1": None, "p2": None, "p3": None}
+
+
+def test_a_panel_switch_that_drops_remote_control_asks_the_session_back_and_marks_it_reconnecting(monkeypatch, tmp_path):
+    b = remoting(monkeypatch, tmp_path)
+    set_bridge(tmp_path, 4242, "session_01x")
+    asyncio.run(b._rebuild_once())
+    # Stamped when the account work began, before the reading the last rebuild took, as accounts.py stamps it.
+    b.meters.last_switch = {"at": time.time() - 5, "from": "acct-1", "to": "acct-2", "why": None, "auto": False}
+    set_bridge(tmp_path, 4242, None)
+    asyncio.run(b._rebuild_once())
+    assert remotes(b)["p1"] == "reconnecting"
+    asked = json.loads((tmp_path / "links" / "a-id" / "remote-control.json").read_text())
+    assert asked["switch_at"] == b.meters.last_switch["at"]
+    set_bridge(tmp_path, 4242, "session_01z")
+    asyncio.run(b._rebuild_once())
+    assert remotes(b)["p1"] == "on"
+    logged = [line.split(" ", 2)[2] for line in (tmp_path / "daemon.log").read_text().splitlines()]
+    assert logged[-1] == "remote control back on “alpha” after the switch"
+
+
+def test_with_the_setting_off_a_switch_owes_nothing_but_the_mark_still_shows(monkeypatch, tmp_path):
+    b = remoting(monkeypatch, tmp_path, keep=False)
+    set_bridge(tmp_path, 4242, "session_01x")
+    asyncio.run(b._rebuild_once())
+    assert remotes(b)["p1"] == "on"
+    b.meters.last_switch = {"at": time.time(), "from": "acct-1", "to": "acct-2", "why": None, "auto": True}
+    set_bridge(tmp_path, 4242, None)
+    asyncio.run(b._rebuild_once())
+    assert remotes(b)["p1"] is None
+    assert not (tmp_path / "links" / "a-id" / "remote-control.json").exists()
+
+
+def test_the_state_files_are_read_off_the_event_loop(monkeypatch, tmp_path):
+    b = remoting(monkeypatch, tmp_path)
+    threads = []
+    real = sidebar.remote.read_all
+    monkeypatch.setattr(sidebar.remote, "read_all", lambda *a: (threads.append(threading.current_thread()), real(*a))[1])
+    asyncio.run(b._rebuild_once())
+    assert threads and threads[0] is not threading.main_thread()
+
+
+def test_keep_remote_starts_off():
+    assert sidebar.DEFAULT_SETTINGS["keep_remote"] is False

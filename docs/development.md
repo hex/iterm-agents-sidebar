@@ -140,6 +140,7 @@ read against the source.
 - `update.py`: checks the mirror for a newer release and takes it.
 - `links.py`: links between two cards, the one-shot hand-off, through each session's links folder.
 - `partners.py`: partner sessions: the record, each end's `partner.json`, and the tasks between them.
+- `remote.py`: Remote Control on each Claude card, from its state file, and turned back on after a panel switch.
 - `agents-sidebar`: the command scripts use to list agents and wait on one;
   standard library only, and it runs on the Python 3.9 macOS ships.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and
@@ -262,8 +263,8 @@ of a guess.
 - `~/.claude/agents-sidebar-tasks/`: each session's task note.
 - `~/.claude/agents-sidebar-status/`: the statusline payloads and lines,
   `daemon.log` and `partners.json`.
-- `~/.claude/agents-sidebar-links/<session id>/`: each session's link and
-  partner files.
+- `~/.claude/agents-sidebar-links/<session id>/`: each session's link,
+  partner and remote control files.
 - `~/.claude/agents-sidebar-settings.json`: the panel's settings.
 - `~/.config/agents-sidebar/accounts.json`: the accounts the panel knows.
 - `~/.local/share/agents-sidebar/endpoint.json`: the running daemon's port,
@@ -397,6 +398,8 @@ on since, so read the source for what runs now.
   two cards so one session hands its result to another.
 - [superpowers/specs/2026-10-09-partner-sessions-design.md](superpowers/specs/2026-10-09-partner-sessions-design.md):
   two linked Claude sessions as partners that read each other and hand each other tasks.
+- [superpowers/specs/2026-10-10-remote-control-design.md](superpowers/specs/2026-10-10-remote-control-design.md):
+  Remote Control turned back on after an account switch, and the mark on a card that has it.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.
 - [superpowers/plans/2026-10-07-drag-order.md](superpowers/plans/2026-10-07-drag-order.md): the step-by-step
@@ -405,3 +408,5 @@ on since, so read the source for what runs now.
   plan for linking two cards.
 - [superpowers/plans/2026-10-09-partner-sessions.md](superpowers/plans/2026-10-09-partner-sessions.md): the step-by-step
   plan for partner sessions.
+- [superpowers/plans/2026-10-10-remote-control.md](superpowers/plans/2026-10-10-remote-control.md): the step-by-step
+  plan for keeping Remote Control across switches.

@@ -35,6 +35,9 @@ let asked: { link: string; nonce: string; to: string; turnId: string | null; sto
 const delivering = new Map<string, { link: string; from: string; to: string; fromHue: string; toHue: string }>()
 let running: string | null = null
 let band: Band | null = null
+// Remote Control the daemon asked this session to turn back on after an account switch: taken once, run when idle.
+// `taken` is where the job's file sits, so a /clear mid-job still removes it from the folder it was taken in.
+let remote: { switchAt: number; expires: number; running: boolean; taken: string } | null = null
 // Redraws the band each frame while it moves: the link flows and the spinner turns while A writes, and a new state is bold for a beat.
 let frames: Timer | null = null
 
@@ -101,6 +104,70 @@ async function readDrop($: EngineInterface, path: string): Promise<Drop | null> 
   return whole ? drop : null
 }
 
+// This session's state file under ~/.claude/sessions, found by its session id, which /clear changes in the same file.
+async function ownState($: EngineInterface): Promise<any> {
+  const dir = `${home}/.claude/sessions`
+  const id = await $.session.id()
+  for (const entry of await $.fs.list(dir)) {
+    if (!entry.name.endsWith('.json')) continue
+    const state = await readJson($, `${dir}/${entry.name}`)
+    if (state && state.sessionId === id) return state
+  }
+  return null
+}
+
+async function remoteDone($: EngineInterface, outcome: string, reason: string): Promise<void> {
+  const job = remote
+  remote = null
+  if (!job) return
+  // The conversation's folder now, which a /clear while the command ran has moved on from: the panel reads it there.
+  await folderFor($)
+  await writeWhole($, 'remote-control-result.json', { switch_at: job.switchAt, outcome, reason })
+  await succeeded($, ['rm', '-f', job.taken])
+}
+
+// Turns Remote Control back on when the daemon asks: never while a turn runs or a prompt waits, never when it is
+// already on (the command would open its menu instead), and never twice for one ask.
+async function keepRemote($: EngineInterface, path: string, now: number): Promise<void> {
+  if (!remote) {
+    // A job this session took before a reload is its own, still to finish; past its expiry it fails below.
+    const taken = `${path}/remote-control-taken.json`
+    const held = await readJson($, taken)
+    if (held && typeof held.switch_at === 'number' && typeof held.expires === 'number') {
+      remote = { switchAt: held.switch_at, expires: held.expires, running: false, taken }
+    } else {
+      const file = `${path}/remote-control.json`
+      const asked = await readJson($, file)
+      if (!asked || typeof asked.switch_at !== 'number' || typeof asked.expires !== 'number') return
+      if (!(asked.expires * 1000 >= now)) {
+        await succeeded($, ['rm', '-f', file])
+        return
+      }
+      if (!(await succeeded($, ['mv', file, taken]))) return
+      remote = { switchAt: asked.switch_at, expires: asked.expires, running: false, taken }
+    }
+  }
+  // Claimed before the first await: ticks are not serialized, and one that slips past here while another reads the
+  // state file would run the command twice, which opens Remote Control's menu.
+  if (remote.running) return
+  remote.running = true
+  // No state file naming this session yet is waited out like a busy one: a read can land mid-rewrite, and for a
+  // moment after /clear the file still names the old id.
+  const state = await ownState($)
+  if (!state || state.status !== 'idle') {
+    if (now > remote.expires * 1000) return remoteDone($, 'failed', state ? 'the session did not go idle' : 'no session state file')
+    remote.running = false
+    return
+  }
+  if (typeof state.bridgeSessionId === 'string' && state.bridgeSessionId) return remoteDone($, 'already-on', '')
+  try {
+    await $.command.run({ command: 'remote-control' })
+  } catch (error) {
+    return remoteDone($, 'failed', String(error))
+  }
+  await remoteDone($, 'done', '')
+}
+
 async function tick($: EngineInterface): Promise<void> {
   const path = await folderFor($)
   if (!path) return
@@ -125,6 +192,13 @@ async function tick($: EngineInterface): Promise<void> {
     }
     $.ui.invalidate('ui.render')
     void submitDrop($, drop)
+  }
+  // After the link drops, so a remote-control job that fails outright never holds up a hand-off; its failure is
+  // filed for the panel to show.
+  try {
+    await keepRemote($, path, now)
+  } catch (error) {
+    await remoteDone($, 'failed', String(error))
   }
 }
 

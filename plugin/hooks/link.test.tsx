@@ -18,11 +18,19 @@ type World = {
   redraws: number
   id: string
   refuse: string | null
+  commands: string[]
+  commandFails: string | null
+  hold: boolean
+  release: () => void
+  holdList: boolean
+  listed: (() => void)[]
+  listFails: boolean
 }
 
 // Everything beneath the mod: its folder as a map of paths, mkdir/chmod/mv/rm, the session id, the prompt box.
 function world(on: On): World {
-  const w: World = { files: new Map(), moves: [], submitted: [], filled: [], toasts: [], redraws: 0, id: 'sess-1', refuse: null }
+  const w: World = { files: new Map(), moves: [], submitted: [], filled: [], toasts: [], redraws: 0, id: 'sess-1', refuse: null,
+    commands: [], commandFails: null, hold: false, release: () => {}, holdList: false, listed: [], listFails: false }
   const dirOf = (path: string) => path.slice(0, path.lastIndexOf('/'))
   mock.env(on, { HOME })
   on('session.id', () => ({ value: w.id }))
@@ -35,9 +43,15 @@ function world(on: On): World {
     if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
     return { value: text }
   })
-  on('fs.list', ($, e) => ({ value: [...w.files.keys()].filter(path => dirOf(path) === e.path).map(path => ({
-    name: path.slice(e.path.length + 1), kind: 'file' as const, size: w.files.get(path)!.length, mtimeMs: 0, isLink: false,
-  })) }))
+  // With `holdList` set, listing ~/.claude/sessions waits until the test empties `listed`.
+  on('fs.list', async ($, e) => {
+    if (w.holdList && e.path.endsWith('/.claude/sessions')) await new Promise<void>(resolve => { w.listed.push(resolve) })
+    // A hook that throws is skipped, so the engine's bottom hook rejects the listing.
+    if (w.listFails && e.path.endsWith('/.claude/sessions')) throw new Error('listing refused')
+    return { value: [...w.files.keys()].filter(path => dirOf(path) === e.path).map(path => ({
+      name: path.slice(e.path.length + 1), kind: 'file' as const, size: w.files.get(path)!.length, mtimeMs: 0, isLink: false,
+    })) }
+  })
   on('process.run', ($, e) => {
     const [command, ...args] = e.argv
     let exitCode = 0
@@ -74,6 +88,15 @@ function world(on: On): World {
   on('ui.invalidate', () => {
     w.redraws += 1
     return { value: undefined }
+  })
+  // The session's own state file says Remote Control is on once the command has run, as Claude Code's does.
+  // With `hold` set the command stays running until the test calls `release`.
+  on('command.run', async ($, e) => {
+    w.commands.push(e.command)
+    if (w.hold) await new Promise<void>(resolve => { w.release = resolve })
+    if (w.commandFails) throw new Error(w.commandFails)
+    w.files.set(STATE, JSON.stringify({ ...JSON.parse(w.files.get(STATE) ?? '{}'), bridgeSessionId: 'session_01x' }))
+    return { text: '' }
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
@@ -399,4 +422,200 @@ test('the receiving session is told by toast when the hand-off starts there', as
   expect(w.toasts).toEqual([])
   await turnStart($, 't2', text)
   expect(w.toasts).toEqual(['“alpha” handed you its latest result'])
+})
+
+const STATE = `${HOME}/.claude/sessions/4242.json`
+const ASKED = `${F}/remote-control.json`
+const RESULT = `${F}/remote-control-result.json`
+
+function remoteAsk(w: World, expires = 2000) {
+  w.files.set(ASKED, JSON.stringify({ switch_at: 100, expires }))
+}
+
+function sessionState(w: World, status: string, bridge: string | null = null, id = 'sess-1') {
+  w.files.set(STATE, JSON.stringify({ pid: 4242, sessionId: id, status, bridgeSessionId: bridge }))
+}
+
+test('an idle session with remote control off runs /remote-control once and files done', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'idle')
+  remoteAsk(w)
+  await clock.advance(1000)
+  expect(w.commands).toEqual(['remote-control'])
+  expect(JSON.parse(w.files.get(RESULT)!)).toEqual({ switch_at: 100, outcome: 'done', reason: '' })
+  expect(w.files.has(ASKED)).toBe(false)
+  expect(w.files.has(`${F}/remote-control-taken.json`)).toBe(false)
+  await clock.advance(3000)
+  expect(w.commands).toEqual(['remote-control'])
+})
+
+test('ticks while the command is still running never run it a second time', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  w.hold = true
+  await start($)
+  sessionState(w, 'idle')
+  remoteAsk(w)
+  await clock.advance(4000)
+  expect(w.commands).toEqual(['remote-control'])
+  w.release()
+  await clock.advance(1000)
+  expect(w.commands).toEqual(['remote-control'])
+})
+
+test('a busy session waits, and runs the command once it is idle', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'busy')
+  remoteAsk(w, 1_000_000)
+  await clock.advance(5000)
+  expect(w.commands).toEqual([])
+  sessionState(w, 'idle')
+  await clock.advance(1000)
+  expect(w.commands).toEqual(['remote-control'])
+})
+
+test('a session waiting on a prompt counts as not idle', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'waiting')
+  remoteAsk(w, 1_000_000)
+  await clock.advance(3000)
+  expect(w.commands).toEqual([])
+})
+
+test('remote control already on files already-on and opens no menu', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'idle', 'session_01x')
+  remoteAsk(w)
+  await clock.advance(1000)
+  expect(w.commands).toEqual([])
+  expect(JSON.parse(w.files.get(RESULT)!)).toEqual({ switch_at: 100, outcome: 'already-on', reason: '' })
+})
+
+test('a session busy until the ask expires files failed', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'busy')
+  remoteAsk(w, 1_003)
+  await clock.advance(1000)
+  expect(w.files.has(RESULT)).toBe(false)
+  await clock.advance(3000)
+  expect(JSON.parse(w.files.get(RESULT)!)).toEqual({ switch_at: 100, outcome: 'failed', reason: 'the session did not go idle' })
+})
+
+test('a command that is refused files failed with its message', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'idle')
+  // A hook that throws is skipped, so the engine's own bottom hook rejects the run, naming the event.
+  w.commandFails = 'not now'
+  remoteAsk(w)
+  await clock.advance(1000)
+  expect(w.commands).toEqual(['remote-control'])
+  expect(JSON.parse(w.files.get(RESULT)!).outcome).toBe('failed')
+  expect(JSON.parse(w.files.get(RESULT)!).reason).toContain('no implementation for command.run')
+})
+
+test('no state file naming this session waits, and files failed once the ask expires', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'idle', null, 'someone-else')
+  remoteAsk(w, 1_003)
+  await clock.advance(1000)
+  expect(w.commands).toEqual([])
+  expect(w.files.has(RESULT)).toBe(false)
+  await clock.advance(3000)
+  expect(JSON.parse(w.files.get(RESULT)!)).toEqual({ switch_at: 100, outcome: 'failed', reason: 'no session state file' })
+})
+
+test('a state file that names this session a tick later lets the job finish', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'idle', null, 'the-id-before-clear')
+  remoteAsk(w)
+  await clock.advance(1000)
+  sessionState(w, 'idle')
+  await clock.advance(1000)
+  expect(w.commands).toEqual(['remote-control'])
+  expect(JSON.parse(w.files.get(RESULT)!).outcome).toBe('done')
+})
+
+test('an expired or half-written ask is removed and nothing runs', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'idle')
+  remoteAsk(w, 999)
+  await clock.advance(1000)
+  expect(w.files.has(ASKED)).toBe(false)
+  w.files.set(ASKED, '{"switch_at": 1')
+  await clock.advance(1000)
+  expect(w.commands).toEqual([])
+  expect(w.files.has(RESULT)).toBe(false)
+  expect(w.files.has(ASKED)).toBe(true)
+})
+
+test('ticks while the state file is still being listed never run the command a second time', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'idle')
+  remoteAsk(w)
+  w.holdList = true
+  await clock.advance(3000)
+  w.holdList = false
+  for (const resolve of w.listed.splice(0)) resolve()
+  await clock.advance(1000)
+  expect(w.commands).toEqual(['remote-control'])
+})
+
+test('a job taken before a reload is picked up again and runs once', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  sessionState(w, 'idle')
+  w.files.set(`${F}/remote-control-taken.json`, JSON.stringify({ switch_at: 100, expires: 2000 }))
+  await start($)
+  await clock.advance(3000)
+  expect(w.commands).toEqual(['remote-control'])
+  expect(JSON.parse(w.files.get(RESULT)!)).toEqual({ switch_at: 100, outcome: 'done', reason: '' })
+  expect(w.files.has(`${F}/remote-control-taken.json`)).toBe(false)
+})
+
+test('a /clear during the job removes the taken file from the folder it was taken in', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  sessionState(w, 'idle')
+  w.hold = true
+  remoteAsk(w)
+  await clock.advance(1000)
+  expect(w.files.has(`${F}/remote-control-taken.json`)).toBe(true)
+  w.id = 'sess-2'
+  w.release()
+  await clock.advance(1000)
+  expect(w.files.has(`${F}/remote-control-taken.json`)).toBe(false)
+  expect(JSON.parse(w.files.get(`${folderOf('sess-2')}/remote-control-result.json`)!).outcome).toBe('done')
+})
+
+test('a remote-control job that fails outright still lets the same tick take a link drop', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  w.listFails = true
+  remoteAsk(w)
+  dropFile(w, 'L1', 'ask')
+  await clock.advance(1000)
+  expect(w.submitted).toEqual([ASK])
+  expect(JSON.parse(w.files.get(RESULT)!).outcome).toBe('failed')
 })
