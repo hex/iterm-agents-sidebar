@@ -186,3 +186,16 @@ def test_a_second_uninstall_is_quiet(tmp_path):
     again = run("uninstall.sh", home)
     assert again.returncode == 0 and again.stderr == ""
     assert "not installed" in again.stdout
+
+
+def test_install_makes_the_links_folder_private_and_uninstall_removes_it(tmp_path):
+    """Linked cards drop asks in each session's folder under it; only its owner may read them."""
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    assert run("install.sh", home, "--no-codex", "--no-statusline").returncode == 0
+    folder = home / ".claude" / "agents-sidebar-links"
+    assert oct(folder.stat().st_mode & 0o777) == "0o700"
+    (folder / "s1").mkdir(mode=0o700)
+    (folder / "s1" / "ready").write_text("s1")
+    assert run("uninstall.sh", home).returncode == 0
+    assert not folder.exists()

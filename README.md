@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents sidebar docked on the right: a card per session, and the one waiting on a question turning amber">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents sidebar docked on the right: one card per session, with the one waiting on a question turning amber">
 
 # Agents sidebar
 
@@ -94,7 +94,7 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 | Exited | Faded, with an EXITED outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
 | Unknown | A hollow square: a turn silent for five minutes with no command or tool running under it |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each part joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each of its parts joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">
 
 Under the name, an agent reports its own task: a title, then
 `Reading code · 40s`, then ticks for how far it says it has got. The
@@ -165,7 +165,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 
 ### Settings
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: a card each for sounds, notifications, focus and the rows, every setting with its default">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: a card each for sounds, notifications, focus, the rows and experiments, every setting with its default, and the repository the install comes from">
 
 The gear opens the drawer; every setting is there with its default, as above.
 A setting indented under another works only while that one is on.
@@ -176,6 +176,8 @@ A setting indented under another works only while that one is on.
 | Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
 | Focus | Bring a blocked session forward; under it Go back once it resumes |
 | Rows | Warn above, CPU heavy at, Memory heavy at, Order, Provider badge, Shell names, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
+| Experimental | Link cards, off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions) |
+| Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |
 
 Some have limits the picture doesn't show:
 
@@ -204,7 +206,7 @@ as Luna Reserve. Click **Limits** over them to fold the lot to a tile per
 account and Codex, each with its fullest window as one bar. See [docs/accounts.md](docs/accounts.md).
 
 The bar at the bottom names the release you run, and two buttons: reload and
-the gear. At start, once a day and on every reload press, the daemon lists
+the gear. Click the release to read the release notes on GitHub. At start, once a day and on every reload press, the daemon lists
 the releases on the repository it was cloned from; when one is
 newer, the bar adds an Update button that names it in its tooltip. Pressing it takes that
 release only if a release key the installed copy already trusts signed it,
@@ -215,15 +217,32 @@ needs reopening from View > Toolbelt. See
 <img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/menu.svg" width="100%" alt="An idle card with its right-click menu open: Details, /compact, /rotate, /clear, then Close">
 
 Right-click an agent row, or press Shift+F10 on a selected one, for
-Details, `/compact`, `/rotate`, `/clear` and Close. Details opens the row's
+Details, `/compact`, `/rotate`, `/clear` and Close. A card linked to a
+partner also offers Untie from its partner. Details opens the row's
 details card and keeps it open until Escape or a click elsewhere; nothing
 else opens the card. Close and `/clear` ask for a second
-click. A Codex row gets Details, `/compact` and Close, since Codex has no `/rotate` or
+click. The menu stays where it opened while the cards under it grow, shrink,
+arrive or leave, and scrolling the list closes it. A Codex row gets Details, `/compact` and Close, since Codex has no `/rotate` or
 `/clear`. An omp row gets Details, `/compact`, `/clear` and Close. A plain terminal's
 row gets Close alone. A command is not typed while the session waits on you,
 since the prompt would take it as your answer, after its agent has exited, or
 while another program (an editor, or the shell of a suspended agent) is in
 front of the agent. The card says why for a few seconds.
+
+Drag an agent card up or down to put it there. The drop switches Order to By
+hand, which keeps the cards where you put them; see
+[docs/usage.md](docs/usage.md#order).
+
+With Link cards on under Experimental in settings (it starts off), hold a
+dragged card still over another agent card for 0.4 s and let go to link the
+two sessions. Two Claude Code sessions become partners, one card on
+the panel: each can read the other's recent conversation and hand it a task,
+getting the answer back. They stay partners through `/clear` until you untie
+them from either card's menu, drag one card out of the pair, or turn Link
+cards off. With Codex or omp in the pair, the dragged card's session writes
+up its latest result and the session under it starts working on it, with
+nothing typed in either terminal; Codex and omp take their part with your next prompt
+there. See [docs/usage.md](docs/usage.md#linking-two-sessions).
 
 ### From a script
 
@@ -244,7 +263,7 @@ named, and 1 on a timeout, a closed session or no panel. See
 
 - [docs/usage.md](docs/usage.md): what every part of a card means
 - [docs/accounts.md](docs/accounts.md): accounts, switching, the meters
-- [docs/integrations.md](docs/integrations.md): the statusline bridge and Codex hooks, and how to opt out
+- [docs/integrations.md](docs/integrations.md): the statusline bridge, Codex hooks, the omp extension and linked cards, and how to opt out
 - [docs/troubleshooting.md](docs/troubleshooting.md): `STALE`, `?`, a white panel,
   tracing the statusline bridge
 - [docs/development.md](docs/development.md): how it works, tests, releases

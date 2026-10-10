@@ -18,6 +18,7 @@ version.
 | `~/.claude/settings.json` | The statusline bridge, below |
 | `~/.codex/hooks.json` and `~/.codex/config.toml` | The Codex hooks, below |
 | `~/.omp/agent/extensions/agents-sidebar.ts` | The omp extension, below. A profile or a moved agent directory puts it elsewhere |
+| `~/.claude/agents-sidebar-links` | A folder only you can open, with one folder per session for linked cards, below |
 
 `--statusline` also exists. The bridge goes in by default, so the flag only
 cancels an earlier `--no-statusline` on the same command line.
@@ -118,6 +119,92 @@ hand if you like.
 
 See `docs/codex-rows-design.md` for what a Codex card reads and from where.
 
+## Linked cards
+
+Linking is experimental and off by default: turn on Link cards under
+Experimental in Settings. While off, the panel refuses a link, ends
+every open link and unties every partnership.
+
+Linking two cards (see `docs/usage.md`) goes through files, never through a
+terminal. Each agent session has its own folder,
+`~/.claude/agents-sidebar-links/<its session id>/`, open only to you. Every
+link file there is `0600`, except the mod's `ready`, which holds only the
+session id. The panel writes a link's ask or delivery there as
+`ask-<link>.json`. The agent's side takes it by renaming it to
+`taken-<link>.json`, so it runs once, and never after its `expires` time, 30
+minutes after the ask. The panel refuses a session id that is not a plain
+token, and a folder that is a link or lies outside that root.
+
+In Claude Code, a mod does this: `plugin/hooks/link.tsx`, named under
+`modules` in the plugin's `hooks.json`, so every install has it with no
+setting changed. Claude Code takes one hooks module per plugin, so the same
+file also holds the partner side (below), with its text-only helpers in
+`plugin/hooks/partner-text.ts`. Each second it writes `ready`, holding the session id, in
+its folder. The panel counts a Claude card as linkable while `ready` names
+that session and is under a minute old, so it refuses a Claude Code without
+mods (older than 2.1.287, or with mods turned off) at once, never leaving it
+waiting. The mod
+sends a taken drop as a prompt from the agents-sidebar plugin. It finds the
+asked turn by the link's nonce in that prompt, and writes the turn's answer
+to `result-<link>.json`. When that turn ends without an answer (you
+interrupted it, the model refused, an API error ended it, or the answer is
+empty), the mod writes `failed-<link>.json` with the reason. When a
+delivery's turn starts it writes `started-<link>.json`. The mod keeps the
+asked turn in memory, so a reload during the hand-off fails the link. It also
+draws the band above the prompt and sends a prompt you type during the
+hand-off back to the box. `tests/test_link_mod.py` runs its tests with
+`claude plugin test`.
+
+In Codex, the state hook's `UserPromptSubmit` takes the session's drops and
+adds their text to that prompt as hook context; a delivery also writes
+`started-<link>.json`. The panel reads a Codex session's reply to an ask from its
+own rollout: the last message of the turn whose context holds the link's nonce.
+Codex writes that file and no Codex sandbox can, and the links folder is
+outside Codex's `writable_roots`. Nothing for a link goes through
+`~/.claude/agents-sidebar-tasks`, which every Codex sandbox can write.
+
+In omp, the extension's `before_agent_start` adds the drops to the next
+prompt. When the loop that an ask opened ends, it writes `result-<link>.json`
+or `failed-<link>.json` in the session's own folder. A delivery also writes
+`started-<link>.json`.
+
+The panel takes a result once, for a link it has open, and at most 16 000
+characters long; anything else ends the link as refused and is never
+delivered. It deletes a link's files 10 s after the link ends.
+
+Anything that can write a session's folder can make that session act. No
+Codex sandbox can. A Claude session that asks before it runs a command needs
+your approval to. A Claude session in bypass mode can, and could already send
+a message to another one. Any other program of yours can, and could already
+run anything as you.
+
+### Partner sessions
+
+Partnerships (see `docs/usage.md`) live in
+`~/.claude/agents-sidebar-status/partners.json`, `0600`, written whole:
+`[{id, upper, lower, made_at, open}]`, `upper` and `lower` being iTerm2 pane
+ids, so `/clear` and a resume keep them. `POST /untie {"pane": …}` ends the
+one that pane is in. Every other file sits in a session's own links folder:
+
+| File | Written by | What it holds |
+|---|---|---|
+| `partner.json` | panel | who the partner is: the partnership's id, this session's own label, the partner's label, transcript path, profile and the profile's key (the profile without durations), the introduction, and a note when it is busy |
+| `reply.json` | mod | your last reply in that session, from the first Stop of a turn you started |
+| `delegate-‹d›.json` | mod | a task for the partner: `{id, partnership, task, why}` |
+| `answer-‹d›.json` | panel | its outcome, answered, could not finish, or not handed over: `{id, result, late}`, `late` being the message used once the tool stopped waiting |
+| `task-‹t›.json` | panel | a task for this session; taken, started, answered or failed as a link's drop is, with `taken-`, `started-`, `result-` and `failed-‹t›.json` |
+
+The panel takes a `delegate-` file only from a session that is an end of the
+partnership it names, deletes it once read, and deletes one whose name is not
+a plain token unread. It takes an answer once, for the open task, matched by
+its link id and nonce, and at most 16 000 characters. `partner_read` reads a
+transcript only under `~/.claude/projects/` and ending `.jsonl`, since
+anything that can write `partner.json` could otherwise point it at any file.
+The two tools are registered in every session, since a mod cannot take a
+tool back. While a session is not linked they say so; while linking is off
+they say that and where to turn it on. A subagent's call is
+refused.
+
 ## Uninstall
 
 `./uninstall.sh` takes no flags. It stops the daemon and removes:
@@ -129,8 +216,8 @@ See `docs/codex-rows-design.md` for what a Codex card reads and from where.
 - our entries from `~/.codex/hooks.json`, through `codex-hooks.sh --remove`
 - the omp extension, through `omp-extension.sh --remove`, while its third line
   is still the panel's marker
-- the panel's settings, state and account store, and the Keychain items of
-  every stored login
+- the panel's settings, state and account store, the linked-cards folder, and
+  the Keychain items of every stored login
 
 It leaves the `writable_roots` entry in `~/.codex/config.toml`, the
 `.before-agents-sidebar` backups, and the checkout itself.
@@ -168,8 +255,8 @@ release, the marker never does. The script writes the file by rename, never
 over a file whose third line is not that marker, and fills in the absolute paths of the state hook and of the `python3`
 the install found. omp sessions started after the install load it.
 
-The extension reports state only, and runs the hook once per event, one
-child at a time, with the event on stdin:
+Besides linked cards (above), the extension reports state only. It runs the
+hook once per event, one child at a time, with the event on stdin:
 
 | omp event | Reported as |
 |---|---|

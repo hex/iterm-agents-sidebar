@@ -143,7 +143,7 @@ fi
 # Not ~/.local/share/agents-sidebar itself: the one-line install keeps its
 # checkout in there, and this script may be running from it.
 rm -rf "$HOME/.config/agents-sidebar" "$status_dir" "$HOME/.claude/agents-sidebar-subagents" \
-       "$HOME/.claude/agents-sidebar-tasks"
+       "$HOME/.claude/agents-sidebar-tasks" "$HOME/.claude/agents-sidebar-links"
 rm -f "$HOME/.claude/agents-sidebar-settings.json" "$HOME/.local/share/agents-sidebar/endpoint.json"
 ok data "settings, state and the account store removed$([ "$items" -gt 0 ] && echo ", $items Keychain items with them")"
 

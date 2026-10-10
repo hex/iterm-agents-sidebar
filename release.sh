@@ -8,10 +8,11 @@
 # counts releases within the month, from the tags already on the mirror, so
 # the number never needs a hand.
 #
-#   ./release.sh "What changed, in one line"
+#   ./release.sh "What changed, in one line" [notes.md]
 #
-# It ends with a GitHub release page carrying that line and a compare link,
-# made with gh; edit the page afterwards for longer notes.
+# It ends with a GitHub release page carrying that line, the notes file's
+# Markdown when one is given, and a compare link, made with gh. The notes are
+# checked for personal words as the public tree is, before anything is pushed.
 #
 # RELEASE_SCRUB, when set, is a space-separated list of words the public tree
 # must not contain (names, hostnames); the release stops on a hit.
@@ -20,7 +21,13 @@ set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$repo"
 summary="${1:-}"
-[ -n "$summary" ] || { echo "usage: ./release.sh \"one-line summary\"" >&2; exit 1; }
+[ -n "$summary" ] || { echo "usage: ./release.sh \"one-line summary\" [notes.md]" >&2; exit 1; }
+notes_file="${2:-}"
+details=""
+if [ -n "$notes_file" ]; then
+  [ -f "$notes_file" ] || { echo "error: no notes file at $notes_file" >&2; exit 1; }
+  details="$(cat "$notes_file")"
+fi
 
 # The release key. Every commit on the mirror is signed with it, and the
 # panel's Update takes only commits signed by a key in release-signers. The
@@ -97,13 +104,18 @@ rm -f "$index"
 
 # Nothing personal leaves the machine: real addresses (a domain, so that
 # icon_16x16@2x.png passes), and the words the release runner names
-# (fixtures use jane, john and x, so home paths pass).
-leaks="$(git grep -n -I -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.(com|org|net|io|dev|me|ro|eu|co|ai)\b' "$tree" -- . \
-  | grep -v -E 'users\.noreply\.github\.com|example\.com' || true)"
-for word in ${RELEASE_SCRUB:-}; do
-  hits="$(git grep -n -I -i -w "$word" "$tree" -- . || true)"
-  [ -z "$hits" ] || leaks="$leaks${leaks:+$'\n'}$hits"
-done
+# (fixtures use jane, john and x, so home paths pass). The release page's
+# notes are published too, so they pass the same check.
+in_tree() { git grep -n -I "$@" "$tree" -- .; }
+in_notes() { grep -Hn -I "$@" "$notes_file"; }
+personal() {
+  "$1" -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.(com|org|net|io|dev|me|ro|eu|co|ai)\b' \
+    | grep -v -E 'users\.noreply\.github\.com|example\.com' || true
+  for word in ${RELEASE_SCRUB:-}; do "$1" -i -w "$word" || true; done
+}
+leaks="$(personal in_tree)"
+[ -z "$notes_file" ] || leaks="$leaks"$'\n'"$(personal in_notes)"
+leaks="$(printf '%s\n' "$leaks" | sed '/^$/d')"
 if [ -n "$leaks" ]; then
   echo "error: the public tree carries something personal; fix on main and re-run:" >&2
   echo "$leaks" | sed "s|^$tree:|  |" >&2
@@ -149,12 +161,14 @@ git push -q --atomic "$remote" public:main "v$version"
 published=1
 echo "published $version as $(git rev-parse --short "$commit") -> $remote"
 
-# The release page: the summary, and what changed since the release before.
+# The release page: the summary, the notes, and what changed since the release before.
 # The tag is already public, so a page that fails says how to make it by hand.
 previous="$(git describe --tags --abbrev=0 "$commit^")"
 url="$(git remote get-url "$remote" | sed -e 's|\.git$||' -e 's|^git@github.com:|https://github.com/|')"
 notes="$summary
-
+${details:+
+$details
+}
 **Full changelog**: $url/compare/$previous...v$version"
 gh release create "v$version" --repo "$url" --verify-tag --title "$version" --notes "$notes" >/dev/null || {
   echo "error: v$version is pushed but has no release page; make it with:" >&2

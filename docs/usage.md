@@ -38,6 +38,23 @@ agent's group while cards are grouped by provider (the default):
 | Follow the terminals | iTerm2's own order of windows, tabs and panes. A card sits where its tab does and nothing a session does moves it. The default |
 | By name | Alphabetical |
 | By attention | The working cards first, the longest turn at the top, under a `Working` head; then every other card (at rest, exited, or not yet heard from), the longest rest at the top and the ones without a time last, under `Idle`. A card at rest for ten minutes is washed toward the background, and more after thirty: the sessions that slipped your mind. The heads appear only while a group holds both kinds |
+| By hand | The order you dragged the cards into. A new session goes to the bottom of its group, and a closed one keeps its place for when it comes back |
+
+Drag an agent card up or down to put it there; its teammates and docked
+worktree cards come with it, and while cards are grouped by provider it stays
+inside its agent's group. While you drag, a see-through copy of the card
+follows the pointer anywhere in the list, and the card itself waits, faded, in
+the place it would drop. A card steps aside once the pointer has passed over
+it. With Link cards on, hold the copy still over another card and the two
+link instead (see [Linking two sessions](#linking-two-sessions)). The first drop switches Order
+to By hand, starting from the order on screen, so only the card you dragged
+moves. A press that moves 5 px or less up
+or down is still a click, and a Control-press opens the menu as a right click
+does. Escape, or letting go outside the panel, puts the card back. The panel
+remembers a card by its name, so the order survives an iTerm2 restart; two
+cards with one name share a place, so dragging one past the other changes
+nothing. Shell cards, worktree cards and teammate lines do not drag on their
+own.
 
 By attention moves a card only once its new state has held for thirty
 seconds: a tool pause that reads as idle, or a turn that just ended, leaves it
@@ -47,6 +64,181 @@ wait; the foot's Waiting on you is where the ask itself shows. omp without its e
 saw each state begin. Whatever the order, a teammate stays under its
 lead and a worktree card stays docked to its session, because each card
 travels with the rows under it.
+
+## Linking two sessions
+
+Linking is experimental and starts off: turn on Link cards under Experimental
+in settings. While off, a card held over another only moves, no card links,
+and the panel refuses a link asked for any other way. Turning it off unties
+every pair of partners and ends every hand-off still open. A task a partner
+had then answers `could not finish the task: linking was turned off`.
+
+Drag an agent card, hold it still over another agent card for 0.4 s, and let
+go. Two Claude Code cards become [partners](#partners) until you untie them.
+Any other two, a Claude Code card with a Codex or omp one, or two of those, get
+a one-shot hand-off: the first session writes up its latest result for the
+second one, and the second one starts working on it. You type nothing in
+either terminal.
+
+As you drag a card toward another, the two reach for each other like two
+drops of water, and a link badge on the dragged card's leading edge grows as
+the card goes deeper over the other, full once it covers half the shorter
+card. Once the link is ready they fuse into one card, its outline shading
+from one card's colour to the other's. Let go and the badge bounces once
+while two quiet rings in the dragged card's colour leave it. Move off the
+card and they spring apart, and the drag goes on as a reorder. Escape, or letting go outside the panel, cancels it. A link puts the list back in its old order
+and saves no order.
+
+The first session's agent writes the message; the panel only asks it to. It
+asks for the latest result, written for the other session to act on, as the
+whole reply. If a Stop hook sends that turn on after it replied (a notes
+check, say), the reply it stopped with is what goes, not its answer to the
+hook. The second session gets that reply in a fenced block, after a
+line that calls it a report from another session and not an instruction from
+you. It acts on it with its own permissions, the same as if you had pasted the
+first session's output into it yourself.
+
+When each end acts depends on its agent:
+
+| Agent | Writes its result | Gets the other's result |
+|---|---|---|
+| Claude Code | at once when idle, else when its turn ends | at once when idle, else when its turn ends |
+| Codex, omp | with your next prompt in that session | with your next prompt in that session |
+
+A hand-off waits for your next prompt in its Codex or omp session.
+
+The cards say how it goes. The first card shows `Asked to send to “bravo”`,
+then `Sent`, then `Delivered to “bravo”`, and the second one shows
+`From “alpha”` once it has started. Right after you let go, the second card
+shows `Sent · from “alpha”` for 2 s. A line waiting on a Codex or omp prompt
+says so (`Sent; waits for your next prompt in “bravo”`). A link that fails
+shows `Refused:` and the reason. One that the waiting session has not picked
+up 30 minutes after the ask shows `Expired`. The lines go 10 s after the link ends.
+
+In a Claude Code terminal, both sessions also show the link in a band on the
+right above the prompt: each session's name on a chip in its panel colour
+(grey when it has none), joined by a link mark, then the state. While the first session writes, the link flows
+and a spinner turns; it locks with a tick at `sent`, or `delivered` in the
+second session. The band goes 10 s after the link ends. The VS Code chat
+panel and `claude -p` draw no band, so there the cards are the only place to
+look.
+
+Each Claude Code session also shows a toast as the link moves on: the first
+session when it starts writing and when it has sent, the second when the
+hand-off starts there, and either one with the reason when its part fails.
+Codex and omp sessions show no toast.
+
+A prompt you type in the first Claude Code session while it writes the
+hand-off goes back into the prompt box, with a note to send it when the
+hand-off ends. It never mixes into the reply and keeps its `@` mentions. The
+box takes text alone, so you add an attached image again, and the note says
+so.
+
+A card that cannot link says why under the pointer and never lights up:
+
+| Reason | When |
+|---|---|
+| `only Claude, Codex and omp sessions can link` | a shell card |
+| `“bravo” is not known to the panel yet` | an agent that has not reported its session yet |
+| `“bravo” can’t link yet: run /reload-plugins there` | a Claude Code session started before the install; also Claude Code older than 2.1.287, or mods turned off (`disableAllHooks`, `--safe-mode`, an organization's `allowManagedModsOnly`) |
+| `“bravo” has exited` | its agent has exited |
+| `“bravo” is linked with “alpha”: untie it first` | the card is already one of two partners |
+
+A worktree card never lights up, and over a teammate line the card it sits in
+is the one you hold over.
+
+When you let go, the panel checks both sessions once more, and the dragged
+card shows `not linked:` and the reason for 4 s. For a hand-off: the first
+session waits on you, a program is in front of it, or it already has a
+hand-off open. For either kind: its agent has exited, or the two cards are
+panes showing one session (`a card cannot link to itself`). A session sends
+one hand-off at a time, from any of its panes.
+
+Linking needs nothing set up. The Claude Code side is a mod inside the panel's
+plugin, so it runs in every Claude Code 2.1.287 or newer (2.1.286 in the
+desktop app) where mods are on.
+
+### Partners
+
+Two Claude Code cards linked this way stay linked: they draw as one card,
+the dragged card on top, with a link badge on the join whose ring is half in
+each session's colour. Each session knows who the other is and what it is
+doing, can read the other's recent conversation, and can hand the other a
+task and get the answer back. The agents decide on their own when to read
+or hand over.
+
+Each session hears of its partner on its next prompt, typed or a partner's
+task. That prompt carries an introduction with what the panel knows of the
+other (name, model,
+folder and branch, whether it is working, idle or waiting on you, its task
+line and open task list, how full its context is, and the first 300
+characters of its last reply to you, marked as its words and not an
+instruction). After that, a prompt carries the profile again only when it has
+changed; time passing alone is not a change. A `/clear` starts a new
+conversation, which gets the introduction again. Nothing goes into the system
+prompt.
+
+The two tools, which the model loads with ToolSearch:
+
+| Tool | What it does |
+|---|---|
+| `mcp__agents-sidebar__partner_read` | the partner's last few exchanges (3 by default, at most 10), at most 16 000 characters, read from the last 2 MB of its transcript |
+| `mcp__agents-sidebar__partner_delegate` | hands the partner a task and waits for its answer, which comes back as the tool's result |
+
+While linking is off, either tool answers that it is off and where to turn it
+on. Only the main conversation can use either tool; a subagent gets a
+refusal.
+
+In a session that is not in bypass mode, each call of either tool asks you
+first, in Claude Code's own question dialog; Deny, or closing it, declines.
+Claude Code itself runs a plugin's tool without asking in any mode, so this
+question is the panel's own. A bypass session never asks.
+
+A task waits behind whatever the partner is doing; if the partner waits on
+you, the task is not handed over. The asking session's turn runs while it
+waits, as for any long tool call. A toast says when the
+partner is busy. Past ten minutes the tool gives up waiting and the answer
+comes later as a message; Escape does the same, and the task goes on in the
+partner. The answer is the partner's reply at its first Stop, never its
+answer to a Stop hook that sent the turn on. One task is open between two
+partners at a time, either way, so the two can never hand work back and
+forth in a loop. A task the partner has not started in 30 minutes comes back
+as not started. One it took comes back as not finished once the partner has
+sat idle for a minute without answering, as when a plugin reload cut its
+turn. A prompt you type in the partner during its task
+goes back to the prompt box, as during a hand-off.
+
+The card that asked shows `Asked “bravo”: …` while the task is open, then
+`“bravo” answered` or `“bravo” could not finish:` and the reason, or
+`Not handed over:` and the reason when the panel refused it; the line goes 10 s
+after. While a task is open the badge breathes; when it lands in the partner,
+and when the answer lands back, the ring turns half way so the sender's
+colour lands on the receiver's side, two quiet rings leave it, and it turns
+home. Both sessions show a toast at each hand-off, and the band above the
+prompt shows `“alpha” 🔗 “bravo” · asked`, then `answered`.
+
+Untie from either card's menu (`Untie from “bravo”`), or drag one card out
+of the pair and drop it anywhere else; Escape, or letting go where it was,
+keeps the pair. A partnership survives `/clear`, a resume and a panel
+restart, and ends when a pane closes or its agent exits. A panel restart
+answers an open task as cut off.
+
+What a partner whose model picked up hostile text (a README, a web page, a
+tool output) can do through this, and could not before:
+
+- make the other session act, unattended: each task runs at once with the
+  partner's permissions, so a default-mode session can drive a bypass-mode
+  partner in another repository. The fence around a task frames it as the
+  partner's request, not yours; it is not a boundary. The toasts show each
+  hand-off, and untie stops it.
+- reach the other's context when the profile changes: the partner's last
+  reply rides in it, fenced and marked as its words.
+- read the other's recent conversation, which may hold pasted secrets or
+  command output. Outside bypass mode the panel asks you first.
+- pass injected text both ways: a task's answer returns to the asker.
+
+Partners are Claude Code with Claude Code only, and a worktree card cannot be
+partnered: it stays docked inside its session's card.
 
 ## Which agent a card runs
 
@@ -269,7 +461,13 @@ card each time. A shell whose command the panel can't parse shows `?`.
 ## Updating
 
 The bar's left end names the release the panel runs, or reads
-`unreleased checkout` in a checkout with no `VERSION` file. Once a day, once at
+`unreleased checkout` in a checkout with no `VERSION` file. Clicking it opens
+the releases page of the GitHub repository you cloned the checkout from in
+your browser, or of the public mirror for a checkout with no `origin`
+remote; a checkout cloned from anywhere else shows the number as plain
+text. The last card in Settings, Repository, names that same repository and
+opens it or its Release notes; a checkout cloned from anywhere else has no
+such card. Once a day, once at
 start, and on every press of the reload button, the daemon lists the tags on
 the repository the checkout was cloned from; when one is newer, the
 line adds an Update button, which names the new release in its tooltip. Pressing it fetches that

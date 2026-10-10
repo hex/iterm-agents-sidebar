@@ -158,7 +158,7 @@ def newest_rollouts(sessions_dir, count=ROLLOUTS_TO_TRY):
     return [path for _, path in sorted(rollouts, reverse=True)[:count]]
 
 
-def _tail_lines(path):
+def _tail_lines(path, size=TAIL_BYTES):
     # Opened without blocking and checked once open: a pipe would otherwise
     # hold the read until a writer came, and a check before the open can be
     # raced.
@@ -166,7 +166,7 @@ def _tail_lines(path):
         if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
             raise OSError(f"{path} is not a regular file")
         f.seek(0, os.SEEK_END)
-        f.seek(max(0, f.tell() - TAIL_BYTES))
+        f.seek(max(0, f.tell() - size))
         return f.read().decode("utf-8", errors="replace").splitlines()
 
 
@@ -188,6 +188,45 @@ def _event(line):
     except ValueError:
         return None
     return event if isinstance(event, dict) and isinstance(event.get("payload"), dict) else None
+
+
+#: How far back the asked turn is looked for: a long turn of tool output can
+#: push its opening context well past the tail the limits read.
+REPLY_TAIL_BYTES = 4 * 1024 * 1024
+
+
+def asked_reply(rollout_path, nonce):
+    """The final agent message of the turn whose hook context carried `(link ‹nonce›)`.
+
+    None while that turn has not completed (or cannot be found); its
+    last_agent_message, "" when it had none or was interrupted, once it has.
+    """
+    if not rollout_path:
+        return None
+    try:
+        lines = _tail_lines(rollout_path, REPLY_TAIL_BYTES)
+    except OSError:
+        return None
+    mark = f"(link {nonce})"
+    current = asked = None
+    for line in lines:
+        event = _event(line)
+        if event is None:
+            continue
+        payload = event["payload"]
+        kind = payload.get("type")
+        if kind == "task_started":
+            current = payload.get("turn_id")
+        elif kind == "message" and payload.get("role") == "developer" and asked is None:
+            parts = payload.get("content") if isinstance(payload.get("content"), list) else []
+            if any(isinstance(part, dict) and mark in str(part.get("text") or "") for part in parts):
+                asked = current
+        elif kind == "task_complete" and asked is not None and payload.get("turn_id") == asked:
+            return payload.get("last_agent_message") or ""
+        elif kind == "turn_aborted" and asked is not None and payload.get("turn_id") == asked:
+            # Interrupted, it has no answer: the book refuses an empty one.
+            return ""
+    return None
 
 
 #: Tokens Codex counts as always in the window (system prompt, tools) and leaves

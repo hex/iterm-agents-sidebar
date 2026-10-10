@@ -71,6 +71,12 @@ LOG = os.path.expanduser("~/.claude/agents-sidebar-events.jsonl")
 #: event lives here -- and is contended.
 STATE_DIR = os.path.expanduser("~/.claude/agents-sidebar-subagents")
 
+#: Linked cards: the panel drops a link's ask or delivery in the agent's own
+#: folder here; a Codex hook takes it on the next prompt. Hooks run outside
+#: Codex's sandbox, the commands its model runs do not, and this root is not
+#: one of their writable roots.
+LINKS_DIR = os.path.expanduser("~/.claude/agents-sidebar-links")
+
 #: The slot a gate takes when its payload carries no tool_use_id. One slot, not
 #: one per occurrence: an uncorrelated gate can only be cleared at a turn
 #: boundary, so letting them accumulate would just be a longer wait.
@@ -659,6 +665,42 @@ def hook_output(event, text):
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}
 
 
+def link_context(session_id, now, root=None):
+    """The texts of this session's link drops, each taken once by renaming it, or None."""
+    if not session_id or not _SESSION.match(session_id):
+        return None
+    folder = os.path.join(root or LINKS_DIR, session_id)
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.startswith("ask-") and n.endswith(".json"))
+    except OSError:
+        return None
+    texts = []
+    for name in names:
+        path = os.path.join(folder, name)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                drop = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(drop, dict) or not isinstance(drop.get("text"), str):
+            continue
+        expires = drop.get("expires")
+        if type(expires) not in (int, float) or expires < now:
+            continue
+        link = name[len("ask-"):-len(".json")]
+        try:
+            os.rename(path, os.path.join(folder, f"taken-{link}.json"))
+        except OSError:
+            continue
+        if drop.get("role") == "deliver":
+            started = os.open(os.path.join(folder, f"started-{link}.json"),
+                              os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(started, "w", encoding="utf-8") as fh:
+                fh.write("{}")
+        texts.append(drop["text"])
+    return "\n\n".join(texts) or None
+
+
 def clear_state(session_id):
     """A session id is never reused, so anything left here leaks for the life
     of the machine.
@@ -1164,6 +1206,10 @@ def main():
                       os.path.join(os.path.dirname(os.path.abspath(__file__)), "task.py"))
     if context:
         mark_reminded(session_id, time.time())
+    if codex and event == "UserPromptSubmit":
+        linked = link_context(session_id, time.time())
+        if linked:
+            context = f"{context}\n\n{linked}" if context else linked
 
     # stdout belongs to the hook protocol. Anything else corrupts it.
     sys.stdout.write(json.dumps(hook_output(event, context)))

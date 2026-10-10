@@ -170,6 +170,15 @@ def test_notices_are_on_by_default_and_each_moment_can_be_turned_off(tmp_path):
     assert load_settings(store)["notify_blocked"] is True
 
 
+
+def test_linking_cards_starts_off_and_turning_it_on_survives_a_reload(tmp_path):
+    """Linking is experimental: a panel that never asked for it links nothing."""
+    assert sidebar.DEFAULT_SETTINGS["links"] is False
+    store = tmp_path / "s.json"
+    save_settings({"links": True}, store)
+    assert load_settings(store)["links"] is True
+
+
 # -------------------------------------------------------------------- version
 
 def test_the_version_is_the_file_s_first_line(tmp_path):
@@ -230,3 +239,28 @@ def test_a_stored_muted_flag_is_ignored(tmp_path):
     store = tmp_path / "settings.json"
     store.write_text(json.dumps({"muted": True}))
     assert "muted" not in load_settings(store)
+
+
+def test_order_can_be_by_hand(tmp_path):
+    store = tmp_path / "settings.json"
+    save_settings({"order": "hand"}, store)
+    assert load_settings(store)["order"] == "hand"
+
+
+def test_a_hand_order_keeps_names_once_in_their_order(tmp_path):
+    store = tmp_path / "settings.json"
+    save_settings({"hand_order": ["beacon", "atlas", "beacon", "", 7, None, "cobalt"]}, store)
+    assert load_settings(store)["hand_order"] == ["beacon", "atlas", "cobalt"]
+
+
+def test_a_hand_order_that_is_not_a_list_is_ignored(tmp_path):
+    store = tmp_path / "settings.json"
+    save_settings({"hand_order": "atlas"}, store)
+    assert load_settings(store)["hand_order"] == []
+
+
+def test_a_hand_order_keeps_at_most_two_hundred_names(tmp_path):
+    store = tmp_path / "settings.json"
+    names = [f"s{i:03}" for i in range(250)]
+    save_settings({"hand_order": names}, store)
+    assert load_settings(store)["hand_order"] == names[:200]

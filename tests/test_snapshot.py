@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import sidebar  # noqa: E402
 from sidebar import by_name, snapshot
 
 WINDOW = "pty-3DB79DF4-CAA8-44F2-B92D-B359716CDFCB"
@@ -935,3 +936,89 @@ def test_a_rest_shorter_than_the_dwell_never_moves_the_card_out_of_working():
     assert attention([at(MAIN, "working", working=10, prompt=10, rested=15),
                       at(OTHER, "idle", rested=100, prompt=200)]) == [
         ("atlas", "working"), ("beacon", "idle")]
+
+
+def test_by_hand_puts_the_named_cards_where_they_were_dropped():
+    rows = snapshot([MAIN, OTHER], order="hand", hand_order=["beacon", "atlas"])["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["beacon", "atlas"]
+
+
+def test_by_hand_puts_a_card_it_does_not_know_last_in_terminal_order():
+    rows = snapshot([MAIN, OTHER, TEAM[0]], order="hand", hand_order=["atlas"])["groups"][0]["rows"]
+    assert [r["label"] for r in rows] == ["atlas", "beacon", "fignity"]
+
+
+def test_by_hand_moves_a_card_with_its_teammates_and_worktrees():
+    rows = snapshot([MAIN, LINKED, TEAM[0], TEAM[1]], order="hand",
+                    hand_order=["fignity", "atlas"])["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [
+        ("fignity", 0), ("review-351", 1), ("atlas", 0), ("worktree", 0)]
+
+
+def test_same_name_cards_keep_their_arrival_order():
+    twin = dict(MAIN, session_id="Twin")
+    rows = snapshot([MAIN, OTHER, twin], order="hand", hand_order=["atlas", "beacon"])["groups"][0]["rows"]
+    assert [(r["label"], r["session_id"]) for r in rows] == [
+        ("atlas", "atlas"), ("atlas", "Twin"), ("beacon", "beacon")]
+
+
+def test_by_hand_leaves_the_sessions_group_in_terminal_order():
+    """Only agent cards drag; a shell card's name is a path or a command."""
+    code = dict(LIVE[0], session_id="5E11C0DE", tab_index=7, path="/Users/x/Code")
+    groups = snapshot([LIVE[0], code], order="hand",
+                      hand_order=["/Users/x/Code", "/Users/x/Downloads"])["groups"]
+    assert [r["label"] for r in groups[-1]["rows"]] == ["/Users/x/Downloads", "/Users/x/Code"]
+
+
+def test_snapshot_carries_the_hand_order_it_was_sorted_by():
+    assert snapshot([MAIN], order="hand", hand_order=["atlas"])["hand_order"] == ["atlas"]
+    assert snapshot([MAIN], order="name", hand_order=["atlas"])["hand_order"] == []
+
+
+def named(sid, name, **over):
+    return _agent(session_id=sid, path=f"/Users/x/.claude-sessions/{name}", auto_name=f"✳ {name}",
+                  session_name=f"cs: {name}", **over)
+
+
+def paired(payload):
+    return [(row["label"], row.get("partner_of")) for row in payload["groups"][0]["rows"]]
+
+
+THREE = [named("p1", "alpha"), named("p2", "bravo"), named("p3", "charlie")]
+
+
+def test_a_pair_sits_together_with_the_lower_card_under_the_upper():
+    payload = snapshot([dict(r) for r in THREE], pairs=[("p3", "p1")])
+    assert paired(payload) == [("bravo", None), ("charlie", None), ("alpha", "p3")]
+    rows = {row["session_id"]: row for row in payload["groups"][0]["rows"]}
+    assert rows["p3"]["partner"] == {"side": "upper", "with": "p1"}
+    assert rows["p1"]["partner"] == {"side": "lower", "with": "p3"}
+
+
+def test_by_hand_a_pair_takes_the_upper_cards_place():
+    payload = snapshot([dict(r) for r in THREE], order="hand", hand_order=("charlie", "bravo", "alpha"),
+                       pairs=[("p1", "p3")])
+    assert paired(payload) == [("bravo", None), ("alpha", None), ("charlie", "p1")]
+
+
+def test_by_attention_a_pair_takes_the_place_of_its_more_urgent_card():
+    rows = [at(THREE[0], "idle", rested=900, prompt=2000), at(THREE[1], "idle", rested=950, prompt=2000),
+            at(THREE[2], "working", working=990, prompt=990)]
+    payload = snapshot(rows, order="attention", now=NOW, pairs=[("p1", "p3")])
+    assert paired(payload) == [("alpha", None), ("charlie", "p1"), ("bravo", None)]
+    assert payload["groups"][0]["rows"][0]["bucket"] == "working"
+
+
+def test_a_pair_with_a_card_gone_is_not_drawn_as_a_pair():
+    payload = snapshot([dict(r) for r in THREE[:2]], pairs=[("p1", "p9")])
+    assert paired(payload) == [("alpha", None), ("bravo", None)]
+    assert "partner" not in payload["groups"][0]["rows"][0]
+
+
+def test_a_lower_card_moves_with_its_teammates_and_worktrees():
+    rows = [{"session_id": "p1", "depth": 0}, {"session_id": "m1", "depth": 1},
+            {"session_id": "w1", "depth": 0, "worktree_of": "p1"}, {"session_id": "p2", "depth": 0},
+            {"session_id": "m2", "depth": 1}]
+    docked = sidebar.dock_partners(rows, [("p2", "p1")])
+    assert [row["session_id"] for row in docked] == ["p2", "m2", "p1", "m1", "w1"]
+    assert docked[2]["partner_of"] == "p2"

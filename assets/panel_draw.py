@@ -165,7 +165,7 @@ def badge(right, top, word, filled=False, animation="", fill=BLOCKED_BORDER, ink
 def setting_rows():
     """page.html's SETTING_ROWS, one dict a row, so a drawing of the sheet
     lists what the sheet lists. A head is {"head": ...}; a row has k and
-    label, and any of master, needs, range, pct, unit, choices, steps."""
+    label, and any of master, needs, range, pct, unit, choices, steps, note."""
     block = re.search(r"^const SETTING_ROWS = \[\n(.*?)^\];", PAGE.read_text(), re.S | re.M).group(1)
     rows = []
     for m in re.finditer(r"\{(.*?)\}(?=,\n|\n)", block, re.S):

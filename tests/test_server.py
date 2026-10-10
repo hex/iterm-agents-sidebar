@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import links
 from sidebar import Sidebar
 
 TOKEN = "lQuxAh5DplagEnuB_cy5XepFMk2v6-7m"  # shape of a real secrets.token_urlsafe(24)
@@ -454,3 +455,111 @@ def test_a_malformed_page_error_is_refused_and_not_logged(tmp_path, body):
                       action_fn=lambda session_id, verb, text: None, log_fn=logged.append)
     status, _, payload = sidebar.handle("POST", f"/page-error?token={TOKEN}", body)
     assert (status, json.loads(payload), logged) == (400, {"error": "a page error needs an error string"}, [])
+
+
+def link_server(tmp_path, link):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda *a: None, link_fn=link)
+
+
+def test_a_link_route_hands_from_and_to_to_the_bridge(tmp_path):
+    seen = []
+    server = link_server(tmp_path, lambda source, target: seen.append((source, target)) or {"id": "L"})
+    status, _, body = server.handle("POST", f"/link?token={TOKEN}", b'{"from": "p1", "to": "p2"}')
+    assert (status, json.loads(body), seen) == (200, {"ok": True, "link": {"id": "L"}}, [("p1", "p2")])
+
+
+@pytest.mark.parametrize("body", [b"[]", b'{"from": "p1"}', b'{"from": 1, "to": "p2"}', b"not json"])
+def test_a_malformed_link_is_refused_400(tmp_path, body):
+    server = link_server(tmp_path, lambda s, t: pytest.fail("should not be called"))
+    status, _, out = server.handle("POST", f"/link?token={TOKEN}", body)
+    assert (status, json.loads(out)) == (400, {"error": "a link needs from and to"})
+
+
+def test_a_refused_link_is_409_with_the_reason(tmp_path):
+    def link(source, target):
+        raise links.Refused("“alpha”: it is waiting on you")
+    status, _, out = link_server(tmp_path, link).handle("POST", f"/link?token={TOKEN}", b'{"from": "p1", "to": "p2"}')
+    assert (status, json.loads(out)) == (409, {"error": "“alpha”: it is waiting on you"})
+
+
+def test_a_link_without_the_token_is_forbidden(tmp_path):
+    status, _, _ = link_server(tmp_path, lambda s, t: {}).handle("POST", "/link?token=wrong", b'{"from": "p1", "to": "p2"}')
+    assert status == 403
+
+
+def github_server(tmp_path, open_page):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda *a: None, github_fn=open_page)
+
+
+@pytest.mark.parametrize("page", ["releases", "repository"])
+def test_opening_a_github_page_says_so(tmp_path, page):
+    calls = []
+    server = github_server(tmp_path, calls.append)
+    status, _, body = server.handle("POST", f"/github?token={TOKEN}", json.dumps({"page": page}).encode())
+    assert (status, json.loads(body), calls) == (200, {"ok": True}, [page])
+
+
+@pytest.mark.parametrize("body", [b"not json", b"{}", b'{"page": "issues"}', b'{"page": 7}', b'["releases"]'])
+def test_a_github_page_the_daemon_does_not_know_never_reaches_the_opener(tmp_path, body):
+    calls = []
+    assert github_server(tmp_path, calls.append).handle("POST", f"/github?token={TOKEN}", body)[0] == 400
+    assert calls == []
+
+
+def test_a_refused_github_page_carries_the_reason(tmp_path):
+    import update
+
+    def refuse(page):
+        raise update.Refused("this checkout's origin is not on GitHub, so it has no releases page")
+    status, _, body = github_server(tmp_path, refuse).handle(
+        "POST", f"/github?token={TOKEN}", b'{"page": "releases"}')
+    assert (status, json.loads(body)) == (
+        409, {"error": "this checkout's origin is not on GitHub, so it has no releases page"})
+
+
+def test_opening_a_github_page_needs_the_token(tmp_path):
+    calls = []
+    assert github_server(tmp_path, calls.append).handle("POST", "/github", b'{"page": "releases"}')[0] == 403
+    assert calls == []
+
+
+def test_a_daemon_without_a_github_opener_refuses_the_request(tmp_path):
+    assert build(tmp_path).handle("POST", f"/github?token={TOKEN}", b'{"page": "releases"}')[0] == 400
+
+
+def untie_server(tmp_path, untie):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda *a: None, untie_fn=untie)
+
+
+def test_an_untie_route_hands_the_pane_to_the_bridge(tmp_path):
+    seen = []
+    status, _, body = untie_server(tmp_path, seen.append).handle("POST", f"/untie?token={TOKEN}", b'{"pane": "p1"}')
+    assert (status, json.loads(body), seen) == (200, {"ok": True}, ["p1"])
+
+
+@pytest.mark.parametrize("body", [b"[]", b"{}", b'{"pane": 1}', b"not json"])
+def test_a_malformed_untie_is_refused_400(tmp_path, body):
+    status, _, out = untie_server(tmp_path, lambda p: pytest.fail("not called")).handle(
+        "POST", f"/untie?token={TOKEN}", body)
+    assert (status, json.loads(out)) == (400, {"error": "an untie needs a pane"})
+
+
+def test_an_untie_of_a_card_not_linked_is_409(tmp_path):
+    def untie(pane):
+        raise links.Refused("that card is not linked")
+    status, _, out = untie_server(tmp_path, untie).handle("POST", f"/untie?token={TOKEN}", b'{"pane": "p1"}')
+    assert (status, json.loads(out)) == (409, {"error": "that card is not linked"})
+
+
+def test_an_untie_without_the_token_is_forbidden(tmp_path):
+    status, _, _ = untie_server(tmp_path, lambda p: None).handle("POST", "/untie?token=wrong", b'{"pane": "p1"}')
+    assert status == 403

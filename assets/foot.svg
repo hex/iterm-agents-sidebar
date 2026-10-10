@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 504" width="880" role="img" aria-label="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Limits head that folds it and the Auto-switch control, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, Codex's own limits, and the bar with the release, reload and the gear">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 504" width="880" role="img" aria-label="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
   <title>The foot of the panel</title>
   <rect width="880" height="504" rx="16" fill="#1c1c1e"/>
   <rect x="24" y="0" width="430" height="504" fill="#1c1c1e"/>
