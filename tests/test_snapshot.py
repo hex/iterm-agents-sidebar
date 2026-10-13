@@ -987,18 +987,24 @@ def paired(payload):
 THREE = [named("p1", "alpha"), named("p2", "bravo"), named("p3", "charlie")]
 
 
-def test_a_pair_sits_together_with_the_lower_card_under_the_upper():
+def test_a_pair_sits_where_the_lower_card_was_with_the_upper_card_on_top():
+    """The lower card is the one dropped on: it stays put, and nothing else moves."""
     payload = snapshot([dict(r) for r in THREE], pairs=[("p3", "p1")])
-    assert paired(payload) == [("bravo", None), ("charlie", None), ("alpha", "p3")]
+    assert paired(payload) == [("charlie", None), ("alpha", "p3"), ("bravo", None)]
     rows = {row["session_id"]: row for row in payload["groups"][0]["rows"]}
     assert rows["p3"]["partner"] == {"side": "upper", "with": "p1"}
     assert rows["p1"]["partner"] == {"side": "lower", "with": "p3"}
 
 
-def test_by_hand_a_pair_takes_the_upper_cards_place():
+def test_by_hand_a_pair_takes_the_lower_cards_place():
     payload = snapshot([dict(r) for r in THREE], order="hand", hand_order=("charlie", "bravo", "alpha"),
                        pairs=[("p1", "p3")])
-    assert paired(payload) == [("bravo", None), ("alpha", None), ("charlie", "p1")]
+    assert paired(payload) == [("alpha", None), ("charlie", "p1"), ("bravo", None)]
+
+
+def test_by_name_a_pair_takes_the_lower_cards_place():
+    payload = snapshot([dict(r) for r in THREE], order="name", pairs=[("p3", "p1")])
+    assert paired(payload) == [("charlie", None), ("alpha", "p3"), ("bravo", None)]
 
 
 def test_by_attention_a_pair_takes_the_place_of_its_more_urgent_card():
@@ -1015,10 +1021,23 @@ def test_a_pair_with_a_card_gone_is_not_drawn_as_a_pair():
     assert "partner" not in payload["groups"][0]["rows"][0]
 
 
-def test_a_lower_card_moves_with_its_teammates_and_worktrees():
-    rows = [{"session_id": "p1", "depth": 0}, {"session_id": "m1", "depth": 1},
-            {"session_id": "w1", "depth": 0, "worktree_of": "p1"}, {"session_id": "p2", "depth": 0},
-            {"session_id": "m2", "depth": 1}]
+def test_an_upper_card_moves_with_its_teammates_to_the_lower_card():
+    rows = [{"session_id": "p2", "depth": 0}, {"session_id": "m2", "depth": 1}, {"session_id": "x", "depth": 0},
+            {"session_id": "p1", "depth": 0}, {"session_id": "m1", "depth": 1},
+            {"session_id": "w1", "depth": 0, "worktree_of": "p1"}]
     docked = sidebar.dock_partners(rows, [("p2", "p1")])
-    assert [row["session_id"] for row in docked] == ["p2", "m2", "p1", "m1", "w1"]
-    assert docked[2]["partner_of"] == "p2"
+    assert [row["session_id"] for row in docked] == ["x", "p2", "m2", "p1", "m1", "w1"]
+    assert docked[3]["partner_of"] == "p2"
+
+
+def test_a_remote_row_carries_its_host_and_offers_no_context_breakdown():
+    frame = snapshot([_agent(host="box", remote_refusal="the agent's title has gone from the pane",
+                             provider="claude", conversation="524ba3e7-6207-4c5a-af51-85392a3f541f")])
+    [row] = [r for g in frame["groups"] for r in g["rows"]]
+    assert (row["host"], row["remote_refusal"]) == ("box", "the agent's title has gone from the pane")
+    assert "context_readable" not in row
+
+
+def test_a_local_row_carries_no_host():
+    [row] = [r for g in snapshot([_agent()])["groups"] for r in g["rows"]]
+    assert "host" not in row and "remote_refusal" not in row

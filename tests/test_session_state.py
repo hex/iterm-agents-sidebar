@@ -320,6 +320,67 @@ def test_a_finished_turn_clears_a_gate_nothing_could_correlate():
     assert emit_state.aggregate(doc) == "idle"
 
 
+def _result_line(tool_use_id):
+    """A tool's end as Claude Code files it in the transcript."""
+    return json.dumps({"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "content": "denied", "is_error": True,
+         "tool_use_id": tool_use_id}]}}, separators=(",", ":"))
+
+
+def test_a_gate_closes_once_the_transcript_holds_its_tool_s_end(tmp_path, monkeypatch):
+    """A prompt Claude Code times out itself (a teammate cannot prompt) ends
+    its tool with an error in the transcript and fires no hook at all, so the
+    card kept asking for a person through the rest of the turn.
+    """
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path / "state"))
+    transcript = tmp_path / "s1.jsonl"
+    transcript.write_text("")
+    seen = {"transcript_path": str(transcript)}
+    emit_state.update("s1", "PreToolUse", {**seen, "tool_use_id": "toolu_A"}, "working")
+    emit_state.update("s1", "PermissionRequest", {**seen, "tool_name": "Bash"}, "blocked")
+    transcript.write_text(_result_line("toolu_A") + "\n")
+    doc = emit_state.update("s1", "PreToolUse", {**seen, "tool_use_id": "toolu_B"}, "working")
+    assert (emit_state.aggregate(doc), doc["gates"], doc["question"]) == ("working", {}, None)
+
+
+def test_a_gate_stays_while_only_other_tools_have_ended(tmp_path, monkeypatch):
+    """Claude Code runs tools beside an open prompt. Their results, and the
+    gated tool's id quoted inside a result's text, say nothing of the prompt."""
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path / "state"))
+    transcript = tmp_path / "s1.jsonl"
+    transcript.write_text("")
+    seen = {"transcript_path": str(transcript)}
+    emit_state.update("s1", "PreToolUse", {**seen, "tool_use_id": "toolu_A"}, "working")
+    emit_state.update("s1", "PermissionRequest", {**seen, "tool_name": "Bash"}, "blocked")
+    quoted = json.loads(_result_line("toolu_B"))
+    quoted["message"]["content"][0]["content"] = _result_line("toolu_A")
+    transcript.write_text(_result_line("toolu_B") + "\n" + json.dumps(quoted) + "\n")
+    doc = emit_state.update("s1", "PostToolUse", {**seen, "tool_use_id": "toolu_B"}, "working")
+    assert list(doc["gates"]) == ["toolu_A"]
+
+
+def test_a_transcript_that_cannot_be_read_leaves_the_gate_standing(tmp_path, monkeypatch):
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path / "state"))
+    seen = {"transcript_path": str(tmp_path / "gone.jsonl")}
+    emit_state.update("s1", "PreToolUse", {**seen, "tool_use_id": "toolu_A"}, "working")
+    emit_state.update("s1", "PermissionRequest", {**seen, "tool_name": "Bash"}, "blocked")
+    doc = emit_state.update("s1", "PreToolUse", {**seen, "tool_use_id": "toolu_B"}, "working")
+    assert list(doc["gates"]) == ["toolu_A"]
+
+
+def test_a_subagent_s_gate_closes_from_the_subagent_s_own_transcript(tmp_path, monkeypatch):
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path / "state"))
+    transcript = _session_files(tmp_path, "a1", lines=[json.dumps({"type": "user"})])
+    sub = {"transcript_path": transcript, "agent_id": "a1"}
+    emit_state.update("s1", "SubagentStart", sub, "working")
+    emit_state.update("s1", "PreToolUse", {**sub, "tool_use_id": "toolu_A"}, "working")
+    emit_state.update("s1", "PermissionRequest", {"transcript_path": transcript,
+                                                  "tool_name": "Bash"}, "blocked")
+    (tmp_path / "s1" / "subagents" / "agent-a1.jsonl").write_text(_result_line("toolu_A") + "\n")
+    doc = emit_state.update("s1", "PreToolUse", {**sub, "tool_use_id": "toolu_B"}, "working")
+    assert (emit_state.aggregate(doc), doc["gates"]) == ("working", {})
+
+
 def test_going_idle_at_the_prompt_clears_a_gate_too():
     """The idle notification is the same proof by another route."""
     doc = blank()

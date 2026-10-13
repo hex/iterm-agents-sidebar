@@ -954,6 +954,10 @@ def test_a_codex_prompt_hands_its_link_drop_to_codex_after_the_task_line(tmp_pat
     session = "019a0c5e-7d1e-7c55-9a53-2f6f0c1d8e22"
     drop(tmp_path / ".claude" / "agents-sidebar-links" / session, "L1", "deliver",
          "A report from the session “alpha” ... (link nnnn)", expires=time.time() + 600)
+    # The task line is told only where the panel runs: its endpoint file says so.
+    endpoint = tmp_path / ".local" / "share" / "agents-sidebar" / "endpoint.json"
+    endpoint.parent.mkdir(parents=True)
+    endpoint.write_text("{}")
     code, out, _ = run_handler(tmp_path, ["UserPromptSubmit", "--codex"], {"session_id": session})
     instructions = (HANDLER.parent / "task-instructions.md").read_text().strip()
     bound = f"python3 {HANDLER.parent / 'task.py'} --session {session}"
@@ -964,3 +968,229 @@ def test_a_codex_prompt_hands_its_link_drop_to_codex_after_the_task_line(tmp_pat
         f"{bound} report --activity 'Reading code' --percent 25\n"
         f"{bound} report --activity 'Assessing task' --unknown\n"
         "\n\nA report from the session “alpha” ... (link nnnn)")}}
+
+
+def test_the_published_state_says_which_machine_and_folder_it_is_from(monkeypatch):
+    monkeypatch.setattr(emit_state.socket, "gethostname", lambda: "box.example.com")
+    value = emit_state.published({}, 701, {"session_id": "abc-123", "cwd": "/srv/app"},
+                                 codex=False, now=1789000000, tasks=False, front=True)
+    assert (value["host"], value["front"], value["cwd"]) == ("box", True, "/srv/app")
+
+
+def test_the_agent_is_in_front_when_its_group_is_its_terminals_foreground_group():
+    assert emit_state.front_of(" 4321  4321\n") is True
+    assert emit_state.front_of(" 4400  4321\n") is False
+
+
+def test_a_process_with_no_terminal_or_no_listing_is_not_known_to_be_in_front():
+    assert emit_state.front_of("    0  4321\n") is False
+    assert emit_state.front_of("") is None
+    assert emit_state.front_of("garbage\n") is None
+
+
+def test_the_variable_is_written_without_spaces(tmp_path):
+    assert emit_state.carried({"state": "idle", "pid": 7}, "s-1", str(tmp_path)) == '{"state":"idle","pid":7}'
+
+
+def _over_the_ceiling(cwd):
+    return {"state": "blocked", "pid": 31432, "session": "0f0e0d0c-0b0a-4a09-8807-060504030201",
+            "agents": 1, "subagents": [{"id": "a" * 40, "type": "general-purpose"}] * 6,
+            "blocked_since": 1791700000, "working_since": 1791699000, "turn_started": 1791699000,
+            "idle_since": None, "question": None, "ts": 1791700000, "tasks": [],
+            "host": "box", "front": True, "cwd": cwd}
+
+
+def test_an_envelope_keeps_host_front_and_folder_under_the_ceiling(tmp_path):
+    text = emit_state.carried(_over_the_ceiling("/srv/app"), "s-1", str(tmp_path))
+    envelope = json.loads(text)
+    assert (envelope["host"], envelope["front"], envelope["cwd"], envelope["detail"]) == ("box", True, "/srv/app", True)
+    assert len(base64.b64encode(text.encode())) <= 512
+
+
+def test_a_long_folder_is_cut_to_its_last_two_parts(tmp_path):
+    text = emit_state.carried(_over_the_ceiling("/" + "/".join(["deep"] * 60) + "/projects/some-repo"),
+                              "s-1", str(tmp_path))
+    assert json.loads(text)["cwd"] == "projects/some-repo"
+    assert len(base64.b64encode(text.encode())) <= 512
+
+
+def test_a_folder_too_long_even_cut_is_left_out(tmp_path):
+    text = emit_state.carried(_over_the_ceiling("/a/" + "x" * 300 + "/" + "y" * 300), "s-1", str(tmp_path))
+    assert "cwd" not in json.loads(text)
+    assert len(base64.b64encode(text.encode())) <= 512
+
+
+ASKED = {"header": "First slice", "question": "What should the first slice be?",
+         "options": ["State over the pane (Recommended)", "Relay from the start", "Bug fix only first"],
+         "multi": False, "more": 0}
+
+
+def test_a_question_that_fits_travels_whole_with_when_it_was_raised():
+    assert json.loads(emit_state.question_short(ASKED, 1791700000)) == dict(ASKED, since=1791700000)
+
+
+def test_a_long_question_keeps_every_option_and_fits():
+    asked = dict(ASKED, question="q" * 300, options=["a" * 60, "b" * 60, "c" * 60, "d" * 60])
+    text = emit_state.question_short(asked, 1791700000)
+    carried = json.loads(text)
+    assert len(base64.b64encode(text.encode())) <= 512
+    assert [label[0] for label in carried["options"]] == ["a", "b", "c", "d"]
+    assert len({len(label) for label in carried["options"]}) == 1
+    assert carried["question"].startswith("q") and carried["since"] == 1791700000
+
+
+def test_options_that_cannot_all_be_carried_send_no_question():
+    """An answer is a number: a missing option would renumber the rest."""
+    assert emit_state.question_short(dict(ASKED, options=["x" * 60] * 60), 1791700000) is None
+
+
+def test_a_set_or_a_multi_select_sends_no_question():
+    assert emit_state.question_short(dict(ASKED, more=1, set=[ASKED, ASKED]), 1791700000) is None
+    assert emit_state.question_short(dict(ASKED, multi=True), 1791700000) is None
+
+
+def test_a_tool_approval_keeps_its_id_and_drops_its_reason():
+    asked = {"tool": "Bash", "summary": "git push " + "x" * 400, "reason": "y" * 300, "id": "f" * 32}
+    text = emit_state.question_short(asked, 1791700000)
+    carried = json.loads(text)
+    assert len(base64.b64encode(text.encode())) <= 512
+    assert (carried["tool"], carried["id"], carried["since"]) == ("Bash", "f" * 32, 1791700000)
+    assert carried["summary"].startswith("git push ") and "reason" not in carried
+
+
+def test_a_new_question_is_written_once():
+    text, sent = emit_state.question_write(None, ASKED, 1791700000)
+    assert json.loads(text)["since"] == 1791700000 and sent == emit_state.written(text)
+    assert emit_state.question_write(sent, ASKED, 1791700000) == (None, sent)
+
+
+def test_a_second_gate_opened_while_the_first_stands_replaces_the_question():
+    """The newest gate's question stands, but the oldest gate's time is the state's blocked_since:
+    told apart by time alone, the first question's buttons would stay up over the second."""
+    _, sent = emit_state.question_write(None, ASKED, 1791700000)
+    second = dict(ASKED, question="And the second?", options=["Yes", "No"])
+    text, sent_after = emit_state.question_write(sent, second, 1791700000)
+    assert json.loads(text)["question"] == "And the second?" and sent_after != sent
+
+
+def test_a_question_gone_clears_the_variable_once():
+    assert emit_state.question_write("0123456789abcdef", None, None) == ("", None)
+    assert emit_state.question_write(None, None, None) == (None, None)
+
+
+def test_a_question_that_cannot_be_carried_clears_what_stood():
+    assert emit_state.question_write("0123456789abcdef", dict(ASKED, multi=True), 1791700999) == ("", None)
+
+
+def test_the_question_reaches_the_terminal_before_the_state_that_names_it(tmp_path):
+    """The panel reads on the state's arrival; the question must already be there."""
+    payload = {"session_id": "abc-123", "tool_name": "AskUserQuestion", "tool_use_id": "t1",
+               "tool_input": {"questions": [{"header": "Pick", "question": "Which one?",
+                                             "options": [{"label": "This"}, {"label": "That"}]}]}}
+    _, _, written = run_handler(tmp_path, ["PermissionRequest"], payload)
+    names = [name for name, _ in written]
+    assert names == ["claudeQuestion", "claudeState"]
+    question = json.loads(dict(written)["claudeQuestion"])
+    state = json.loads(dict(written)["claudeState"])
+    assert question["options"] == ["This", "That"] and question["since"] == state["blocked_since"]
+
+
+def test_a_machine_with_no_panel_gets_no_task_line_instructions(tmp_path):
+    _, out, _ = run_handler(tmp_path, ["UserPromptSubmit"], {"session_id": "abc-123", "prompt": "hi"})
+    assert "additionalContext" not in out
+
+
+def test_a_machine_with_a_panel_gets_them(tmp_path):
+    endpoint = tmp_path / ".local" / "share" / "agents-sidebar" / "endpoint.json"
+    endpoint.parent.mkdir(parents=True)
+    endpoint.write_text("{}")
+    _, out, _ = run_handler(tmp_path, ["UserPromptSubmit"], {"session_id": "abc-123", "prompt": "hi"})
+    assert "Current task: none" in out
+
+
+CODEX_SESSION = "01a135bf-0000-7000-8000-00000000c0de"
+
+
+def _rollout(tmp_path, *turns):
+    """A Codex rollout holding one turn_context line per (turn id, reviewer, approval policy)."""
+    path = tmp_path / "rollout.jsonl"
+    path.write_text("".join(json.dumps({"timestamp": "2026-01-01T00:00:00.000Z", "type": "turn_context", "payload": {
+        "turn_id": turn, "approvals_reviewer": reviewer, "approval_policy": policy}}, separators=(",", ":")) + "\n"
+        for turn, reviewer, policy in turns))
+    return str(path)
+
+
+def _codex_gate(tmp_path, rollout, turn="t1", tool="Bash"):
+    """The state a Codex session publishes on a PermissionRequest of `turn` for `tool`."""
+    code, _, written = run_handler(tmp_path, ["PermissionRequest", "--codex"], {
+        "session_id": CODEX_SESSION, "transcript_path": rollout, "turn_id": turn, "tool_name": tool,
+        "tool_input": {"command": "python3 probe.py", "description": "Allow a probe"}})
+    assert code == 0
+    [state] = [json.loads(value) for name, value in written if name == "codexState"]
+    return state["state"], state.get("question")
+
+
+def test_a_codex_command_its_own_reviewer_rules_on_does_not_wait_on_you(tmp_path):
+    """With approvals_reviewer auto_review Codex hands a command to a reviewer agent and stops for no one, but
+    fires PermissionRequest all the same: the card said WAITING, with Yes and No, for the seconds the review took."""
+    assert _codex_gate(tmp_path, _rollout(tmp_path, ("t1", "auto_review", "on-request"))) == ("working", None)
+
+
+def test_only_a_command_is_known_to_go_to_codex_s_reviewer(tmp_path):
+    """Codex still brings some approvals to the person under Auto-review, an app's for Computer Use among them,
+    and nothing measured says which tools those arrive as. Any tool but the shell keeps its gate."""
+    reviewed = _rollout(tmp_path, ("t1", "auto_review", "on-request"))
+    assert _codex_gate(tmp_path, reviewed, tool="mcp__desk__open_app")[0] == "blocked"
+    assert emit_state.codex_asks_a_person({"transcript_path": reviewed, "turn_id": "t1"}) is True
+
+
+def test_a_codex_request_with_any_other_reviewer_waits_on_you(tmp_path):
+    for reviewer, policy in (("user", "never"), ("guardian_subagent", "on-request"), (None, "on-request")):
+        assert _codex_gate(tmp_path, _rollout(tmp_path, ("t1", reviewer, policy)))[0] == "blocked", reviewer
+
+
+def test_a_codex_request_you_are_the_reviewer_of_waits_on_you(tmp_path):
+    assert _codex_gate(tmp_path, _rollout(tmp_path, ("t1", "user", "on-request")))[0] == "blocked"
+
+
+def test_a_codex_request_whose_turn_cannot_be_read_waits_on_you(tmp_path):
+    """Nothing says who rules on it, so the card asks: a badge missing while Codex waits is the worse error."""
+    assert _codex_gate(tmp_path, str(tmp_path / "gone.jsonl"))[0] == "blocked"
+    assert _codex_gate(tmp_path, _rollout(tmp_path, ("t0", "auto_review", "on-request")))[0] == "blocked"
+
+
+def test_a_codex_request_is_read_by_its_own_turn_s_reviewer(tmp_path):
+    """The reviewer can change between turns of one session, either way."""
+    earlier = _rollout(tmp_path, ("t1", "auto_review", "on-request"), ("t2", "user", "on-request"))
+    ask = lambda **turn: emit_state.codex_asks_a_person({"transcript_path": earlier, "tool_name": "Bash", **turn})
+    assert ask(turn_id="t1") is False
+    assert ask(turn_id="t2") is True
+    assert ask() is True
+
+
+def test_a_long_turn_s_reviewer_is_found_far_back_in_the_rollout(tmp_path, monkeypatch):
+    """A turn's context is written as it starts; megabytes of tool output follow it in a long one."""
+    monkeypatch.setattr(emit_state, "TURN_SCAN_STEP", 64)
+    rollout = _rollout(tmp_path, ("t1", "auto_review", "on-request"))
+    with open(rollout, "a") as fh:
+        fh.write("".join(json.dumps({"type": "response_item", "payload": {"n": n}}) + "\n" for n in range(40)))
+    assert emit_state.codex_asks_a_person({"transcript_path": rollout, "turn_id": "t1", "tool_name": "Bash"}) is False
+
+
+def test_a_standing_question_reaches_the_terminal_once_across_events(tmp_path, monkeypatch):
+    """Each hook is its own process, so what was written lives in the session's state file between them. The
+    permission_prompt notification comes seconds after the prompt and is the same gate: it moves neither the
+    gate's time nor the question carried."""
+    session = {"session_id": "abc12345-0000-4000-8000-000000000000"}
+    asked = {**session, "tool_name": "AskUserQuestion",
+             "tool_input": {"questions": [{"header": "Pick", "question": "Which one?",
+                                           "options": [{"label": "A"}, {"label": "B"}]}]}}
+    run_handler(tmp_path, ["PreToolUse"], {**session, "tool_use_id": "toolu_A", "tool_name": "AskUserQuestion"})
+    writes = []
+    for event, payload in (("PermissionRequest", asked),
+                           ("Notification", {**session, "notification_type": "permission_prompt"})):
+        code, _, written = run_handler(tmp_path, [event], payload)
+        assert code == 0
+        writes.append([json.loads(value)["since"] for name, value in written if name == "claudeQuestion"])
+        time.sleep(1.1)
+    assert len(writes[0]) == 1 and writes[1] == []

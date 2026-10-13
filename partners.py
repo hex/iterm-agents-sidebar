@@ -292,6 +292,8 @@ class Partners:
 
     def step(self, ends, now):
         said = []
+        # A session restarting clears its state variable before the new one writes: no folder yet, so unread.
+        ends = {pane: one if one is None or one["agent"] else None for pane, one in ends.items()}
         for pane, one in ends.items():
             if one is not None:
                 self.seen[pane] = {"label": one["label"], "agent": one["agent"]}

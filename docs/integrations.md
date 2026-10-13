@@ -232,6 +232,22 @@ already taken still runs, and a session can answer after the panel saw it
 back) is removed once a minute old. What it owes lives in memory only, so
 a daemon restart forgets it.
 
+## Hooks on a second machine
+
+For a card of a session that runs on another machine
+([docs/usage.md](usage.md#sessions-on-another-machine)), that machine needs
+the hooks and nothing else: no daemon, no iTerm2 script, no notifier.
+
+Copy the `plugin/` folder of a release to `~/.claude/skills/agents-sidebar`
+there, by hand or with whatever manages your dotfiles, and run
+`/reload-plugins` in sessions already open. The hooks need `python3` on the
+path. Use the same release on both machines: an older hook names no host,
+and its session then reads `exited` in a pane here, as it did before.
+
+On a machine without the panel the hooks stay quiet about the task line:
+they add its instructions to a prompt only where the daemon's
+`~/.local/share/agents-sidebar/endpoint.json` exists.
+
 ## Uninstall
 
 `./uninstall.sh` takes no flags. It stops the daemon and removes:

@@ -18,12 +18,16 @@ not guesswork:
     UserPromptSubmit                       -> working, and clears the record
                                               but keeps the subagents still
                                               running
-    PermissionRequest                      -> opens a gate on its tool
+    PermissionRequest                      -> opens a gate on its tool, unless
+                                              it is a command Codex's own
+                                              reviewer rules on
     Notification type=permission_prompt    -> opens an uncorrelated gate, unless
                                               the tool it could be about has run
     PreToolUse                             -> working
     PostToolUse                            -> working, closes its own gate
     PostToolUseFailure, PermissionDenied   -> closes its own gate
+    any event, while a gate is open        -> closes each gate whose tool's
+                                              result the transcript holds
     Notification type=idle_prompt          -> the parent is done
     Stop                                   -> the parent is done, and its
                                               background_tasks list replaces
@@ -53,10 +57,12 @@ from hooks. A wrong badge is worse than no badge.
 """
 import base64
 import fcntl
+import hashlib
 import glob
 import json
 import os
 import re
+import socket
 import stat
 import subprocess
 import sys
@@ -106,8 +112,8 @@ def read_payload():
 def blank_state():
     """A session nothing is known about: not working, no children, no gates."""
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
-            "agent_info": {}, "gates": {}, "last_tool": None, "last_tool_ran": False,
-            "turn_started": None, "idle_since": None, "reminded": 0, "question": None, "asks": {},
+            "agent_info": {}, "gates": {}, "gate_agents": {}, "last_tool": None,
+            "last_tool_agent": None, "last_tool_ran": False, "turn_started": None, "idle_since": None, "reminded": 0, "question": None, "asks": {},
             "background": [], "running": {}, "plan": []}
 
 
@@ -149,13 +155,17 @@ def subagents(doc):
 MODEL_SCAN_BYTES = 4 * 1024 * 1024
 
 
+def _session_root(transcript_path):
+    """The session's transcript path without `.jsonl`, from its own or a subagent's: the folder its subagents live in."""
+    root = transcript_path.split("/subagents/")[0]
+    return root[:-len(".jsonl")] if root.endswith(".jsonl") else root
+
+
 def _subagent_file(transcript_path, agent_id, suffix):
     """Claude Code writes a subagent's files beside the session transcript:
     <session>/subagents/agent-<id><suffix>, or for a workflow's agents
     <session>/subagents/workflows/<run>/agent-<id><suffix>."""
-    root = transcript_path.split("/subagents/")[0]
-    if root.endswith(".jsonl"):
-        root = root[:-len(".jsonl")]
+    root = _session_root(transcript_path)
     name = f"agent-{agent_id}{suffix}"
     direct = os.path.join(root, "subagents", name)
     if os.path.exists(direct):
@@ -227,6 +237,60 @@ def describe_subagents(doc, transcript_path):
             known["model"] = _subagent_model(_subagent_file(transcript_path, agent_id, ".jsonl"))
         info[agent_id] = known
     return {**doc, "agent_info": info}
+
+
+#: How much of a transcript's end is searched for a gated tool's result. The
+#: result is filed before the model's next message, so by the next hook event
+#: it sits among the last few entries; this bounds the read on every event
+#: while a gate is open.
+RESULT_SCAN_BYTES = 1024 * 1024
+
+
+def _results_in(path, keys):
+    """Which of `keys` end in a tool_result among the last RESULT_SCAN_BYTES of `path`."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - RESULT_SCAN_BYTES))
+            tail = fh.read()
+    except OSError:
+        return set()
+    wanted = [key.encode() for key in keys]
+    found = set()
+    for line in tail.splitlines():
+        if b'"tool_result"' not in line or not any(key in line for key in wanted):
+            continue
+        try:
+            entry = json.loads(line)
+            content = entry["message"]["content"] if entry.get("type") == "user" else None
+        except (ValueError, TypeError, KeyError, AttributeError):
+            # Among them the line the seek cut in half.
+            continue
+        for part in content if isinstance(content, list) else []:
+            if isinstance(part, dict) and part.get("type") == "tool_result" \
+                    and part.get("tool_use_id") in keys:
+                found.add(part["tool_use_id"])
+    return found
+
+
+def answered_tools(doc, transcript_path):
+    """The gated tools whose result the transcript already holds. -> set of tool ids.
+
+    Claude Code can end a gated tool without any hook: a prompt it times out
+    itself, as for a teammate that cannot prompt, is filed as an error result
+    and nothing more. That result is the tool's own end, as good as its
+    PostToolUse. A subagent's tool files its result in its own transcript.
+    """
+    keyed = [key for key in doc.get("gates") or {} if key != UNKEYED]
+    if not keyed or not transcript_path:
+        return set()
+    session = _session_root(transcript_path) + ".jsonl"
+    by_file = {}
+    for key in keyed:
+        agent = (doc.get("gate_agents") or {}).get(key)
+        path = _subagent_file(transcript_path, agent, ".jsonl") if agent else session
+        by_file.setdefault(path, []).append(key)
+    return {key for path, keys in by_file.items() for key in _results_in(path, keys)}
 
 
 #: The most of each part of a question the state carries. A notice shows less
@@ -326,13 +390,24 @@ def standing_question(doc):
     return doc["asks"][max(reversed(open_asks), key=doc["gates"].get)] if open_asks else None
 
 
-def apply_event(doc, event, payload, said, codex=False):
+def close_gate(doc, key):
+    """End what one tool held open: its gate, its question, its place among those running."""
+    doc["running"].pop(key, None)
+    doc["gates"].pop(key, None)
+    doc["asks"].pop(key, None)
+    doc["question"] = standing_question(doc)
+    if key == doc["last_tool"]:
+        doc["last_tool_ran"] = True
+
+
+def apply_event(doc, event, payload, said, codex=False, answered=()):
     """Fold one hook event into a session's state document. Pure.
 
     `said` is what state_for made of the event on its own -- kept as the
     reading of a single event, which is all it can honestly be, and turned
     into a change to the record here. `codex` says whose hooks these are:
-    the two agents differ in what a tool starting proves.
+    the two agents differ in what a tool starting proves. `answered` names
+    the gated tools whose end the transcript already holds.
     """
     before = doc
     doc = {"parent_active": bool(doc.get("parent_active")),
@@ -341,17 +416,24 @@ def apply_event(doc, event, payload, said, codex=False):
            "agent_types": dict(doc.get("agent_types") or {}),
            "agent_info": dict(doc.get("agent_info") or {}),
            "gates": dict(doc.get("gates") or {}),
+           "gate_agents": dict(doc.get("gate_agents") or {}),
            "last_tool": doc.get("last_tool"),
+           "last_tool_agent": doc.get("last_tool_agent"),
            "last_tool_ran": bool(doc.get("last_tool_ran")),
            "turn_started": doc.get("turn_started"),
            "idle_since": doc.get("idle_since"),
            "reminded": doc.get("reminded") or 0,
+           "question_sent": doc.get("question_sent"),
            "question": doc.get("question"),
            "asks": dict(doc.get("asks") or {}),
            "background": list(doc.get("background") or []),
            "running": dict(doc.get("running") or {}),
            "plan": list(doc.get("plan") or [])}
     now = round(time.time(), 3)
+
+    for key in answered:
+        if key in doc["gates"]:
+            close_gate(doc, key)
 
     if codex and event == "PostToolUse" and payload.get("tool_name") == "update_plan":
         # Each call carries the whole plan, so it replaces the last one.
@@ -381,6 +463,7 @@ def apply_event(doc, event, payload, said, codex=False):
         # same tool. That event has the id, so remember it.
         if payload.get("tool_use_id"):
             doc["last_tool"] = payload["tool_use_id"]
+            doc["last_tool_agent"] = payload.get("agent_id")
             doc["last_tool_ran"] = False
             # Tools run side by side, so each is counted until its own end:
             # the newest finishing says nothing of an older one still going.
@@ -412,12 +495,7 @@ def apply_event(doc, event, payload, said, codex=False):
         # vanishes while Claude waits is the failure.
         key = payload.get("tool_use_id")
         if key:
-            doc["running"].pop(key, None)
-            doc["gates"].pop(key, None)
-            doc["asks"].pop(key, None)
-            doc["question"] = standing_question(doc)
-            if key == doc["last_tool"]:
-                doc["last_tool_ran"] = True
+            close_gate(doc, key)
 
     if (said == "blocked" and event == "Notification" and not payload.get("tool_use_id")
             and doc["last_tool"] and doc["last_tool_ran"]):
@@ -430,7 +508,12 @@ def apply_event(doc, event, payload, said, codex=False):
         pass
     elif said == "blocked":
         key = payload.get("tool_use_id") or doc["last_tool"] or UNKEYED
-        doc["gates"][key] = now
+        # A gate keeps the time it opened: the notification that echoes it
+        # seconds later is the same prompt, not a new one.
+        doc["gates"].setdefault(key, now)
+        # Whose transcript will hold the tool's end: a subagent files its own.
+        doc["gate_agents"][key] = payload.get("agent_id") if payload.get("tool_use_id") \
+            else doc["last_tool_agent"]
         # What each gate asks, kept per gate: the notice needs the question,
         # not only the fact of one, and when the newest closes first the card
         # has to fall back to what the one still open asks. A Notification
@@ -477,6 +560,9 @@ def apply_event(doc, event, payload, said, codex=False):
         doc["gates"] = {}
         doc["asks"] = {}
         doc["question"] = None
+
+    doc["gate_agents"] = {key: agent for key, agent in doc["gate_agents"].items()
+                          if key in doc["gates"]}
 
     # When the rest began: stamped as the session comes to rest and left
     # standing through the next turn, so a card that has worked only a moment
@@ -535,6 +621,10 @@ def read_state(session_id):
                           else {},
             "finished": doc.get("finished") if isinstance(doc.get("finished"), dict) else {},
             "gates": doc.get("gates") if isinstance(doc.get("gates"), dict) else {},
+            "gate_agents": doc.get("gate_agents") if isinstance(doc.get("gate_agents"), dict)
+                           else {},
+            "last_tool_agent": doc.get("last_tool_agent")
+                               if isinstance(doc.get("last_tool_agent"), str) else None,
             "last_tool_ran": bool(doc.get("last_tool_ran")),
             "last_tool": doc.get("last_tool") if isinstance(doc.get("last_tool"), str)
                          else None,
@@ -544,6 +634,7 @@ def read_state(session_id):
                           if isinstance(doc.get("idle_since"), (int, float)) else None,
             "reminded": doc.get("reminded") if isinstance(doc.get("reminded"), (int, float)) else 0,
             "question": doc.get("question") if isinstance(doc.get("question"), dict) else None,
+            "question_sent": doc.get("question_sent") if isinstance(doc.get("question_sent"), str) else None,
             "asks": doc.get("asks") if isinstance(doc.get("asks"), dict) else {},
             "running": doc.get("running") if isinstance(doc.get("running"), dict) else {},
             "background": doc.get("background") if isinstance(doc.get("background"), list) else [],
@@ -567,7 +658,11 @@ def update(session_id, event, payload, said, codex=False):
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(_state_path(session_id) + ".lock", "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            doc = apply_event(read_state(session_id), event, payload, said, codex)
+            doc = read_state(session_id)
+            # Codex closes its gates on the next tool, and its rollout files
+            # no Claude tool_result.
+            answered = set() if codex else answered_tools(doc, payload.get("transcript_path"))
+            doc = apply_event(doc, event, payload, said, codex, answered)
             doc = describe_subagents(doc, payload.get("transcript_path"))
             path = _state_path(session_id)
             temp = path + f".{os.getpid()}.tmp"
@@ -579,15 +674,15 @@ def update(session_id, event, payload, said, codex=False):
         return apply_event(blank_state(), event, payload, said)
 
 
-def mark_reminded(session_id, now):
-    """Remember that the session was just asked for a check-in."""
+def _remember(session_id, field, value):
+    """Set one field of the session's state document, under its lock."""
     if not session_id:
         return
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(_state_path(session_id) + ".lock", "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            doc = dict(read_state(session_id), reminded=round(now))
+            doc = dict(read_state(session_id), **{field: value})
             path = _state_path(session_id)
             temp = path + f".{os.getpid()}.tmp"
             with open(temp, "w", encoding="utf-8") as fh:
@@ -595,6 +690,16 @@ def mark_reminded(session_id, now):
             os.replace(temp, path)
     except OSError:
         pass
+
+
+def mark_reminded(session_id, now):
+    """Remember that the session was just asked for a check-in."""
+    _remember(session_id, "reminded", round(now))
+
+
+def mark_question_sent(session_id, sent):
+    """Remember what stands in the question variable: the digest of the text written, or None."""
+    _remember(session_id, "question_sent", sent)
 
 
 def read_note(session_id):
@@ -715,6 +820,64 @@ def clear_state(session_id):
             pass
 
 
+#: How far back from a rollout's end the turn under way is looked for. A turn's
+#: context is written as it starts, and rollouts run to 180 MB.
+TURN_SCAN_BYTES = 32 * 1024 * 1024
+TURN_SCAN_STEP = 1024 * 1024
+
+
+def _turn_context(path, turn_id):
+    """The newest turn_context a Codex rollout holds, or the one of `turn_id` when that is given. -> dict or None."""
+    marker = b'"type":"turn_context"'
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            end = start = fh.tell()
+            later = b""
+            while start > 0 and end - start < TURN_SCAN_BYTES:
+                size = min(TURN_SCAN_STEP, start)
+                start -= size
+                fh.seek(start)
+                chunk = fh.read(size) + later
+                # The first line of a chunk is cut wherever the chunk began: it waits for the chunk before it.
+                cut = 0 if start == 0 else chunk.find(b"\n") + 1
+                if cut == 0 and start > 0:
+                    later = chunk
+                    continue
+                for line in reversed(chunk[cut:].splitlines() if marker in chunk else []):
+                    if marker not in line:
+                        continue
+                    try:
+                        found = json.loads(line)["payload"]
+                    except (ValueError, TypeError, KeyError):
+                        continue
+                    if isinstance(found, dict) and (not turn_id or found.get("turn_id") == turn_id):
+                        return found
+                later = chunk[:cut]
+    except OSError:
+        return None
+    return None
+
+
+def codex_asks_a_person(payload):
+    """Whether a Codex PermissionRequest stops for a person. -> bool.
+
+    Codex fires the event for every approval request, whoever rules on it.
+    Under approvals_reviewer auto_review a reviewer agent rules on a shell
+    command, and the turn's context in the rollout names the reviewer. Only
+    that pair is taken not to ask: Codex still brings some approvals to the
+    person under Auto-review, and nothing measured says which tools those
+    arrive as. Any other tool or reviewer, and a turn that cannot be read,
+    asks: a badge that stays is a nuisance, one missing while Codex waits is
+    the failure.
+    """
+    path = payload.get("transcript_path")
+    if payload.get("tool_name") != "Bash" or not isinstance(path, str) or not path:
+        return True
+    turn = _turn_context(path, payload.get("turn_id"))
+    return turn is None or turn.get("approvals_reviewer") != "auto_review"
+
+
 def state_for(event, payload):
     """-> a state name, "" to clear it, or None to leave the variable alone."""
     if event == "UserPromptSubmit":
@@ -812,6 +975,31 @@ def agent_pid(tty, name):
     except (OSError, subprocess.SubprocessError):
         return None
     return pid_named(out, name)
+
+
+def short_host():
+    """This machine's name up to its first dot: what a panel on another machine tells this session by."""
+    return socket.gethostname().split(".")[0]
+
+
+def front_of(ps_out):
+    """`ps -o tpgid=,pgid=` for the agent -> whether its group holds its terminal, or None when unread."""
+    parts = ps_out.split()
+    if len(parts) != 2 or not all(part.lstrip("-").isdigit() for part in parts):
+        return None
+    return parts[0] == parts[1]
+
+
+def in_front(pid):
+    """Whether the agent is what its terminal's keys reach, at this event."""
+    if not pid:
+        return None
+    try:
+        out = subprocess.run(["/bin/ps", "-o", "tpgid=,pgid=", "-p", str(pid)],
+                             capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return front_of(out)
 
 
 def _is_terminal(path):
@@ -949,7 +1137,7 @@ def open_steps(tool_input):
     return steps
 
 
-def published(doc, pid, payload, codex, now, tasks=True):
+def published(doc, pid, payload, codex, now, tasks=True, front=None):
     """The JSON the session variable carries, from the folded state document.
 
     Codex has no statusline to bridge, so its variable also carries the model
@@ -957,6 +1145,10 @@ def published(doc, pid, payload, codex, now, tasks=True):
     effort and context from, and the open steps of its plan. A Claude
     session's carries its open tasks, and `tasks` false leaves them out for an
     agent that keeps no Claude task list.
+
+    Every agent's says where it runs: `host`, its folder, and `front`,
+    whether the agent held its terminal at this event. A panel on another
+    machine has only this to tell the session by and can ask nothing more.
     """
     value = {"state": aggregate(doc), "pid": pid, "session": session_of(payload),
              "agents": live_agents(doc), "subagents": subagents(doc),
@@ -964,12 +1156,13 @@ def published(doc, pid, payload, codex, now, tasks=True):
              "turn_started": turn_started(doc),
              "idle_since": idle_since(doc),
              "question": doc.get("question") if doc.get("gates") else None,
-             "ts": round(now)}
+             "ts": round(now),
+             "host": short_host(), "front": front,
+             # Where the session works. Codex's filed state is paired to a pane by it.
+             "cwd": payload.get("cwd")}
     if codex:
         value["model"] = payload.get("model")
         value["transcript_path"] = payload.get("transcript_path")
-        # What the panel pairs a pane by when this state reaches no terminal.
-        value["cwd"] = payload.get("cwd")
         # Codex's commands run under its shared app-server daemon, where no
         # process listing ties them to a pane, so the hook's own count is
         # what keeps a long one from reading as a session gone quiet.
@@ -1010,8 +1203,8 @@ def carried(value, session_id, directory=None):
     the variable says `detail: false`: a card without its subagents, rather
     than a state that never arrives.
     """
-    whole = json.dumps(value)
-    if len(base64.b64encode(whole.encode())) <= VARIABLE_CEILING:
+    whole = _compact(value)
+    if _fits(whole):
         return whole
     envelope = {key: item for key, item in value.items() if key not in DETAIL_FIELDS}
     try:
@@ -1019,7 +1212,14 @@ def carried(value, session_id, directory=None):
         envelope["detail"] = True
     except OSError:
         envelope["detail"] = False
-    return json.dumps(envelope)
+    # A panel on another machine has no file to read: the folder rides in the
+    # envelope while it fits, shortened before it is given up.
+    folder = envelope.get("cwd")
+    if isinstance(folder, str) and not _fits(_compact(envelope)):
+        envelope["cwd"] = "/".join(folder.rstrip("/").split("/")[-2:])
+        if not _fits(_compact(envelope)):
+            del envelope["cwd"]
+    return _compact(envelope)
 
 
 def file_whole(value, session_id, directory=None):
@@ -1033,6 +1233,87 @@ def file_whole(value, session_id, directory=None):
     with open(temp, "w", encoding="utf-8") as fh:
         fh.write(json.dumps(value))
     os.replace(temp, path)
+
+
+#: The standing question, in a variable of its own: it does not fit beside the state.
+QUESTION_VARIABLE = "claudeQuestion"
+#: Label lengths tried, longest first, when a question has to be cut to fit.
+LABEL_STEPS = (60, 40, 30, 20, 12, 8)
+#: The panel's daemon writes this where it runs; a machine with hooks alone has none.
+ENDPOINT = os.path.expanduser("~/.local/share/agents-sidebar/endpoint.json")
+
+
+def _compact(doc):
+    """`doc` as JSON with no spaces, the form both variables carry."""
+    return json.dumps(doc, separators=(",", ":"))
+
+
+def _fits(text):
+    return len(base64.b64encode(text.encode())) <= VARIABLE_CEILING
+
+
+def _longest_fitting(build, text):
+    """`build(text cut to n characters)` for the largest n whose result fits, or None."""
+    low, high, best = 0, len(text), None
+    while low <= high:
+        middle = (low + high) // 2
+        made = build(clip(text, middle) if middle else "")
+        if _fits(made):
+            best, low = made, middle + 1
+        else:
+            high = middle - 1
+    return best
+
+
+def question_short(question, since):
+    """The standing question as the text its variable carries, or None when it cannot travel.
+
+    The shape is the question's own, with `since`: the time its gate opened,
+    which pairs it with the state that names it. Every option is kept in its
+    place or nothing is sent, since an answer is the option's number.
+    """
+    if not isinstance(question, dict) or question.get("multi") or question.get("more") or "set" in question:
+        return None
+    if "options" in question:
+        whole = _compact(dict(question, since=since))
+        if _fits(whole):
+            return whole
+        for limit in LABEL_STEPS:
+            labels = [clip(label, limit) for label in question["options"]]
+            made = _longest_fitting(
+                lambda text: _compact({"header": "", "question": text, "options": labels,
+                                      "multi": False, "more": 0, "since": since}),
+                question.get("question") or "")
+            if made:
+                return made
+        return None
+    if question.get("tool"):
+        return _longest_fitting(
+            lambda text: _compact({"tool": question["tool"], "summary": text,
+                                  "id": question.get("id"), "since": since}),
+            question.get("summary") or "")
+    return None
+
+
+def written(text):
+    """What stands in the question variable, as the state document remembers it."""
+    return hashlib.sha1(text.encode()).hexdigest()[:16]
+
+
+def question_write(sent, question, since):
+    """What to write to the question variable at this event -> (text or None, what now stands there).
+
+    Written when the text to carry differs from what stands, and cleared
+    when no question does; an event that changes neither writes nothing, so
+    the terminal gets a second escape sequence only when the question
+    changes. Compared by what was written, not by when the gate opened: a
+    second gate raised while the first stands changes the question and
+    leaves the oldest gate's time as it was.
+    """
+    text = question_short(question, since) if question and since is not None else None
+    if text is None:
+        return ("", None) if sent is not None else (None, None)
+    return (None, sent) if sent == written(text) else (text, written(text))
 
 
 def ancestor_pids():
@@ -1113,6 +1394,8 @@ def main():
     if agent == "omp" and pid_sent(payload) is None:
         return
     state = state_for(event, payload)
+    if codex and event == "PermissionRequest" and not codex_asks_a_person(payload):
+        state = "working"
 
     session_id = session_of(payload)
     if event == "SessionEnd":
@@ -1183,18 +1466,27 @@ def main():
     if state is None:
         pass                     # nothing this event should change
     elif state == "":
-        emit("", variable=variable)
+        emit("", tty, variable)
+        if agent == "claude":
+            emit("", tty, QUESTION_VARIABLE)
     elif codex and not tty:
         # Codex runs its hooks in an app-server daemon that can outlive the
         # Codex that started it and serve the next one; from there no parent
         # holds a terminal. File the state where the panel pairs it to a pane.
         try:
-            file_whole(published(doc, pid, payload, codex, time.time()), session_id)
+            file_whole(published(doc, pid, payload, codex, time.time(), front=in_front(pid)), session_id)
         except OSError:
             pass
     else:
-        emit(carried(published(doc, pid, payload, codex, time.time(), tasks=agent == "claude"),
-                     session_id), tty, variable)
+        value = published(doc, pid, payload, codex, time.time(), tasks=agent == "claude", front=in_front(pid))
+        if agent == "claude":
+            text, standing = question_write(doc.get("question_sent"), value.get("question"),
+                                            value.get("blocked_since"))
+            if text is not None:
+                # Before the state: the panel reads when the state arrives.
+                emit(text, tty, QUESTION_VARIABLE)
+                mark_question_sent(session_id, standing)
+        emit(carried(value, session_id), tty, variable)
 
     # omp takes nothing back from its extension's child, and the task line's
     # commands are written for an agent that runs its own hooks.
@@ -1202,8 +1494,10 @@ def main():
         return
 
     # The task line: what the agent should be told about reporting its work.
+    # Only where the panel runs: a machine with hooks alone has nothing that reads the reports.
     context = whisper(event, payload, read_note(session_id), time.time(), doc.get("reminded") or 0,
-                      os.path.join(os.path.dirname(os.path.abspath(__file__)), "task.py"))
+                      os.path.join(os.path.dirname(os.path.abspath(__file__)), "task.py")) \
+        if os.path.exists(ENDPOINT) else None
     if context:
         mark_reminded(session_id, time.time())
     if codex and event == "UserPromptSubmit":

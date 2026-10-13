@@ -74,6 +74,8 @@ def deliver_text(source, text, nonce):
 
 def own_refusal(end, ready):
     """Why this card cannot be either end of any link now, whatever the other card is."""
+    if end.get("host"):
+        return "a remote session cannot be linked yet"
     if end["provider"] not in PROVIDERS:
         return "only Claude, Codex and omp sessions can link"
     if not end["agent"] or not SESSION.match(end["agent"]):

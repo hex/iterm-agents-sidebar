@@ -109,3 +109,55 @@ def test_a_codex_subcommand_names_itself_so_only_the_tui_reads_as_codex():
     assert foreground_command(node + " exec 'reply ok'") == "codex exec"
     assert foreground_command(node + " app-server") == "codex app-server"
     assert foreground_command(node + " --model gpt-6-astra") == "codex"
+
+
+def test_a_tmux_table_names_its_host_and_its_panes():
+    out = ("box %0 /dev/ttys001 /private/tmp\n"
+           "box %4 /dev/ttys005 /srv/My App\n\ngarbage\n")
+    assert sidebar.parse_tmux_table(out) == {
+        "host": "box",
+        "panes": {0: {"tty": "ttys001", "path": "/private/tmp"},
+                  4: {"tty": "ttys005", "path": "/srv/My App"}}}
+
+
+def test_a_tmux_table_with_no_pane_names_no_host():
+    assert sidebar.parse_tmux_table("") == {"host": None, "panes": {}}
+
+
+LOCAL_PANES = {4: {"job": "claude", "path": "/Users/x/atlas", "tty": "ttys004"}}
+TABLES = {"here": {"host": "desk", "panes": {4: {"tty": "ttys004", "path": "/Users/x/atlas"}}},
+          "there": {"host": "box", "panes": {4: {"tty": "ttys005", "path": "/srv/app"}}}}
+
+
+def test_a_pane_of_a_tmux_server_on_this_machine_is_the_local_pane():
+    assert sidebar.tmux_pane("here", TABLES, 4, "desk", LOCAL_PANES) == LOCAL_PANES[4]
+
+
+def test_a_pane_of_a_tmux_server_elsewhere_never_takes_the_local_pane_of_its_number():
+    assert sidebar.tmux_pane("there", TABLES, 4, "desk", LOCAL_PANES) == {"path": "/srv/app", "host": "box"}
+
+
+def test_a_pane_of_a_connection_that_was_not_read_is_left_to_iterm2():
+    assert sidebar.tmux_pane("lost", TABLES, 4, "desk", LOCAL_PANES) == {}
+
+
+def test_a_session_outside_tmux_has_no_pane():
+    assert sidebar.tmux_pane(None, TABLES, None, "desk", LOCAL_PANES) == {}
+
+
+def test_a_tmux_session_whose_tab_names_no_connection_is_the_local_pane():
+    assert sidebar.tmux_pane(None, {}, 4, "desk", LOCAL_PANES) == LOCAL_PANES[4]
+
+
+def test_a_foreign_pane_the_table_does_not_list_has_a_host_and_no_path():
+    assert sidebar.tmux_pane("there", TABLES, 9, "desk", LOCAL_PANES) == {"path": None, "host": "box"}
+
+
+def test_this_machines_name_stops_at_its_first_dot(monkeypatch):
+    monkeypatch.setattr(sidebar.socket, "gethostname", lambda: "desk.example.com")
+    assert sidebar.local_host() == "desk"
+
+
+def test_a_tmux_table_names_its_host_without_control_characters_and_clipped():
+    assert sidebar.parse_tmux_table("bo\x1bx %0 /dev/ttys001 /srv\n")["host"] == "box"
+    assert sidebar.parse_tmux_table("h" * 200 + " %0 /dev/ttys001 /srv\n")["host"] == "h" * 64

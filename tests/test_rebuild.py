@@ -9,6 +9,7 @@ import functools
 import importlib.util
 import json
 import os
+import sys
 import threading
 import time
 import types
@@ -126,6 +127,7 @@ class Session:
 
 class Tab:
     tab_id = "t1"
+    tmux_connection_id = None
     sessions = (Session(),)
 
 
@@ -1256,3 +1258,172 @@ def test_the_state_files_are_read_off_the_event_loop(monkeypatch, tmp_path):
 
 def test_keep_remote_starts_off():
     assert sidebar.DEFAULT_SETTINGS["keep_remote"] is False
+
+
+def test_a_tmux_server_that_does_not_answer_holds_the_others_up_no_longer_than_its_limit(monkeypatch, tmp_path):
+    class Connection:
+        def __init__(self, connection_id, answer):
+            self.connection_id, self.answer = connection_id, answer
+
+        async def async_send_command(self, command):
+            if self.answer is None:
+                await asyncio.sleep(60)
+            return self.answer
+
+    async def connections(_):
+        return [Connection("slow", None), Connection("here", "desk %4 /dev/ttys004 /Users/x/atlas\n")]
+    b = bridge(monkeypatch, [])
+    monkeypatch.setitem(sys.modules, "iterm2", types.SimpleNamespace(async_get_tmux_connections=connections))
+    monkeypatch.setattr(sidebar, "TMUX_TABLE_SECONDS", 0.05)
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    began = time.monotonic()
+    tables = asyncio.run(b.read_tmux_tables({"slow", "here"}))
+    assert time.monotonic() - began < 1
+    assert tables == {"here": {"host": "desk", "panes": {4: {"tty": "ttys004", "path": "/Users/x/atlas"}}}}
+    assert (tmp_path / "daemon.log").read_text().split(" ", 2)[2] == (
+        "tmux connection 'slow' not read: TimeoutError()\n")
+
+def test_a_remote_tmux_pane_does_not_wear_the_local_pane_of_its_number(monkeypatch):
+    """A tmux server elsewhere numbers its panes from zero too: by number alone its pane would take a
+    local pane's label, terminal and branch."""
+    class RemotePane(Session):
+        async def async_get_variable(self, name):
+            return {"tmuxWindowPane": 4, "jobName": "ssh", "path": "/Users/x/elsewhere"}.get(name)
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "read_system", lambda: (
+        ({}, {}, {}, {}), {4: {"job": "claude", "path": "/Users/x/atlas", "tty": "ttys004"}}, {}, {}, {}, {}))
+    monkeypatch.setattr(sidebar, "local_host", lambda: "desk")
+
+    async def tables(ids):
+        assert ids == {"there"}
+        return {"there": {"host": "box", "panes": {4: {"tty": "ttys005", "path": "/srv/app"}}}}
+    b.read_tmux_tables = tables
+    tab = type("RemoteTab", (Tab,), {"sessions": (RemotePane(),), "tmux_connection_id": "there"})
+    window = type("W", (Window,), {"tabs": (tab(),)})
+    b.app = type("A", (NoWindows,), {"terminal_windows": (window(),)})()
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["path"], row["tty"], row["host"]) == ("/srv/app", None, "box")
+
+
+REMOTE_STATE = {"state": "blocked", "pid": 4242, "session": "0f0e0d0c-0b0a-4a09-8807-060504030201",
+                "blocked_since": 1791700000, "ts": 1791700000, "host": "box", "front": True, "cwd": "/private/tmp",
+                "detail": True}
+REMOTE_ASKED = {"question": "Which one?", "options": ["This", "That"], "multi": False, "more": 0,
+                "since": 1791700000}
+
+
+def remote_session(job="ssh", title="✳ Claude Code"):
+    class RemoteSession(Session):
+        async def async_get_variable(self, name):
+            return {"user.claudeState": json.dumps(REMOTE_STATE), "user.claudeQuestion": json.dumps(REMOTE_ASKED),
+                    "jobName": job, "autoName": title, "path": "/Users/x/atlas", "tty": "/dev/ttys004"}.get(name)
+    return RemoteSession()
+
+
+def remote_bridge(monkeypatch, tmp_path):
+    """A remote pid that is also a live local pid, with a status file, shells and a start time of its own."""
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "local_host", lambda: "desk")
+    monkeypatch.setattr(sidebar, "read_system", lambda: (
+        ({4242: [{"label": "ls", "command": "ls"}]}, {4242: 1789980000}, {4242: "blue"}, {4242: "parent"}),
+        {}, {4242: (0, 12.0, 50000, "ttys004")}, {4242: "claude"}, {}, {4242: (4242, 4242, "ttys004")}))
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    (tmp_path / "4242.json").write_text(json.dumps({"model": {"display_name": "Local Model"}}))
+    # A session of that very id filed its whole state on this machine: a remote row must not read it.
+    monkeypatch.setattr(sidebar, "HOOK_STATE_DIR", str(tmp_path))
+    (tmp_path / (REMOTE_STATE["session"] + ".published")).write_text(json.dumps(
+        {"state": "idle", "pid": 4242, "session": REMOTE_STATE["session"], "ts": REMOTE_STATE["ts"] + 60}))
+    monkeypatch.setattr(sidebar, "git_branch", lambda path: pytest.fail(f"read a branch at {path}") if path else None)
+    monkeypatch.setattr(sidebar, "session_colour", lambda path: pytest.fail(f"read a colour at {path}") if path else None)
+    monkeypatch.setattr(sidebar, "git_main_worktree",
+                        lambda path: pytest.fail(f"read a worktree at {path}") if path else None)
+    return b
+
+
+def test_a_remote_row_takes_nothing_from_the_local_process_of_its_pid(monkeypatch, tmp_path):
+    b = remote_bridge(monkeypatch, tmp_path)
+    b.app = one_session(remote_session())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["host"], row["agent_state"], row["path"]) == ("box", "blocked", "/private/tmp")
+    assert (row["agent_pid"], row["model"], row["shells"], row["started_at"], row["colour"],
+            row["parent_session"], row["branch"], row["worktree_of"], row["in_front"]) == (
+        None, None, [], None, None, None, None, None, None)
+    assert row["question"] == {"question": "Which one?", "options": ["This", "That"], "multi": False, "more": 0}
+    assert row["remote_refusal"] is None
+
+
+def test_a_remote_row_whose_transport_is_not_in_front_reads_unknown(monkeypatch, tmp_path):
+    b = remote_bridge(monkeypatch, tmp_path)
+    b.app = one_session(remote_session(job="zsh"))
+    [row] = asyncio.run(b.read_sessions())
+    assert row["agent_state"] == "unknown"
+    assert row["remote_refusal"] == "the connection to box is not in front here"
+
+
+def test_a_remote_row_without_the_agents_title_takes_no_key(monkeypatch, tmp_path):
+    b = remote_bridge(monkeypatch, tmp_path)
+    b.app = one_session(remote_session(title="user@box:~"))
+    [row] = asyncio.run(b.read_sessions())
+    assert row["remote_refusal"] == "the agent's title has gone from the pane"
+
+
+def test_a_remote_codex_row_opens_nothing_this_machine_holds(monkeypatch, tmp_path):
+    """Its state names a rollout file, a session id and a command: on this machine each would be a
+    path opened, a database row or a task note read, and a process matched, all of them someone else's."""
+    rollout = tmp_path / "rollout.jsonl"
+    rollout.write_text("{}\n")
+    state = {"state": "blocked", "pid": 4242, "session": "0f0e0d0c-0b0a-4a09-8807-060504030201",
+             "blocked_since": 1791700000, "ts": 1791700000, "host": "box", "front": True, "cwd": "/private/tmp",
+             "model": "gpt-5", "transcript_path": str(rollout),
+             "question": {"tool": "shell", "summary": "ls", "id": "f" * 32}}
+
+    class RemoteCodex(Session):
+        async def async_get_variable(self, name):
+            return {"user.codexState": json.dumps(state), "jobName": "ssh", "path": "/Users/x/atlas",
+                    "tty": "/dev/ttys004"}.get(name)
+    b = remote_bridge(monkeypatch, tmp_path)
+    for name in ("read_session", "thread_name"):
+        monkeypatch.setattr(sidebar.codex, name, lambda *_, name=name: pytest.fail(f"codex.{name} was called"))
+    monkeypatch.setattr(sidebar, "read_task", lambda session: pytest.fail("a task note was read"))
+    monkeypatch.setattr(sidebar, "approved_codex_command", lambda *_: pytest.fail("local processes were matched"))
+    b.app = one_session(RemoteCodex())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["host"], row["provider"], row["agent_state"], row["model"]) == ("box", "openai", "blocked", "gpt-5")
+    assert (row["rollout"], row["topic"], row["task"], row["context"]) == (None, None, None, None)
+
+
+def test_a_remote_claude_row_reads_no_task_note_and_no_codex_job_of_its_session(monkeypatch, tmp_path):
+    b = remote_bridge(monkeypatch, tmp_path)
+    monkeypatch.setattr(sidebar, "read_task", lambda session: pytest.fail("a task note was read"))
+    monkeypatch.setattr(sidebar, "codex_job_rows", lambda *_: pytest.fail("the codex job store was matched"))
+    b.app = one_session(remote_session())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["task"], row["subagents"]) == (None, [])
+
+
+def test_a_tmux_server_that_did_not_answer_is_left_alone_for_a_while(monkeypatch, tmp_path):
+    """A link to another machine that is down would otherwise cost its limit on every rebuild,
+    and every local card would wait behind it."""
+    asked = []
+
+    class Connection:
+        connection_id = "slow"
+
+        async def async_send_command(self, command):
+            asked.append(command)
+            await asyncio.sleep(60)
+
+    async def connections(_):
+        return [Connection()]
+    b = bridge(monkeypatch, [])
+    monkeypatch.setitem(sys.modules, "iterm2", types.SimpleNamespace(async_get_tmux_connections=connections))
+    monkeypatch.setattr(sidebar, "TMUX_TABLE_SECONDS", 0.05)
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    assert asyncio.run(b.read_tmux_tables({"slow"})) == {}
+    began = time.monotonic()
+    assert asyncio.run(b.read_tmux_tables({"slow"})) == {}
+    assert time.monotonic() - began < 0.04 and len(asked) == 1
+    monkeypatch.setattr(sidebar, "TMUX_RETRY_SECONDS", 0)
+    assert asyncio.run(b.read_tmux_tables({"slow"})) == {}
+    assert len(asked) == 2
+    assert (tmp_path / "daemon.log").read_text().count("not read") == 1

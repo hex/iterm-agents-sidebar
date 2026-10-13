@@ -160,8 +160,9 @@ desktop app) where mods are on.
 
 ### Partners
 
-Two Claude Code cards linked this way stay linked: they draw as one card,
-the dragged card on top, with a link badge on the join whose ring is half in
+Two Claude Code cards linked this way stay linked: they draw as one card
+where the card you dropped on was, the dragged card on top and no other card
+moved, with a link badge on the join whose ring is half in
 each session's colour. Each session knows who the other is and what it is
 doing, can read the other's recent conversation, and can hand the other a
 task and get the answer back. The agents decide on their own when to read
@@ -267,6 +268,67 @@ disconnected yourself before the switch. One you disconnect in the two
 minutes after a switch that Claude Code did not drop it for, the panel turns
 back on, since it cannot tell that apart from a drop.
 
+## Sessions on another machine
+
+A pane that runs `ssh host` or `et host` (Eternal Terminal) gets a card for
+the Claude Code session running on that host, once the hooks are installed
+there ([docs/integrations.md](integrations.md#hooks-on-a-second-machine)).
+tmux on the other machine works too, plain or `tmux -CC`. mosh does not: it
+redraws the screen itself and the state never arrives.
+
+The card shows what the session's own state says and nothing this machine
+would have to look up:
+
+- its state and timers, and how many subagents are running
+- the host, as a small computer glyph and the host's name on the facts line
+- its name, from the title Claude Code gives the session, as on a local
+  card; the folder's name when the pane carries no such title
+- a question it is waiting on, with the same answer buttons a local card has
+
+Model, context, cost, the task line, tasks, the branch, CPU and memory, the
+remote control glyph and links are missing on a remote card: they are read
+from files on the machine the session runs on. A Codex session on another
+machine shows no card in most cases: Codex runs its hooks without a
+terminal to report through.
+
+Claude Code on a Mac reached over ssh can say `Not logged in` until the
+login keychain is unlocked in that ssh session (`security unlock-keychain`).
+The card then stays on `working` after a prompt, since the turn never ends.
+
+You can focus a remote card and answer its question. An answer types one
+key into the pane, a digit, `y` or Escape, never Enter, and only while all
+of this holds:
+
+1. `ssh` or `et` is what runs in the pane here, so the key goes to the
+   other machine.
+2. The agent held its terminal when it last reported, with no editor or
+   pager in front of it.
+3. The pane's title still carries Claude Code's mark. A shell prompt
+   repaints the title once the agent is gone.
+4. The session is waiting on you.
+
+Otherwise the card shows no buttons and says `Answer in the pane:` with the
+reason, a banner posted then has none either, and nothing is typed: a
+banner's button that arrives after the checks stop holding is logged in
+`daemon.log` as `typing refused`. The third check needs
+the other machine's prompt to set a title. On a shell that sets none the
+mark stays after the agent dies, and an answer's key can then land on that
+shell's prompt line: a single key with no Enter, so nothing runs.
+
+A reply and a slash command from the card's menu are refused on a remote
+card: `replies do not reach a remote session yet`. Resume is never offered
+there. A banner for a remote session has no reply field. A
+remote card cannot be linked or partnered.
+
+A set of questions, a multi-select, or a question too long to send
+shows `A question is waiting in the pane` with no buttons; answer it in the
+terminal.
+
+When the connection drops and the pane is back at a local shell, the card's
+state goes unknown and it takes no answer. Under Eternal Terminal a pane
+closed here can leave the session running on the other machine, where the
+panel no longer sees it.
+
 ## Which agent a card runs
 
 Provider badge, under Rows in settings, picks how a card says whether it runs
@@ -332,6 +394,11 @@ question, or the tool and the command, the same way, through omp's extension,
 but no buttons under them: omp draws its own prompts, so you answer in omp.
 An omp session without the extension reports only that it waits, so its card
 shows no question.
+
+A Codex session with Auto-review on (`approvals_reviewer = "auto_review"`)
+does not wait on you while its reviewer rules on a shell command: the card
+stays working. A request for any other tool shows as waiting there too, even
+when the reviewer answers it.
 
 Under a question the card lists its options, a button each. The one the agent
 suggests, whose label ends in "(Recommended)", is tinted green. Clicking one types

@@ -317,6 +317,14 @@ def test_a_card_missing_for_a_moment_keeps_its_partnership(book):
     assert book.pairs() == [("p1", "p2")] and book.of("p1").id == made.id
 
 
+def test_a_card_whose_session_id_is_unset_for_a_moment_is_read_as_unread(book):
+    # A restarting session clears its state variable before the new one writes its own.
+    made = book.make(A, B, 100.0)
+    assert book.step({"p1": A, "p2": end("p2", None, "bravo")}, 101.0) == []
+    assert book.step(ENDS, 102.0) == []
+    assert book.pairs() == [("p1", "p2")] and book.of("p1").id == made.id
+
+
 def test_untie_answers_the_open_task_and_deletes_an_untaken_drop(book, tmp_path):
     run_task(book, tmp_path)
     book.untie("p1", 102.0)
@@ -433,7 +441,8 @@ def symlinked(tmp_path, agent):
 
 @pytest.mark.parametrize("bad,error", [
     ("symlink", "the links folder for a-id is not a plain directory"),
-    ("no agent", "no links folder for session None"),
+    # A card with no session id is unread for the tick, as a missing card is: skipped without a word.
+    ("no agent", None),
 ])
 def test_a_pair_whose_folder_cannot_be_used_is_skipped_and_the_others_are_stepped(book, tmp_path, bad, error):
     first = book.make(A, B, 100.0)
@@ -443,7 +452,7 @@ def test_a_pair_whose_folder_cannot_be_used_is_skipped_and_the_others_are_steppe
         symlinked(tmp_path, "a-id")
     else:
         ends["p1"] = end("p1", None, "alpha")
-    assert book.step(ends, 101.0) == [f"partner {first.id[:8]} not stepped: {error}"]
+    assert book.step(ends, 101.0) == ([f"partner {first.id[:8]} not stepped: {error}"] if error else [])
     assert json.loads((folder(tmp_path, "c-id") / "partner.json").read_text())["label"] == "“delta”"
     assert not (tmp_path / "elsewhere" / "partner.json").exists()
 

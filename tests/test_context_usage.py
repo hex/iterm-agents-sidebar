@@ -202,6 +202,7 @@ def test_a_session_gone_since_the_last_rebuild_is_refused(tmp_path):
     ({"conversation": None}, "no conversation id for this session yet"),
     ({"conversation": CONVERSATION + "; rm -rf ~"}, "no conversation id for this session yet"),
     ({"path": None}, "the session's directory is gone"),
+    ({"host": "box"}, "a remote session has no /context here"),
 ])
 def test_a_row_that_is_not_a_readable_claude_conversation_is_refused(tmp_path, changes, reason):
     with pytest.raises(context_usage.Refused, match=f"^{re.escape(reason)}$"):

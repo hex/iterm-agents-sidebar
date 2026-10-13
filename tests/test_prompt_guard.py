@@ -2,6 +2,7 @@
 # ABOUTME: A waiting prompt would take the text as its answer, a gone or exited agent leaves a shell, and a
 # ABOUTME: program in front of the agent (outside its tty's foreground group) would take the text instead.
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -174,3 +175,105 @@ def test_a_foreground_group_whose_leader_has_gone_is_another_program():
     """`cat log | less` keeps the pane after cat exits; the group outlives
     the leader that would have named it."""
     assert in_front(GROUPS_PS, 6100, "ttys009") == "another program"
+
+
+from sidebar_rules import typing_refusal
+
+REMOTE = {"session_id": "abc", "state": "blocked", "host": "box"}
+
+
+def test_a_reply_to_a_remote_session_is_refused():
+    assert prompt_refusal(dict(REMOTE, state="idle")) == "replies do not reach a remote session yet"
+    assert prompt_refusal(REMOTE) == "replies do not reach a remote session yet"
+
+
+def test_a_local_row_is_typed_into_as_before():
+    assert typing_refusal({"session_id": "abc", "state": "idle"}, ["fix it", "\r"]) is None
+    assert typing_refusal(None, ["1"]) is None
+
+
+def test_a_remote_row_takes_one_key_while_it_waits_on_you():
+    assert typing_refusal(REMOTE, ["2"]) is None
+    assert typing_refusal(REMOTE, ["\x1b"]) is None
+
+
+@pytest.mark.parametrize("strokes", [["2\n"], ["2", "\r"], ["\r"], ["\n"], ["3 use the other one\n"], ["yes"], []])
+def test_a_remote_row_takes_no_line_and_no_text(strokes):
+    assert typing_refusal(REMOTE, strokes) == "replies do not reach a remote session yet"
+
+
+def test_a_remote_row_that_is_not_waiting_takes_no_key():
+    assert typing_refusal(dict(REMOTE, state="working"), ["2"]) == "it is not waiting on you"
+    assert typing_refusal(dict(REMOTE, state="unknown"), ["2"]) == "it is not waiting on you"
+
+
+def test_a_remote_row_says_why_its_own_checks_refuse():
+    row = dict(REMOTE, remote_refusal="the agent's title has gone from the pane")
+    assert typing_refusal(row, ["2"]) == "the agent's title has gone from the pane"
+
+
+def remote_bridge(monkeypatch, tmp_path, **changes):
+    """A Bridge whose last frame lists "abc" as a remote card with one question standing."""
+    b = bridge_over(monkeypatch, tmp_path, "blocked")
+    row = {"session_id": "abc", "state": "blocked", "host": "box",
+           "question": {"question": "Which one?", "options": ["This", "That"], "multi": False, "more": 0}}
+    b.latest = {"groups": [{"name": "AGENTS", "rows": [dict(row, **changes)]}]}
+    return b
+
+
+def test_an_answer_types_its_digit_into_a_remote_pane_that_passes_its_checks(monkeypatch, tmp_path):
+    b = remote_bridge(monkeypatch, tmp_path)
+    asyncio.run(b.act("abc", "answer", json.dumps({"pick": 2, "question": "Which one?"})))
+    assert b.app.pane.typed == ["2"]
+
+
+def test_an_answer_is_not_typed_into_a_remote_pane_that_fails_its_checks(monkeypatch, tmp_path):
+    """Nothing is typed, and the click is not remembered as an answer: the next one can still land."""
+    b = remote_bridge(monkeypatch, tmp_path, remote_refusal="the agent's title has gone from the pane")
+    asyncio.run(b.act("abc", "answer", json.dumps({"pick": 1, "question": "Which one?"})))
+    assert b.app.pane.typed == [] and b.answered == {}
+    assert (tmp_path / "daemon.log").read_text().split(" ", 2)[2] == (
+        "answer refused abc the agent's title has gone from the pane\n")
+
+
+def test_a_notices_reply_is_not_typed_into_a_remote_pane(monkeypatch, tmp_path):
+    """Other, then the text, then Enter: a line a shell there could run."""
+    b = remote_bridge(monkeypatch, tmp_path)
+    asyncio.run(b.act("abc", "send", "3use the other one\n"))
+    assert b.app.pane.typed == []
+    assert (tmp_path / "daemon.log").read_text().split(" ", 2)[2] == (
+        "typing refused abc replies do not reach a remote session yet\n")
+
+
+def test_a_notices_button_types_its_one_key_into_a_remote_pane_that_passes(monkeypatch, tmp_path):
+    b = remote_bridge(monkeypatch, tmp_path)
+    asyncio.run(b.act("abc", "send", "1"))
+    assert b.app.pane.typed == ["1"]
+
+
+def test_a_local_pane_is_typed_into_as_before(monkeypatch, tmp_path):
+    b = bridge_over(monkeypatch, tmp_path, "blocked")
+    asyncio.run(b.act("abc", "send", "3use the other one\n"))
+    assert b.app.pane.typed == ["3use the other one", "\r"]
+
+
+def test_the_daemon_types_in_one_place():
+    source = (Path(__file__).resolve().parent.parent / "sidebar.py").read_text()
+    assert source.count("async_send_text(") == 1
+
+
+def test_a_remote_row_out_of_reach_says_so_before_saying_it_is_not_waiting():
+    """With the link gone the state reads unknown; the reason worth giving is the link."""
+    row = dict(REMOTE, state="unknown", remote_refusal="the connection to box is not in front here")
+    assert typing_refusal(row, ["2"]) == "the connection to box is not in front here"
+
+
+@pytest.mark.parametrize("key", ["\x03", "\x04", "\x1a", "a", "Y", " ", "0x"])
+def test_a_remote_row_takes_only_a_digit_y_or_escape(key):
+    """Every key the panel types as an answer is one of those; anything else has no business in a remote pane."""
+    assert typing_refusal(REMOTE, [key]) == "replies do not reach a remote session yet"
+
+
+@pytest.mark.parametrize("key", ["1", "9", "0", "y", "\x1b"])
+def test_a_remote_row_takes_each_answer_key(key):
+    assert typing_refusal(REMOTE, [key]) is None

@@ -258,3 +258,8 @@ def test_a_delivery_the_receiver_could_not_start_refuses_the_link(tmp_path):
     (tmp_path / "b-id" / f"failed-{link.id}.json").write_text(json.dumps({"link": link.id, "reason": "the session did not take the prompt"}))
     book.step(1002.0, {"a-id", "b-id"}, lambda r, n: None)
     assert (book.frames()[0]["state"], book.frames()[0]["reason"]) == ("refused", "the session did not take the prompt")
+
+
+def test_a_remote_session_cannot_be_an_end_of_a_link():
+    assert links.own_refusal(dict(row("p1", "a"), host="box"), lambda agent: True) == (
+        "a remote session cannot be linked yet")

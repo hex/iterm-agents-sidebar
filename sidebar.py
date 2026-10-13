@@ -14,6 +14,7 @@ import os
 import re
 import secrets
 import select
+import socket
 import subprocess
 import sys
 import time
@@ -32,7 +33,7 @@ import links  # noqa: E402
 import omp  # noqa: E402
 import partners  # noqa: E402
 import remote  # noqa: E402
-from sidebar_rules import prompt_refusal  # noqa: E402
+from sidebar_rules import prompt_refusal, remote_key_refusal, typing_refusal  # noqa: E402
 import sound  # noqa: E402
 import statusline  # noqa: E402
 import update  # noqa: E402
@@ -316,7 +317,7 @@ def switch_log_line(event):
 NOTICE_BUTTONS = 4
 
 
-def notify_argv(app, session_id, name, kind, question):
+def notify_argv(app, session_id, name, kind, question, remote=False, refusal=None):
     """agents-notifier's argv for one moment, or None for a moment we skip.
 
     `kind` is a key of NOTIFY_MESSAGES, or "clear" to take a standing notice
@@ -325,6 +326,10 @@ def notify_argv(app, session_id, name, kind, question):
     becomes the reply field. A multi-select question gets neither, since one
     button cannot express several picks. Any other gated tool gets a single
     Allow button. A finished turn offers a reply that becomes the next prompt.
+    A session on another machine (`remote`) gets no reply field: a reply is a
+    typed line, and only single keys are typed into a remote pane. One the
+    daemon would type no key into now (`refusal`, the card's own reason) gets
+    no buttons either, as its card offers none.
     """
     exe = str(Path(app) / "Contents" / "MacOS" / "agents-notifier")
     if kind == "clear":
@@ -337,22 +342,23 @@ def notify_argv(app, session_id, name, kind, question):
             # not what this is about.
             "--title", name or "Session"]
     if kind == "done":
-        return argv + ["--body", body, "--reply", "Next prompt"]
+        return argv + ["--body", body] + ([] if remote else ["--reply", "Next prompt"])
     if question and "options" in question:
         body = question.get("question") or body
         if question.get("more"):
             body += f" (+{question['more']} more)"
         argv += ["--body", body]
-        if not question.get("multi"):
+        if not question.get("multi") and not refusal:
             for n, label in enumerate(question["options"][:NOTICE_BUTTONS], 1):
                 argv += ["--button", f"{n}={label}"]
-            argv += ["--reply", "Other"]
+            if not remote:
+                argv += ["--reply", "Other"]
         return argv
     if question and question.get("tool"):
         # One action is all macOS shows flat; two fold into an Options menu.
         # Allow is the one worth a click, and No stays in the terminal.
-        return argv + ["--body", "wants to run: " + (question.get("summary") or question["tool"]),
-                       "--button", "allow=Allow"]
+        return argv + ["--body", "wants to run: " + (question.get("summary") or question["tool"])] \
+            + ([] if refusal else ["--button", "allow=Allow"])
     return argv + ["--body", body]
 
 
@@ -825,28 +831,34 @@ def _blocks(rows):
     return blocks
 
 
+def _placed_by(block):
+    """The card whose place a block takes: a pair's lower card, the one dropped on; else the block's own."""
+    return next((row for row in block if row.get("partner_of")), block[0])
+
+
 def by_name(rows):
     """Top-level cards in name order, each with everything nested in it."""
-    blocks = sorted(_blocks(rows), key=lambda block: block[0]["label"].casefold())
+    blocks = sorted(_blocks(rows), key=lambda block: _placed_by(block)["label"].casefold())
     return [row for block in blocks for row in block]
 
 
 def dock_partners(rows, pairs):
-    """Each pair's lower card, with everything nested in it, moved to just after the upper card's block, so every
-    order keeps the two together. A pair one of whose cards is not a top-level card here is left as it is."""
+    """Each pair's upper card, with everything nested in it, moved to just before the lower card's block, so every
+    order keeps the two together where the card dropped on was. A pair one of whose cards is not a top-level card
+    here is left as it is."""
     for upper, lower in pairs:
         blocks = _blocks(rows)
         top = {block[0]["session_id"]: block for block in blocks}
         if upper not in top or lower not in top:
             continue
-        moved = top[lower]
+        moved = top[upper]
         gone = {id(row) for row in moved}
         rest = [row for row in rows if id(row) not in gone]
-        at = next(i for i, row in enumerate(rest) if row is top[upper][-1]) + 1
+        at = next(i for i, row in enumerate(rest) if row is top[lower][0])
         rows[:] = rest[:at] + moved + rest[at:]
-        top[upper][0]["partner"] = {"side": "upper", "with": lower}
-        moved[0]["partner"] = {"side": "lower", "with": upper}
-        moved[0]["partner_of"] = upper
+        moved[0]["partner"] = {"side": "upper", "with": lower}
+        top[lower][0]["partner"] = {"side": "lower", "with": upper}
+        top[lower][0]["partner_of"] = upper
     return rows
 
 
@@ -855,7 +867,7 @@ def by_hand(rows, names):
     everything nested in it. A card whose name was never placed goes after
     every placed one, in the order it came."""
     place = {name: at for at, name in enumerate(names)}
-    blocks = sorted(_blocks(rows), key=lambda block: place.get(block[0]["label"], len(place)))
+    blocks = sorted(_blocks(rows), key=lambda block: place.get(_placed_by(block)["label"], len(place)))
     return [row for block in blocks for row in block]
 
 
@@ -1103,7 +1115,7 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
             # breakdown only where the daemon would run it.
             conversation = session.get("conversation")
             if (session.get("provider") == "claude" and isinstance(conversation, str)
-                    and CONVERSATION_ID.fullmatch(conversation)):
+                    and CONVERSATION_ID.fullmatch(conversation) and not session.get("host")):
                 row["context_readable"] = True
             if session.get("context") is not None:
                 row["context"] = session["context"]
@@ -1115,6 +1127,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
                 row["topic"] = session["topic"]
             if session.get("in_front"):
                 row["in_front"] = session["in_front"]
+            if session.get("remote_refusal"):
+                row["remote_refusal"] = session["remote_refusal"]
             # At rest the agent's last stated intent still stands, and on a
             # card that would read as work going on.
             if session.get("doing") and session.get("agent_state") in ("working", "blocked"):
@@ -1149,6 +1163,9 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
                 row["usage"] = session["usage"]
         if session.get("branch"):
             row["branch"] = session["branch"]
+        # Any row can be on another machine: an agent's, or a shell in a tmux server there.
+        if session.get("host"):
+            row["host"] = session["host"]
         if kind == "agent" and session.get("claude_session"):
             leads[session["claude_session"]] = row
         if kind == "agent" and session.get("parent_session"):
@@ -1267,7 +1284,7 @@ def parse_session(raw):
     return session if isinstance(session, str) and session else None
 
 
-def parse_state(raw, command_running=False):
+def parse_state(raw, command_running=False, remote=False):
     """The claudeState user variable -> one of STATES, or None if unset.
 
     Verifies the writer is still alive. SetUserVar is last-writer-wins with no
@@ -1278,6 +1295,10 @@ def parse_state(raw, command_running=False):
     `command_running` says a command is running in the writer's own process
     tree. No hook fires inside a tool call, so that is what keeps a quiet
     working claim believable through a long one.
+
+    `remote` says the state was published on another machine: its pid names
+    a process this one cannot ask about, so its liveness is the caller's to
+    judge, and it never reads "exited" here.
     """
     if not raw:
         return None
@@ -1294,14 +1315,15 @@ def parse_state(raw, command_running=False):
     # pids address other groups, so neither is a liveness question at all.
     if pid <= 0:
         return "unknown"
-    try:
-        os.kill(pid, 0)          # signal 0 tests existence, sends nothing
-    except ProcessLookupError:
-        return "exited"
-    except (ValueError, OverflowError):
-        return "unknown"
-    except PermissionError:
-        pass                     # alive, just not ours to signal
+    if not remote:
+        try:
+            os.kill(pid, 0)          # signal 0 tests existence, sends nothing
+        except ProcessLookupError:
+            return "exited"
+        except (ValueError, OverflowError):
+            return "unknown"
+        except PermissionError:
+            pass                     # alive, just not ours to signal
 
     if state == "working":
         # The hook's own count of tools started and not finished: a Codex
@@ -1353,6 +1375,8 @@ def context_target(rows, session_id):
         raise context_usage.Refused("no such session")
     if row.get("provider") != "claude":
         raise context_usage.Refused("only a Claude conversation has a /context")
+    if row.get("host"):
+        raise context_usage.Refused("a remote session has no /context here")
     conversation = row.get("conversation")
     if not isinstance(conversation, str) or not CONVERSATION_ID.fullmatch(conversation):
         raise context_usage.Refused("no conversation id for this session yet")
@@ -1852,6 +1876,51 @@ def parse_tmux_panes(out):
     return panes
 
 
+#: The longest a rebuild waits on a tmux server's answer; one on another machine can be slow or gone.
+TMUX_TABLE_SECONDS = 1
+#: How long a tmux server that did not answer is left alone before it is asked again.
+TMUX_RETRY_SECONDS = 30
+#: One line per pane of a tmux server, its host first: what a connection is asked for.
+TMUX_TABLE_COMMAND = "list-panes -a -F '#{host_short} #{pane_id} #{pane_tty} #{pane_current_path}'"
+
+
+def local_host():
+    """This machine's name as hooks and tmux write it: up to the first dot."""
+    return socket.gethostname().split(".")[0]
+
+
+def parse_tmux_table(out):
+    """A connection's answer to TMUX_TABLE_COMMAND -> {host, panes}. The host
+    is the first line's; every line of one server carries the same."""
+    host, rest = None, []
+    for line in out.splitlines():
+        name, _, pane = line.partition(" ")
+        if pane.startswith("%"):
+            host = host or plain(name, HOST_LIMIT)
+            rest.append(pane)
+    return {"host": host, "panes": parse_tmux_panes("\n".join(rest))}
+
+
+def tmux_pane(connection_id, tables, number, here, local_panes):
+    """What tmux knows of one session's pane, from the server its tab is on.
+
+    Pane numbers start at zero on every server, so a number alone names a
+    pane only of the server on this machine. A pane of a server elsewhere
+    gives its folder and its host and is never paired with a local terminal;
+    a connection that could not be read leaves the pane to iTerm2.
+    """
+    if number is None:
+        return {}
+    if connection_id is None:
+        return local_panes.get(number) or {}
+    table = tables.get(connection_id)
+    if table is None:
+        return {}
+    if table["host"] == here:
+        return local_panes.get(number) or {}
+    return {"path": (table["panes"].get(number) or {}).get("path"), "host": table["host"]}
+
+
 #: Where tmux lives; the daemon starts from iTerm2 without a login shell's PATH.
 TMUX_PATHS = ("/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux")
 
@@ -2049,6 +2118,82 @@ def job_pid(value):
     if isinstance(value, bool) or not isinstance(value, int):
         return None
     return value if value > 0 else None
+
+
+#: The programs a pane runs to reach another machine. While one is the pane's
+#: foreground job, the pane's keys go to that machine.
+TRANSPORTS = frozenset({"ssh", "et"})
+HOST_LIMIT = 64
+PATH_LIMIT = 512
+#: The hook's own limits on a question's parts, and more options than any prompt offers.
+QUESTION_LIMIT, HEADER_LIMIT, OPTION_LIMIT, SUMMARY_LIMIT, OPTIONS_MOST = 300, 40, 60, 200, 12
+
+
+def _published(raw):
+    try:
+        value = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def plain(text, limit):
+    """Another machine's text as this one will show and log it: printable characters only, clipped.
+    None when it is not text or nothing is left. A newline kept would start a line of its own in the log."""
+    if not isinstance(text, str):
+        return None
+    return "".join(ch for ch in text if ch.isprintable())[:limit] or None
+
+
+def remote_host(raw, here):
+    """The machine a state was published on when it is not this one, or None.
+    Text from that machine: cleaned, shown as text, never part of a command."""
+    host = plain(_published(raw).get("host"), HOST_LIMIT)
+    return host if host and host != here else None
+
+
+def parse_front(raw):
+    """Whether the agent held its terminal at its last event: True, False, or None when not said."""
+    front = _published(raw).get("front")
+    return front if isinstance(front, bool) else None
+
+
+def parse_cwd(raw):
+    """The folder a state says its session works in, as text to show."""
+    return plain(_published(raw).get("cwd"), PATH_LIMIT)
+
+
+def remote_question(raw, question_raw):
+    """The question a remote state names, from the variable of its own, or None.
+    Shown only while the state is blocked and the question is the one raised with it."""
+    state, asked = _published(raw), _published(question_raw)
+    if state.get("state") != "blocked" or not asked or asked.get("since") != state.get("blocked_since"):
+        return None
+    return question_shape(asked)
+
+
+def question_shape(asked):
+    """A question from another machine -> the one shape a card and a notice read, or None.
+
+    Only what they read is kept, each part of the type they expect and no
+    longer than the hook would have sent it. Anything else is no question:
+    the page walks `options` as a list and a notice builds buttons from it,
+    and neither may fail on another machine's word.
+    """
+    text = lambda key, limit: asked[key][:limit] if isinstance(asked.get(key), str) else None
+    if "options" in asked:
+        options, question = asked["options"], text("question", QUESTION_LIMIT)
+        if (question is None or not isinstance(options, list) or not 1 <= len(options) <= OPTIONS_MOST
+                or not all(isinstance(option, str) for option in options)
+                or asked.get("multi") or asked.get("more") or "set" in asked):
+            return None
+        shaped = {"question": question, "options": [option[:OPTION_LIMIT] for option in options],
+                  "multi": False, "more": 0}
+        return dict({"header": text("header", HEADER_LIMIT) or ""}, **shaped) if "header" in asked else shaped
+    tool, gate = text("tool", HEADER_LIMIT), text("id", HEADER_LIMIT)
+    if tool and gate:
+        return {"tool": tool, "summary": text("summary", SUMMARY_LIMIT) or "", "id": gate}
+    return None
 
 
 def parse_pid(raw):
@@ -3003,6 +3148,8 @@ RELEASE_CHECK_SECONDS = 24 * 60 * 60
 #: The state the plugin hook writes, one variable per agent: Claude Code's,
 #: Codex's, and omp's through its extension. Each is watched as well as read.
 STATE_VARIABLES = ("user.claudeState", "user.codexState", "user.ompState")
+#: A standing question, written beside the state for a session on another machine.
+QUESTION_VARIABLE = "user.claudeQuestion"
 
 #: Variables Bridge reads per session. `path` and `autoName` drive classify;
 #: `jobName` is display only, and only on shell rows; `jobPid` and `tty` are
@@ -3011,7 +3158,8 @@ STATE_VARIABLES = ("user.claudeState", "user.codexState", "user.ompState")
 SESSION_VARIABLES = ("path", "autoName", "jobName", "jobPid", "tty", "name", "tmuxWindowPane",
                      *STATE_VARIABLES,
                      # Written by claude-status.
-                     "user.claudeStatus")
+                     "user.claudeStatus",
+                     QUESTION_VARIABLE)
 
 
 class Server:
@@ -3152,6 +3300,9 @@ class Bridge:
         self._rebuild_again = False
         #: (pid, kind) -> when that session last read heavy, for hold_heavy.
         self._heavy_seen = {}
+        #: tmux connections that did not answer, by when they were last asked:
+        #: each is said once and asked again only after TMUX_RETRY_SECONDS.
+        self._tmux_unread = {}
         #: The hook session ids that have a card, which the state sweep spares.
         self.live_sessions = set()
         self.trips = ReturnTrips()
@@ -3201,6 +3352,10 @@ class Bridge:
         (shells, started, agent_colours, agent_parents), tmux_panes, resources, commands, args, groups = \
             await asyncio.to_thread(read_system)
         codex_jobs = await asyncio.to_thread(read_codex_jobs)
+        here = local_host()
+        connections = {tab.tmux_connection_id for window in self.app.terminal_windows
+                       for tab in window.tabs} - {None}
+        tables = await self.read_tmux_tables(connections) if connections else {}
         rows, pids, live_sessions = [], [], set()
         for window_index, window in enumerate(self.app.terminal_windows, start=1):
             for tab_index, tab in enumerate(window.tabs, start=1):
@@ -3213,7 +3368,8 @@ class Bridge:
                         return_exceptions=True)
                     values = {name: None if isinstance(value, BaseException) else value
                               for name, value in zip(SESSION_VARIABLES, read)}
-                    pane = tmux_panes.get(values["tmuxWindowPane"]) or {}
+                    pane = tmux_pane(tab.tmux_connection_id, tables, values["tmuxWindowPane"],
+                                     here, tmux_panes)
                     # tmux's directory for its own pane over iTerm2's guess.
                     values["path"] = pane.get("path") or values["path"]
                     # tmux's terminal for its own pane over iTerm2's, which
@@ -3222,7 +3378,9 @@ class Bridge:
                     raw, provider = agent_variable({"claude": values["user.claudeState"],
                                                     "openai": values["user.codexState"],
                                                     "omp": values["user.ompState"]})
-                    raw = with_detail(raw)
+                    # A state from another machine filed its detail there: a
+                    # file of its session id here would be another session's.
+                    raw = raw if remote_host(raw, here) else with_detail(raw)
                     live_sessions.add(parse_session(raw))
                     # Codex opens its session at the first prompt, so a TUI
                     # waiting at its prompt has published nothing. The
@@ -3263,8 +3421,22 @@ class Bridge:
                     if titled:
                         provider = "omp"
                     pid = job_pid(values["jobPid"]) if titled else parse_pid(raw)
+                    # A state published on another machine: its pid, its
+                    # files and its folder are that machine's. Nothing of
+                    # this machine's is looked up by them.
+                    host = remote_host(raw, here) or pane.get("host")
+                    transport = job in TRANSPORTS
+                    if host:
+                        pid = None
+                        values["path"] = parse_cwd(raw) or (pane.get("path") if pane.get("host") else None)
                     doing = running = spawned = None
-                    if provider == "openai" and raw:
+                    if host:
+                        # Only what the state itself says. Its rollout, its
+                        # session's notes and its commands are on the other
+                        # machine; the same names here are someone else's.
+                        status = dict(parse_status(None),
+                                      model=parse_codex(raw)["model"] if provider == "openai" else None)
+                    elif provider == "openai" and raw:
                         # Codex has no statusline: the hook names the model and
                         # the rollout has the rest.
                         published = parse_codex(raw)
@@ -3301,8 +3473,14 @@ class Bridge:
                         # word on its directory outranks it, and tmux's.
                         values["path"] = status["directory"] or values["path"]
                     marks = transcript_marks(status.get("transcript"))
-                    agent_state = titled or parse_state(raw, command_running=bool(shells.get(pid)))
-                    if provider == "openai" and agent_state == "blocked" and approved_codex_command(
+                    agent_state = titled or parse_state(raw, command_running=bool(shells.get(pid)),
+                                                        remote=bool(host))
+                    if host and raw and not transport:
+                        # The variable outlives the link: with the transport
+                        # gone from the foreground nothing says the session
+                        # can still be reached.
+                        agent_state = "unknown"
+                    if not host and provider == "openai" and agent_state == "blocked" and approved_codex_command(
                             parse_question(raw), parse_blocked_since(raw), args, started, resources,
                             commands):
                         # Answered: the command it asked for is running.
@@ -3328,10 +3506,17 @@ class Bridge:
                         # agent: text typed into the pane would go there.
                         "agent_pid": pid,
                         "tty": tty or None,
+                        # The machine the agent runs on when it is not this one, and why
+                        # not even one key may be typed into its pane now.
+                        "host": host,
+                        "remote_refusal": remote_key_refusal(
+                            host, transport, parse_front(raw),
+                            bool(values["autoName"]) and values["autoName"].startswith(AGENT_TITLE_MARKER))
+                        if host and raw else None,
                         "in_front": program_in_front(pid, tty, groups, args),
                         # The name the agent gave the conversation, where it keeps one.
                         "topic": (omp_title_topic(values["autoName"]) if provider == "omp"
-                                  else codex.thread_name(parse_session(raw)) if provider == "openai"
+                                  else codex.thread_name(parse_session(raw)) if provider == "openai" and not host
                                   else None),
                         "doing": doing,
                         "agents": parse_agents(raw) if spawned is None
@@ -3342,9 +3527,10 @@ class Bridge:
                         "subagents": spawned if spawned is not None else merge_codex_rows(
                             parse_subagents(raw), codex_job_rows(
                                 codex_jobs, parse_session(raw), parse_turn_started(raw), resources)
-                            if provider == "claude" else []),
+                            if provider == "claude" and not host else []),
                         "blocked_since": parse_blocked_since(raw),
-                        "question": parse_question(raw),
+                        "question": remote_question(raw, values[QUESTION_VARIABLE]) if host
+                                    else parse_question(raw),
                         "tasks": parse_tasks(raw),
                         "working_since": parse_working_since(raw),
                         "idle_since": parse_idle_since(raw),
@@ -3362,8 +3548,8 @@ class Bridge:
                         # A teammate wears the colour it was spawned with; a
                         # session wears the one cs gave its directory.
                         "colour": agent_colours.get(pid)
-                                  or session_colour(values["path"]),
-                        "task": read_task(parse_session(raw)),
+                                  or (None if host else session_colour(values["path"])),
+                        "task": None if host else read_task(parse_session(raw)),
                         # Who spawned this pane, and which Claude session it
                         # is, so a teammate can be nested under its lead.
                         "parent_session": agent_parents.get(pid),
@@ -3371,11 +3557,12 @@ class Bridge:
                         # The hook's own id for the conversation, which outlives
                         # the process: the statusline's dies with it.
                         "conversation": parse_session(raw),
-                        "rollout": parse_codex(raw)["transcript_path"] if provider == "openai" else None,
+                        "rollout": parse_codex(raw)["transcript_path"] if provider == "openai" and not host else None,
                         # A Claude session's transcript, for its partner's partner_read.
                         "transcript": status["transcript"] if provider == "claude" else None,
-                        "branch": git_branch(values["path"]),
-                        "worktree_of": git_main_worktree(values["path"]),
+                        # A remote folder can exist here too; nothing of this machine is read at it.
+                        "branch": None if host else git_branch(values["path"]),
+                        "worktree_of": None if host else git_main_worktree(values["path"]),
                     })
                     pids.append(pid)
         # After every row is known: a session's tree ends where another's begins.
@@ -3480,6 +3667,19 @@ class Bridge:
             else:
                 asyncio.ensure_future(self.act(session_id, verb, None))
 
+    async def type_keys(self, session, session_id, strokes, pause=0):
+        """Type into a pane. The only place the daemon does: a remote pane's
+        rule (typing_refusal) is asked here, against the last frame."""
+        refusal = typing_refusal(find_row(self.latest, session_id), strokes)
+        if refusal:
+            self.log("typing refused", session_id[:8], refusal)
+            return False
+        for stroke in strokes:
+            await session.async_send_text(stroke)
+            if pause:
+                await asyncio.sleep(pause)
+        return True
+
     async def act(self, session_id, verb, text):
         # Before the pane is looked up, so a notice's Reply to a closed pane
         # is logged as refused too.
@@ -3516,9 +3716,7 @@ class Bridge:
                 return
             await origin.async_activate(select_tab=True, order_window_front=True)
         elif verb in ("send", "prompt"):
-            for stroke in keystrokes(text or ""):
-                await session.async_send_text(stroke)
-                await asyncio.sleep(0.05)
+            await self.type_keys(session, session_id, keystrokes(text or ""), pause=0.05)
         elif verb == "close":
             # Forced: the page has already asked for a second click, and
             # iTerm2's own "a job is running" prompt would then ask a third
@@ -3538,7 +3736,9 @@ class Bridge:
             return
         command = resume_command(row["path"], row["provider"], row["conversation"])
         self.resuming[session_id] = (time.monotonic(), row["job_name"])
-        await session.async_send_text(command + "\n")
+        if not await self.type_keys(session, session_id, [command + "\n"]):
+            del self.resuming[session_id]
+            return
         # In front, so cs's own question is where the answer is typed.
         await session.async_activate(select_tab=True, order_window_front=True)
         self.log("resume", session_id[:8], command)
@@ -3560,12 +3760,51 @@ class Bridge:
         standing = (find_row(self.latest, session_id) or {}).get("question")
         provider = (find_row(self.latest, session_id) or {}).get("provider")
         keys = answer_keys(text, standing, self.answered.get(session_id), provider)
+        # Asked before the click is remembered: a key a remote pane may not
+        # take now leaves the question open to the next click.
         if keys is None:
             self.log("answer refused", session_id[:8], repr(text))
             return
+        refusal = typing_refusal(find_row(self.latest, session_id), [keys])
+        if refusal:
+            self.log("answer refused", session_id[:8], refusal)
+            return
         self.answered[session_id] = next_answered(standing, self.answered.get(session_id))
-        await session.async_send_text(keys)
+        await self.type_keys(session, session_id, [keys])
         self.log("answer", session_id[:8], keys)
+
+    async def read_tmux_tables(self, ids):
+        """Each of these tmux connections' own pane table, asked through iTerm2.
+        One that cannot be read is left out and said once."""
+        import iterm2
+
+        tables = {}
+        try:
+            connections = await iterm2.async_get_tmux_connections(self.connection)
+        except Exception as error:                   # noqa: BLE001
+            self.log("tmux connections not read:", repr(error))
+            return tables
+        now = time.monotonic()
+        # One that did not answer is left alone for a while: a link that is
+        # down would cost its limit on every rebuild, and every local card
+        # would wait behind it.
+        wanted = [one for one in connections if one.connection_id in ids
+                  and now - self._tmux_unread.get(one.connection_id, -TMUX_RETRY_SECONDS) >= TMUX_RETRY_SECONDS]
+        # Together: a slow link to another machine must not hold up the
+        # others, and none may hold a rebuild longer than its own limit.
+        answers = await asyncio.gather(
+            *(asyncio.wait_for(one.async_send_command(TMUX_TABLE_COMMAND), TMUX_TABLE_SECONDS)
+              for one in wanted), return_exceptions=True)
+        for one, answer in zip(wanted, answers):
+            if isinstance(answer, BaseException):
+                if one.connection_id not in self._tmux_unread:
+                    self.log(f"tmux connection {one.connection_id!r} not read: {answer!r}")
+                self._tmux_unread[one.connection_id] = now
+            else:
+                self._tmux_unread.pop(one.connection_id, None)
+                tables[one.connection_id] = parse_tmux_table(answer)
+        self._tmux_unread = {one: at for one, at in self._tmux_unread.items() if one in ids}
+        return tables
 
     async def read_terminal_font(self):
         """Keep the default profile's font for shell names that ask for it.
@@ -3590,7 +3829,8 @@ class Bridge:
         return {"pane": pane, "agent": inner.get("conversation"), "provider": frame_row.get("provider") or "claude",
                 "label": card_label(frame_row), "state": frame_row.get("state"),
                 "depth": frame_row.get("depth", 0), "worktree_of": frame_row.get("worktree_of"),
-                "in_front": frame_row.get("in_front"), "rollout": inner.get("rollout"), "colour": frame_row.get("colour")}
+                "in_front": frame_row.get("in_front"), "rollout": inner.get("rollout"), "colour": frame_row.get("colour"),
+                "host": frame_row.get("host")}
 
     def link(self, source_pane, target_pane):
         """Two Claude cards become partners; any other two get a one-shot hand-off -> the frame; raises links.Refused."""
@@ -3748,7 +3988,8 @@ class Bridge:
         if notifies_itself(row):
             return
         question = row.get("question")
-        argv = notify_argv(NOTIFIER_APP, session_id, row.get("label", ""), kind, question)
+        argv = notify_argv(NOTIFIER_APP, session_id, row.get("label", ""), kind, question,
+                           remote=bool(row.get("host")), refusal=row.get("remote_refusal"))
         if argv is None:
             return
         if not os.access(argv[0], os.X_OK):
@@ -4063,7 +4304,9 @@ async def main(connection):
     print(f"sidebar: serving on 127.0.0.1:{port}", flush=True)
 
     asyncio.ensure_future(bridge.watch_layout())
-    for variable in STATE_VARIABLES:
+    # The question of a session on another machine lands in a variable of its
+    # own; watched too, so one that arrives after its state waits for no poll.
+    for variable in (*STATE_VARIABLES, QUESTION_VARIABLE):
         asyncio.ensure_future(bridge.watch_state(variable))
     asyncio.ensure_future(bridge.watch_filed_state())
     asyncio.ensure_future(bridge.poll())

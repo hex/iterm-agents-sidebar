@@ -152,6 +152,14 @@ Background shells fold into
 one line ("2 commands running") that opens on a click, and clicking a shell
 shows the whole command with a Copy button.
 
+### Sessions on another machine
+
+A pane that runs `ssh` or `et` (Eternal Terminal) to a machine with the hooks
+installed gets a card for the Claude Code session there: its state, the host
+it runs on, its folder, and a question you can answer from the card. Model,
+context, tasks and replies wait for a later release. See
+[docs/usage.md](docs/usage.md#sessions-on-another-machine).
+
 ### Answering from a banner
 
 The banner can answer for you, so a session in another tab doesn't wait.

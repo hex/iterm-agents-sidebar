@@ -216,7 +216,11 @@ from the last event that fired. It has to, because a parent and all its
 subagents write to the same terminal. A gate closes when the tool that
 opened it runs, fails or is denied, when your next prompt comes, or when the
 turn ends: a `Stop`, an `idle_prompt` notification or a `SessionStart` clears
-every open gate. A Codex state reaches its pane another way when it has to:
+every open gate. Claude Code can also end a gated tool with no hook at all: a
+prompt it times out itself, as for a teammate that cannot prompt, leaves only
+the tool's error result in the transcript. While a gate is open, each event
+looks for that result in the last megabyte of the transcript (a subagent's
+own, for a subagent's tool) and closes the gate when it is there. A Codex state reaches its pane another way when it has to:
 Codex runs hooks in an app-server daemon that outlives the Codex that started
 it and serves the next, and from there the hook finds no terminal. It files
 the state with its directory instead, and the panel gives it to the pane
@@ -224,6 +228,14 @@ running Codex in that directory, if exactly one state newer than that Codex
 is filed there. In a Codex session any tool starting closes every gate too:
 Codex issues no tool while its prompt is up, and waiting for the approved
 command to finish kept the card waiting through whole test runs.
+
+Codex fires `PermissionRequest` for every approval request, whoever rules on
+it. For a shell command the hook reads the turn's `turn_context` from the end
+of the rollout, at most 32 MB back, and opens no gate when its
+`approvals_reviewer` is `auto_review`: Auto-review rules on the command. Any
+other tool, any other reviewer and a turn it cannot read open the gate. Under
+`approval_policy = "never"` an MCP tool's request still opens one for the
+moment before the tool runs.
 
 A subagent leaves the record at its own `SubagentStop`. A prompt clears the
 finished ones and keeps the running ones, because a subagent sent to the
@@ -400,6 +412,8 @@ on since, so read the source for what runs now.
   two linked Claude sessions as partners that read each other and hand each other tasks.
 - [superpowers/specs/2026-10-10-remote-control-design.md](superpowers/specs/2026-10-10-remote-control-design.md):
   Remote Control turned back on after an account switch, and the mark on a card that has it.
+- [superpowers/specs/2026-10-11-remote-panes-design.md](superpowers/specs/2026-10-11-remote-panes-design.md):
+  cards for agents on another machine, reached through an ssh or Eternal Terminal pane.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.
 - [superpowers/plans/2026-10-07-drag-order.md](superpowers/plans/2026-10-07-drag-order.md): the step-by-step
@@ -410,3 +424,5 @@ on since, so read the source for what runs now.
   plan for partner sessions.
 - [superpowers/plans/2026-10-10-remote-control.md](superpowers/plans/2026-10-10-remote-control.md): the step-by-step
   plan for keeping Remote Control across switches.
+- [superpowers/plans/2026-10-11-remote-panes.md](superpowers/plans/2026-10-11-remote-panes.md): the step-by-step
+  plan for cards of agents on another machine.

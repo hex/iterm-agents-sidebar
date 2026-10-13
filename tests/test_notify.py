@@ -303,3 +303,25 @@ def test_an_agent_that_posts_its_own_notices_gets_none_from_the_panel():
     assert notifies_itself({"provider": "omp"}) is True
     assert notifies_itself({"provider": "openai"}) is False
     assert notifies_itself({}) is False
+
+
+def test_a_remote_question_offers_buttons_and_no_reply_field():
+    argv = sidebar.notify_argv("/Applications/N.app", "s1", "atlas", "blocked",
+                               {"question": "Which one?", "options": ["This", "That"]}, remote=True)
+    assert "--button" in argv and "--reply" not in argv
+
+
+def test_a_remote_finished_turn_offers_no_next_prompt():
+    argv = sidebar.notify_argv("/Applications/N.app", "s1", "atlas", "done", None, remote=True)
+    assert "--reply" not in argv
+
+
+def test_a_remote_question_the_daemon_would_not_answer_offers_no_buttons():
+    """The card offers none then; a notice that did would spend a click and type nothing."""
+    refusal = "the agent's title has gone from the pane"
+    asked = sidebar.notify_argv("/Applications/N.app", "s1", "atlas", "blocked",
+                                {"question": "Which one?", "options": ["This", "That"]}, remote=True, refusal=refusal)
+    gated = sidebar.notify_argv("/Applications/N.app", "s1", "atlas", "blocked",
+                                {"tool": "Bash", "summary": "git push"}, remote=True, refusal=refusal)
+    assert (args(asked, "--button"), "--reply" in asked, arg(asked, "--body")) == ([], False, "Which one?")
+    assert (args(gated, "--button"), arg(gated, "--body")) == ([], "wants to run: git push")
