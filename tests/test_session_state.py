@@ -525,6 +525,39 @@ def test_a_first_reply_far_into_the_transcript_still_names_the_model(tmp_path):
     assert sub["model"] == "claude-opus-5"
 
 
+def test_a_subagent_refused_at_its_limit_is_known_by_the_model_it_asked_for(tmp_path):
+    """Its one reply is Claude Code's own refusal, filed as model <synthetic>;
+    the meta file names the model the Agent call asked for from the start --
+    measured on a Fable subagent refused on 2026-10-13."""
+    transcript = _session_files(
+        tmp_path, "a1", meta='{"description":"Fable review","model":"fable"}',
+        lines=['{"type":"assistant","isApiErrorMessage":true,"error":"rate_limit",'
+               '"message":{"model":"<synthetic>","content":[]}}'])
+    [sub] = emit_state.subagents(emit_state.describe_subagents(_started(), transcript))
+    assert sub["model"] == "fable"
+
+
+def test_a_reply_names_the_model_more_exactly_than_the_request(tmp_path):
+    transcript = _session_files(
+        tmp_path, "a1", meta='{"description":"x","model":"opus"}',
+        lines=['{"type":"assistant","message":{"model":"claude-opus-5-5","content":[]}}'])
+    [sub] = emit_state.subagents(emit_state.describe_subagents(_started(), transcript))
+    assert sub["model"] == "claude-opus-5-5"
+
+
+def test_a_refusal_alone_names_no_model_and_a_later_reply_still_can(tmp_path):
+    """No model asked for, or "inherit": the first real reply says which."""
+    transcript = _session_files(
+        tmp_path, "a1", meta='{"description":"x","model":"inherit"}',
+        lines=['{"type":"assistant","message":{"model":"<synthetic>","content":[]}}'])
+    doc = emit_state.describe_subagents(_started(), transcript)
+    assert emit_state.subagents(doc)[0]["model"] is None
+    with open(tmp_path / "s1" / "subagents" / "agent-a1.jsonl", "a") as fh:
+        fh.write('{"type":"assistant","message":{"model":"claude-opus-5-5","content":[]}}\n')
+    [sub] = emit_state.subagents(emit_state.describe_subagents(doc, transcript))
+    assert sub["model"] == "claude-opus-5-5"
+
+
 def test_an_unreadable_meta_file_leaves_the_subagent_unnamed(tmp_path):
     transcript = _session_files(tmp_path, "a1", meta="{not json",
                                 lines=["garbage", '{"type":"assistant","message":"x"}'])

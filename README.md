@@ -138,7 +138,8 @@ terminal. omp posts its own notifications, so the panel adds none for it.
 Teammates nest inside the card, and while one of them is working the lead's
 line carries the busy dots and a count, since a teammate runs in its own pane
 and the lead's own badge stays about the lead. Running subagents get a row each, with the
-model they reply with and how long they have run. A subagent started by another
+model they reply with (until the first reply, the one they asked for) and how
+long they have run. A subagent started by another
 subagent sits one step in, under the one that started it. A Codex job started
 through the codex plugin (a rescue or a review) gets a row too, with its phase.
 A finished subagent keeps its row until your next prompt, and one still
@@ -206,7 +207,8 @@ Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
 until each resets. Store a login with **Add <your email>** and you can switch
 between accounts from there. Auto-switch, off by default, spends first the
 quota that resets soonest and leaves an account before a limit stops your
-sessions. Only the limits of the models your sessions run count, and a model
+sessions. Only the limits of the models your sessions run, or ran in the last
+ten minutes, count, and a model
 limit full on every account is set aside with a `Fable full everywhere` chip.
 While Auto-switch is on, you have two or more accounts and a switch is near,
 a chip reads the account's name and `soon`, and gives the reason on hover. Codex's own limits sit under them, read from

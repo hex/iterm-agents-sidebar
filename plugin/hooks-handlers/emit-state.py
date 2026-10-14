@@ -141,11 +141,12 @@ def subagents(doc):
     listed = [(since, agent_id, None) for agent_id, since in (doc.get("agents") or {}).items()]
     listed += [(done["since"], agent_id, done["ended"])
                for agent_id, done in (doc.get("finished") or {}).items()]
-    return [{"id": agent_id, "parent": (info.get(agent_id) or {}).get("parent"),
+    described = {agent_id: info.get(agent_id) or {} for _, agent_id, _ in listed}
+    return [{"id": agent_id, "parent": described[agent_id].get("parent"),
              "type": types.get(agent_id) or None, "since": round(since),
              "ended": round(ended) if ended is not None else None,
-             "name": (info.get(agent_id) or {}).get("name"),
-             "model": (info.get(agent_id) or {}).get("model")}
+             "name": described[agent_id].get("name"),
+             "model": described[agent_id].get("model") or described[agent_id].get("asked")}
             for since, agent_id, ended in sorted(listed)]
 
 
@@ -175,17 +176,26 @@ def _subagent_file(transcript_path, agent_id, suffix):
 
 
 def _subagent_meta(path):
-    """A subagent's meta file as {name, parent}, or None while it is unreadable.
+    """A subagent's meta file as {name, parent, asked}, or None while it is unreadable.
 
-    parentAgentId is there only for a subagent another subagent started."""
+    parentAgentId is there only for a subagent another subagent started, and
+    model only when the Agent call named one: an alias such as "fable", there
+    before the first reply, so a request refused at its limit still says
+    which model it asked for."""
     try:
         with open(path, encoding="utf-8") as fh:
             meta = json.load(fh)
-        name, parent = meta.get("description"), meta.get("parentAgentId")
+        name, parent, asked = meta.get("description"), meta.get("parentAgentId"), meta.get("model")
     except (OSError, ValueError, AttributeError):
         return None
     return {"name": name if isinstance(name, str) and name else None,
-            "parent": parent if isinstance(parent, str) and parent else None}
+            "parent": parent if isinstance(parent, str) and parent else None,
+            "asked": asked if isinstance(asked, str) and asked and asked != "inherit" else None}
+
+
+#: The model Claude Code files its own replies under, such as a refusal at a
+#: usage limit: no model answered.
+SYNTHETIC_MODEL = "<synthetic>"
 
 
 def _subagent_model(path):
@@ -206,7 +216,7 @@ def _subagent_model(path):
                     model = entry["message"]["model"] if entry.get("type") == "assistant" else None
                 except (ValueError, TypeError, KeyError, AttributeError):
                     continue
-                if isinstance(model, str) and model:
+                if isinstance(model, str) and model and model != SYNTHETIC_MODEL:
                     return model
     except OSError:
         return None
@@ -219,7 +229,8 @@ def describe_subagents(doc, transcript_path):
     SubagentStart names only the agent's type. Its description (a workflow
     agent's label) is in the meta file, written in the same second as the
     event and so possibly not there yet, and its model appears with its first
-    reply. The meta file also names the agent that started a nested one.
+    reply; the meta file names the model asked for until then. It also names
+    the agent that started a nested one.
     Whatever is still missing is looked for again on the next event.
     """
     if not transcript_path:

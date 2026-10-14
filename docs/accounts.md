@@ -87,8 +87,11 @@ has room.
 
 **Which limits count.** An account's figure is its fullest window among the
 5-hour, the weekly, and the weekly limit of each model your Claude sessions and
-their subagents run. A Fable limit counts while a session runs Fable, and not
-while every session runs Opus. A session whose model is not known yet counts
+their subagents run or ran in the last ten minutes. A Fable limit counts while
+a session runs Fable, and not while every session has run only Opus for ten
+minutes. A subagent counts from the moment it asks for its model, so one
+refused at a full Fable limit still moves the account, and for ten minutes
+after it the panel does not move back to an account whose Fable is full. A session whose model is not known yet counts
 for nothing until it reports one, a few seconds after it starts; only when no
 session has reported a model does every limit count. A model limit at 100% on every account decides nothing: no switch
 can help it, so the other limits decide until the first one returns, and the

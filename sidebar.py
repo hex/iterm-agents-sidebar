@@ -672,26 +672,50 @@ def statusline_offer(state, settings):
     return state == "missing" and bool(settings["offer_statusline"])
 
 
-def running_models(snapshot):
-    """The model families the Claude sessions on the panel and their running
-    subagents use, for switching: {"opus", "fable"}. One whose model is not
-    known yet is left out: it reports one within seconds, and counting every
-    limit meanwhile moved the account for a limit nothing ran. Only when none
-    has reported a model is it None, so every limit decides. A finished
-    subagent uses nothing, and neither does an exited session."""
-    families, unknown = set(), False
+#: How long a model counts for switching after its last use. A Fable request
+#: refused at the limit ends within a second; the retry that follows should
+#: find an account with Fable room, and balancing should not return to one
+#: without it meanwhile.
+MODEL_HOLD_SECONDS = 600
+
+
+def model_use(snapshot, now):
+    """When each model family the Claude sessions on the panel and their
+    subagents use was last in use: {"opus": now, "fable": <when it ended>}.
+    A running agent uses its model now and a finished subagent until it
+    ended. One whose model is not known yet is left out: it reports one
+    within seconds, and counting every limit meanwhile moved the account for
+    a limit nothing ran. None only when no running agent has reported a
+    model, so every limit decides; {} when no Claude session runs. An exited
+    session uses nothing."""
+    used, unknown = {}, False
     for group in snapshot.get("groups", []):
         for row in group["rows"]:
             if row.get("state") in (None, "exited") or row.get("provider") not in (None, "claude"):
                 continue
-            running = [row] + [sub for sub in row.get("subagents") or []
-                               if sub.get("ended") is None and sub.get("provider") in (None, "claude")]
-            for agent in running:
+            for agent in [row] + [sub for sub in row.get("subagents") or []
+                                  if sub.get("provider") in (None, "claude")]:
+                ended = None if agent is row else agent.get("ended")
                 if agent.get("model"):
-                    families.add(accounts.family(agent["model"]))
-                else:
+                    family, at = accounts.family(agent["model"]), now if ended is None else ended
+                    used[family] = max(at, used.get(family, at))
+                elif ended is None:
                     unknown = True
-    return None if unknown and not families else families
+    return None if unknown and not used else used
+
+
+def held_models(used, seen, now):
+    """The families switching counts, and `seen` brought up to date: each in
+    `used`, and each used within MODEL_HOLD_SECONDS, which outlasts the
+    finished subagents the next prompt clears. No Claude session counts
+    nothing, and models not known yet stay None."""
+    if used is None:
+        return None, seen
+    if not used:
+        return set(), seen
+    merged = {**seen, **{family: max(at, seen.get(family, at)) for family, at in used.items()}}
+    seen = {family: at for family, at in merged.items() if now - at <= MODEL_HOLD_SECONDS}
+    return set(seen), seen
 
 
 def notifies_itself(row):
@@ -2326,10 +2350,14 @@ def short_model(model_id):
     """A model id -> the name the statusline shows: claude-fable-5-1 -> Fable 5.1.
 
     Drops the "claude-" prefix, a trailing release date and a context-size
-    suffix such as [1m]. An id that is not a Claude model is None, not a guess.
+    suffix such as [1m]. A bare word is the alias an Agent call asks for,
+    which names only the family: fable -> Fable. Any other id that is not a
+    Claude model is None, not a guess.
     """
     if not isinstance(model_id, str):
         return None
+    if re.fullmatch(r"[a-z]+", model_id):
+        return model_id.capitalize()
     found = re.fullmatch(r"claude-([a-z]+)((?:-\d{1,2})+)(?:-\d{8})?(?:\[\w+\])?", model_id)
     if not found:
         return None
@@ -3336,6 +3364,8 @@ class Bridge:
         #: daemon that has never reached iTerm2 reports unfresh rather than
         #: publishing its empty starting list as though it were an answer.
         self.last_ok = None
+        #: When each model family was last in use, for held_models.
+        self.models_seen = {}
         #: Set once a rebuild has run every step; start_serving waits on it.
         self.read_once = asyncio.Event()
         self._rebuilding = False
@@ -4202,13 +4232,18 @@ class Bridge:
             result = self.meters.rename(request["account_id"], request["alias"])
         else:
             result = self.meters.switch(request["account_id"], time.time())
-        self.meters.tick(time.time(), models=self.models_running())
+        self.meters.tick(time.time(), models=self.models_for_switching())
         return result
 
-    def models_running(self):
+    def models_for_switching(self):
         """The families switching should count, or None before the first
-        rebuild has said which sessions there are."""
-        return running_models(self.latest) if self.last_ok is not None else None
+        rebuild has said which sessions there are. Each call records what
+        the sessions use now, which the hold measures from."""
+        if self.last_ok is None:
+            return None
+        now = time.time()
+        models, self.models_seen = held_models(model_use(self.latest, now), self.models_seen, now)
+        return models
 
     async def watch_accounts(self):
         """Read account usage in the background; rebuild picks the result up.
@@ -4220,7 +4255,7 @@ class Bridge:
         while True:
             try:
                 auto = load_settings()["auto_switch"]
-                events = await asyncio.to_thread(self.meters.tick, time.time(), auto, self.models_running())
+                events = await asyncio.to_thread(self.meters.tick, time.time(), auto, self.models_for_switching())
                 for event in events:
                     self.log(switch_log_line(event))
                     if event["kind"] == "switched":

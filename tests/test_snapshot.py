@@ -773,8 +773,11 @@ def test_a_session_named_base_at_feature_follows_the_base_session_by_name_when_g
     assert "worktree_of" not in rows[1]
 
 
+NOW = 1_790_000_000
+
+
 def test_the_models_that_decide_switching_are_those_claude_sessions_and_their_subagents_run():
-    from sidebar import running_models
+    from sidebar import model_use
     snap = {"groups": [
         {"name": "AGENTS", "rows": [
             {"state": "working", "model": "Opus 5.5",
@@ -782,44 +785,75 @@ def test_the_models_that_decide_switching_are_those_claude_sessions_and_their_su
             {"state": "idle", "model": "gpt-6", "provider": "codex"},
             {"state": "idle", "model": "Sonnet 5", "provider": "claude"}]},
         {"name": "SESSIONS", "rows": [{"label": "zsh"}]}]}
-    assert running_models(snap) == {"opus", "fable", "sonnet"}
+    assert model_use(snap, NOW) == {"opus": NOW, "fable": NOW, "sonnet": NOW}
 
 
 def test_a_claude_session_whose_model_is_not_known_yet_is_left_out_while_another_reports_one():
     """A session reports its model within seconds of starting. Counting every
     limit meanwhile moved the account for a Fable limit nothing ran."""
-    from sidebar import running_models
+    from sidebar import model_use
     snap = {"groups": [{"name": "AGENTS", "rows": [{"state": "working", "model": "Opus 5.5"},
                                                    {"state": "working"}]}]}
-    assert running_models(snap) == {"opus"}
-    assert running_models({"groups": []}) == set()
+    assert model_use(snap, NOW) == {"opus": NOW}
+    assert model_use({"groups": []}, NOW) == {}
 
 
 def test_when_no_claude_session_has_reported_a_model_every_limit_decides():
-    from sidebar import running_models
+    from sidebar import model_use
     snap = {"groups": [{"name": "AGENTS", "rows": [
         {"state": "working"}, {"state": "idle", "subagents": [{"model": None, "ended": None}]}]}]}
-    assert running_models(snap) is None
+    assert model_use(snap, NOW) is None
 
 
 def test_an_exited_session_runs_no_model():
     """Its process is gone, and the statusline file that named its model
     goes with it: counted, it would leave every limit deciding."""
-    from sidebar import running_models
+    from sidebar import model_use
     snap = {"groups": [{"name": "AGENTS", "rows": [{"state": "working", "model": "Opus 5.5"},
                                                    {"state": "exited", "model": "Fable 5.1"},
                                                    {"state": "exited"}]}]}
-    assert running_models(snap) == {"opus"}
+    assert model_use(snap, NOW) == {"opus": NOW}
 
 
-def test_a_finished_subagent_does_not_count_and_a_running_one_without_a_model_is_left_out():
-    from sidebar import running_models
+def test_a_finished_subagent_used_its_model_until_it_ended_and_one_without_a_model_is_left_out():
+    """A Fable subagent refused at the limit ends within a second, before
+    the next account tick can see it running."""
+    from sidebar import model_use
     finished = {"groups": [{"name": "AGENTS", "rows": [
-        {"state": "working", "model": "Opus 5.5", "subagents": [{"model": "claude-fable-5-1", "ended": 1790000000}]}]}]}
-    assert running_models(finished) == {"opus"}
+        {"state": "working", "model": "Opus 5.5",
+         "subagents": [{"model": "Fable", "ended": NOW - 5}, {"model": None, "ended": NOW - 9}]}]}]}
+    assert model_use(finished, NOW) == {"opus": NOW, "fable": NOW - 5}
     blind = {"groups": [{"name": "AGENTS", "rows": [
         {"state": "working", "model": "Opus 5.5", "subagents": [{"model": None, "ended": None}]}]}]}
-    assert running_models(blind) == {"opus"}
+    assert model_use(blind, NOW) == {"opus": NOW}
+
+
+def test_a_model_counts_for_ten_minutes_after_its_last_use_even_once_its_record_is_gone():
+    """The next prompt clears a session's finished subagents, and a Fable
+    request refused there should still move the account, and keep the
+    balancer off an account whose Fable is full, for ten minutes."""
+    from sidebar import held_models
+    models, seen = held_models({"opus": NOW, "fable": NOW - 5}, {}, NOW)
+    assert models == {"opus", "fable"}
+    models, seen = held_models({"opus": NOW + 595}, seen, NOW + 595)
+    assert models == {"opus", "fable"}
+    models, seen = held_models({"opus": NOW + 596}, seen, NOW + 596)
+    assert models == {"opus"}
+
+
+def test_nothing_is_held_without_a_claude_session_and_unknown_models_stay_unknown():
+    from sidebar import held_models
+    _, seen = held_models({"fable": NOW}, {}, NOW)
+    assert held_models({}, seen, NOW + 1) == (set(), seen)
+    assert held_models(None, seen, NOW + 1) == (None, seen)
+
+
+def test_a_model_alias_shows_as_its_family():
+    """The meta file names the model an Agent call asked for by its alias."""
+    from sidebar import short_model
+    assert short_model("fable") == "Fable"
+    assert short_model("claude-fable-5-1") == "Fable 5.1"
+    assert short_model("gpt-6") is None
 
 
 def test_a_claude_conversation_offers_its_context_breakdown_and_nothing_else_does():

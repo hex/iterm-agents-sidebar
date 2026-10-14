@@ -189,7 +189,8 @@ Inspect Element.
   payload, so nesting needs the statusline bridge. The badge colour comes from
   `--agent-color` on the same command line, the only place it lives.
 - **Subagents:** the name from the subagent's meta file, the model from its
-  transcript. Until those exist, the row shows the subagent's type.
+  transcript's first reply, and until that reply the model the meta file says
+  the Agent call asked for. Until those exist, the row shows the subagent's type.
 - **A Claude card's directory** (its name and branch): `workspace.project_dir`
   from the statusline payload. iTerm2's `path` is only the last directory
   pushed to the pane, and after a push iTerm2 stops polling, so a stray push
