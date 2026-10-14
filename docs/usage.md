@@ -408,8 +408,11 @@ daemon types it only while that same question still stands, and only once.
 When the agent asks more than one question at once, each click moves the card to
 the next question, and after the last it shows Submit answers; Cancel stays
 in the terminal. The daemon types each step once, in order. Claude Code says
-nothing as it moves from one question to the next, so the card counts only
-its own clicks: answer a question in the terminal and the card's next click
+nothing as it moves from one question to the next, so on a Claude card each
+click first moves the prompt back to the question the card shows, with the
+arrow keys, and then picks. A question you answered in the terminal is then
+answered again by the card's click. On a Codex card the card counts only its
+own clicks: answer a question in the terminal and the card's next click
 answers the question after it. Answer a set in one place.
 
 Under a permission prompt the card shows Yes and No, each marked with the key
@@ -419,8 +422,13 @@ prompt to the next, so the rest, such as "don't ask again", stay in the
 terminal. The daemon types the key only while that same command still waits,
 and only once.
 
-A question that takes more than one answer shows its options without
-buttons; answer it in the terminal. While a card asks, it
+A question that takes more than one answer shows a box before each option.
+Tick the ones you want, then click Submit. A tick types nothing. Submit types
+the ticked numbers into the prompt and submits them, once, while that same
+question still stands. Inside a set the button reads Next, and the set ends
+with its own Submit answers step. The card can't see boxes you tick in the
+terminal, and its numbers would flip them, so tick in one place. A Codex card
+shows these options without boxes; answer it in the terminal. While a card asks, it
 drops its task line, model line and folds, so its height barely moves; they
 come back once you answer.
 

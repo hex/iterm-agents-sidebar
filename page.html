@@ -862,6 +862,14 @@
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lit-ink) 45%, transparent);
   }
   li.line.card > .answers > .answer.recommended .answer-n { color: var(--rec-ink); }
+  /* A pick-any option: a box before its number, filled once ticked. */
+  li.line.card > .answers > .answer.tick::before {
+    content: ""; flex: none; align-self: center; width: 9px; height: 9px; border-radius: 3px;
+    box-shadow: inset 0 0 0 1.5px var(--blocked-text);
+  }
+  li.line.card > .answers > .answer.tick[aria-checked="true"] { font-weight: 600; }
+  li.line.card > .answers > .answer.tick[aria-checked="true"]::before { background: var(--blocked-text); }
+  li.line.card > .answers > .answer.send { align-self: flex-start; font-weight: 600; }
   li.line.card.asking > button.row .stack > .task, li.line.card.asking > button.row .stack > .model,
   li.line.card.asking > .children, li.line.card.asking > .shell-sum { display: none; }
   .asks .asks-cmd {
@@ -3820,12 +3828,19 @@ function cardQuestion(row) {
           multi: false, more: 0, step: "submit", spent: done > count};
 }
 
+// What an answer row shows: the key or number that answers, then its label.
+function answerParts(mark, label) {
+  return [Object.assign(document.createElement("span"), {className: "answer-n", textContent: mark}),
+          Object.assign(document.createElement("span"), {className: "answer-label", textContent: label})];
+}
+
 // A button per option under a question card; a click types that option's
 // number, and the daemon types it only onto the question it was drawn for.
-// A multi-select question takes several digits and a submit, so its options
-// are shown but answered in the terminal.
+// A multi-select question takes ticks (tickRows) where the daemon knows its
+// keys; elsewhere its options are shown but answered in the terminal.
 function answerRows(row) {
   const asked = cardQuestion(row);
+  if (asked.multi && TICKED_ON_CARD.includes(row.provider || "claude")) return tickRows(row, asked);
   const answers = Object.assign(document.createElement("div"), {className: "answers"});
   const picked = pickedAnswers.get(row.session_id);
   const spent = row.question.set ? asked.spent
@@ -3835,8 +3850,7 @@ function answerRows(row) {
     // Claude Code marks the option it suggests by ending its label so.
     option.className = "answer" + (/\(recommended\)\s*$/i.test(label) ? " recommended" : "");
     option.title = asked.multi ? `${label} (several can be picked: answer in the terminal)` : label;
-    option.append(Object.assign(document.createElement("span"), {className: "answer-n", textContent: String(i + 1)}),
-                  Object.assign(document.createElement("span"), {className: "answer-label", textContent: label}));
+    option.append(...answerParts(String(i + 1), label));
     if (!asked.multi) {
       option.type = "button";
       option.disabled = !!spent;
@@ -3857,6 +3871,66 @@ function answerRows(row) {
     }
     answers.append(option);
   });
+  return answers;
+}
+
+// The ticks on a pick-any card, by session, with the question and step they
+// were made on: a repaint keeps them, and the next step starts empty.
+const cardTicks = new Map();
+
+// The agents whose pick-any questions take ticks on the card. Codex's
+// multi-select keys were never measured, so its options are only shown.
+const TICKED_ON_CARD = ["claude"];
+
+// A checkbox per option under a pick-any question, then Submit (Next inside a
+// set, whose Submit is a step of its own). A tick is the card's own and types
+// nothing; Submit sends every tick at once, and the daemon types them as
+// digits, then Tab. The pane's own ticks are not seen, so one made there is
+// flipped by the card's.
+function tickRows(row, asked) {
+  const answers = Object.assign(document.createElement("div"), {className: "answers"});
+  const first = row.question.question;
+  const step = asked.step ?? 0;
+  const picked = pickedAnswers.get(row.session_id);
+  const spent = !row.question.set && picked && picked.question === first;
+  let ticks = cardTicks.get(row.session_id);
+  if (!ticks || ticks.question !== first || ticks.step !== step) {
+    ticks = {question: first, step, picks: new Set()};
+    cardTicks.set(row.session_id, ticks);
+  }
+  const send = Object.assign(document.createElement("button"), {type: "button", className: "answer send"});
+  send.append(Object.assign(document.createElement("span"), {className: "answer-label",
+                                                             textContent: row.question.set ? "Next" : "Submit"}));
+  send.title = row.question.set ? "Send these ticks and go to the next question" : "Send these ticks and submit";
+  const boxes = asked.options.map((label, i) => {
+    const box = Object.assign(document.createElement("button"), {type: "button", title: label});
+    box.className = "answer tick" + (/\(recommended\)\s*$/i.test(label) ? " recommended" : "");
+    box.setAttribute("role", "checkbox");
+    const mark = () => box.setAttribute("aria-checked", String(ticks.picks.has(i + 1)));
+    mark();
+    box.append(...answerParts(String(i + 1), label));
+    box.disabled = !!spent;
+    box.addEventListener("click", () => {
+      if (ticks.picks.has(i + 1)) ticks.picks.delete(i + 1);
+      else ticks.picks.add(i + 1);
+      mark();
+      send.disabled = !ticks.picks.size;
+    });
+    return box;
+  });
+  send.disabled = !!spent || !ticks.picks.size;
+  if (spent) send.classList.add("picked");
+  send.addEventListener("click", () => {
+    if (!cardSettled(send)) return;
+    // The step this card is on is the count of steps it has sent.
+    pickedAnswers.set(row.session_id, {question: first, steps: step + 1});
+    for (const other of answers.children) other.disabled = true;
+    send.classList.add("picked");
+    const pick = [...ticks.picks].sort((a, b) => a - b);
+    act(row.session_id, "answer", JSON.stringify({pick, question: first, step: asked.step}));
+    if (row.question.set && LATEST) render(LATEST, false, true);
+  });
+  answers.append(...boxes, send);
   return answers;
 }
 
@@ -3881,8 +3955,7 @@ function gateRows(row) {
   const yes = GATE_YES_KEY[row.provider || "claude"];
   for (const [gate, key, label] of [["yes", yes, "Yes"], ["no", "esc", "No"]]) {
     const option = Object.assign(document.createElement("button"), {type: "button", className: "answer", title: label});
-    option.append(Object.assign(document.createElement("span"), {className: "answer-n", textContent: key}),
-                  Object.assign(document.createElement("span"), {className: "answer-label", textContent: label}));
+    option.append(...answerParts(key, label));
     option.disabled = !!spent;
     if (spent && picked.pick === gate) option.classList.add("picked");
     option.addEventListener("click", () => {
@@ -5064,6 +5137,12 @@ function paint(snapshot) {
       } else if (hot && row.question?.tool && row.question.id && GATE_YES_KEY[row.provider || "claude"]) {
         li.classList.add("asking");
         li.append(gateRows(row));
+      }
+      // A closed question is forgotten, so the same words asked again are a
+      // new question with live buttons, as the daemon also treats them.
+      if (!row.question) {
+        pickedAnswers.delete(row.session_id);
+        cardTicks.delete(row.session_id);
       }
       // Outside the row, since a button cannot hold one. The daemon decides
       // what is typed and refuses anything it no longer finds safe.

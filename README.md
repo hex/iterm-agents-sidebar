@@ -86,7 +86,7 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 
 | State | How it looks |
 | --- | --- |
-| Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question with a button per answer (a question that takes more than one answer lists them without buttons), or the reason it gave, the tool and the command it wants to run, with Yes and No |
+| Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question with a button per answer (a question that takes more than one answer gets a box per option and a Submit button), or the reason it gave, the tool and the command it wants to run, with Yes and No |
 | Working | Dark name, working dots |
 | Idle | Grey name, IDLE outline |
 | Finished while you looked elsewhere | A green DONE badge in place of IDLE, until you look at that session |

@@ -23,3 +23,15 @@ def test_option_buttons_are_drawn_only_for_the_agents_the_daemon_answers():
     answered = [provider for provider in PROVIDER_ORDER if answer_keys(click, ASKED, None, provider)]
     assert drawn == answered == ["claude", "openai"]
     assert 'row.question?.options?.length && PICKED_ON_CARD.includes(row.provider || "claude")' in source
+
+
+def test_checkboxes_are_drawn_only_for_the_agents_whose_ticks_the_daemon_types():
+    """Codex's multi-select keys were never measured: its pick-any card shows
+    the options and leaves the answer to the terminal."""
+    source = PAGE.read_text(encoding="utf-8")
+    drawn = json.loads(re.search(r"const TICKED_ON_CARD = (\[[^\]]*\]);", source).group(1))
+    pick_any = dict(ASKED, multi=True)
+    click = json.dumps({"pick": [1], "question": ASKED["question"]})
+    answered = [provider for provider in PROVIDER_ORDER if answer_keys(click, pick_any, None, provider)]
+    assert drawn == answered == ["claude"]
+    assert 'asked.multi && TICKED_ON_CARD.includes(row.provider || "claude")' in source

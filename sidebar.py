@@ -438,6 +438,41 @@ def gate_keys(request, standing, answered, provider):
     return keys[request["gate"]]
 
 
+#: Claude Code's picker steps between the questions of a set with these,
+#: Left stopping at the first and Right at the review step. Each goes as
+#: one write: a lone Esc would cancel the whole set.
+LEFT, RIGHT = "\x1b[D", "\x1b[C"
+
+
+def at_step(questions, step):
+    """The arrows that walk Claude Code's picker to `step` from wherever it
+    stands: Left to the first question, then Right to the step, or Right
+    alone to the review step. No arrows for a lone pick-one question, whose
+    picker has no tab bar."""
+    if len(questions) == 1 and not questions[0].get("multi"):
+        return []
+    if step == len(questions):
+        return [RIGHT] * len(questions)
+    return [LEFT] * len(questions) + [RIGHT] * step
+
+
+def ticked_keys(pick, options, lone):
+    """A pick-any question's Submit -> its ticked digits, then Tab, or None.
+
+    Claude Code's digits toggle boxes, so each is typed once and in order;
+    the one after the last option ticks an empty free-text box. Tab moves to
+    the next question, or from a lone question to the review step, whose
+    Submit is 1.
+    """
+    if type(pick) is not list or not pick:
+        return None
+    if any(type(one) is not int or not 1 <= one <= len(options) for one in pick):
+        return None
+    if len(set(pick)) != len(pick):
+        return None
+    return [str(one) for one in sorted(pick)] + ["\t"] + (["1"] if lone else [])
+
+
 def answer_keys(text, standing, answered, provider=None):
     """A click on a card's answer button -> the keys to type, or None.
 
@@ -448,11 +483,14 @@ def answer_keys(text, standing, answered, provider=None):
     click send nothing. A set is walked in order: each question once, then
     Submit (1; 2 is Cancel, which throws the set away), and a click must name
     the step the daemon expects next. A question answered in the terminal is
-    not seen, so the card's next click answers the question after it. A
-    multi-select question is never answered here, since its digits toggle
-    boxes and submit nothing.
+    not seen: on Claude Code `at_step` first walks the picker back to the
+    card's question; elsewhere the card's next click answers the question
+    after it. A multi-select question takes its ticks as a list, typed by
+    `ticked_keys`.
 
-    A gate card's click goes to `gate_keys` instead. An omp card is never
+    The keys come back as a list, each typed as its own write, led by the
+    arrows that take the pane to the question the click was meant for. A
+    gate card's click goes to `gate_keys` instead. An omp card is never
     answered here: omp draws its own dialogs, and these keys were built for
     Claude Code's and Codex's prompts.
     """
@@ -465,12 +503,13 @@ def answer_keys(text, standing, answered, provider=None):
     if not isinstance(request, dict) or not isinstance(standing, dict):
         return None
     if "gate" in request:
-        return gate_keys(request, standing, answered, provider) if "tool" in standing else None
+        key = gate_keys(request, standing, answered, provider) if "tool" in standing else None
+        return [key] if key else None
     try:
         pick, meant = request["pick"], request["question"]
     except KeyError:
         return None
-    if "options" not in standing or standing.get("multi"):
+    if "options" not in standing:
         return None
     if meant != standing.get("question"):
         return None
@@ -478,16 +517,19 @@ def answer_keys(text, standing, answered, provider=None):
     typed = _typed(standing, answered)
     if typed > len(questions) or (typed == len(questions) and "set" not in standing):
         return None
-    if "set" in standing:
-        step = typed if typed < len(questions) else "submit"
-        if request.get("step") != step:
-            return None
-        if step != "submit" and questions[step].get("multi"):
-            return None
-    options = questions[typed]["options"] if typed < len(questions) else ["Submit answers"]
-    if type(pick) is not int or not 1 <= pick <= len(options):
+    if "set" in standing and request.get("step") != (typed if typed < len(questions) else "submit"):
         return None
-    return str(pick)
+    # The arrows, Tab and the ticks were measured on Claude Code only:
+    # another agent's card types its one pick and takes no ticks.
+    measured = provider in (None, "claude")
+    asked = questions[typed] if typed < len(questions) else {"options": ["Submit answers"]}
+    if asked.get("multi"):
+        keys = ticked_keys(pick, asked["options"], "set" not in standing) if measured else None
+    else:
+        keys = [str(pick)] if type(pick) is int and 1 <= pick <= len(asked["options"]) else None
+    if not keys:
+        return None
+    return at_step(questions, typed) + keys if measured else keys
 
 
 def prompt_refusal_in(snapshot, session_id):
@@ -3757,21 +3799,21 @@ class Bridge:
         Checked against the last rebuild, not the page's copy, and remembered,
         so a second click types nothing until a different question stands.
         """
-        standing = (find_row(self.latest, session_id) or {}).get("question")
-        provider = (find_row(self.latest, session_id) or {}).get("provider")
-        keys = answer_keys(text, standing, self.answered.get(session_id), provider)
+        row = find_row(self.latest, session_id)
+        standing = (row or {}).get("question")
+        keys = answer_keys(text, standing, self.answered.get(session_id), (row or {}).get("provider"))
         # Asked before the click is remembered: a key a remote pane may not
         # take now leaves the question open to the next click.
         if keys is None:
             self.log("answer refused", session_id[:8], repr(text))
             return
-        refusal = typing_refusal(find_row(self.latest, session_id), [keys])
+        refusal = typing_refusal(row, keys)
         if refusal:
             self.log("answer refused", session_id[:8], refusal)
             return
         self.answered[session_id] = next_answered(standing, self.answered.get(session_id))
-        await self.type_keys(session, session_id, [keys])
-        self.log("answer", session_id[:8], keys)
+        await self.type_keys(session, session_id, keys, pause=0.05)
+        self.log("answer", session_id[:8], repr("".join(keys)))
 
     async def read_tmux_tables(self, ids):
         """Each of these tmux connections' own pane table, asked through iTerm2.

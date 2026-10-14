@@ -227,6 +227,25 @@ def test_an_answer_types_its_digit_into_a_remote_pane_that_passes_its_checks(mon
     assert b.app.pane.typed == ["2"]
 
 
+PICK_ANY = {"question": "Which ones?", "options": ["This", "That", "Other"], "multi": True, "more": 0}
+
+
+def test_a_pick_any_submit_types_each_key_on_its_own(monkeypatch, tmp_path):
+    """Measured on Claude Code 2.1.296: "13\\t1" sent as one write left the
+    question unanswered, so each key lands as its own write, an arrow whole."""
+    b = bridge_over(monkeypatch, tmp_path, "blocked")
+    b.latest["groups"][0]["rows"][0]["question"] = PICK_ANY
+    asyncio.run(b.act("abc", "answer", json.dumps({"pick": [3, 1], "question": "Which ones?"})))
+    assert b.app.pane.typed == ["\x1b[D", "1", "3", "\t", "1"]
+
+
+def test_a_pick_any_submit_is_not_typed_into_a_remote_pane(monkeypatch, tmp_path):
+    """A remote pane takes one key at a time, so a burst of ticks is refused whole."""
+    b = remote_bridge(monkeypatch, tmp_path, question=PICK_ANY)
+    asyncio.run(b.act("abc", "answer", json.dumps({"pick": [1], "question": "Which ones?"})))
+    assert b.app.pane.typed == [] and b.answered == {}
+
+
 def test_an_answer_is_not_typed_into_a_remote_pane_that_fails_its_checks(monkeypatch, tmp_path):
     """Nothing is typed, and the click is not remembered as an answer: the next one can still land."""
     b = remote_bridge(monkeypatch, tmp_path, remote_refusal="the agent's title has gone from the pane")

@@ -8,8 +8,9 @@ each:
 - a second click on the same standing question (a double click, or the next
   question of a set, which Claude Code shows while the row still names the
   first): the digit would answer a question nobody read;
-- a multi-select question: a digit toggles a box and submits nothing, so the
-  card would claim an answer it never gave;
+- a single digit on a multi-select question: it toggles a box and submits
+  nothing, so the card would claim an answer it never gave (its ticks come
+  as a list: test_pick_any.py);
 - a pick past the last option, zero, or not a number at all: the digit would
   land on Other, or move a cursor;
 - a tool gate or no question at all: there are no options to pick;
@@ -35,11 +36,11 @@ def click(pick, question=ASKED["question"]):
 
 
 def test_a_pick_on_the_standing_question_sends_its_number():
-    assert answer_keys(click(2), ASKED, None) == "2"
+    assert answer_keys(click(2), ASKED, None) == ["2"]
 
 
 def test_the_last_option_is_a_valid_pick():
-    assert answer_keys(click(3), ASKED, None) == "3"
+    assert answer_keys(click(3), ASKED, None) == ["3"]
 
 
 def test_a_click_meant_for_a_question_that_has_since_changed_sends_nothing():
@@ -53,10 +54,10 @@ def test_a_second_click_on_an_answered_question_sends_nothing():
 
 def test_a_new_question_after_an_answered_one_can_be_answered():
     replaced = dict(ASKED, question="Ship it now?")
-    assert answer_keys(click(1, "Ship it now?"), replaced, ASKED) == "1"
+    assert answer_keys(click(1, "Ship it now?"), replaced, ASKED) == ["1"]
 
 
-def test_a_multi_select_question_is_never_answered_from_the_card():
+def test_a_single_digit_on_a_multi_select_question_sends_nothing():
     assert answer_keys(click(1), dict(ASKED, multi=True), None) is None
 
 
@@ -126,17 +127,17 @@ def gate_click(answer, gate=GATE):
 
 
 def test_yes_on_a_codex_gate_types_its_y_shortcut():
-    assert answer_keys(gate_click("yes"), GATE, None, "openai") == "y"
+    assert answer_keys(gate_click("yes"), GATE, None, "openai") == ["y"]
 
 
 def test_yes_on_a_claude_gate_types_one():
-    assert answer_keys(gate_click("yes"), GATE, None, None) == "1"
-    assert answer_keys(gate_click("yes"), GATE, None, "claude") == "1"
+    assert answer_keys(gate_click("yes"), GATE, None, None) == ["1"]
+    assert answer_keys(gate_click("yes"), GATE, None, "claude") == ["1"]
 
 
 def test_no_presses_escape_on_either_agent():
-    assert answer_keys(gate_click("no"), GATE, None, "openai") == "\x1b"
-    assert answer_keys(gate_click("no"), GATE, None, None) == "\x1b"
+    assert answer_keys(gate_click("no"), GATE, None, "openai") == ["\x1b"]
+    assert answer_keys(gate_click("no"), GATE, None, None) == ["\x1b"]
 
 
 def test_a_click_meant_for_a_gate_that_has_since_changed_sends_nothing():
