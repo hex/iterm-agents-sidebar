@@ -22,8 +22,12 @@ TIMEOUT_SECONDS = 30
 #: /context's summary line, e.g. `**Tokens:** 122.6k / 1m (12%)`.
 TOTAL = re.compile(r"^\*\*Tokens:\*\* (\S+) / (\S+) ", re.MULTILINE)
 CATEGORY_HEADING = "### Estimated usage by category"
-#: A count as /context prints it: 10, 2.4k, 1m.
-COUNT = re.compile(r"(\d+(?:\.\d+)?)([km]?)")
+#: A count as /context prints it: 10, 2.4k, 1m, or an estimate, ~70.
+COUNT = re.compile(r"~?(\d+(?:\.\d+)?)([km]?)")
+#: An item too small to estimate, e.g. `< 20`.
+BELOW = re.compile(r"< (\d+)")
+#: A later table's heading, e.g. `### Memory Files`.
+TABLE_HEADING = re.compile(r"^### (.+)$", re.MULTILINE)
 SCALE = {"": 1, "k": 1_000, "m": 1_000_000}
 
 
@@ -38,26 +42,53 @@ def tokens(text, name):
     return round(float(match[1]) * SCALE[match[2]])
 
 
+def rows(table):
+    """A markdown table's body rows as lists of cells: the header row and
+    its rule come first, and the table ends at the first line not a row."""
+    found = []
+    for line in table.strip().splitlines()[2:]:
+        if not line.startswith("|"):
+            break
+        found.append([cell.strip() for cell in line.strip("|").split("|")])
+    return found
+
+
+def item(cells):
+    """An item row, `| name | source or path | count |` -> its dict."""
+    name, detail, count = cells[:3]
+    below = BELOW.fullmatch(count)
+    if below:
+        return {"name": name, "detail": detail, "below": int(below[1])}
+    return {"name": name, "detail": detail, "tokens": tokens(count, name)}
+
+
+def items_of(table):
+    """A later table's items, or {"refused": why} when one cannot be read: the
+    items are a detail under a category, so a table Claude Code has reshaped
+    says so where it would have shown, and the breakdown stands."""
+    try:
+        return [item(cells) for cells in rows(table)]
+    except Refused as refused:
+        return {"refused": str(refused)}
+
+
 def parse(report):
-    """/context's markdown -> {"used", "window", "categories": [{"name", "tokens"}]}."""
+    """/context's markdown -> {"used", "window", "categories": [{"name", "tokens"}],
+    "items": {heading: [item()] or {"refused": why}}} for every table after the categories."""
     total = TOTAL.search(report)
     if total is None:
         raise Refused("no token total in /context's output")
     _, heading, rest = report.partition(CATEGORY_HEADING)
     if not heading:
         raise Refused("no category table in /context's output")
-    categories = []
-    # The table runs to the first line that is not a row; the header row and
-    # its rule are the first two rows.
-    for line in rest.strip().splitlines()[2:]:
-        if not line.startswith("|"):
-            break
-        name, count = (cell.strip() for cell in line.strip("|").split("|")[:2])
-        categories.append({"name": name, "tokens": tokens(count, name)})
+    categories = [{"name": name, "tokens": tokens(count, name)} for name, count, *_ in rows(rest)]
     if not categories:
         raise Refused("no category table in /context's output")
+    # Each later table follows its heading: MCP Tools, Custom Agents, Memory Files, Skills.
+    parts = TABLE_HEADING.split(rest)
+    items = {heading: items_of(table) for heading, table in zip(parts[1::2], parts[2::2])}
     return {"used": tokens(total[1], "the total"), "window": tokens(total[2], "the window"),
-            "categories": categories}
+            "categories": categories, "items": items}
 
 
 def command(conversation):
@@ -86,13 +117,12 @@ def read(path, conversation, binary=CLAUDE, timeout=TIMEOUT_SECONDS):
         said = done.stderr.strip().splitlines()
         raise Refused(f"claude exited {done.returncode}: {said[-1] if said else 'no message'}")
     try:
-        entries = json.loads(done.stdout)
+        result = json.loads(done.stdout)
     except ValueError:
-        entries = None
-    if not isinstance(entries, list):
-        raise Refused("claude printed no JSON list")
-    result = next((entry for entry in entries if isinstance(entry, dict) and entry.get("type") == "result"), None)
-    if result is None:
+        result = None
+    if not isinstance(result, dict):
+        raise Refused("claude printed no JSON object")
+    if result.get("type") != "result":
         raise Refused("claude printed no result")
     if result.get("is_error") is not False:
         raise Refused(f"/context failed: {result.get('result')}")

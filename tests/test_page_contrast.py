@@ -28,9 +28,11 @@ PAIRS = [
     ("--accent-ink", "--alert"),
     # NEW on an idle card whose finish you have not seen.
     ("--accent-ink", "--sev-ok"),
-    # The report's live words are green; the ticks beside them are a graphic
-    # and need no ratio, but the words do.
+    # Working's badge, an outline whose word is green; the ticks under a report
+    # are a graphic and need no ratio, but the word does.
     ("--lit-ink", "--card"),
+    # Long's badge, an outline whose word is in the warm ink.
+    ("--warn", "--card"),
     # The refused-switch line, on the strip's ground.
     ("--warn", "--bg"),
 ]

@@ -560,6 +560,19 @@ def test_a_teammate_whose_lead_is_not_listed_stays_flat():
     assert [(r["label"], r["depth"]) for r in rows] == [("fignity", 0), ("review-351", 0)]
 
 
+def test_a_card_carries_its_projects_commits_and_a_nested_row_does_not():
+    days = [0] * 83 + [4]
+    lead, teammate = (dict(row, commits=days, provider="claude") for row in TEAM)
+    rows = snapshot([lead, teammate])["groups"][0]["rows"]
+    assert [(r["label"], r.get("commits")) for r in rows] == [("fignity", days), ("review-351", None)]
+    orphan = dict(teammate, parent_session="not-here")
+    rows = snapshot([lead, orphan])["groups"][0]["rows"]
+    assert [(r["label"], r.get("commits")) for r in rows] == [("fignity", days), ("review-351", days)]
+    parent, child = (dict(row, commits=days, provider="claude") for row in FAMILY)
+    rows = snapshot([parent, child])["groups"][0]["rows"]
+    assert [(r["depth"], r.get("commits")) for r in rows] == [(0, days), (1, None)]
+
+
 def test_a_blocked_row_carries_what_it_is_asking():
     """The notice offers the question's options as buttons, so the row has to
     carry the question itself, not only that there is one."""

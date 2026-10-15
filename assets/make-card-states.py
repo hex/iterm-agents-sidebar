@@ -20,7 +20,7 @@ def facts(x, baseline, branch, model):
 
 def report(x, top, activity, age, done):
     """The live line of a report and the ticks under it."""
-    text(x, top, activity, fill=LIT_INK, size=12.5)
+    text(x, top, activity, fill=DIM, size=12.5)
     nx = middot(x + width_of(activity, 12.5), top)
     mark("clock", nx, top - 10, 12, DIM)
     text(nx + 16, top, age, fill=DIM, size=12.5)
@@ -30,8 +30,8 @@ def report(x, top, activity, age, done):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="Five cards: one amber with a WAITING badge, its question and a button per answer, one at work with a report and ticks, '
-  f'one grey with an IDLE outline, one grey with a green DONE badge, and one at work for 25 minutes with a warm long badge">')
+  f'aria-label="Five cards: one amber with a Waiting badge, its question and a button per answer, one at work with a report and ticks, '
+  f'one grey with an Idle outline, one grey with a green Done badge, and one at work for 25 minutes with a warm Long outline">')
 A('  <title>What a card says</title>')
 A(f'''  <defs>
     <pattern id="tickmask" width="9" height="5" patternUnits="userSpaceOnUse">
@@ -58,7 +58,7 @@ for i, answer in enumerate(("Redis", "SQLite")):
       f'fill="{BLOCKED_TEXT}" fill-opacity=".14"/>')
     text(tx + 9, y + 13.5, str(i + 1), fill=BLOCKED_TEXT, size=11.5, weight=500)
     text(tx + 22, y + 13.5, answer, fill=FG, size=11.5, weight=500)
-badge(x + CARD_W - 16, c + 14, "WAITING", filled=True)
+badge(x + CARD_W - 16, c + 15.5, "Waiting", ink=BADGE_INK, fill=BLOCKED_BORDER)
 
 # Working: a dark name, the dots, and its own report.
 x = COLS[1]
@@ -83,10 +83,10 @@ tag(tx + NAME_W["ember"] + 9, c + 31, "openai")
 mark("checked", tx, c + 52 - 10, 11, LIT)
 text(tx + 15, c + 52, "Complete", fill=SEV_OK, size=12.5, weight=600)
 facts(tx, c + 69, "main", "gpt-6-astra")
-badge(x + CARD_W - 16, c + 14, "IDLE")
+badge(x + CARD_W - 16, c + 15.5, "Idle")
 
 # Finished while you looked elsewhere: the idle card, its badge filled green
-# with DONE until you look at that session.
+# with Done until you look at that session.
 x = COLS[1]
 caption(x, c - 14, "FINISHED WHILE YOU LOOKED ELSEWHERE")
 tx = x + 44
@@ -97,7 +97,7 @@ tag(tx + NAME_W["cinder"] + 9, c + 31, "claude")
 mark("checked", tx, c + 52 - 10, 11, LIT)
 text(tx + 15, c + 52, "Complete", fill=SEV_OK, size=12.5, weight=600)
 facts(tx, c + 69, "feat/cache", "Fable 5.1")
-badge(x + CARD_W - 16, c + 14, "DONE", filled=True, fill=SEV_OK, ink=ACCENT_INK)
+badge(x + CARD_W - 16, c + 15.5, "Done", ink=ACCENT_INK, fill=SEV_OK)
 
 # Working 20 minutes or more: the same card at work, with a warm outline in
 # the corner saying how long, in case it has stalled.
@@ -111,10 +111,7 @@ tag(tx + NAME_W["harbor"] + 9, c + 31, "claude")
 text(tx, c + 52, "Migrate the auth tables", fill=DIM, size=12.5)
 report(tx, c + 72, "Running the suite", "25m", 270)
 facts(tx, c + 102, "feat/auth", "Fable 5.1")
-bw, bx = 70, x + CARD_W - 16 - 70
-A(f'  <rect x="{bx}" y="{c+14}" width="{bw}" height="21" rx="4" fill="none" stroke="{WARN}"/>')
-A(f'  <text x="{bx + bw/2}" y="{c+29}" fill="{WARN}" font-size="10" font-weight="700" '
-  f'letter-spacing="1" text-anchor="middle" font-family="{SANS}">LONG 25M</text>')
+badge(x + CARD_W - 16, c + 15.5, "Long 25m", ink=WARN)
 
 A('</svg>')
 pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
