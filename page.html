@@ -22,7 +22,7 @@
     /* The lamp green reads at 4.07:1 on a white card, which a 2px tick does
        not care about and 11px words do. */
     --lit-ink: #2a7d45;
-    --lit-bg: #2f8f4e1f; --alert-bg: #c2410c1f;
+    --alert-bg: #c2410c1f;
     /* Limit bars: headroom, climbing, near the limit. claude-swap's bands, with
        an amber and a red that still read as amber and red on a light panel. */
     --sev-ok: #228739; --sev-warn: #c98a0b; --sev-crit: #dc2626;
@@ -63,7 +63,7 @@
       --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
       --accent-ink: #1c1c1e; --badge-ink: #3a2500; --switch-bg: #d97757;
       --lit: #8ec07c; --alert: #fb8b5e; --lit-ink: #8ec07c;
-      --lit-bg: #8ec07c26; --alert-bg: #fb8b5e2b;
+      --alert-bg: #fb8b5e2b;
       --sev-ok: #30d158; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
       --rec-ink: #8ec07c;
       --ctx-conv: #3987e5; --ctx-sys: #d95926; --ctx-mem: #199e70; --ctx-agents: #c98500;
@@ -313,7 +313,7 @@
   /* What a subagent is doing, in the activity's face, on its own line. */
   .children button.row .sub-doing {
     max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-    font: 400 11px/1.3 -apple-system, sans-serif; color: var(--lit-ink);
+    font: 400 11px/1.3 -apple-system, sans-serif; color: var(--dim);
   }
   li.line.card.blocked .children button.row { padding-left: calc(var(--child-indent) + var(--nest) - 2px); }
   li.line.card.blocked .children button.row::before { left: calc(var(--child-drop) + var(--nest) - 2px); }
@@ -422,7 +422,13 @@
     /* top/left stay at zero and the transform does the placing, so placing
        it never triggers a layout. */
     position: fixed; top: 0; left: 0; will-change: transform;
-    z-index: 60; width: 208px; padding: 8px 10px 7px;
+    /* As wide as the panel allows, less a margin each side: never narrower
+       than the 208px its rows were drawn for, never so wide a glance has to
+       travel. */
+    z-index: 60; width: clamp(208px, 100vw - 24px, 280px); padding: 8px 10px 7px;
+    /* Never taller than the panel: open lists of context items scroll inside
+       the card, and the scroll stays in it rather than moving the list. */
+    max-height: calc(100vh - 8px); overflow-y: auto; overscroll-behavior: contain;
     border-radius: 11px; pointer-events: none;
     background: color-mix(in srgb, var(--bg) 86%, transparent);
     -webkit-backdrop-filter: saturate(180%) blur(20px);
@@ -440,10 +446,18 @@
     @keyframes cardin { from { opacity: 0; } to { opacity: 1; } }
   }
   #card .who {
+    display: flex; align-items: center; gap: 6px;
     font: 600 12.5px/1.25 -apple-system, BlinkMacSystemFont, sans-serif;
     color: var(--fg); letter-spacing: -.02em;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  #card .who .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #card .who .square { flex: none; width: 9px; height: 9px; border-radius: 3px; background: var(--hue); }
+  #card .sub .dot {
+    display: inline-block; width: 6px; height: 6px; margin-right: 5px; vertical-align: 1px;
+    border-radius: 50%; background: var(--dim);
+  }
+  #card .sub .dot.working { background: var(--lit); }
+  #card .sub .dot.blocked { background: var(--alert); }
   #card .sub {
     margin-top: 1px; font: 500 10px/1.3 ui-monospace, Menlo, monospace;
     color: var(--dim);
@@ -506,30 +520,44 @@
   #card .flags {
     display: flex; flex-wrap: wrap; gap: 3px; margin-top: 7px;
   }
+  /* Quiet: a hairline and the word, so a mode the user chose does not read
+     as a button or an alarm. */
   #card .flag {
-    padding: 2px 6px; border-radius: 5px;
-    font: 600 10px/1.35 -apple-system, sans-serif; letter-spacing: .02em;
-    text-transform: uppercase;
-    color: var(--fg);
-    background: color-mix(in srgb, var(--fg) 9%, transparent);
+    margin-left: 0; padding: 2px 6px; border-radius: 5px;
+    font: 500 10.5px/1.35 -apple-system, sans-serif;
+    color: var(--dim);
+    box-shadow: inset 0 0 0 var(--hair) color-mix(in srgb, var(--fg) 22%, transparent);
   }
-  #card .flag.hot { color: var(--accent-ink); background: var(--hot); }
-  #card .flag.warn { color: var(--warn); background: var(--warn-bg); }
-  /* Effort is how much a turn spends, so it reads on the same ramp as the
-     gauges: calm when it is cheap, warm when it is not. Soft tints, because
-     this is a setting the user chose and not something going wrong. */
-  #card .flag.effort.low {
-    color: var(--lit); background: color-mix(in srgb, var(--lit) 14%, transparent);
+  #card .flag::before, #card .flag::after { content: none; }
+  #card .flag.hot { color: var(--hot); }
+  #card .flag.warn { color: var(--warn); }
+  /* The plain counts: one row of figures, each over its name. */
+  /* A figure too wide for the row takes the next line rather than the
+     card's edge. */
+  #card .counts {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 8px;
+    margin-top: 7px; padding-top: 7px;
+    border-top: .5px solid color-mix(in srgb, var(--fg) 11%, transparent);
   }
-  #card .flag.effort.medium {
-    color: var(--hot); background: color-mix(in srgb, var(--hot) 13%, transparent);
+  #card .count b {
+    display: block; white-space: nowrap;
+    font: 600 12.5px/1.2 -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -.02em;
+    color: var(--fg); font-variant-numeric: tabular-nums;
   }
-  #card .flag.effort.high {
-    color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent);
+  #card .count span {
+    display: flex; align-items: center; gap: 3px;
+    font: 500 10px/1.3 -apple-system, sans-serif; color: var(--dim);
   }
-  #card .flag.effort.max, #card .flag.effort.xhigh {
-    color: var(--alert); background: color-mix(in srgb, var(--alert) 16%, transparent);
-  }
+  #card .count svg { width: 10px; height: 10px; opacity: .75; }
+  /* Effort wears the colour its letter wears on the card's facts line, max
+     in that letter's two colours. The word alone takes it, because this is a
+     setting the user chose and not something going wrong. */
+  #card .flag.effort.low { color: var(--effort-low); }
+  #card .flag.effort.medium { color: var(--effort-medium); }
+  #card .flag.effort.high { color: var(--effort-high); }
+  #card .flag.effort.xhigh { color: var(--effort-xhigh); }
+  #card .flag.effort.max i { font-style: normal; color: var(--effort-max-1); }
+  #card .flag.effort.max i + i { color: var(--effort-max-2); }
 
   /* Pinned: the pointer rested, so the card holds still and takes clicks.
      Its hairline takes the actionable accent, so the change is seen, not
@@ -543,6 +571,29 @@
     margin-top: 7px; padding-top: 7px;
     border-top: .5px solid color-mix(in srgb, var(--fg) 11%, transparent);
   }
+  /* The project's commits for twelve weeks as GitHub draws a year: a column
+     a week, Sunday at the top, today at the bottom of the last column, in
+     fixed steps (COMMIT_STEPS) so two cards compare. A cell stops at 13px,
+     GitHub's own size, so a wide card does not swell the calendar. */
+  #card .commits {
+    margin-top: 7px; padding-top: 7px;
+    border-top: .5px solid color-mix(in srgb, var(--fg) 11%, transparent);
+  }
+  #card .commits-head {
+    display: flex; justify-content: space-between;
+    font: 500 11px/1.5 -apple-system, BlinkMacSystemFont, sans-serif; color: var(--dim);
+  }
+  #card .commits-head b { font-weight: 500; color: var(--fg); font-variant-numeric: tabular-nums; }
+  #card .commits-grid {
+    display: grid; grid-template-rows: repeat(7, auto); grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 13px); gap: 2px; margin-top: 4px;
+  }
+  #card .commits-grid i { aspect-ratio: 1; border-radius: 2px; background: color-mix(in srgb, var(--dim) 14%, transparent); }
+  #card .commits-grid i.none { background: none; }
+  #card .commits-grid i.l1 { background: color-mix(in srgb, var(--lit) 35%, transparent); }
+  #card .commits-grid i.l2 { background: color-mix(in srgb, var(--lit) 60%, transparent); }
+  #card .commits-grid i.l3 { background: color-mix(in srgb, var(--lit) 82%, transparent); }
+  #card .commits-grid i.l4 { background: var(--lit); }
   #card .ctx-read {
     position: relative; isolation: isolate; overflow: hidden;
     display: flex; align-items: center; justify-content: center; gap: 5px;
@@ -603,6 +654,38 @@
     font: 500 10.5px/1.35 -apple-system, sans-serif; color: var(--fg);
     text-align: right; font-variant-numeric: tabular-nums; min-width: 30px;
   }
+  /* A category with items opens like the card's folds: its name is the
+     button, the chevron turns when it is open. */
+  #card .ctx-open {
+    display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%;
+    padding: 0; border: 0; background: none; cursor: default; text-align: left;
+    font: inherit; color: inherit;
+  }
+  #card .ctx-open .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #card .ctx-open .chev { flex: none; color: var(--dim); transition: transform .15s ease-out; }
+  #card .ctx-open[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  #card .ctx-open:hover .chev, #card .ctx-open:hover { color: var(--fg); }
+  #card .ctx-note .ctx-open:hover { color: var(--fg); }
+  #card .ctx-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+  /* Its items, indented under it, a size down and in the facts line's grey. */
+  #card .ctx-items {
+    grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 38px auto; gap: 2px 5px;
+    align-items: center; margin: 0 0 3px 18px;
+  }
+  #card .ctx-items .name {
+    font: 400 10px/1.35 -apple-system, sans-serif; color: var(--dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #card .ctx-items .note { opacity: .7; }
+  #card .ctx-items .mini { height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 7%, transparent); }
+  #card .ctx-items .mini i { display: block; height: 100%; border-radius: 2px; opacity: .8; }
+  #card .ctx-items .num {
+    font: 400 10px/1.35 -apple-system, sans-serif; color: var(--dim);
+    text-align: right; font-variant-numeric: tabular-nums; min-width: 30px;
+  }
+  #card .ctx-items .more { grid-column: 1 / -1; font: 400 9.5px/1.35 -apple-system, sans-serif; color: var(--dim); }
+  #card .ctx-items .more.refused { color: var(--alert); }
+  #card .ctx-note + .ctx-items { margin: 3px 0 0; }
   #card .ctx-error {
     margin-top: 5px; font: 400 10px/1.35 -apple-system, sans-serif; color: var(--alert);
   }
@@ -811,10 +894,11 @@
     display: inline-block; width: var(--meta-icon); height: var(--meta-icon);
     vertical-align: -1px; margin-right: 3px;
   }
-  /* What it is doing right now wears the same green as the ticks below it,
-     so one accent carries one idea: this is the live part of the report. */
-  .task .task-activity { color: var(--lit-ink); }
+  /* What it is doing right now is in the line's dim ink, as at every width:
+     the colour on a card is its badge's. A report gone stale says its words
+     were the last it gave, since the ink no longer tells it from a live one. */
   .task.stale > span { opacity: .7; }
+  .task.stale .task-activity::before, .cact.stale::before { content: "Last: "; }
   .task .task-done { color: var(--sev-ok); font-weight: 600; }
   .task .task-done .mi {
     display: inline-block; width: var(--meta-icon); height: var(--meta-icon);
@@ -902,9 +986,10 @@
   /* The machine a remote session runs on. It gives way like the branch, and
      never down to a bare glyph, which would name no machine. */
   .mchip.host-mark { flex-shrink: 1; min-width: calc(var(--meta-icon) + 3px + 4ch); }
-  /* A dim middot opens every item after the first; the effort letter belongs
-     to its model and gets none. Inside the chip, so it goes with its item. */
-  .model > .mchip ~ .mchip::before { content: "\00b7"; margin-right: 2px; opacity: .6; }
+  /* A dim middot opens every item after the first shown; the effort letter
+     belongs to its model and gets none. Inside the chip, so it goes with its
+     item. A branch hidden for room is not a first item. */
+  .model > .mchip:not([hidden]) ~ .mchip::before { content: "\00b7"; margin-right: 2px; opacity: .6; }
   /* Slightly above the text's optical centre, where a 9px glyph sits level
      with lowercase rather than with the baseline. */
   /* Effort as one or two letters after the model, in the colours Claude
@@ -1014,38 +1099,39 @@
   }
 
 
-  /* A word, not only a glyph: a glyph alone makes you learn a legend. */
+  /* A word, not only a glyph: a glyph alone makes you learn a legend. One
+     badge at every width, a strip in sentence case, which reads at 10px, and
+     solid only where the session needs you or has news: Waiting and Done.
+     Every other state is an outline in its own ink, so a column of cards
+     shows its two kinds of call at once. Centred by its line height, which
+     Idle's sweep inherits, so the copy it carries lies over the word. */
   .word {
-    font: 700 9px/1 ui-monospace, Menlo, monospace; letter-spacing: .07em;
-    text-transform: uppercase; padding: 3px 5px; border-radius: 3px;
-    flex-shrink: 0;
+    height: 16px; padding: 0 4px; flex-shrink: 0;
+    border-radius: 4px; border: var(--hair) solid currentColor;
+    font: 600 10px/calc(16px - 2 * var(--hair)) -apple-system, sans-serif;
   }
+  /* On a card, in the row's top corner, where every card has room for it;
+     the name stops short of it by the room each badge needs, its own width
+     and 6px. */
+  button.row > .word { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
   /* A solid amber badge, the one amber badge on the panel. It sits on the
      name's line only: as a flex column it took its width out of the details
      line too, and at larger text sizes that cut the context figure off. */
-  .word.blocked { color: var(--badge-ink); background: var(--blocked-border); font-family: -apple-system, sans-serif; }
-  button.row.hot > .word.blocked { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
-  button.row.hot { --badge-room: calc(62px + var(--corner, 0px)); }
+  .word.blocked { color: var(--badge-ink); background: var(--blocked-border); border-color: var(--blocked-border); }
+  button.row.hot { --badge-room: calc(52px + var(--corner, 0px)); }
   /* Idle is the resting state, so its badge is an outline in the dim ink: it
      says the session is free for a prompt without competing with "waiting". */
-  .word.idle { color: var(--dim); border: var(--hair) solid var(--dim);
-    padding: calc(3px - var(--hair)) calc(5px - var(--hair));
-    font-family: -apple-system, sans-serif; font-weight: 600; }
-  button.row.resting > .word.idle { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
+  .word.idle { color: var(--dim); }
+  button.row.resting { --badge-room: calc(34px + var(--corner, 0px)); }
   /* An agent whose process is gone: the idle outline without its sweep, and
      the card behind it faded, since nothing on it is live any more. */
-  .word.exited { color: var(--dim); border: var(--hair) solid var(--dim);
-    padding: calc(3px - var(--hair)) calc(5px - var(--hair));
-    font-family: -apple-system, sans-serif; font-weight: 600; }
-  button.row.resting > .word.exited { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
+  .word.exited { color: var(--dim); }
+  li.line.card.exited > button.row.resting { --badge-room: calc(46px + var(--corner, 0px)); }
   /* An idle card whose turn ended while you were looking elsewhere, until
-     you look at it: IDLE's badge filled in the calm green, news that does
+     you look at it: Idle's badge filled in the calm green, news that does
      not compete with the amber of "waiting". */
-  .word.unseen { color: var(--accent-ink); background: var(--sev-ok); border: var(--hair) solid var(--sev-ok);
-    padding: calc(3px - var(--hair)) calc(5px - var(--hair));
-    font-family: -apple-system, sans-serif; font-weight: 600; }
-  button.row.unseen > .word.unseen { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
-  button.row.unseen { --badge-room: calc(40px + var(--corner, 0px)); }
+  .word.unseen { color: var(--accent-ink); background: var(--sev-ok); border-color: var(--sev-ok); }
+  button.row.unseen { --badge-room: calc(41px + var(--corner, 0px)); }
   li.line.card.exited > button.row, li.line.card.exited > .children,
   li.line.card.exited > .shell-sum { opacity: .55; }
   /* The one live control on a faded card, in the plain tint of the bar's
@@ -1123,13 +1209,10 @@
   html.hidden-page .pair-badge.open,
   .out-of-view > .sweep, .out-of-view > .sweep > span, .busy.out-of-view i, .word.blocked.out-of-view,
   .pair-badge.open.out-of-view { animation-play-state: paused; }
-  button.row.resting { --badge-room: calc(40px + var(--corner, 0px)); }
   /* A turn that has run long enough to be worth a look: warm outline, no fill,
      so it stays below "waiting", which is the one state that needs you. */
-  .word.long { color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn);
-    font-family: -apple-system, sans-serif; }
-  button.row.long-turn > .word.long { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
-  button.row.long-turn { --badge-room: calc(70px + var(--corner, 0px)); }
+  .word.long { color: var(--warn); }
+  button.row.long-turn { --badge-room: calc(64px + var(--corner, 0px)); }
 
 
   /* Motion belongs to the exception. An earlier build spun the icon on
@@ -1419,7 +1502,9 @@
      root stops @container matching at all above 1x in this WebKit -- measured
      against a 119px sheet, where a query for anything under 900px still did
      not match, while the same query at 1x resolved to the true 213px. Fourth
-     thing on the list that `zoom` breaks. */
+     thing on the list that `zoom` breaks. The fifth: compact mode, which a
+     container query cannot see either and a media query sees without the
+     scale, so script sets it on <html> (syncCompact). */
   .set:has(.ctl) { display: flex; flex-wrap: wrap; }
   .set:has(.ctl) > span:first-child { overflow-wrap: normal; }
   .ctl {
@@ -1495,7 +1580,7 @@
   #sl-offer button.go:hover { background: AccentColor; }
   #sl-offer button:disabled { opacity: .5; }
   /* Warm type, no surface: the heading in the waiting card's ink and the
-     count as a small filled pill like the card's WAITING badge. In grey type
+     count as a small filled pill like the card's Waiting badge. In grey type
      alone the section was easy to miss; a slab would repeat the card. */
   #queue h3 { padding: 0 2px 3px; color: var(--blocked-text); }
   #queue h3 .n {
@@ -1737,6 +1822,144 @@
   /* A button rebuilt while already out must not fade in again. */
   #budget .acct-item.settled .acct-switch { transition: none; }
   @media (prefers-reduced-motion: reduce) { #budget .acct-switch { transition: none; } }
+
+  /* Compact: under about 200px an agent card is its name, a state row, and
+     only what that state needs. The name has its line to itself, with no
+     badge to make room for; the swatch stands for the session whatever it
+     is doing, and everything under the name starts at the card's own edge,
+     under the swatch, since the width is what this mode is short of. Last in
+     the sheet, so it outranks the full card's rules it narrows. */
+  html.compact li.line.card:has(> button.row.agent) { padding-block: 0; }
+  html.compact li.line.card > button.row.agent { --badge-room: 0px; align-items: flex-start; padding: 7px 9px; }
+  html.compact li.line.card > button.row.agent > .swatch { margin-top: 3px; }
+  html.compact li.line.card > button.row.agent .label { font-size: 12px; letter-spacing: -.01em; }
+  html.compact .cface {
+    display: flex; flex-direction: column; gap: 3px; align-self: stretch; min-width: 0;
+    margin: 3px 0 0 calc(-1 * (var(--mark) + var(--row-gap)));
+  }
+  /* The state row: the pill, the long-turn figure after it, the running
+     subagents and the one alarm at its right end. */
+  html.compact .cstate { display: flex; align-items: center; gap: 7px; min-width: 0; min-height: 15px; }
+  /* The full card's own badges. Working and silent have none there, so they
+     get the same outline: working in the lamp's green, silent in the grey of
+     a report nobody has refreshed. */
+  html.compact .spill { white-space: nowrap; }
+  .word.working { color: var(--lit-ink); }
+  .word:is(.silent, .unknown) { color: var(--dim); }
+  html.compact .strail { flex: none; margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+  html.compact .cplus, html.compact .calarm {
+    flex: none; font: 500 10.5px/1 ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; color: var(--dim);
+  }
+  html.compact .calarm { color: var(--alert); }
+  /* What it is doing, two lines at most, then the bar from its own percent. */
+  html.compact .cact {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    font: 400 10.5px/1.3 -apple-system, sans-serif; color: var(--dim); overflow-wrap: anywhere;
+  }
+  html.compact .cbar {
+    display: block; height: 2px; margin-top: 1px; border-radius: 1px; overflow: hidden;
+    background: color-mix(in srgb, var(--fg) 12%, transparent);
+  }
+  html.compact .cbar-fill { display: block; height: 100%; border-radius: 1px; background: var(--lit); }
+  /* What it waits on, in the waiting card's amber ink; a tool's whole
+     command wraps rather than ending at the card's edge. */
+  html.compact .cask {
+    display: flex; flex-direction: column; gap: 1px; min-width: 0;
+    font: 400 11.5px/1.35 -apple-system, sans-serif; color: var(--blocked-text);
+  }
+  html.compact .cask .cwho { display: flex; align-items: center; gap: var(--row-gap); font-weight: 600; }
+  /* A waiting teammate's gate under the card's own, at the card's inner edge. */
+  html.compact li.line.card > button.row.cmate { display: block; min-height: 0; padding: 3px 9px 5px; }
+  html.compact .cask .asks { margin: 0; font-size: 10.5px; }
+  html.compact .cask .cgate {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere;
+  }
+  html.compact .cask .cgate .asks-cmd { white-space: normal; overflow: visible; font: 400 10px/1.35 ui-monospace, Menlo, monospace; }
+  /* A partner pair's badge moves to the join's right end, clear of the lower
+     card's name, which at this width runs across the middle; a link's line
+     starts at the card's edge like everything else under a name. */
+  html.compact li.line.card.partner > svg.pair-badge { left: auto; right: 8px; }
+  /* The same room either side of the join: with the row's own padding, 15px
+     to the text, clear of the badge's 14px radius, since at the right end it
+     meets a state row's alarm or the end of a bar. The full card's selectors
+     again, as they outrank the compact padding above. */
+  html.compact li.line.card:has(> button.row.agent):has(+ li.line.card.partner) { padding-bottom: 8px; }
+  html.compact li.line.card.partner:has(> button.row.agent) { padding-top: 8px; }
+  html.compact li.line.card > .link-line { margin: 0 9px 8px; }
+  /* The answers stacked, each the card's whole inner width. */
+  html.compact li.line.card > .answers { margin: 0 9px 9px; gap: 5px; }
+  html.compact li.line.card > .answers > .answer { padding: 5px 9px; gap: 6px; }
+  html.compact li.line.card > .answers .answer-label { white-space: normal; overflow-wrap: break-word; }
+  /* Tiny: under about 120px a session is a row, not a card: its square and
+     its name, then the state's badge across the row's width, then what it is
+     doing or asks. The square is the session's identity, as on every card;
+     the state is the badge's alone. There are no answers at this width; a
+     click brings the pane forward, where a waiting session is answered. */
+  html.tiny #groups ul { padding: 0 5px; }
+  html.tiny #groups li.line.card {
+    margin-bottom: 0; padding-block: 0; border-radius: 6px; border-color: transparent;
+    background: none; box-shadow: none;
+  }
+  html.tiny #groups li.line.card:has(> button.row:hover) { background: var(--card-hover); }
+  /* A hairline between sessions, the rule the details card draws between its
+     parts: without cards, nothing else says where one row ends. A worktree
+     and a partner keep their own join. */
+  html.tiny #groups li.line.card + li.line.card:not(.worktree, .partner) {
+    border-top: var(--hair) solid color-mix(in srgb, var(--fg) 11%, transparent); border-radius: 0;
+  }
+  html.tiny li.line.card > :not(button.row, svg.seam, svg.pair-badge),
+  html.tiny li.line.card > button.row > :not(.shell-mark, .swatch, .stack),
+  html.tiny .cplus, html.tiny .remote-mark { display: none; }
+  html.tiny #groups li.line.card > button.row { padding: 6px 4px; }
+  /* The square closer to the name than on a card, since every pixel here is
+     the name's; the badge under them still spans the row. */
+  html.tiny #groups li.line.card > button.row.agent { --row-gap: 5px; }
+  html.tiny .cstate { flex-wrap: wrap; gap: 3px; }
+  html.tiny .spill { flex: 1 1 100%; text-align: center; }
+  html.tiny .strail { margin-left: 0; }
+  /* What tells two sessions of one name apart, after the name and smaller;
+     the name gives up its room first. */
+  html.tiny .name { gap: 3px; }
+  html.tiny .cdup { flex: none; font: 500 10px/1 -apple-system, sans-serif; color: var(--dim); }
+  /* The pair's badge shrinks to the join's right end, clear of both names:
+     the lower card's name stops short of it, as a card's stops short of its
+     corner badge. */
+  html.tiny #groups li.line.card.partner > svg.pair-badge { width: 16px; height: 16px; top: -8px; left: auto; right: 2px; }
+  html.tiny #groups li.line.card.partner > button.row.agent { --badge-room: 16px; }
+  /* The foot as one line: the account in use and its fullest window. */
+  html.compact #budget { padding: 6px 0 2px; }
+  html.compact #budget .lim-head { flex-wrap: wrap; }
+  html.compact #budget .cfoot-line { display: flex; align-items: center; gap: 5px; min-width: 0; height: 18px; }
+  html.compact #budget .cfoot .lim-toggle { gap: 3px; padding: 1px 3px 1px 2px; min-width: 0; }
+  html.compact #budget .cfoot .cacct {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 600 10.5px/1 -apple-system, sans-serif; color: var(--fg); opacity: .85;
+  }
+  html.compact #budget .cfoot :is(.cwl, .cwhen) { flex: none; }
+  html.compact #budget .cfoot .track { flex: 1 1 auto; min-width: 18px; }
+  html.compact #budget .cfoot .cpct { flex: none; font-weight: 600; color: var(--fg); opacity: .85; }
+  html.compact #budget .cfoot-line.climbing .fill { background: var(--sev-warn); }
+  html.compact #budget .cfoot-line.near .fill { background: var(--sev-crit); }
+  html.compact #budget .cfoot-line.climbing .cpct { color: var(--sev-warn); opacity: 1; }
+  html.compact #budget .cfoot-line.near .cpct { color: var(--sev-crit); opacity: 1; }
+  html.compact #budget .cfoot-next { height: auto; margin-top: 4px; }
+  /* Tiny: the whole line is the Limits handle, the bar a hairline (the
+     release number's room goes to the buttons, in paintVersion). */
+  /* An update on offer, or what became of taking it, gets a line of its own
+     above the two buttons: beside them there is no room for it. */
+  html.tiny #bar { flex-wrap: wrap; row-gap: 4px; }
+  html.tiny #release:not(:empty) { flex: 1 1 100%; white-space: normal; }
+  html.tiny #budget { margin: 0 5px; padding: 3px 0 1px; }
+  html.tiny #budget .cfoot .cfoot-line.hairline { width: 100%; height: 16px; margin: 0; gap: 4px; padding: 0 2px 0 0; }
+  html.tiny #budget .cfoot-line.hairline .track { height: 2px; min-width: 0; }
+  /* Codex's line wears its mark where the account's line has the chevron. */
+  html.compact #budget .cfoot .cprov { display: inline-flex; align-items: center; gap: 3px; min-width: 0; padding-left: 2px; }
+  html.compact #budget .cfoot .cprov .provider { flex: none; width: 10px; height: 10px; }
+  html.compact #budget .cfoot-next .next-chip {
+    padding: 2px 6px; border-radius: 5px; cursor: default;
+    font: 600 10px/1 -apple-system, sans-serif; color: var(--sev-crit);
+    background: color-mix(in srgb, var(--sev-crit) 12%, transparent);
+  }
 </style>
 
 <div id="banner" role="status" aria-live="polite">
@@ -1830,6 +2053,41 @@ function metaIcon(kind) {
   return svg;
 }
 
+// The fewest commits in a day for each shade past the first. The same on
+// every card, so two cards compare.
+const COMMIT_STEPS = [5, 15, 40];
+
+// A project's commits per day, oldest first and today last, as GitHub's
+// calendar: a column a week from Sunday, the days outside the span left empty.
+function commitSection(days) {
+  const level = n => n === 0 ? 0 : 1 + COMMIT_STEPS.filter(step => n >= step).length;
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days.length - 1));
+  const grid = Object.assign(document.createElement("div"), {className: "commits-grid"});
+  for (let i = 0; i < first.getDay(); i++) grid.append(Object.assign(document.createElement("i"), {className: "none"}));
+  days.forEach((n, i) => {
+    const day = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i);
+    const cell = document.createElement("i");
+    if (n) cell.className = "l" + level(n);
+    cell.title = `${n} ${n === 1 ? "commit" : "commits"} on ${day.toLocaleDateString(undefined, {month: "short", day: "numeric"})}`;
+    grid.append(cell);
+  });
+  const total = days.reduce((a, b) => a + b, 0);
+  const said = `${total} ${total === 1 ? "commit" : "commits"} in twelve weeks`;
+  grid.setAttribute("role", "img");
+  grid.setAttribute("aria-label", said);
+  const head = Object.assign(document.createElement("div"), {className: "commits-head"});
+  head.append(document.createTextNode("Commits, 12 weeks"),
+              Object.assign(document.createElement("b"), {textContent: total.toLocaleString()}));
+  const box = Object.assign(document.createElement("div"), {className: "commits"});
+  box.append(head, grid);
+  return box;
+}
+
+// The state as Details says it beside the model: a word, and a dot in the
+// colour the card's badge would use. Silent and unknown say nothing.
+const CARD_STATES = {working: "working", idle: "idle", blocked: "waiting", exited: "exited"};
+
 const STATE_TITLES = {
   silent: "no state reported yet",
   working: "working",
@@ -1905,10 +2163,43 @@ const speaksAt = () => SETTINGS?.context_threshold ?? CONTEXT_SPEAKS_AT;
 // Everything in the panel is sized in px off one stylesheet, so one zoom on
 // the root scales type, icons, gaps and hairlines together. Growing only the
 // text would leave it rattling inside furniture that stayed put.
+let uiScale = 1;
 function applyScale(value) {
   const scale = Number(value);
-  document.documentElement.style.setProperty(
-    "--scale", Number.isFinite(scale) ? Math.max(0.8, Math.min(1.6, scale)) : 1);
+  uiScale = Number.isFinite(scale) ? Math.max(0.8, Math.min(1.6, scale)) : 1;
+  document.documentElement.style.setProperty("--scale", uiScale);
+  syncCompact();
+}
+
+// A panel too narrow for a card's facts shows each card as its name and its
+// state, and the foot as one line. Judged on the width the page lays out in,
+// the panel's over the text size, so a larger text size turns it on as
+// surely as a narrower panel. Off again only well past where it came on, so
+// a panel dragged across the line does not flip on every pixel.
+const COMPACT_BELOW = 192;
+const COMPACT_ABOVE = 208;
+// Narrower still, a session is its colour square and the foot a hairline: the
+// line where a badge and an alarm stop fitting beside each other.
+const TINY_BELOW = 120;
+const TINY_ABOVE = 136;
+let compact = false;
+let tiny = false;
+function syncCompact() {
+  const width = window.innerWidth / uiScale;
+  const next = compact ? width <= COMPACT_ABOVE : width < COMPACT_BELOW;
+  const nextTiny = next && (tiny ? width <= TINY_ABOVE : width < TINY_BELOW);
+  if (next === compact && nextTiny === tiny) return;
+  compact = next;
+  tiny = nextTiny;
+  // The whole Limits opened at compact width is a look for now: the next time
+  // the panel narrows, the foot is one line again.
+  if (!compact) compactLimitsOpen = false;
+  document.documentElement.classList.toggle("compact", compact);
+  document.documentElement.classList.toggle("tiny", tiny);
+  // The foot follows now even when no cards are painted: the list is empty,
+  // or render() holds the frame for a drag or refuses it after a drop.
+  paintBudget(lastSnapshot);
+  if (LATEST.groups.length) render(LATEST, false, true);
 }
 
 // The face shell cards' names wear. The terminal's font arrives as a
@@ -2069,9 +2360,9 @@ const until = epoch =>
 function fieldsFor(row) {
   const d = row.details || {};
   const pairs = [];
-  const add = (icon, label, value) => {
+  const add = (icon, label, value, title) => {
     if (value === undefined || value === null) return;
-    pairs.push({icon, label, value});
+    pairs.push({icon, label, value, title});
   };
   const gauge = (value, at) => value == null ? null : {
     percent: value,
@@ -2088,8 +2379,7 @@ function fieldsFor(row) {
   if (u.cpu) add("cpu", "CPU", {percent: 100, text: u.cpu.percent + "%", note: u.cpu.top, alarm: true});
   if (u.memory) add("memory", "Memory", {percent: 100, text: u.memory.gb.toFixed(1) + " GB", note: u.memory.top, alarm: true});
   add("uptime", "Up", row.started_at == null ? null : forHumans(Date.now() / 1000 - row.started_at));
-  add("shells", "Shells", row.shells?.length);
-  add("model", "Subagents", row.agents);
+  add("model", "Agents", row.agents);
   add("cost", "Cost", d.cost != null ? "$" + d.cost.toFixed(2) : null);
   // A warm cache is unremarkable. One about to expire, with a six-figure
   // rebuild behind it, is the most actionable number on the card.
@@ -2103,10 +2393,15 @@ function fieldsFor(row) {
     });
   }
   if (d.lines_added || d.lines_removed) {
-    add("lines", "Lines", `+${d.lines_added || 0} \u2212${d.lines_removed || 0}`);
+    // Past a thousand the figure rounds; the hover keeps the exact count.
+    const added = d.lines_added || 0, removed = d.lines_removed || 0;
+    add("lines", "Lines", `+${thousands(added)} \u2212${thousands(removed)}`,
+        `${added.toLocaleString()} added, ${removed.toLocaleString()} removed`);
   }
   return pairs;
 }
+
+const thousands = n => n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n);
 
 const tokens = n =>
   n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n);
@@ -2115,23 +2410,35 @@ function showCard(row) {
   const d = row.details || {};
   const pairs = fieldsFor(row);
   // Nothing to say is better said by saying nothing.
-  if (!pairs.length && !d.model) return;
+  if (!pairs.length && !d.model && !CARD_STATES[row.state]) return;
 
   card.textContent = "";
   card.dataset.row = row.session_id;
   const who = Object.assign(document.createElement("div"), {className: "who"});
-  who.textContent = d.session_name || row.label;
+  // The session's own colour, the square its card wears.
+  if (SESSION_COLOURS[row.colour]) {
+    const square = Object.assign(document.createElement("span"), {className: "square"});
+    square.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+    who.append(square);
+  }
+  who.append(Object.assign(document.createElement("span"), {className: "name", textContent: d.session_name || row.label}));
   card.append(who);
 
-  if (d.model) {
+  const state = CARD_STATES[row.state];
+  if (state || d.model) {
     const sub = Object.assign(document.createElement("div"), {className: "sub"});
-    sub.textContent = d.model;
+    if (state) sub.append(Object.assign(document.createElement("span"), {className: "dot " + row.state}), state);
+    if (state && d.model) sub.append(" \u00b7 ");
+    if (d.model) sub.append(d.model);
     card.append(sub);
   }
 
-  if (pairs.length) {
+  // Budgets keep their rows; plain counts read as one row of figures.
+  const gauges = pairs.filter(({value}) => value && typeof value === "object");
+  const counts = pairs.filter(({value}) => !(value && typeof value === "object"));
+  if (gauges.length) {
     const grid = Object.assign(document.createElement("dl"), {className: "grid"});
-    for (const {icon, label, value} of pairs) {
+    for (const {icon, label, value} of gauges) {
       const dt = document.createElement("dt");
       if (icon) dt.append(metaIcon(icon));
       dt.append(document.createTextNode(label));
@@ -2166,7 +2473,7 @@ function showCard(row) {
   }
 
   const flags = [];
-  if (d.effort) flags.push([d.effort + " effort", "effort " + d.effort]);
+  if (d.effort) flags.push([(d.effort === "xhigh" ? "extra high" : d.effort) + " effort", "effort " + d.effort]);
   if (d.thinking) flags.push(["thinking", ""]);
 
   if (d.fast_mode) flags.push(["fast", "hot"]);
@@ -2178,10 +2485,29 @@ function showCard(row) {
     for (const [text, tone] of flags) {
       const f = Object.assign(document.createElement("span"),
                               {className: "flag" + (tone ? " " + tone : "")});
-      f.textContent = text;
+      const said = text[0].toUpperCase() + text.slice(1);
+      if (tone === "effort max") {
+        const [first, rest] = said.split(" ");
+        f.append(Object.assign(document.createElement("i"), {textContent: first}), " ",
+                 Object.assign(document.createElement("i"), {textContent: rest}));
+      } else f.textContent = said;
       bar.append(f);
     }
     card.append(bar);
+  }
+
+  if (counts.length) {
+    const figures = Object.assign(document.createElement("div"), {className: "counts"});
+    for (const {icon, label, value, title} of counts) {
+      const cell = Object.assign(document.createElement("div"), {className: "count"});
+      if (title) cell.title = title;
+      const name = document.createElement("span");
+      if (icon) name.append(metaIcon(icon));
+      name.append(label);
+      cell.append(Object.assign(document.createElement("b"), {textContent: value}), name);
+      figures.append(cell);
+    }
+    card.append(figures);
   }
 
   card.classList.remove("pinned");
@@ -2196,6 +2522,10 @@ const contextReads = new Map();
 // Pinned: the card holds still and takes clicks, so it can carry a button.
 function pinCard(row) {
   card.classList.add("pinned");
+  if (row.commits && SETTINGS?.commit_heatmap) {
+    card.append(commitSection(row.commits));
+    clampCard();
+  }
   if (!row.context_readable) return;
   const box = Object.assign(document.createElement("div"), {className: "ctx"});
   card.append(box);
@@ -2208,7 +2538,7 @@ function paintBreakdown(box, sessionId) {
   box.replaceChildren();
   if (read.context) {
     const shape = ctxShape(read.context);
-    const figures = [...breakdownBar(shape), breakdownNote(read.at)];
+    const figures = [...breakdownBar(shape, read.context.items, sessionId), breakdownNote(read.at)];
     // Only the repaint the read itself causes fades in; reopening the card
     // on a result already read shows it at once.
     if (read.landing) figures.forEach(el => el.classList.add("ctx-landed"));
@@ -2269,16 +2599,109 @@ function ctxHead(shape) {
   return head;
 }
 
-function ctxDeferred(shape) {
+// Which of /context's later tables lists a category's items. Its MCP tools
+// table adds up to the deferred row, not the loaded one, so it opens from
+// the note about what loads on use.
+const CTX_ITEMS = {"Custom agents": "Custom Agents", "Memory files": "Memory Files", "Skills": "Skills",
+                   "MCP tools (deferred)": "MCP Tools"};
+// The biggest items shown when a row opens; the rest are summed in one line.
+const CTX_SHOWN = 8;
+// Session id -> the categories whose items are open, kept across repaints.
+const ctxOpen = new Map();
+
+// A category's items as rows to draw: a memory file by its path, MCP tools
+// by the server that brings them, anything else by its own name.
+function ctxItemRows(name, items) {
+  if (name === "Memory files") {
+    return items.map(i => ({label: i.detail.replace(/^\/Users\/[^/]+\//, "~/"), tokens: i.tokens, below: i.below}));
+  }
+  if (name === "MCP tools (deferred)") {
+    const servers = new Map();
+    for (const i of items) {
+      const server = servers.get(i.detail) || {label: i.detail, tokens: 0, count: 0};
+      server.tokens += i.tokens ?? 0;
+      server.count += 1;
+      servers.set(i.detail, server);
+    }
+    return [...servers.values()].map(s => ({...s, note: `${s.count} ${s.count === 1 ? "tool" : "tools"}`}));
+  }
+  return items.map(i => ({label: i.name, tokens: i.tokens, below: i.below}));
+}
+
+// The open list under a row: the biggest items with a bar each, then one
+// line for the rest.
+function ctxItemList(rows, key) {
+  const list = Object.assign(document.createElement("div"), {className: "ctx-items"});
+  const sorted = [...rows].sort((a, b) => (b.tokens ?? 0) - (a.tokens ?? 0));
+  const top = Math.max(1, ...sorted.map(r => r.tokens ?? 0));
+  for (const r of sorted.slice(0, CTX_SHOWN)) {
+    const name = Object.assign(document.createElement("span"), {className: "name", title: r.label});
+    name.textContent = r.label;
+    if (r.note) name.append(Object.assign(document.createElement("span"), {className: "note", textContent: " " + r.note}));
+    const mini = Object.assign(document.createElement("span"), {className: "mini"});
+    const fill = document.createElement("i");
+    fill.style.width = Math.max(4, (r.tokens ?? 0) / top * 100) + "%";
+    fill.style.background = `var(--ctx-${key})`;
+    mini.append(fill);
+    const num = Object.assign(document.createElement("span"), {className: "num"});
+    num.textContent = r.tokens == null ? `<${r.below}` : tokens(r.tokens);
+    list.append(name, mini, num);
+  }
+  const rest = sorted.slice(CTX_SHOWN);
+  if (rest.length) {
+    const counted = rest.filter(r => r.tokens != null);
+    const under = rest.filter(r => r.tokens == null);
+    const parts = [`${rest.length} more`];
+    if (counted.length) parts.push(tokens(counted.reduce((n, r) => n + r.tokens, 0)));
+    if (under.length) parts.push(`${under.length} under ${under[0].below} each`);
+    list.append(Object.assign(document.createElement("span"), {className: "more", textContent: parts.join(", ")}));
+  }
+  return list;
+}
+
+// A list the daemon could not read says why, where the list would be.
+function ctxItemRefusal(why) {
+  const list = Object.assign(document.createElement("div"), {className: "ctx-items"});
+  list.append(Object.assign(document.createElement("span"), {className: "more refused", textContent: why}));
+  return list;
+}
+
+// A category's name, as a button that opens its items when it has any.
+function ctxOpener(label, name, items, sessionId) {
+  const rows = items?.[CTX_ITEMS[name]];
+  if (!rows?.length && !rows?.refused) return null;
+  const open = ctxOpen.get(sessionId)?.has(name) ?? false;
+  const button = Object.assign(document.createElement("button"), {type: "button", className: "ctx-open"});
+  button.append(Object.assign(document.createElement("span"), {className: "label", textContent: label}),
+                Object.assign(document.createElement("span"), {className: "chev", textContent: "\u203a"}));
+  button.setAttribute("aria-expanded", String(open));
+  button.addEventListener("click", () => {
+    const opened = ctxOpen.get(sessionId) || new Set();
+    if (opened.has(name)) opened.delete(name); else opened.add(name);
+    ctxOpen.set(sessionId, opened);
+    repaintBreakdown(sessionId);
+  });
+  return {button, open, list: !open ? null : rows.refused ? ctxItemRefusal(rows.refused)
+                                           : ctxItemList(ctxItemRows(name, rows), ctxGroupOf(name).key)};
+}
+
+function ctxDeferred(shape, items, sessionId) {
   if (!shape.deferred.length) return [];
   const note = Object.assign(document.createElement("div"), {className: "ctx-note"});
-  note.textContent = "Loaded on use, not counted: " +
-    shape.deferred.map(c => `${c.name.replace(" (deferred)", "")} ${tokens(c.tokens)}`).join(" \u00b7 ");
-  return [note];
+  note.append("Loaded on use, not counted: ");
+  const lists = [];
+  shape.deferred.forEach((c, i) => {
+    if (i) note.append(" \u00b7 ");
+    const label = `${c.name.replace(" (deferred)", "")} ${tokens(c.tokens)}`;
+    const opener = ctxOpener(label, c.name, items, sessionId);
+    note.append(opener ? opener.button : label);
+    if (opener?.list) lists.push(opener.list);
+  });
+  return [note, ...lists];
 }
 
 // The window as one bar, then a row per category with its own bar.
-function breakdownBar(shape) {
+function breakdownBar(shape, items, sessionId) {
   const bar = Object.assign(document.createElement("div"), {className: "ctx-bar", role: "img"});
   bar.setAttribute("aria-label", [...shape.groups.map(g => `${g.label} ${tokens(g.tokens)}`),
                                   ...(shape.buffer ? [`kept free for compaction ${tokens(shape.buffer)}`] : [])].join(", "));
@@ -2296,8 +2719,9 @@ function breakdownBar(shape) {
   const rows = Object.assign(document.createElement("div"), {className: "ctx-rows"});
   const top = Math.max(...shape.loaded.map(c => c.tokens));
   for (const c of [...shape.loaded].sort((a, b) => b.tokens - a.tokens)) {
-    const name = Object.assign(document.createElement("span"), {className: "name"});
-    name.textContent = c.name;
+    const opener = ctxOpener(c.name, c.name, items, sessionId);
+    const name = opener ? opener.button : Object.assign(document.createElement("span"), {textContent: c.name});
+    name.classList.add("name");
     const mini = Object.assign(document.createElement("span"), {className: "mini"});
     const fill = document.createElement("i");
     fill.style.width = Math.max(4, c.tokens / top * 100) + "%";
@@ -2306,8 +2730,9 @@ function breakdownBar(shape) {
     const num = Object.assign(document.createElement("span"), {className: "num"});
     num.textContent = tokens(c.tokens);
     rows.append(tinted(c.group.icon, c.group.key), name, mini, num);
+    if (opener?.list) rows.append(opener.list);
   }
-  return [ctxHead(shape), bar, rows, ...ctxDeferred(shape)];
+  return [ctxHead(shape), bar, rows, ...ctxDeferred(shape, items, sessionId)];
 }
 
 // The setup rows are measured by a fresh fork, so they say what a session
@@ -2691,18 +3116,20 @@ function questionUnderPointer() {
 }
 
 // Whether painting a frame waits. Only while the panel is in sight, and
-// only while that frame still asks, on the card under the pointer, the very
-// question the card shows: answered anywhere, or replaced by another, there
-// is nothing left to aim at. That bound matters because :hover can outlive
-// the pointer in the Toolbelt, which often sends nothing when it leaves for
-// the terminal.
+// only while that frame still asks, on the card under the pointer, a question
+// the card shows: its own, or at compact width a teammate's. Answered
+// anywhere, or replaced by another, there is nothing left to aim at. That
+// bound matters because :hover can outlive the pointer in the Toolbelt, which
+// often sends nothing when it leaves for the terminal.
 function holdsBack(snapshot) {
   if (document.hidden) return false;
-  const shown = questionUnderPointer()?.querySelector("button.row")?._row;
-  if (!shown) return false;
-  const row = (snapshot.groups || []).flatMap(g => g.rows || []).find(r => r.session_id === shown.session_id);
-  return !!(row && row.state === "blocked" && row.question
-            && JSON.stringify(row.question) === JSON.stringify(shown.question));
+  const shown = [...(questionUnderPointer()?.querySelectorAll(":scope > button.row") || [])].map(b => b._row);
+  const rows = (snapshot.groups || []).flatMap(g => g.rows || []);
+  return shown.some(was => {
+    const row = rows.find(r => r.session_id === was.session_id);
+    return !!(row && row.state === "blocked" && row.question
+              && JSON.stringify(row.question) === JSON.stringify(was.question));
+  });
 }
 
 function releaseHeldFrame() {
@@ -4036,9 +4463,10 @@ function paintQueue(snapshot) {
   const box = document.getElementById("queue");
   box.textContent = "";
   const waiting = snapshot.groups.flatMap(g => g.rows).filter(r => IS_EXCEPTION(r.state));
-  // Nothing waiting is said by the section not being there.
-  box.hidden = !waiting.length;
-  if (!waiting.length) return;
+  // Nothing waiting is said by the section not being there. At compact width
+  // the waiting cards carry their questions themselves.
+  box.hidden = !waiting.length || compact;
+  if (box.hidden) return;
 
   // Oldest first. A row with no start time cannot claim a place in the line,
   // so it goes to the back.
@@ -4365,11 +4793,14 @@ function nextSwitchChip(next) {
 function limitsHead(store) {
   const head = Object.assign(document.createElement("div"), {className: "lim-head"});
   const toggle = Object.assign(document.createElement("button"), {type: "button", className: "lim-toggle"});
-  const folded = !!SETTINGS?.limits_folded;
+  const folded = !compact && !!SETTINGS?.limits_folded;
   toggle.setAttribute("aria-expanded", String(!folded));
   toggle.append(Object.assign(document.createElement("span"), {className: "chev", textContent: "›"}),
                 Object.assign(document.createElement("span"), {textContent: "Limits"}));
-  toggle.addEventListener("click", () => push({limits_folded: !SETTINGS?.limits_folded}));
+  toggle.addEventListener("click", () => {
+    if (compact) { compactLimitsOpen = false; paintBudget(lastSnapshot); }
+    else push({limits_folded: !SETTINGS?.limits_folded});
+  });
   head.append(toggle);
   if (store?.accounts?.length > 1) {
     const row = autoSwitchRow();
@@ -4417,6 +4848,86 @@ function foldTile(icon, name, windows, {active = false, status = ""} = {}) {
   return tile;
 }
 
+// At compact width the foot is one line: the account sessions run on, its
+// fullest window as name, bar and figure, the reset only once the window is
+// tight, and a near switch on a line of its own. Codex gets a line of the same
+// shape only while its fullest window is tight. The chevron opens the whole
+// Limits for this page only, so the fold kept for the full width stays as it
+// was set. At tiny width the foot is the chevron and a hairline for that
+// window in the meter's colours, its figure only once it is tight, and the rest in the line's title.
+const COMPACT_TIGHT_USED = 80;
+const COMPACT_TIGHT_SECONDS = 30 * 60;
+const tightWindow = (w, now) => w.used >= COMPACT_TIGHT_USED
+  || (w.resets_at != null && w.resets_at - now < COMPACT_TIGHT_SECONDS);
+const fullestWindow = windows => windows.reduce((a, w) => (a && a.used >= w.used ? a : w), null);
+let compactLimitsOpen = false;
+function compactFoot(store, codex) {
+  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
+  const now = Date.now() / 1000;
+  const said = (name, windows) => [name, ...windows.map(w => `${w.label} ${Math.round(w.used)}%`
+    + (w.resets_at ? `, resets in ${untilReset(w.resets_at, now)}` : ""))].join(" \u00b7 ");
+  // The window's bar, the line taking on its colour as it fills.
+  const track = (line, fullest) => {
+    const row = meterRow(fullest.label, fullest.used, fullest.resets_at,
+                         {tick: fullest.pace?.expected ?? null, ahead: !!fullest.pace?.ahead});
+    for (const kind of ["climbing", "near", "ahead"]) if (row.classList.contains(kind)) line.classList.add(kind);
+    return row.querySelector(".track");
+  };
+  const figure = fullest => el("span", "cpct", Math.round(fullest.used) + "%");
+  const footLine = (lead, name, windows) => {
+    const line = el("div", "cfoot-line");
+    line.append(lead);
+    const fullest = fullestWindow(windows);
+    if (!fullest) return line;
+    line.append(el("span", "cwl", foldShort(fullest.label)), track(line, fullest), figure(fullest));
+    if (fullest.resets_at && tightWindow(fullest, now)) line.append(el("span", "cwhen", untilReset(fullest.resets_at, now)));
+    line.title = said(name, windows);
+    return line;
+  };
+  const open = () => { compactLimitsOpen = true; paintBudget(lastSnapshot); };
+  const active = store.accounts.find(a => a.active);
+  const windows = accountWindows(active);
+  const next = nextSwitchChip(store.next_switch);
+  const theirs = codex ? codexWindows(codex) : [];
+  if (tiny) {
+    const box = el("div", "cfoot hair");
+    const line = el("button", "lim-toggle cfoot-line hairline");
+    line.type = "button";
+    line.setAttribute("aria-expanded", "false");
+    line.append(el("span", "chev", "›"));
+    const fullest = fullestWindow(windows);
+    if (fullest) line.append(track(line, fullest));
+    if (fullest && tightWindow(fullest, now)) line.append(figure(fullest));
+    line.title = [windows.length ? said(active.name, windows) : `${active.name}: ${accountStatus(active)}`,
+                  next?.textContent, theirs.length ? said("Codex", theirs) : null,
+                  "Limits: every window and account"].filter(Boolean).join("\n");
+    line.addEventListener("click", open);
+    box.append(line);
+    return box;
+  }
+  const box = el("div", "cfoot");
+  const toggle = el("button", "lim-toggle");
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.title = "Limits: every window and account";
+  toggle.append(el("span", "chev", "›"), el("span", "cacct", active.name));
+  toggle.addEventListener("click", open);
+  const line = footLine(toggle, active.name, windows);
+  if (!windows.length) line.append(el("span", "acct-status", accountStatus(active)));
+  box.append(line);
+  if (next) {
+    const second = el("div", "cfoot-line cfoot-next");
+    second.append(next);
+    box.append(second);
+  }
+  if (theirs.length && tightWindow(fullestWindow(theirs), now)) {
+    const lead = el("span", "cprov");
+    lead.append(providerIcon("openai", "OpenAI"), el("span", "cacct", "Codex"));
+    box.append(footLine(lead, "Codex", theirs));
+  }
+  return box;
+}
+
 // An account's windows: the 5-hour, the weekly and every per-model limit.
 function accountWindows(account) {
   const windows = [];
@@ -4434,10 +4945,14 @@ function foldedAccountTiles(store) {
 }
 
 // Codex folded, its reserve counted with its plan's windows.
-function foldedCodexTile(limits) {
+// Codex's windows, and a reserve it draws on, under its short name.
+function codexWindows(limits) {
   const windows = limits.windows.map(w => ({...w}));
   if (limits.reserve) windows.push({...limits.reserve, label: limits.reserve.label === "Luna Reserve" ? "Luna" : limits.reserve.label, reserve: true});
-  return foldTile(providerIcon("openai", "OpenAI"), "Codex", windows);
+  return windows;
+}
+function foldedCodexTile(limits) {
+  return foldTile(providerIcon("openai", "OpenAI"), "Codex", codexWindows(limits));
 }
 
 function paintAccounts(strip, store) {
@@ -4622,6 +5137,14 @@ setInterval(() => {
     when.lastChild.textContent = reportAge(since);
     when.closest(".task").classList.toggle("stale", Date.now() / 1000 - since >= TASK_STALE_AFTER);
   }
+  // A compact card is Working or Silent, dimmed or not and with a bar or not
+  // as of its paint, so a report going stale repaints the list, and the
+  // Silent figure counts on in place.
+  for (const face of document.querySelectorAll(".cface[data-reported]")) {
+    const task = {reported_at: Number(face.dataset.reported)};
+    if ((face.dataset.face === "working") !== reportFresh(task)) { render(LATEST); break; }
+    if (face.dataset.face === "silent") pillWords(face.querySelector(".spill"), COMPACT_FACE.silent, {task});
+  }
 }, 1000);
 function paintBudget(snapshot) {
   lastSnapshot = snapshot;
@@ -4631,10 +5154,15 @@ function paintBudget(snapshot) {
   const store = snapshot.accounts;
   if (renamingAccount && strip.contains(document.activeElement)) return;
   strip.replaceChildren();
+  if (compact && !compactLimitsOpen && !store?.error && store?.accounts?.some(a => a.active)) {
+    strip.append(compactFoot(store, snapshot.codex));
+    strip.hidden = false;
+    return;
+  }
 
   // An error and the add button show whether folded or not: both ask for
   // something to be done.
-  const folded = !!SETTINGS?.limits_folded && !store?.error;
+  const folded = !compact && !!SETTINGS?.limits_folded && !store?.error;
   const tiles = folded ? Object.assign(document.createElement("div"), {className: "fold-tiles"}) : null;
   if (tiles) strip.append(tiles);
   if (store?.error) {
@@ -4690,6 +5218,12 @@ function fitMeta() {
   // the rest of the layout reads, rather than per row as it is built.
   for (const label of document.querySelectorAll("#groups .label")) {
     const run = label.querySelector(":scope > .run");
+    if (tiny && run) {
+      label.classList.remove("clipped");
+      glide(run, 0);
+      cutFront(label, run);
+      continue;
+    }
     // The run's own width, since a glide under way moves the run and would
     // change what scrollWidth reports. Going round, the run is two equal halves.
     const going = run?.querySelector(":scope > .copy");
@@ -4698,6 +5232,43 @@ function fitMeta() {
     label.classList.toggle("clipped", clipped);
     if (run) glide(run, clipped ? width : 0);
   }
+}
+
+// At tiny width a name too long for its row shows its end after an ellipsis,
+// with no fade and no glide: names that share a start, a repository's
+// worktrees or one tool's sessions, differ at their ends. Cut from the whole
+// name each time, so a panel narrowed further cuts again from the start.
+function cutFront(label, run) {
+  const name = run.dataset.name;
+  const fits = () => run.getBoundingClientRect().width <= label.getBoundingClientRect().width + 0.1;
+  run.textContent = name;
+  if (!label.getClientRects().length || fits()) return;
+  // The longest tail that fits after the ellipsis.
+  let lo = 0, hi = name.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    run.textContent = "\u2026" + name.slice(name.length - mid);
+    if (fits()) lo = mid; else hi = mid - 1;
+  }
+  run.textContent = "\u2026" + name.slice(name.length - lo);
+}
+
+// At tiny width two sessions under one name are told apart after it: by the
+// ends of their branches when those differ, else by their place in the list.
+// A name nothing else shares has nothing after it.
+const TWIN_BRANCH_END = 4;
+function twinSuffixes(rows) {
+  const named = new Map();
+  for (const row of rows) if (!row.depth) named.set(row.label, [...(named.get(row.label) || []), row]);
+  const suffixes = new Map();
+  for (const twins of named.values()) {
+    if (twins.length < 2) continue;
+    const ends = twins.map(row => SETTINGS?.show_branch === false || !row.branch ? null
+      : row.branch.length > TWIN_BRANCH_END ? "\u2026" + row.branch.slice(-TWIN_BRANCH_END) : row.branch);
+    const apart = ends.every(Boolean) && new Set(ends).size === ends.length;
+    twins.forEach((row, i) => suffixes.set(row.session_id, apart ? ends[i] : `\u00b7${i + 1}`));
+  }
+  return suffixes;
 }
 
 // A card's name longer than its room goes round now and then: it glides
@@ -4730,7 +5301,7 @@ function glide(run, width) {
   motion.currentTime = Date.now() % total;
   steerScripted([motion]);
 }
-window.addEventListener("resize", () => { fitMeta(); paintSeams(); });
+window.addEventListener("resize", () => { syncCompact(); fitMeta(); paintSeams(); });
 
 // The indented block inside a card that holds its teammates, subagents and
 // shells, made on first use.
@@ -4779,6 +5350,205 @@ function stackOf(text, meta) {
   return stack;
 }
 
+// Under a waiting card, the buttons that answer the gate of `row`: the card's
+// own session, or at compact width a waiting teammate, so a click answers
+// whichever of them asked.
+function offerAnswers(li, row, shortCards) {
+  if (row.remote_refusal) {
+    const refused = remoteRefusalLine(row);
+    if (refused) li.append(refused);
+  } else if (row.question?.options?.length && PICKED_ON_CARD.includes(row.provider || "claude")) {
+    li.classList.add("asking");
+    const answers = answerRows(row);
+    // At compact width the green already says it; the title keeps the words.
+    if (shortCards) {
+      for (const label of answers.querySelectorAll(".answer.recommended .answer-label")) {
+        label.textContent = label.textContent.replace(/\s*\(recommended\)\s*$/i, "");
+      }
+    }
+    li.append(answers);
+  } else if (row.question?.tool && row.question.id && GATE_YES_KEY[row.provider || "claude"]) {
+    li.classList.add("asking");
+    li.append(gateRows(row));
+  }
+}
+
+// What a compact card says under its name, by its state: the badge's word and
+// the full card's badge class it wears, then the parts that follow. Silent is
+// a working session whose own report has gone stale, so the words it last
+// gave are shown dimmed and the bar is not. The pill, the running subagents
+// and the alarm share the badge's line; the ask, the activity and the bar go
+// under it. A `long` pill is shown only once the working turn has run long;
+// `reported` faces turn with the age of the report. At tiny width the badge
+// spans the row, and the running subagents are said aloud only.
+const COMPACT_FACE = {
+  blocked: {word: "Waiting", badge: "blocked", compact: ["pill", "plus", "alarm", "ask"]},
+  silent: {word: "Silent", badge: "silent", reported: true,
+           figure: row => duration(Date.now() / 1000 - row.task.reported_at), said: figure => `no report for ${figure}`,
+           compact: ["pill", "plus", "alarm", "activity"]},
+  working: {word: "Working", badge: "working", reported: true, long: true,
+            compact: ["pill", "plus", "alarm", "activity", "bar"]},
+  done: {word: "Done", badge: "unseen", compact: ["pill", "plus", "alarm"]},
+  idle: {word: "Idle", badge: "idle", compact: ["pill", "plus", "alarm"]},
+  exited: {word: "Exited", badge: "exited", compact: ["pill", "plus", "alarm"]},
+  // At tiny width only, where the badge is the row's one statement of state,
+  // a session nobody has reported on says so rather than saying nothing.
+  unknown: {word: "No report", badge: "unknown", compact: ["pill"]},
+};
+// A working turn run long enough to be worth a look wears the full card's
+// Long badge in place of Working.
+const LONG_FACE = {word: "Long", badge: "long",
+  figure: row => duration(Date.now() / 1000 - row.working_since), said: figure => `running for ${figure}, may be stuck`};
+
+// A pill's words: its figure after the word, and in its title.
+function pillWords(pill, face, row) {
+  const figure = face.figure?.(row);
+  pill.textContent = figure ? `${face.word} ${figure}` : face.word;
+  if (figure) pill.title = face.said(figure);
+}
+// The context figure that earns the state row's alarm slot when no process
+// alarm has it: the line where a session is close to compacting.
+const COMPACT_CONTEXT_ALARM = 85;
+
+const reportFresh = task => !!task && !task.done && task.reported_at != null
+  && Date.now() / 1000 - task.reported_at < TASK_STALE_AFTER;
+
+// The face a compact card wears. A card whose teammate waits on you waits
+// with it, since the teammate has no line of its own at this width. A state
+// nobody has reported has no face, as the full card has no badge for it.
+function compactState(row, waits) {
+  if (waits) return "blocked";
+  if (row.state === "working") return row.task && !row.task.done && row.task.reported_at != null
+    && !reportFresh(row.task) ? "silent" : "working";
+  if (row.state === "exited") return "exited";
+  if (row.state === "idle") return row.unseen ? "done" : "idle";
+  return null;
+}
+
+// One alarm, the worst first: a process alarm, then a context near its end.
+function compactAlarm(row) {
+  const el = text => Object.assign(document.createElement("span"), {className: "calarm", textContent: text});
+  const heavy = row.heavy || [];
+  if (heavy.length) {
+    const alarm = el(heavy.includes("cpu") ? "cpu" : "mem");
+    alarm.title = heavy.map(kind => kind === "cpu" ? `${SETTINGS?.cpu_threshold ?? 100}% CPU`
+                                                   : `${SETTINGS?.memory_threshold ?? 2} GB of memory`)
+      .join(" and ") + " or more in its processes";
+    return alarm;
+  }
+  if (typeof row.context === "number" && row.context >= COMPACT_CONTEXT_ALARM) {
+    const alarm = el(`ctx ${row.context}%`);
+    alarm.title = `${row.context}% of the context used`;
+    return alarm;
+  }
+  return null;
+}
+
+// What the session waits on: a teammate's colour and name first when the
+// gate is its, then the question in the panel's own line, or the tool and the
+// whole command, wrapping, with the reason it gave in the tooltip.
+function compactAsk(asker, named) {
+  const el = (cls, text) => Object.assign(document.createElement("span"), {className: cls, textContent: text});
+  const ask = el("cask", "");
+  if (named) {
+    const swatch = el("swatch", "");
+    if (SESSION_COLOURS[asker.colour]) swatch.style.setProperty("--hue", SESSION_COLOURS[asker.colour]);
+    const who = el("cwho", "");
+    who.append(swatch, asker.label);
+    ask.append(who);
+  }
+  const asked = asker.question;
+  if (asked?.options) ask.append(questionLine(cardQuestion(asker)));
+  else if (asked?.tool) {
+    const gate = el("asks cgate", "");
+    gate.append(el("asks-tool", asked.tool));
+    if (asked.summary) gate.append(" ", el("asks-cmd", asked.summary));
+    const what = asked.summary ? `${asked.tool}: ${asked.summary}` : asked.tool;
+    gate.title = asked.reason ? `${asked.reason}\n${what}` : what;
+    ask.append(gate);
+  }
+  return ask.childElementCount ? ask : null;
+}
+
+// A waiting teammate's gate at compact width: a row of the teammate's own
+// session, so a click focuses it and the arrows and Cmd+Enter reach it as
+// they reach the teammate's line on a full card.
+function mateGate(mate) {
+  const b = Object.assign(document.createElement("button"), {type: "button", className: "row child cmate"});
+  b.dataset.sessionId = mate.session_id;
+  b.setAttribute("aria-describedby", "row-help");
+  b._row = mate;
+  const ask = compactAsk(mate, true);
+  const asked = [...ask.children].slice(1).map(part => part.textContent);
+  b.setAttribute("aria-label", [`${mate.label} is waiting on you`, ...asked].join(" \u2014 "));
+  b.append(ask);
+  b.addEventListener("click", () => act(mate.session_id, "focus"));
+  return b;
+}
+
+function compactFace(row, mates) {
+  const key = compactState(row, IS_EXCEPTION(row.state) || mates.length > 0) ?? (tiny ? "unknown" : null);
+  if (!key) return null;
+  const face = COMPACT_FACE[key];
+  const parts = new Set(face.compact);
+  const el = (cls, text) => Object.assign(document.createElement("span"), {className: cls, textContent: text});
+  const on = setting => SETTINGS?.[setting] !== false;
+  const box = el("cface", "");
+  const line = el("cstate", "");
+  const long = face.long && row.working_since != null
+    && Date.now() / 1000 - row.working_since >= LONG_TURN_SECONDS;
+  const pillFace = long ? LONG_FACE : face;
+  const pill = el(`word ${pillFace.badge} spill`, "");
+  pillWords(pill, pillFace, row);
+  // A long turn the row says itself; a silent one only the pill would.
+  if (key === "silent") pill.dataset.spoken = pill.title;
+  if (face.badge === "blocked") syncBreathe(pill);
+  if (face.badge === "idle") { syncShimmer(pill); addSweep(pill); }
+  // The teammates' names are on their own rows; the card's row says them too.
+  if (mates.length) pill.dataset.spoken = mates.map(mate => `${mate.label} is waiting on you`).join(" \u2014 ");
+  if (parts.has("pill") || (parts.has("long") && long)) line.append(pill);
+  const trail = el("strail", "");
+  const running = on("show_agents") ? (row.subagents || []).filter(sub => sub.ended == null) : [];
+  if (running.length) {
+    const plus = el("cplus", `+${running.length}`);
+    plus.title = `${running.length} subagent${running.length > 1 ? "s" : ""} running`;
+    plus.dataset.spoken = plus.title;
+    if (parts.has("plus")) trail.append(plus);
+    else box.dataset.spoken = plus.title;
+  }
+  const alarm = parts.has("alarm") ? compactAlarm(row) : null;
+  if (alarm) trail.append(alarm);
+  if (trail.childElementCount) line.append(trail);
+  if (line.childElementCount) box.append(line);
+  if (face.reported && row.task && !row.task.done && row.task.reported_at != null) {
+    box.dataset.face = key;
+    box.dataset.reported = row.task.reported_at;
+  }
+
+  const ask = parts.has("ask") && IS_EXCEPTION(row.state) ? compactAsk(row, false) : null;
+  if (ask) box.append(ask);
+  const task = row.task && !row.task.done ? row.task : null;
+  if (parts.has("activity") && on("show_task") && on("show_task_activity")) {
+    const words = task?.activity || row.doing || running.find(sub => sub.doing)?.doing || task?.title || row.topic;
+    if (words) {
+      const activity = el("cact" + (key === "silent" ? " stale" : ""), words);
+      activity.title = task?.reported_at != null ? `${words}\nreported ${reportAge(task.reported_at)} ago` : words;
+      activity.dataset.spoken = `doing ${words}`;
+      box.append(activity);
+    }
+  }
+  if (parts.has("bar") && on("show_task") && on("show_task_bar") && reportFresh(task) && typeof task.percent === "number") {
+    const pct = Math.max(0, Math.min(100, task.percent));
+    const bar = el("cbar", "");
+    const fill = el("cbar-fill", "");
+    fill.style.width = pct + "%";
+    bar.append(fill);
+    bar.title = `about ${pct}% done, the session's own estimate`;
+    box.append(bar);
+  }
+  return box;
+}
+
 function paint(snapshot) {
   const root = document.getElementById("groups");
   const focused = document.activeElement;
@@ -4810,10 +5580,27 @@ function paint(snapshot) {
     }
     h.hidden = group.name === "AGENTS";
     const ul = document.createElement("ul");
+    const twins = tiny ? twinSuffixes(group.rows) : new Map();
+    // At compact width an agent card is its name and its state, and its
+    // teammates have no lines; each one waiting on you puts its gate on the card.
+    const shortCards = compact && group.name === "AGENTS";
+    const waitingIn = new Map();
+    let parent = null;
+    for (const row of shortCards ? group.rows : []) {
+      if (!row.depth) parent = row;
+      else if (parent && IS_EXCEPTION(row.state)) waitingIn.set(parent.session_id, [...(waitingIn.get(parent.session_id) || []), row]);
+    }
     // The card the rows that follow belong to. Rows arrive parent first, then
     // its teammates, so a depth-1 row always joins the card opened just above.
     let card = null;
     for (const row of group.rows) {
+      // A closed question is forgotten, so the same words asked again are a
+      // new question with live buttons, as the daemon also treats them.
+      if (!row.question) {
+        pickedAnswers.delete(row.session_id);
+        cardTicks.delete(row.session_id);
+      }
+      if (shortCards && row.depth && card) continue;
       const li = row.depth && card ? card : document.createElement("li");
       if (li !== card) {
         li.className = "line card";
@@ -4861,6 +5648,9 @@ function paint(snapshot) {
         b.classList.add("hot");
         card.classList.add("blocked");
       }
+      // The teammates whose gates the card also carries, at compact width.
+      const mates = waitingIn.get(row.session_id) || [];
+      if (mates.length) card.classList.add("blocked");
 
       // Identity, always, and never as the ground.
       const mark = document.createElement("span");
@@ -4868,7 +5658,7 @@ function paint(snapshot) {
       if (SESSION_COLOURS[row.colour]) b.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
       // A plain terminal running a command is busy the same way an agent
       // mid-turn is, so it gets the same dots, in grey for want of a colour.
-      if (row.state === "working" || row.running) {
+      if ((row.state === "working" || row.running) && !shortCards) {
         mark.className = "busy" + (row.depth ? " down" : "");
         mark.innerHTML = "<i></i><i></i><i></i>";
       } else if (group.name !== "AGENTS" && !row.depth) {
@@ -4890,23 +5680,30 @@ function paint(snapshot) {
       label.className = "label";
       const run = Object.assign(document.createElement("span"), {className: "run"});
       run.append(row.label);
+      run.dataset.name = row.label;
       label.append(run);
-      // Remote Control on in this session, from its own state file: a glyph after the name.
-      if (row.remote === "on" || row.remote === "reconnecting") {
-        const glyph = metaIcon("remote");
-        glyph.classList.remove("mi");
-        glyph.classList.add("remote-mark");
-        if (row.remote === "reconnecting") glyph.classList.add("reconnecting");
-        glyph.dataset.spoken = row.remote === "on" ? "remote control on" : "remote control reconnecting";
+      const twin = twins.get(row.session_id);
+      const remote = row.remote === "on" || row.remote === "reconnecting";
+      if (remote || twin) {
         const name = Object.assign(document.createElement("span"), {className: "name"});
-        name.append(label, glyph);
+        name.append(label);
+        // Remote Control on in this session, from its own state file: a glyph after the name.
+        if (remote) {
+          const glyph = metaIcon("remote");
+          glyph.classList.remove("mi");
+          glyph.classList.add("remote-mark");
+          if (row.remote === "reconnecting") glyph.classList.add("reconnecting");
+          glyph.dataset.spoken = row.remote === "on" ? "remote control on" : "remote control reconnecting";
+          name.append(glyph);
+        }
+        if (twin) name.append(Object.assign(document.createElement("span"), {className: "cdup", textContent: twin}));
         stack.append(name);
       } else {
         stack.append(label);
       }
       // Which agent this is, said once per card: a tag after the name or a
       // mark in the row's corner. The glyph then leaves the facts line.
-      const marked = group.name === "AGENTS" && !row.depth ? agentMark() : "off";
+      const marked = group.name === "AGENTS" && !row.depth && !shortCards ? agentMark() : "off";
       if (marked === "tag" || marked === "corner") {
         b.style.setProperty("--agent", agentKind(row).colour);
         const glyph = providerIcon(agentKindOf(row), "");
@@ -4923,18 +5720,23 @@ function paint(snapshot) {
         }
       }
 
-      if (hot && row.question && (row.question.options || row.question.tool)) {
-        stack.append(questionLine(row.question.options ? cardQuestion(row) : row.question));
-      }
+      if (shortCards) {
+        const face = compactFace(row, mates);
+        if (face) stack.append(face);
+      } else {
+        if (hot && row.question && (row.question.options || row.question.tool)) {
+          stack.append(questionLine(row.question.options ? cardQuestion(row) : row.question));
+        }
 
-      // What the session says it is doing, as it wrote it: a title, then
-      // the rough percent, the activity and how old the report is.
-      if (row.task && SETTINGS?.show_task !== false) {
-        // Codex's own status line knows the conversation by the title Codex
-        // gave it, so a Codex card does too; the report keeps the rest.
-        stack.append(taskLine(row.provider === "openai" && row.topic ? {...row.task, title: row.topic} : row.task));
-      } else if ((row.topic || row.doing) && SETTINGS?.show_task !== false) {
-        stack.append(topicLine(row.topic, row.doing));
+        // What the session says it is doing, as it wrote it: a title, then
+        // the rough percent, the activity and how old the report is.
+        if (row.task && SETTINGS?.show_task !== false) {
+          // Codex's own status line knows the conversation by the title Codex
+          // gave it, so a Codex card does too; the report keeps the rest.
+          stack.append(taskLine(row.provider === "openai" && row.topic ? {...row.task, title: row.topic} : row.task));
+        } else if ((row.topic || row.doing) && SETTINGS?.show_task !== false) {
+          stack.append(topicLine(row.topic, row.doing));
+        }
       }
 
       // Branch then model, on one line under the name: both describe the
@@ -5029,10 +5831,11 @@ function paint(snapshot) {
         chip.append(metaIcon(kind), document.createTextNode(kind === "cpu" ? "CPU" : "Mem"));
         meta.append(chip);
       }
-      if (meta.childElementCount) stack.append(meta);
+      // At compact width the facts stay in Details, and in what the row says aloud.
+      if (meta.childElementCount && !shortCards) stack.append(meta);
       b.append(stack);
 
-      if (row.job) {
+      if (row.job && !shortCards) {
         const job = document.createElement("span");
         job.className = "job";
         job.textContent = row.job;
@@ -5042,7 +5845,7 @@ function paint(snapshot) {
       if (hot) {
         const word = document.createElement("span");
         word.className = "word blocked";
-        word.textContent = "waiting";
+        word.textContent = "Waiting";
         syncBreathe(word);
         b.append(word);
       } else if (row.state === "working" && row.working_since
@@ -5050,19 +5853,19 @@ function paint(snapshot) {
         const running = Date.now() / 1000 - row.working_since;
         const word = document.createElement("span");
         word.className = "word long";
-        word.textContent = `long ${duration(running)}`;
+        word.textContent = `Long ${duration(running)}`;
         b.append(word);
         b.classList.add("long-turn");
       } else if (row.state === "idle" && !row.depth && row.unseen) {
         const word = document.createElement("span");
         word.className = "word unseen";
-        word.textContent = "done";
+        word.textContent = "Done";
         b.append(word);
         b.classList.add("unseen");
       } else if (row.state === "idle" && !row.depth) {
         const word = document.createElement("span");
         word.className = "word idle";
-        word.textContent = "idle";
+        word.textContent = "Idle";
         syncShimmer(word);
         addSweep(word);
         b.append(word);
@@ -5071,11 +5874,13 @@ function paint(snapshot) {
         // Not "crashed": all the panel knows is that the process is gone.
         const word = document.createElement("span");
         word.className = "word exited";
-        word.textContent = "exited";
+        word.textContent = "Exited";
         b.append(word);
         b.classList.add("resting");
         card.classList.add("exited");
       }
+      // The state row's pill says it; the classes stay, for what the row says aloud.
+      if (shortCards) b.querySelector(":scope > .word")?.remove();
 
 
       // aria-label only, never title: the details card says the same thing,
@@ -5090,7 +5895,8 @@ function paint(snapshot) {
                       b.classList.contains("long-turn")
                         ? `running for ${duration(Date.now() / 1000 - row.working_since)}, may be stuck` : null,
                       typeof row.context === "number" ? row.context + "% context" : null,
-                      ...[...b.querySelectorAll("[data-spoken]")].map(el => el.dataset.spoken)]
+                      ...[...b.querySelectorAll("[data-spoken]"), ...(shortCards ? meta.querySelectorAll("[data-spoken]") : [])]
+                        .map(el => el.dataset.spoken)]
                        .filter(Boolean).join(" \u2014 "));
 
       b.addEventListener("click", () => act(row.session_id, "focus"));
@@ -5128,21 +5934,13 @@ function paint(snapshot) {
       if (menu && !keptMenu) li.append(menu);
       // A remote card the daemon would type no key into now offers no button:
       // a click would spend it and type nothing.
-      if (row.remote_refusal) {
-        const refused = remoteRefusalLine(row);
-        if (refused) li.append(refused);
-      } else if (hot && row.question?.options?.length && PICKED_ON_CARD.includes(row.provider || "claude")) {
-        li.classList.add("asking");
-        li.append(answerRows(row));
-      } else if (hot && row.question?.tool && row.question.id && GATE_YES_KEY[row.provider || "claude"]) {
-        li.classList.add("asking");
-        li.append(gateRows(row));
-      }
-      // A closed question is forgotten, so the same words asked again are a
-      // new question with live buttons, as the daemon also treats them.
-      if (!row.question) {
-        pickedAnswers.delete(row.session_id);
-        cardTicks.delete(row.session_id);
+      // The card's own gate first, then each teammate's under its name. At
+      // tiny width there are none: a click on the square brings the pane
+      // forward, and the answer is given there.
+      if (hot && !tiny) offerAnswers(li, row, shortCards);
+      for (const mate of tiny ? [] : mates) {
+        li.append(mateGate(mate));
+        offerAnswers(li, mate, shortCards);
       }
       // Outside the row, since a button cannot hold one. The daemon decides
       // what is typed and refuses anything it no longer finds safe.
@@ -5187,7 +5985,7 @@ function paint(snapshot) {
       // own; the hook lists them with the name they were given and the model
       // they reply with, once their files say so, and by type until then.
       // Clicking one focuses the session they run in.
-      const subs = SETTINGS?.show_agents !== false ? row.subagents || [] : [];
+      const subs = SETTINGS?.show_agents !== false && !shortCards ? row.subagents || [] : [];
       // Subagents of one type that start in the same second, as a workflow's
       // do, are told apart by their turn among the ones alike: a key two rows
       // share makes the list measure one against the other's place and move it.
@@ -5297,7 +6095,7 @@ function paint(snapshot) {
       // The session's open tasks, the checklist it keeps with TaskCreate.
       // One line with the count, opening to a row per task; a card with
       // nothing open says nothing.
-      const tasks = SETTINGS?.show_task !== false && SETTINGS?.show_task_list !== false ? row.tasks || [] : [];
+      const tasks = SETTINGS?.show_task !== false && SETTINGS?.show_task_list !== false && !shortCards ? row.tasks || [] : [];
       if (tasks.length) {
         const open = openTasks.has(row.session_id);
         const doing = tasks.filter(t => t.status === "in_progress").length;
@@ -5355,7 +6153,7 @@ function paint(snapshot) {
       else if (shellsHad.has(key)) { shellsEndedAt.set(key, [Date.now(), shellsHad.get(key)]); shellsHad.delete(key); }
       const [endedAt, hadN] = shellsEndedAt.get(key) ?? [-Infinity, 0];
       const lingering = !shells.length && Date.now() - endedAt < SHELL_LINGER_MS;
-      if (lingering) {
+      if (lingering && !shortCards) {
         const sum = Object.assign(document.createElement("div"), {className: "shell-sum quiet"});
         sum.dataset.childKey = "shells";
         // What just happened, not a negative: the count it had, finished.
@@ -5365,7 +6163,7 @@ function paint(snapshot) {
         clearTimeout(lingerTimer);
         lingerTimer = setTimeout(() => { if (LATEST) render(LATEST); }, SHELL_LINGER_MS + 50);
       }
-      if (shells.length) {
+      if (shells.length && !shortCards) {
         const open = SETTINGS?.expand_shells ? !flippedShells.has(key) : flippedShells.has(key);
         const sum = document.createElement("button");
         sum.type = "button";
@@ -5508,6 +6306,8 @@ const SETTING_ROWS = [
    note: "Hold a dragged card over another to link them. Two Claude Code sessions become partners that hand each other tasks; with Codex or omp, one hands the other its latest result."},
   {k: "keep_remote",  label: "Keep remote control after a switch",
    note: "When the panel switches accounts, sessions that had remote control on get it back once they are idle, under the account switched to."},
+  {k: "commit_heatmap", label: "Commit heatmap",
+   note: "An agent card's Details shows its project's commits per day for the last twelve weeks, every branch and author, as GitHub draws them."},
 ];
 
 // Each control keeps a closure that repaints it from SETTINGS, so a change
@@ -5765,7 +6565,7 @@ let releaseShown = null;
 let releaseState = null;   // null, "taking", "restarting", or the refusal text
 let githubRefusal = null;  // why a GitHub page did not open, or null
 function paintVersion() {
-  const key = `${LATEST.version}|${LATEST.update}|${LATEST.repository}|${releaseState}|${githubRefusal}`;
+  const key = `${LATEST.version}|${LATEST.update}|${LATEST.repository}|${releaseState}|${githubRefusal}|${tiny}`;
   if (key === releaseShown) return;
   releaseShown = key;
   const bar = document.getElementById("release");
@@ -5784,16 +6584,20 @@ function paintVersion() {
     bar.append(" · ", Object.assign(document.createElement("span"),
                                     {className: "refused", textContent: githubRefusal, title: githubRefusal}));
   }
+  // Below about 120px the number gives its room to the two buttons; an
+  // update on offer, and what became of taking it, still show.
+  if (tiny) bar.replaceChildren();
   if (!LATEST.update) return;
   if (releaseState === "restarting") {
-    bar.append(" · restarting, reopen the panel");
+    bar.append(tiny ? "restarting, reopen the panel" : " · restarting, reopen the panel");
     return;
   }
   const refused = releaseState && releaseState !== "taking";
   if (refused) {
     // The bar has one line, and the button beside it says what was refused.
     const line = releaseState.trim().split("\n").pop();
-    bar.append(" · ", Object.assign(document.createElement("span"),
+    if (!tiny) bar.append(" · ");
+    bar.append(Object.assign(document.createElement("span"),
                                    {className: "refused", textContent: line, title: releaseState}));
   }
   // The offered version rides on the button's tooltip: spelled out on the
@@ -5942,6 +6746,8 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && !document.getElementById("settings").hidden) gear.click();
 });
 
+// The width the panel opened at, before the first frame paints.
+syncCompact();
 fetch(`/settings?token=${encodeURIComponent(TOKEN)}`)
   .then(r => r.json())
   .then(s => { SETTINGS = s; applyScale(s.ui_scale); settingsBody(); render(LATEST); })

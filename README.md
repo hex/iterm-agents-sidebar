@@ -82,16 +82,16 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 
 ### What a card says
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Five cards: one amber with a WAITING badge, its question and a button per answer, one at work with a report and ticks, one grey with an IDLE outline, one grey with a green DONE badge, and one at work for 25 minutes with a warm long badge">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Five cards: one amber with a Waiting badge, its question and a button per answer, one at work with a report and ticks, one grey with an Idle outline, one grey with a green Done badge, and one at work for 25 minutes with a warm Long outline">
 
 | State | How it looks |
 | --- | --- |
-| Waiting on you | The whole card amber, with a WAITING badge and what it asks: the question with a button per answer (a question that takes more than one answer gets a box per option and a Submit button), or the reason it gave, the tool and the command it wants to run, with Yes and No |
+| Waiting on you | The whole card amber, with a Waiting badge and what it asks: the question with a button per answer (a question that takes more than one answer gets a box per option and a Submit button), or the reason it gave, the tool and the command it wants to run, with Yes and No |
 | Working | Dark name, working dots |
-| Idle | Grey name, IDLE outline |
-| Finished while you looked elsewhere | A green DONE badge in place of IDLE, until you look at that session |
-| Working 20 minutes or more | A warm `long 25m` outline, in case it has stalled |
-| Exited | Faded, with an EXITED outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
+| Idle | Grey name, Idle outline |
+| Finished while you looked elsewhere | A green Done badge in place of Idle, until you look at that session |
+| Working 20 minutes or more | A warm `Long 25m` outline, in case it has stalled |
+| Exited | Faded, with an Exited outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
 | Unknown | A hollow square: a turn silent for five minutes with no command or tool running under it |
 
 <img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each of its parts joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">
@@ -99,14 +99,18 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 Under the name, an agent reports its own task: a title, then
 `Reading code · 40s`, then ticks for how far it says it has got. The
 percentage is the model's estimate, not a measurement, so a report older than
-five minutes reads `stale`, and a finished one reads `Complete`.
+five minutes puts `Last:` before what it said and reads `stale`, and a finished
+one reads `Complete`.
 
 The line below carries the branch, the model with its effort letter (`[l]`,
 `[m]`, `[h]`, `[xh]`, `[mx]`), the context percentage, and a `CPU` or `Mem`
 chip when the session's process tree is using a lot of the machine. While a
 chip shows, the details card adds a `CPU` or `Memory` row with the figure and the
 name of the program using the most of it. Details in a Claude card's right-click
-menu opens a card that offers Context breakdown, `/context` for that session
+menu opens a card with the session's colour, name, state and model, its
+gauges, chips for effort, thinking, fast mode and `past 200k`, and one row of
+counts: Up, Agents, Cost and Lines (hover Lines for the exact counts past
+1,000). It also offers Context breakdown, `/context` for that session
 drawn as a bar ([usage](docs/usage.md#what-fills-the-context)). A Codex
 card wears the OpenAI mark instead of the Claude one, and has no teammates and
 no background-shell line. Codex opens its session at your first prompt, so
@@ -115,6 +119,8 @@ state. Once Codex titles the conversation, the title its status line shows
 sits under the card's name, in place of the title of any task it reports.
 A Claude card whose session has Remote Control on shows a small grey
 broadcast glyph after its name ([usage](docs/usage.md#remote-control)).
+In a narrow panel, or at a large text size, an agent card shows its name
+and its state, and the foot is one line ([usage](docs/usage.md#a-narrow-panel)).
 
 An omp session reports its state through the extension the install writes:
 when a turn starts and ends, when an approval or a question waits on you, and
@@ -187,7 +193,7 @@ A setting indented under another works only while that one is on.
 | Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
 | Focus | Bring a blocked session forward; under it Go back once it resumes |
 | Rows | Warn above, CPU heavy at, Memory heavy at, Order, Provider badge, Shell names, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
-| Experimental | Link cards and Keep remote control after a switch, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions) and [Remote control](docs/usage.md#remote-control) |
+| Experimental | Link cards, Keep remote control after a switch and Commit heatmap, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control) and [Commit heatmap](docs/usage.md#commit-heatmap) |
 | Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |
 
 Some have limits the picture doesn't show:

@@ -42,7 +42,7 @@ tag(TX + NAME_W["ember"] + 9, CT + 31, "claude")
 mark("checked", TX, CT + 52 - 10, 11, LIT)
 text(TX + 15, CT + 52, "Complete", fill=SEV_OK, size=12.5, weight=600)
 chips(TX, CT + 69, [("branch", "main", None), ("model", "Fable 5.1", None), ("gauge", "82%", ALERT)])
-badge(CX + CW - 16, CT + 14, "IDLE")
+badge(CX + CW - 16, CT + 15.5, "Idle")
 note(CX + CW + 8, CT + 26, "Right-click a row, or Shift+F10 on a selected one")
 
 # The menu, unfolded from the pointer.

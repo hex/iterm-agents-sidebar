@@ -26,7 +26,7 @@ happen, and the watcher Claude Code arms when a session publishes an Artifact
 stays open for as long as the session does.
 
 The hook stamps the time your prompt started the turn, which is what the
-`long 25m` outline counts from.
+`Long 25m` outline counts from.
 
 ## Order
 
@@ -268,6 +268,23 @@ disconnected yourself before the switch. One you disconnect in the two
 minutes after a switch that Claude Code did not drop it for, the panel turns
 back on, since it cannot tell that apart from a drop.
 
+## Commit heatmap
+
+Commit heatmap, under Experimental in settings, adds a calendar of the
+project's commits to an agent card's Details (right-click the card, then
+Details): twelve weeks drawn as GitHub draws a year, a column a week with
+Sunday at the top and today the last day drawn, in its weekday's row of the
+last column, under the line `Commits, 12 weeks` and the total. A day's green says how many commits the
+project got that day: none, 1 to 4, 5 to 14, 15 to 39, or 40 and more. The
+steps are the same on every card, so two cards compare. Hover a day for its
+date and count. The card itself shows nothing of it.
+
+Every commit reachable from a branch, a remote branch or a tag counts,
+whoever wrote it, on its author's date in this Mac's time; a stash does not. The panel asks git at most once a minute per project folder, and not at
+all while the setting is off, which is how it starts. A card on another
+machine, a card whose folder is in no repository, and a teammate nested
+under its lead have no calendar.
+
 ## Sessions on another machine
 
 A pane that runs `ssh host` or `et host` (Eternal Terminal) gets a card for
@@ -362,6 +379,8 @@ Agent names and the rows under a card keep their face whichever you pick.
 A card name too long for its row fades out at the edge. Every few seconds it
 slides left to show its end, and its start comes back in from the right. It
 stays still when Reduce motion is on in macOS accessibility settings.
+In the narrowest panel it shows its end after an ellipsis instead ([A narrow
+panel](#a-narrow-panel)).
 
 ## Teammates and worktrees
 
@@ -439,13 +458,68 @@ question replaces it, or the panel goes out of sight. The card ignores a click o
 answer, Yes or No in the 0.7 seconds after it moved, so the option that slid
 under the pointer is never the one that counts.
 
+## A narrow panel
+
+Below 192 px the panel turns compact, and it turns back above 208 px, so a
+panel dragged across the line does not flip on every pixel. The width is the
+panel's over Text size, so a larger text size turns it on in a wider panel.
+No setting turns it on or off.
+
+A compact agent card is its name, then a line with its state badge, `+2`
+for two running subagents, and one alarm word at most: `cpu` or `mem` while
+its processes are heavy, else `ctx 87%` once the context reaches 85%. Under
+that line it shows only what the state needs:
+
+| State | Under the badge line |
+| --- | --- |
+| Waiting | The question, or the tool and its whole command over three lines at most, then the answers stacked, each the card's full width. The suggested answer stays green and drops "(Recommended)" |
+| Working | A green `Working` outline, what the session is doing over two lines at most, and a thin bar from its own percentage. Past 20 minutes the badge reads `Long 25m` |
+| Silent | A working session whose report has gone stale: a grey `Silent 6m` outline and its last words after `Last:`. No bar |
+| Done, Idle, Exited | Nothing more. An exited card keeps its Resume button |
+
+Teammates get no lines. One waiting on you puts its gate on its lead's card,
+under its colour and name, with its own answers, and the lead's badge reads
+Waiting while it does. The arrows and Cmd+Enter reach that gate as they reach
+a teammate's line. The facts line, the agent's tag or corner mark, the
+subagent rows, the task list and the background shells stay off the card.
+
+Waiting on you goes from the foot, since each waiting card carries its own
+question. Limits is one line: the account your sessions run on, its fullest
+window as a bar and a figure, and the time to its reset once that window is
+tight, at 80% or within 30 minutes of the reset. Hover the line for every
+window. A switch Auto-switch would make soon gets a line of its own, and Codex
+gets a line of the same shape only while its own fullest window is tight. The
+chevron opens the whole Limits. Clicking Limits folds it back to one line,
+and so does the panel narrowing again after it has widened. Without an active
+account, or when the account store fails, the foot keeps its full layout.
+
+Below 120 px, and back above 136 px, a session is a row, not a card, with a
+hairline between rows: its colour square and its name, the badge across the
+row, then what the session is doing or asks. A session in no known state reads `No
+report`. A long name keeps its end after an ellipsis, since names that share
+a start differ at the end. Two sessions under one name show an ellipsis and
+the last four characters of their branches after it, or `·1` and `·2` when the branches
+don't tell them apart. The subagent count and the Remote Control glyph go. A
+row has no answers: a click brings its pane forward, and you answer there.
+The foot is the chevron and a hairline for the fullest window, with its
+figure only once the window is tight. The bar drops the release number and
+keeps reload and the gear; an update on offer still shows, its Update button
+on a line of its own above them.
+
+Details, from the right-click menu, works at every width and still shows the
+model, the context and the CPU or memory figure. The branch, the subagent
+rows, the task list and the background shells come back once the panel is
+wider.
+
 ## What fills the context
 
 Pick Details from a Claude card's right-click menu: its details card opens
 and stays until Escape or a click elsewhere. Context breakdown then runs Claude Code's own
 `/context` on a throwaway fork of that conversation: hooks off, nothing saved,
 no model call. It takes a few seconds, and the result stays in the card until
-you read it again.
+you read it again. It needs Claude Code 2.1.299 or newer: an older one prints
+a list the panel does not read, and the card says `claude printed no JSON
+object`.
 
 The bar is the whole window: the conversation, system and tools, memory, and
 agents and skills in their own colours, then the reserve kept free for
@@ -455,6 +529,16 @@ runs and does not count them. Only the conversation's rows are this
 session's own; the rest are what a new session in the same directory would
 load now. The figures are `/context`'s estimate, so they can differ from the
 Context percentage above them, which Claude Code measures on each turn.
+
+Custom agents, Memory files and Skills open on a click to show what is in
+them, biggest first: each memory file by its path, each agent and skill by
+name, eight of them with a bar each and one line for the rest (`358 more,
+5k, 292 under 20 each`). MCP tools in the line about what loads on use opens
+the same way, one row per server with its tool count, since that is where
+`/context` counts them. The other rows have no parts to show. A list
+`/context` prints in a shape the panel cannot read still opens, and says why
+in its place; the rest of the breakdown stands. A row stays open through a
+fresh read, and a card grown taller than the panel scrolls inside.
 
 ## Sounds
 
@@ -488,7 +572,7 @@ no banner from the panel, since omp posts its own.
 ## A finish you have not seen
 
 A banner lasts five seconds. A card whose turn ended while you were not
-looking at that session wears a green DONE badge in place of IDLE until you do.
+looking at that session wears a green Done badge in place of Idle until you do.
 Looking means the same as for banners: the session is in front of its window
 while iTerm2 is the frontmost app. The sound and banner switches don't change
 it, and omp cards get it too.
@@ -520,8 +604,8 @@ name, and it goes quiet when it's back at its prompt.
 
 ## The task line
 
-The session writes its own report: a task title, what it's doing now, and a rough percentage. A report older than five minutes turns grey and reads
-`stale`. A hundred percent shows `Complete` with a green tick and stays until a new
+The session writes its own report: a task title, what it's doing now, and a rough percentage. A report older than five minutes fades, puts `Last:`
+before what it said, and reads `stale`. A hundred percent shows `Complete` with a green tick and stays until a new
 request starts a new task.
 
 The ticks show the estimate as a count you can glance at. They are not the
@@ -607,7 +691,7 @@ The whole message is in the daemon's log under Scripts > Manage > Console.
 ## Resuming an exited agent
 
 When an agent's process dies (killed, or crashed) and its pane drops back to a
-shell prompt, the card stays, faded, with an EXITED outline. Resume types the
+shell prompt, the card stays, faded, with an Exited outline. Resume types the
 command that reopens the same conversation at that prompt and brings the pane
 forward:
 

@@ -66,7 +66,7 @@ note(TX + NAME_W["atlas"] + 9 + 74, CT + 26, "The session's name, and which agen
 text(TX, CT + 52, "Refactor the token parser", fill=DIM, size=12.5)
 note(TX + width_of("Refactor the token parser", 12.5) + 14, CT + 48, "The task it reports, in its own words")
 
-text(TX, CT + 72, "Reading code", fill=LIT_INK, size=12.5)
+text(TX, CT + 72, "Reading code", fill=DIM, size=12.5)
 x = middot(TX + width_of("Reading code", 12.5), CT + 72)
 mark("clock", x, CT + 62, 12, DIM)
 text(x + 16, CT + 72, "40s", fill=DIM, size=12.5)
@@ -106,7 +106,7 @@ mids.append(ry + 13)
 stacked_dots(CX + 48, ry + 13, LIT)
 text(CX + 66, ry + 17, "explorer", fill=DIM, size=13, weight=500)
 meta(CX + 66, ry + 31, [("claude", "Opus 5", None), (None, "3m", None)])
-text(CX + 66, ry + 45, "Reading code", fill=LIT_INK, size=11)
+text(CX + 66, ry + 45, "Reading code", fill=DIM, size=11)
 note(CX + 66 + width_of("explorer", 13) + 16, ry + 13, "A running subagent: its model, how long, and what for")
 
 ry += 50

@@ -6,8 +6,9 @@ Ways this can go wrong, and the test for each:
   shown as if it were the whole;
 - the tables after the categories (MCP tools, skills) read as categories;
 - the fork cannot run: no claude binary, a non-zero exit, a hang past the
-  timeout, output that is not the JSON list, no result entry, an error result,
-  or a result that is not /context's; each refused with its reason, never an
+  timeout, output that is not one JSON object (the list older Claude Codes
+  printed included), an object that is not the result, an error result, or a
+  result that is not /context's; each refused with its reason, never an
   empty table;
 - the warning Claude Code prints on stderr mixed into the JSON it prints on stdout;
 - the fork writing a transcript or firing hooks: its argument list pins
@@ -83,7 +84,49 @@ def test_the_breakdown_reads_every_category_in_order():
             {"name": "Compact buffer", "tokens": 3_000},
             {"name": "Free space", "tokens": 872_700},
         ],
+        "items": {
+            "MCP Tools": [{"name": "mcp__example__search", "detail": "example", "tokens": 306}],
+            "Skills": [{"name": "example-skill", "detail": "Plugin", "tokens": 120}],
+        },
     }
+
+
+def test_each_later_table_is_read_as_the_items_of_its_heading():
+    report = REPORT + """
+### Custom Agents
+
+| Agent Type | Source | Tokens |
+|------------|--------|--------|
+| code-reviewer | Plugin | 1.2k |
+
+### Memory Files
+
+| Type | Path | Tokens |
+|------|------|--------|
+| User | /Users/x/.claude/CLAUDE.md | 7.9k |
+| Local | /Users/x/project/CLAUDE.local.md | 2k |
+"""
+    items = context_usage.parse(report)["items"]
+    assert items["Custom Agents"] == [{"name": "code-reviewer", "detail": "Plugin", "tokens": 1_200}]
+    assert items["Memory Files"] == [{"name": "User", "detail": "/Users/x/.claude/CLAUDE.md", "tokens": 7_900},
+                                     {"name": "Local", "detail": "/Users/x/project/CLAUDE.local.md", "tokens": 2_000}]
+
+
+def test_an_estimated_count_is_read_and_one_under_a_floor_keeps_its_floor():
+    report = REPORT.replace("| example-skill | Plugin | 120 |",
+                            "| example-skill | Plugin | ~70 |\n| tiny-skill | User | < 20 |")
+    assert context_usage.parse(report)["items"]["Skills"] == [
+        {"name": "example-skill", "detail": "Plugin", "tokens": 70},
+        {"name": "tiny-skill", "detail": "User", "below": 20},
+    ]
+
+
+def test_an_item_count_that_is_not_a_number_refuses_its_own_table_only():
+    report = REPORT.replace("| example-skill | Plugin | 120 |", "| example-skill | Plugin | lots |")
+    breakdown = context_usage.parse(report)
+    assert breakdown["items"]["Skills"] == {"refused": "unreadable token count 'lots' for example-skill"}
+    assert breakdown["items"]["MCP Tools"] == [{"name": "mcp__example__search", "detail": "example", "tokens": 306}]
+    assert breakdown["used"] == 122_600 and len(breakdown["categories"]) == 10
 
 
 def test_a_count_without_a_suffix_is_whole_tokens():
@@ -125,9 +168,9 @@ def fake_claude(tmp_path, body):
     return binary
 
 
-def printing(entries, stderr=""):
-    """A body that prints `entries` as Claude Code's JSON list, and `stderr` beside it."""
-    return (f"cat <<'JSON'\n{json.dumps(entries)}\nJSON\n"
+def printing(output, stderr=""):
+    """A body that prints `output` as JSON, the way Claude Code prints its result, and `stderr` beside it."""
+    return (f"cat <<'JSON'\n{json.dumps(output)}\nJSON\n"
             + (f"echo '{stderr}' >&2\n" if stderr else ""))
 
 
@@ -138,7 +181,7 @@ RESULT = {"type": "result", "subtype": "success", "is_error": False, "local_comm
 def test_the_fork_runs_in_the_conversations_directory_with_hooks_off_and_no_transcript(tmp_path):
     workdir = tmp_path / "project"
     workdir.mkdir()
-    binary = fake_claude(tmp_path, printing([{"type": "system"}, RESULT]))
+    binary = fake_claude(tmp_path, printing(RESULT))
     breakdown = context_usage.read(str(workdir), CONVERSATION, binary=binary)
     assert breakdown["used"] == 122_600
     called = (tmp_path / "called").read_text().splitlines()
@@ -148,7 +191,7 @@ def test_the_fork_runs_in_the_conversations_directory_with_hooks_off_and_no_tran
 
 
 def test_the_warning_on_stderr_does_not_reach_the_parse(tmp_path):
-    binary = fake_claude(tmp_path, printing([RESULT], stderr="claude.ai connectors are disabled"))
+    binary = fake_claude(tmp_path, printing(RESULT, stderr="claude.ai connectors are disabled"))
     assert context_usage.read(str(tmp_path), CONVERSATION, binary=binary)["window"] == 1_000_000
 
 
@@ -170,11 +213,11 @@ def test_a_fork_that_hangs_is_given_up_on(tmp_path):
 
 
 @pytest.mark.parametrize("body, reason", [
-    ("echo 'not json'\n", "claude printed no JSON list"),
-    (printing({"type": "result"}), "claude printed no JSON list"),
-    (printing([{"type": "system"}]), "claude printed no result"),
-    (printing([dict(RESULT, is_error=True, result="Prompt is too long")]), "/context failed: Prompt is too long"),
-    (printing([dict(RESULT, local_command="cost")]), "claude answered something other than /context"),
+    ("echo 'not json'\n", "claude printed no JSON object"),
+    (printing([{"type": "system"}, RESULT]), "claude printed no JSON object"),
+    (printing({"type": "system"}), "claude printed no result"),
+    (printing(dict(RESULT, is_error=True, result="Prompt is too long")), "/context failed: Prompt is too long"),
+    (printing(dict(RESULT, local_command="cost")), "claude answered something other than /context"),
 ])
 def test_output_that_is_not_a_context_report_is_refused(tmp_path, body, reason):
     with pytest.raises(context_usage.Refused, match=f"^{re.escape(reason)}$"):
@@ -215,7 +258,7 @@ def test_a_directory_removed_since_is_refused(tmp_path):
 
 
 def test_a_second_read_of_the_same_session_is_refused_while_the_first_runs(tmp_path):
-    binary = fake_claude(tmp_path, "sleep 1\n" + printing([RESULT]))
+    binary = fake_claude(tmp_path, "sleep 1\n" + printing(RESULT))
     reads = context_usage.Reads(binary=binary)
     first = []
     thread = threading.Thread(target=lambda: first.append(reads.run("s1", str(tmp_path), CONVERSATION)))
@@ -235,7 +278,7 @@ def test_a_session_can_be_read_again_once_a_read_has_failed(tmp_path):
 
 
 def test_different_sessions_read_at_the_same_time(tmp_path):
-    reads = context_usage.Reads(binary=fake_claude(tmp_path, "sleep 1\n" + printing([RESULT])))
+    reads = context_usage.Reads(binary=fake_claude(tmp_path, "sleep 1\n" + printing(RESULT)))
     results = []
     threads = [threading.Thread(target=lambda sid=sid: results.append(reads.run(sid, str(tmp_path), CONVERSATION)))
                for sid in ("s1", "s2")]

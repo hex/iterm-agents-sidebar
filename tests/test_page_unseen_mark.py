@@ -1,5 +1,5 @@
 # ABOUTME: Guards how page.html paints a card whose turn ended while you looked elsewhere.
-# ABOUTME: An idle top-level row with unseen wears its own word in place of IDLE; a subagent row never does.
+# ABOUTME: An idle top-level row with unseen wears its own word in place of Idle; a subagent row never does.
 import re
 from pathlib import Path
 
@@ -29,12 +29,13 @@ def test_an_unseen_idle_card_wears_the_unseen_word_and_class():
 
 
 def test_an_unseen_idle_card_reads_done_where_an_idle_one_reads_idle():
-    """The word the badge shows, set in capitals by the rule every corner
-    word shares: DONE on an unseen idle card, IDLE on one you have seen."""
+    """The word the badge shows, in the sentence case every badge is set in,
+    with no capitals from the rule they share: Done on an unseen idle card,
+    Idle on one you have seen."""
     words = {condition: re.findall(r'word\.textContent = "([^"]*)";', body) for condition, body in corner_words()}
-    assert words['row.state === "idle" && !row.depth && row.unseen'] == ["done"]
-    assert words['row.state === "idle" && !row.depth'] == ["idle"]
-    assert rule(".word")["text-transform"] == "uppercase"
+    assert words['row.state === "idle" && !row.depth && row.unseen'] == ["Done"]
+    assert words['row.state === "idle" && !row.depth'] == ["Idle"]
+    assert "text-transform" not in rule(".word")
 
 
 def rule(selector):
@@ -46,11 +47,11 @@ def rule(selector):
 
 def test_the_unseen_word_is_a_green_filled_badge_cut_like_idle():
     """The chosen look: the word on a fill of the panel's calm green, in the
-    ink the page puts on its fills, with IDLE's border width and padding."""
-    unseen, idle = rule(".word.unseen"), rule(".word.idle")
-    assert unseen["color"] == "var(--accent-ink)"
-    assert unseen["background"] == "var(--sev-ok)"
-    assert unseen["border"] == "var(--hair) solid var(--sev-ok)"
-    assert idle["border"] == "var(--hair) solid var(--dim)"
-    assert unseen["padding"] == idle["padding"]
-    assert (unseen["font-family"], unseen["font-weight"]) == (idle["font-family"], idle["font-weight"])
+    ink the page puts on its fills, cut as Idle's outline is: both take the
+    border, padding and type every badge shares, and change only its colours."""
+    word, unseen, idle = rule(".word"), rule(".word.unseen"), rule(".word.idle")
+    assert word["border"] == "var(--hair) solid currentColor"
+    assert word["padding"] == "0 4px"
+    assert word["font"] == "600 10px/calc(16px - 2 * var(--hair)) -apple-system, sans-serif"
+    assert unseen == {"color": "var(--accent-ink)", "background": "var(--sev-ok)", "border-color": "var(--sev-ok)"}
+    assert idle == {"color": "var(--dim)"}

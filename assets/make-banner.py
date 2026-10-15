@@ -175,7 +175,7 @@ _card, _swatch, _dots, _badge, _tag = card, swatch, working_dots, badge, tag
 card = lambda top, height: _card(CARD_X, CARD_W, top, height)
 swatch = lambda top, hue, hollow=False: _swatch(CARD_X + 18, top, hue, hollow)
 working_dots = lambda top, hue: _dots(CARD_X + 18, top, hue)
-badge = lambda top, word, filled=False, animation="": _badge(CARD_X + CARD_W - 16, top, word, filled, animation)
+badge = lambda top, word, ink=DIM, fill=None, animation="": _badge(CARD_X + CARD_W - 16, top, word, ink, fill, animation)
 tag = lambda name, baseline, kind: _tag(TEXT_X + NAME_W[name] + 9, baseline, kind)
 
 
@@ -191,7 +191,7 @@ working_dots(c1 + 20, "#e8833a")
 text(TEXT_X, c1 + 31, "atlas", fill=FG, size=15, weight=600)
 tag("atlas", c1 + 31, "claude")
 text(TEXT_X, c1 + 52, "Refactor the token parser", fill=DIM, size=12.5)
-text(TEXT_X, c1 + 72, "Writing tests", fill=LIT_INK, size=12.5)
+text(TEXT_X, c1 + 72, "Writing tests", fill=DIM, size=12.5)
 x = middot(TEXT_X + width_of("Writing tests", 12.5), c1 + 72)
 mark("clock", x, c1 + 62, 12, DIM)
 text(x + 16, c1 + 72, "2m", fill=DIM, size=12.5)
@@ -222,7 +222,7 @@ text(TEXT_X, c2 + 31, "beacon", fill=FG, size=15, weight=600)
 tag("beacon", c2 + 31, "claude")
 A(f'  <g>{cycle("opacity", "1;1;0;0;1;1", ASKING)}')
 text(TEXT_X, c2 + 52, "Cache the pricing lookup", fill=DIM, size=12.5)
-text(TEXT_X, c2 + 72, "Choosing a store", fill=LIT_INK, size=12.5)
+text(TEXT_X, c2 + 72, "Choosing a store", fill=DIM, size=12.5)
 x = middot(TEXT_X + width_of("Choosing a store", 12.5), c2 + 72)
 mark("clock", x, c2 + 62, 12, DIM)
 text(x + 16, c2 + 72, "1m", fill=DIM, size=12.5)
@@ -240,7 +240,7 @@ for i, answer in enumerate(("Postgres", "SQLite")):
     text(TEXT_X + 9, y_row + 13.5, str(i + 1), fill=BLOCKED_TEXT, size=11.5, weight=500)
     text(TEXT_X + 22, y_row + 13.5, answer, fill=FG, size=11.5, weight=500)
 A('  </g>')
-badge(c2 + 14, "WAITING", filled=True,
+badge(c2 + 15.5, "Waiting", ink=BADGE_INK, fill=BLOCKED_BORDER,
       animation=cycle("opacity", "0;0;1;1;0;0", ASKING))
 
 # One finished, and one whose tree is eating the machine.
@@ -257,7 +257,7 @@ x = middot(x, c3 + 69)
 mark("cpu", x, c3 + 58, 13, ALERT)
 text(x + 17, c3 + 69, "CPU", fill=ALERT, size=12.5)
 A('  </g>')
-badge(c3 + 14, "IDLE")
+badge(c3 + 15.5, "Idle")
 
 # An omp session: its state and its name come off its tab title, the rest
 # from omp's own files. What the running tool is for sits under the name.
@@ -267,7 +267,7 @@ working_dots(c4 + 20, "#c4508f")
 text(TEXT_X, c4 + 31, "harbor", fill=FG, size=15, weight=600)
 tag("harbor", c4 + 31, "omp")
 text(TEXT_X, c4 + 52, "Move the crawler to a container", fill=DIM, size=12.5)
-text(TEXT_X, c4 + 72, "Check the nightly crawl finished", fill=LIT_INK, size=12.5)
+text(TEXT_X, c4 + 72, "Check the nightly crawl finished", fill=DIM, size=12.5)
 x = chips(TEXT_X, c4 + 89, [("branch", "main", None), ("model", "gpt-5.6-luna", None)])
 text(x + 5, c4 + 89, "[", fill=DIM, size=12.5, family=MONO)
 text(x + 12, c4 + 89, "h", fill="#929efa", size=12.5, weight=600, family=MONO)

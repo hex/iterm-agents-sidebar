@@ -15,7 +15,7 @@ CARD, CARD_BORDER = "#2c2c2e", "#3a3a3c"
 BLOCKED_BG, BLOCKED_BORDER, BADGE_INK = "#3a2500", "#ff9f0a", "#3a2500"
 BLOCKED_TEXT = "#ffd60a"
 SEV_OK, ACCENT_INK = "#30d158", "#1c1c1e"
-LIT, LIT_INK, ALERT = "#8ec07c", "#8ec07c", "#fb8b5e"
+LIT, ALERT = "#8ec07c", "#fb8b5e"
 TERM_BG, TERM_FG, TERM_DIM = "#141416", "#e5e5ea", "#8e8e93"
 CLAUDE_MARK = "#d97757"
 POINTER_FILL, POINTER_EDGE = "#1c1c1e", "#ffffff"
@@ -149,17 +149,20 @@ def working_dots(x, top, hue):
           f'begin="{i*0.18:.2f}s" repeatCount="indefinite"/></circle>')
 
 
-def badge(right, top, word, filled=False, animation="", fill=BLOCKED_BORDER, ink=BADGE_INK):
-    """The state word in a card's top corner, its right edge at `right`;
-    a filled one is `ink` on `fill`, WAITING's amber unless told otherwise."""
-    w = 70 if len(word) > 4 else 52
+#: The badge words at 600 11px, measured as MEASURED is.
+BADGE_W = {"Waiting": 41.2, "Idle": 20.2, "Done": 28.3, "Exited": 34.2, "Long 25m": 54.1}
+
+
+def badge(right, top, word, ink=DIM, fill=None, animation=""):
+    """The state word in a card's top corner, its right edge at `right`, as
+    the panel draws it at every width: a strip in sentence case, solid in
+    `fill` with the word in `ink`, or with no fill an outline in `ink`."""
+    w = BADGE_W[word] + 10
     x = right - w
-    fill = fill if filled else "none"
-    ink = ink if filled else DIM
-    A(f'  <g>{animation}<rect x="{x}" y="{top}" width="{w}" height="21" rx="4" fill="{fill}" '
-      f'stroke="{"none" if filled else DIM}"/>'
-      f'<text x="{x + w/2}" y="{top+15}" fill="{ink}" font-size="10" font-weight="700" '
-      f'letter-spacing="1" text-anchor="middle" font-family="{SANS}">{word}</text></g>')
+    A(f'  <g>{animation}<rect x="{x:.1f}" y="{top}" width="{w:.1f}" height="18" rx="4.5" '
+      f'fill="{fill or "none"}" stroke="{fill or ink}"/>'
+      f'<text x="{x + w/2:.1f}" y="{top+13}" fill="{ink}" font-size="11" font-weight="600" '
+      f'text-anchor="middle" font-family="{SANS}">{word}</text></g>')
 
 
 def setting_rows():

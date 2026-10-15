@@ -39,7 +39,7 @@ def test_the_settings_figure_lists_every_setting_the_sheet_has():
     from panel_draw import setting_rows
     svg = (ASSETS / "settings.svg").read_text()
     labels = [row["label"] for row in setting_rows() if "label" in row]
-    assert len(labels) == 29
+    assert len(labels) == 30
     for label in labels:
         assert f">{label}<" in svg, label
 
@@ -51,12 +51,12 @@ def test_the_menu_figure_lists_every_item_the_menu_has():
 
 
 def test_the_card_states_figure_shows_an_unseen_finish_in_the_panels_green():
-    """DONE on a fill of the dark theme's --sev-ok, as the panel paints it."""
+    """Done on a fill of the dark theme's --sev-ok, as the panel paints it."""
     css = (ASSETS.parent / "page.html").read_text()
     dark = css[css.index("@media (prefers-color-scheme: dark)"):]
     green = dark[dark.index("--sev-ok:"):].split(";")[0].split(":")[1].strip()
     svg = (ASSETS / "card-states.svg").read_text()
-    assert re.search(rf'<rect [^>]*fill="{green}"[^>]*/><text [^>]*>DONE</text>', svg)
+    assert re.search(rf'<rect [^>]*fill="{green}"[^>]*/><text [^>]*>Done</text>', svg)
 
 
 @pytest.mark.parametrize("name", FIGURES)

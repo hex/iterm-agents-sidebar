@@ -170,6 +170,9 @@ DEFAULT_SETTINGS = {
     # Experimental: after the panel switches accounts, Claude sessions that had
     # Remote Control on get it back once idle.
     "keep_remote": False,
+    # Experimental: each agent card shows its project's commits per day for
+    # twelve weeks. Off, git is never asked.
+    "commit_heatmap": False,
 }
 
 #: (low, high) for the values that are numbers.
@@ -1227,6 +1230,9 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
                 row["heavy"] = session["heavy"]
             if session.get("usage"):
                 row["usage"] = session["usage"]
+            # A nested row works in its parent's project, whose card shows it.
+            if session.get("commits") and not child:
+                row["commits"] = session["commits"]
         if session.get("branch"):
             row["branch"] = session["branch"]
         # Any row can be on another machine: an agent's, or a shell in a tmux server there.
@@ -1268,6 +1274,7 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
             continue
         rows["agent"].remove(row)
         row["depth"] = 1
+        row.pop("commits", None)
         at = rows["agent"].index(lead) + 1
         while at < len(rows["agent"]) and rows["agent"][at]["depth"]:
             at += 1
@@ -2890,6 +2897,40 @@ def git_main_worktree(path):
     return None
 
 
+#: The days a card's commit strip covers, today last: twelve weeks.
+COMMIT_DAYS = 84
+#: How long a reading of a project's commits stands before git is asked again.
+COMMITS_READ_SECONDS = 60
+
+
+def commit_days(path, today):
+    """Commits per day in the repository holding `path`, oldest first, `today` last.
+
+    Every commit reachable from any ref but a stash counts, whoever wrote it,
+    on the day it was written in this machine's time. None when `path` is in
+    no repository; a git that cannot be run, does not answer, or refuses the
+    repository (a broken one, one owned by another user) raises.
+    """
+    first = today - datetime.timedelta(days=COMMIT_DAYS - 1)
+    try:
+        out = subprocess.run(
+            ["git", "-C", path, "log", "--exclude=refs/stash", "--all",
+             f"--since={first.isoformat()} 00:00", "--format=%ad", "--date=short-local"],
+            capture_output=True, text=True, timeout=10, check=True).stdout
+    except subprocess.CalledProcessError as refused:
+        if "not a git repository" in refused.stderr:
+            return None
+        raise
+    days = [0] * COMMIT_DAYS
+    for line in out.split():
+        # --since reads the committer's date and the day is the author's,
+        # so a rebased commit can land outside the strip.
+        index = (datetime.date.fromisoformat(line) - first).days
+        if 0 <= index < COMMIT_DAYS:
+            days[index] += 1
+    return days
+
+
 def session_colour(path):
     """A cs session directory -> the colour the user gave it, or None.
 
@@ -3383,6 +3424,8 @@ class Bridge:
         self.rows = []
         #: Session id -> (state, turn began, last rest) for agents that publish no clocks.
         self.clocks = {}
+        #: Folder -> (when read, the day it was read for, its commit_days), for read_commits.
+        self.commits = {}
         self.context_reads = context_usage.Reads()
         #: The open links between cards: one session handing its result to another.
         self.links = links.Book()
@@ -3655,7 +3698,41 @@ class Bridge:
             row["heavy"] = hold_heavy(self._heavy_seen, heavy_on(cpu, rss_kb, settings), pid, now)
             hogs = tree_hogs(resources, commands, pid, roots) if row["heavy"] else {}
             row["usage"] = usage_shown(row["heavy"], cpu, rss_kb, hogs)
+        if settings["commit_heatmap"]:
+            await self.read_commits(rows)
+        else:
+            self.commits = {}
         return rows
+
+    async def read_commits(self, rows):
+        """Each agent's project as commits per day, asked of git once a minute.
+
+        A remote agent's folder is that machine's, so nothing is read for it.
+        """
+        today, now = datetime.date.today(), time.monotonic()
+        wanted = {row["path"] for row in rows if row["provider"] and not row["host"] and row["path"]}
+        readings = {path: known for path in wanted
+                    if (known := self.commits.get(path)) and known[1] == today
+                    and now - known[0] < COMMITS_READ_SECONDS}
+        stale = sorted(wanted - readings.keys())
+        # Side by side: one slow repository would otherwise hold up every
+        # other folder's reading and the rest of the rebuild behind it.
+        results = await asyncio.gather(*(asyncio.to_thread(commit_days, path, today) for path in stale),
+                                       return_exceptions=True)
+        for path, days in zip(stale, results):
+            if isinstance(days, subprocess.CalledProcessError):
+                self.log(f"commits of {path} not read: git said {days.stderr.strip()}")
+                days = None
+            elif isinstance(days, (OSError, subprocess.TimeoutExpired)):
+                self.log(f"commits of {path} not read: {days}")
+                days = None
+            elif isinstance(days, BaseException):
+                raise days
+            readings[path] = (now, today, days)
+        self.commits = readings
+        for row in rows:
+            known = readings.get(row["path"]) if row["provider"] and not row["host"] else None
+            row["commits"] = known[2] if known else None
 
     def healthy(self):
         return rebuild_is_fresh(self.last_ok, time.monotonic())
