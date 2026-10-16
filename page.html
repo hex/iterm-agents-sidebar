@@ -158,6 +158,12 @@
   li.line.card:has(.task) > button.row { padding-block: 8px; }
   li.line.card:has(> button.row:hover) { background: var(--card-hover); }
   li.line.card > button.row { border-radius: 7px; }
+  /* A card easing to a new height (animateRows) is clipped, so a growing one
+     never shows what has not arrived yet. A worktree card's seam lies on and
+     above its top edge, where overflow would cut it, so that card is clipped
+     by a shape open at the top. */
+  li.line.card.resizing { overflow: clip; }
+  li.line.card.worktree.resizing { overflow: visible; clip-path: inset(-16px 0 0 0 round 0 0 8px 8px); }
   li.line.card > button.row:hover { background: none; }
   /* A dragged card: its ghost rises over the list and follows the pointer,
      and the card itself stays behind, faded, in the place it would drop. */
@@ -241,10 +247,10 @@
   /* A light wash of the colour of the session it belongs to; its own colour
      stays on its mark and the band. A session without a colour leaves the
      card plain. */
-  li.line.card.worktree[style*="--family"] {
+  li.line.card.worktree[data-family] {
     background: color-mix(in srgb, var(--family) 4%, var(--card));
   }
-  li.line.card.worktree[style*="--family"]:has(> button.row:hover) {
+  li.line.card.worktree[data-family]:has(> button.row:hover) {
     background: color-mix(in srgb, var(--family) 7%, var(--card-hover));
   }
   /* The one exception: amber across the whole card and a heavier edge all
@@ -257,9 +263,9 @@
   }
   /* The plain and worktree hovers, and a worktree's wash, outrank the rule
      above, so the amber is restated at their weight. */
-  li.line.card.worktree.blocked[style*="--family"] { background: var(--blocked-bg); }
+  li.line.card.worktree.blocked[data-family] { background: var(--blocked-bg); }
   li.line.card.blocked:has(> button.row:hover),
-  li.line.card.worktree.blocked[style*="--family"]:has(> button.row:hover) {
+  li.line.card.worktree.blocked[data-family]:has(> button.row:hover) {
     background: color-mix(in srgb, var(--blocked-border) 8%, var(--blocked-bg));
   }
   li.line.card.blocked > button.row .label { color: var(--blocked-text); }
@@ -392,7 +398,6 @@
     /* Scale from the corner at the pointer, so it reads as unfolding from the
        click rather than appearing beside it. */
     .menu { animation: unfold .14s cubic-bezier(.32, .72, 0, 1); }
-    .menu.kept { animation: none; }
     @keyframes unfold {
       from { opacity: 0; transform: scale(.92) translateY(-3px); }
       to   { opacity: 1; transform: none; }
@@ -887,7 +892,7 @@
     -webkit-mask-image: var(--tick-mask); mask-image: var(--tick-mask);
     --tick-mask: repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 6px);
   }
-  .task .task-bar-fill { display: block; height: 100%; background: var(--lit); }
+  .task .task-bar-fill { display: block; width: var(--pct); height: 100%; background: var(--lit); }
   /* Only the mark is nudged onto the x-height; shifting the whole group
      took the age's digits off the line's baseline with it. */
   .task .task-age .mi {
@@ -1073,7 +1078,7 @@
      than repeating the session above. Grey when it was given none. */
   .busy i { background: var(--hue, var(--dim)); }
   button.row.child .swatch::before { background: var(--hue, var(--dim)); }
-  button.row.child .swatch:not([style*="--hue"])::before { opacity: .55; }
+  button.row.child .swatch:not([data-colour])::before { opacity: .55; }
 
   @media (prefers-reduced-motion: no-preference) {
     /* transform and opacity only: no layout work per frame. */
@@ -1163,8 +1168,8 @@
      stays over the word and only the band moves. Both move by transform
      alone, which the compositor runs without repainting the text: painting
      a moving gradient into the letters kept the GPU busy at the display's
-     refresh rate. The page rebuilds rows on every update, so each band starts
-     where the clock says the sweep has reached, and every band sweeps in step. */
+     refresh rate. A band starts where the clock says the sweep has reached
+     (syncShimmer), so every band on the page sweeps in step. */
   .word.idle, .shimmer { position: relative; contain: paint; }
   /* The word clips to its own box, and glyph descenders sit below a
      line-height of 1, so the box takes the font's own line height. */
@@ -1648,7 +1653,7 @@
     background: color-mix(in srgb, var(--fg) 12%, transparent);
   }
   #budget .fill {
-    position: absolute; inset: 0 auto 0 0; border-radius: 1.5px;
+    position: absolute; inset: 0 auto 0 0; width: var(--pct); border-radius: 1.5px;
     background: var(--sev-ok);
   }
   /* claude-swap's bands: amber from 70%, red from 90%. */
@@ -1657,7 +1662,7 @@
   #budget .win.near .pct, #budget .win.near.ahead .pct { color: var(--sev-crit); font-weight: 600; }
   /* Where the window's clock is: used past the tick means ahead of pace. */
   #budget .tick {
-    position: absolute; top: -2px; width: 1px; height: 6px;
+    position: absolute; top: -2px; left: var(--pct); width: 1px; height: 6px;
     margin-left: -.5px; background: var(--fg); opacity: .45;
   }
   #budget .win.ahead .pct { color: var(--warn); font-weight: 600; }
@@ -1816,11 +1821,9 @@
   }
   /* An armed Switch stays out whatever the pointer does: the confirming
      click needs somewhere to land. */
-  #budget .acct-item:is(.hover, :focus-within) .acct-switch, #budget .acct-switch.armed {
+  #budget .acct-item:is(:hover, :focus-within) .acct-switch, #budget .acct-switch.armed {
     opacity: 1; pointer-events: auto;
   }
-  /* A button rebuilt while already out must not fade in again. */
-  #budget .acct-item.settled .acct-switch { transition: none; }
   @media (prefers-reduced-motion: reduce) { #budget .acct-switch { transition: none; } }
 
   /* Compact: under about 200px an agent card is its name, a state row, and
@@ -1860,7 +1863,7 @@
     display: block; height: 2px; margin-top: 1px; border-radius: 1px; overflow: hidden;
     background: color-mix(in srgb, var(--fg) 12%, transparent);
   }
-  html.compact .cbar-fill { display: block; height: 100%; border-radius: 1px; background: var(--lit); }
+  html.compact .cbar-fill { display: block; width: var(--pct); height: 100%; border-radius: 1px; background: var(--lit); }
   /* What it waits on, in the waiting card's amber ink; a tool's whole
      command wraps rather than ending at the card's edge. */
   html.compact .cask {
@@ -2098,8 +2101,8 @@ const STATE_TITLES = {
 };
 // A turn still working after this long may be stuck: it earns a badge.
 const LONG_TURN_SECONDS = 20 * 60;
-// Rows are rebuilt on every update, so a shimmer starts where the clock says
-// the sweep has reached; every shimmer on the page then sweeps in step.
+// A shimmer that appears, moves or changes class starts where the clock says
+// the sweep has reached, so every shimmer on the page sweeps in step.
 // Matches the idle-shimmer animation duration in the CSS.
 const SHIMMER_MS = 2000;
 const BREATHE_MS = 1900;
@@ -2108,8 +2111,8 @@ function syncShimmer(el) {
 }
 // What moves without end: the idle and running-commands sweeps, busy dots,
 // the waiting badge's breath and a long name's glide. Each pauses while out of
-// the list's view; rows are rebuilt on every update, so the watch is renewed
-// after every paint.
+// the list's view, watched from the paint that adopts it or gives it the
+// class, and let go when it leaves the list.
 const ENDLESS = ".word.idle, .shimmer, .busy, .word.blocked, .label > .run, .pair-badge.open";
 const outOfViewWatch = new IntersectionObserver(entries => {
   for (const entry of entries) {
@@ -2117,9 +2120,12 @@ const outOfViewWatch = new IntersectionObserver(entries => {
     steerScripted(entry.target.getAnimations());
   }
 }, {root: document.getElementById("groups")});
-function watchMotion() {
-  outOfViewWatch.disconnect();
-  for (const el of document.querySelectorAll(`#groups :is(${ENDLESS})`)) outOfViewWatch.observe(el);
+function watchMotion(node) {
+  for (const el of [node, ...node.querySelectorAll(ENDLESS)]) if (el.matches(ENDLESS)) outOfViewWatch.observe(el);
+}
+function unwatchMotion(node) {
+  if (node.nodeType !== 1) return;
+  for (const el of [node, ...node.querySelectorAll(ENDLESS)]) if (el.matches(ENDLESS)) outOfViewWatch.unobserve(el);
 }
 // And all of it pauses while the page is hidden.
 function noteVisibility() {
@@ -2148,8 +2154,8 @@ function addSweep(el) {
   band.append(Object.assign(document.createElement("span"), {textContent: el.textContent}));
   el.append(band);
 }
-// Same for the breath: a badge rebuilt every snapshot would otherwise start
-// each breath from the top, twice a second short of a full one.
+// Same for the breath: a badge that appears or moves would otherwise start
+// its breath from the top, out of step with the others.
 function syncBreathe(el) {
   el.style.setProperty("--breathe-delay", `-${Date.now() % BREATHE_MS}ms`);
 }
@@ -2208,7 +2214,9 @@ function syncCompact() {
 function applyShellFont(snapshot) {
   const root = document.documentElement;
   root.dataset.shellFont = SETTINGS?.shell_font ?? "system";
-  if (snapshot.terminal_font) root.style.setProperty("--terminal-font", `"${snapshot.terminal_font}"`);
+  const font = snapshot.terminal_font ? `"${snapshot.terminal_font}"` : "";
+  if (root.style.getPropertyValue("--terminal-font") === font) return;
+  if (font) root.style.setProperty("--terminal-font", font);
   else root.style.removeProperty("--terminal-font");
 }
 
@@ -2313,7 +2321,8 @@ function untieShown(pane) {
 // One menu at a time, and it closes on anything that means "not this". Two
 // menus were open at once because opening one never told the others to shut.
 let openMenu = null;
-// Whose right-click menu is open, so a repaint can put that same menu back.
+// Whose right-click menu is open, so a repaint closes it when that session
+// leaves the list.
 let openMenuKey = null;
 function closeMenu() {
   if (!openMenu) return;
@@ -2339,7 +2348,7 @@ document.body.append(card);
 // it" listener on the document.
 card.addEventListener("pointerdown", e => e.stopPropagation());
 
-// Formatted here rather than in Python so they stay true between rebuilds:
+// Formatted here rather than in Python so they stay true between paints:
 // a countdown baked into a snapshot is wrong the moment it arrives.
 function forHumans(seconds) {
   if (seconds == null) return null;
@@ -2418,7 +2427,7 @@ function showCard(row) {
   // The session's own colour, the square its card wears.
   if (SESSION_COLOURS[row.colour]) {
     const square = Object.assign(document.createElement("span"), {className: "square"});
-    square.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+    square.dataset.colour = row.colour;
     who.append(square);
   }
   who.append(Object.assign(document.createElement("span"), {className: "name", textContent: d.session_name || row.label}));
@@ -2870,9 +2879,9 @@ function menuFor(row, group) {
   return menu;
 }
 
-// Which shell's command is open, so a repaint can put it back. The list is
-// rebuilt on every update, and a popover that vanished mid-read or mid-copy
-// would be worse than having none.
+// Which shell's command is open: the builder draws that popover shown and
+// showOpenShell places it after the paint, so it never vanishes mid-read or
+// mid-copy.
 let openShellKey = null;
 
 function copyText(text) {
@@ -2887,11 +2896,17 @@ function copyText(text) {
   return ok ? Promise.resolve() : Promise.reject(new Error("copy refused"));
 }
 
+// What the last Copy said and until when, by the popover and command it
+// copied: the builder draws it, and a repaint on the timer says Copy again.
+let copied = null;
+const COPIED_SHOWN_MS = 1500;
+
 // Every background shell of one session, each whole and each with its own
-// Copy, under the card's summary line.
-function shellPopover(shells) {
+// Copy, under the card's summary line. Shown while its key is the open one.
+function shellPopover(shells, popKey) {
   const pop = document.createElement("div");
-  pop.hidden = true;
+  pop.hidden = openShellKey !== popKey;
+  pop.dataset.pop = popKey;
   pop.className = "menu shell-pop";
   pop.setAttribute("role", "dialog");
   pop.setAttribute("aria-label", "background shell commands");
@@ -2901,29 +2916,39 @@ function shellPopover(shells) {
     code.textContent = command;
     const copy = document.createElement("button");
     copy.type = "button";
-    copy.textContent = "Copy";
-    copy.addEventListener("click", event => {
+    const key = `${popKey}\n${command}`;
+    copy.textContent = copied && copied.key === key && copied.until > Date.now() ? copied.text : "Copy";
+    on(copy, "click", event => {
       event.stopPropagation();
       // Says what happened either way: a copy that silently failed would be
       // found out only at the paste.
-      copyText(command).then(() => { copy.textContent = "Copied"; },
-                             () => { copy.textContent = "Copy failed"; });
-      setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+      const say = text => {
+        copied = {key, text, until: Date.now() + COPIED_SHOWN_MS};
+        render(LATEST, false, true);
+        setTimeout(() => render(LATEST, false, true), COPIED_SHOWN_MS + 50);
+      };
+      copyText(command).then(() => say("Copied"), () => say("Copy failed"));
     });
     entry.append(code, copy);
     pop.append(entry);
   }
-  pop.addEventListener("pointerdown", e => e.stopPropagation());
+  on(pop, "pointerdown", e => e.stopPropagation());
   return pop;
 }
 
-function openShell(pop, key) {
-  closeMenu();
-  hideCard();
-  pop.classList.remove("kept");
+// The open shell popover, after a paint: the live one whose key is open,
+// shown under its row. Its top is written only when the row moved, so a
+// frame that kept the row's place writes no inline style.
+function showOpenShell(root) {
+  if (!openShellKey) return;
+  const pop = [...root.querySelectorAll(".shell-pop")].find(p => p.dataset.pop === openShellKey);
+  if (!pop) { openShellKey = null; openMenu = null; return; }
+  const command = openShellKey.slice(openShellKey.indexOf("\n") + 1);
+  const row = [...pop.parentElement.querySelectorAll("button.row.bg-shell")].find(b => b.dataset.childKey === "shell\n" + command);
   pop.hidden = false;
   openMenu = pop;
-  openShellKey = key;
+  const top = row.offsetTop + row.offsetHeight + "px";
+  if (pop.style.top !== top) pop.style.top = top;
 }
 
 function openMenuAt(menu, li, event, key) {
@@ -2961,10 +2986,10 @@ function openMenuAt(menu, li, event, key) {
   menu.querySelector("button").focus();
 }
 
-// The list is rebuilt whole on every update, so without this a row that
+// A paint inserts and removes rows in one step, so without this a row that
 // appears shoves its neighbours down in one frame and one that leaves snaps
 // them up. FLIP: measure every card and every line inside it before the
-// rebuild, then play the change: what left fades out while cards resize and
+// paint, then play the change: what left fades out while cards resize and
 // slide to where they are, and what arrived fades in as the move settles, so
 // the eye reads one motion. Transform and opacity, plus a card's
 // own height, which is the resize. Offsets, not client rects: the text-size
@@ -3040,6 +3065,8 @@ function animateRows(before) {
       // Out of the next measurement, or a repaint mid-fade would fade it twice.
       delete gone.el.dataset.childKey;
       node = Object.assign(document.createElement("div"), {className: gone.holder});
+      // The next paint's morph leaves the holder to finish its fade.
+      node.dataset.owner = "flip";
       Object.assign(node.style, {position: "absolute", top: gone.top + "px", left: 0, right: 0,
                                  margin: 0, pointerEvents: "none", zIndex: 1});
       node.append(gone.el);
@@ -3050,14 +3077,12 @@ function animateRows(before) {
   }
 
   // Beat two. Cards hold their old height through the fade, then ease to the
-  // new one, clipped so a growing card never shows what has not arrived yet.
-  // A worktree card's seam lies on and above its top edge, where overflow
-  // would cut it, so that card is clipped by a shape open at the top.
+  // new one, clipped (.resizing) so a growing card never shows what has not
+  // arrived yet.
   for (const {li, from, to} of resizing) {
-    const clip = li.classList.contains("worktree") ? "clipPath" : "overflow";
-    li.style[clip] = clip === "clipPath" ? "inset(-16px 0 0 0 round 0 0 8px 8px)" : "clip";
+    li.classList.add("resizing");
     li.animate([{height: from + "px"}, {height: to + "px"}], {...MOVE, delay: settleAt, fill: "backwards"})
-      .finished.finally(() => { li.style[clip] = ""; });
+      .finished.finally(() => li.classList.remove("resizing"));
   }
   for (const {li, dy} of moving) {
     li.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}],
@@ -3808,7 +3833,7 @@ function postUntie(pane) {
 
 // Work crossing a pair (S6 of the ripple lab): the ring turns half way in 520 ms so the sender's colour lands on the
 // receiver's side, two quiet rings in the sender's colour leave the badge 200 ms apart, then the ring turns home in
-// 720 ms. A function of the time since the landing began, so a repaint that rebuilds the badge picks it up mid-way.
+// 720 ms. A function of the time since the landing began, so a repaint, which leaves the badge at rest, picks it up mid-way.
 const LAND_TURN_MS = 520, LAND_HOME_MS = 720, LAND_RING_MS = 560, LAND_STAGGER_MS = 200;
 const LAND_RINGS = 2, LAND_WIDTH = 2.5, LAND_TAPER = .5, LAND_REACH = 1.4, LAND_ALPHA = .45, LAND_R = 14;
 const LAND_MS = LAND_TURN_MS + LAND_STAGGER_MS * (LAND_RINGS - 1) + LAND_RING_MS + LAND_HOME_MS;
@@ -3944,7 +3969,7 @@ function slideFrom(block, from) {
   const dy = (from.top - block[0].getBoundingClientRect().top) / from.zoom;
   if (Math.abs(dy) < 1) return Promise.resolve();
   const slides = block.map(card => card.animate([{transform: `translateY(${dy}px)`}, {transform: "none"}], SETTLE));
-  // A repaint that replaces the card cancels its slide; that is an end too.
+  // A slide cancelled before its end is an end too.
   return Promise.all(slides.map(slide => slide.finished.catch(() => null)));
 }
 
@@ -4105,8 +4130,7 @@ function paintAll(snapshot) {
   paintVersion();
   paintRepository();
   paintStatuslineOffer();
-  watchMotion();
-  // Work crossing a pair: a new landing starts, and one already playing draws onto the rebuilt badge at once.
+  // Work crossing a pair: a new landing starts, and one already playing draws onto the badge, which the paint left at rest, at once.
   for (const id of landingNow.keys()) stepLanding(id);
   playLandings(snapshot.partners);
   const now = performance.now();
@@ -4119,13 +4143,22 @@ function paintAll(snapshot) {
 
 // The dashed seam between a docked worktree card and the card it hangs
 // from: a line across the card's top edge, bowed by `sag` pixels at its
-// middle. Zero is the resting line, which looks like a dashed border.
+// middle. Zero is the resting line, which looks like a dashed border. One
+// path, made the first time and redrawn only when its shape changes.
 function paintSeam(li, sag) {
   const svg = li.querySelector(":scope > svg.seam");
   if (!svg) return;
+  let path = svg.firstElementChild;
+  if (!path) {
+    path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    for (const [name, value] of Object.entries({fill: "none", stroke: "currentColor", "stroke-width": "1", "stroke-dasharray": "4 3"})) {
+      path.setAttribute(name, value);
+    }
+    svg.append(path);
+  }
   const width = li.clientWidth + 2;                         // border to border
-  svg.innerHTML = `<path d="M-1 .5 Q ${width / 2 - 1} ${.5 + sag * 2} ${width - 1} .5" fill="none" ` +
-                  `stroke="currentColor" stroke-width="1" stroke-dasharray="4 3"/>`;
+  const d = `M-1 .5 Q ${width / 2 - 1} ${.5 + sag * 2} ${width - 1} .5`;
+  if (path.getAttribute("d") !== d) path.setAttribute("d", d);
 }
 function paintSeams() {
   for (const li of document.querySelectorAll("li.card.worktree")) if (!li.dataset.plucked) paintSeam(li, 0);
@@ -4201,7 +4234,7 @@ function taskLine(task) {
     const pct = Math.max(0, Math.min(100, task.percent));
     const bar = el("task-bar", "");
     const fill = el("task-bar-fill", "");
-    fill.style.width = pct + "%";
+    fill.dataset.pct = Math.round(pct);
     bar.append(fill);
     bar.title = `about ${pct}% done, the session's own estimate`;
     line.append(bar);
@@ -4282,18 +4315,16 @@ function answerRows(row) {
       option.type = "button";
       option.disabled = !!spent;
       if (spent && picked.pick === i + 1) option.classList.add("picked");
-      option.addEventListener("click", () => {
-        if (!cardSettled(option)) return;
+      on(option, "click", (event, self) => {
+        if (!cardSettled(self)) return;
         const first = row.question.question;
         const before = picked && picked.question === first ? picked.steps : 0;
         pickedAnswers.set(row.session_id, {question: first, pick: i + 1, steps: before + 1});
-        for (const other of answers.children) other.disabled = true;
-        option.classList.add("picked");
         // The daemon checks the step against the ones it typed itself.
         act(row.session_id, "answer", JSON.stringify({pick: i + 1, question: first, step: asked.step}));
-        // The next step is drawn now, not on the next snapshot, which the
-        // set would not change anyway.
-        if (row.question.set && LATEST) render(LATEST, false, true);
+        // The spent buttons, and a set's next step, are drawn now, not on
+        // the next snapshot, which the set would not change anyway.
+        render(LATEST, false, true);
       });
     }
     answers.append(option);
@@ -4333,29 +4364,25 @@ function tickRows(row, asked) {
     const box = Object.assign(document.createElement("button"), {type: "button", title: label});
     box.className = "answer tick" + (/\(recommended\)\s*$/i.test(label) ? " recommended" : "");
     box.setAttribute("role", "checkbox");
-    const mark = () => box.setAttribute("aria-checked", String(ticks.picks.has(i + 1)));
-    mark();
+    box.setAttribute("aria-checked", String(ticks.picks.has(i + 1)));
     box.append(...answerParts(String(i + 1), label));
     box.disabled = !!spent;
-    box.addEventListener("click", () => {
+    on(box, "click", () => {
       if (ticks.picks.has(i + 1)) ticks.picks.delete(i + 1);
       else ticks.picks.add(i + 1);
-      mark();
-      send.disabled = !ticks.picks.size;
+      render(LATEST, false, true);
     });
     return box;
   });
   send.disabled = !!spent || !ticks.picks.size;
   if (spent) send.classList.add("picked");
-  send.addEventListener("click", () => {
-    if (!cardSettled(send)) return;
+  on(send, "click", (event, self) => {
+    if (!cardSettled(self)) return;
     // The step this card is on is the count of steps it has sent.
     pickedAnswers.set(row.session_id, {question: first, steps: step + 1});
-    for (const other of answers.children) other.disabled = true;
-    send.classList.add("picked");
     const pick = [...ticks.picks].sort((a, b) => a - b);
     act(row.session_id, "answer", JSON.stringify({pick, question: first, step: asked.step}));
-    if (row.question.set && LATEST) render(LATEST, false, true);
+    render(LATEST, false, true);
   });
   answers.append(...boxes, send);
   return answers;
@@ -4385,12 +4412,11 @@ function gateRows(row) {
     option.append(...answerParts(key, label));
     option.disabled = !!spent;
     if (spent && picked.pick === gate) option.classList.add("picked");
-    option.addEventListener("click", () => {
-      if (!cardSettled(option)) return;
+    on(option, "click", (event, self) => {
+      if (!cardSettled(self)) return;
       pickedAnswers.set(row.session_id, {question: meant, pick: gate});
-      for (const other of answers.children) other.disabled = true;
-      option.classList.add("picked");
       act(row.session_id, "answer", JSON.stringify({gate, id: asked.id}));
+      render(LATEST, false, true);
     });
     answers.append(option);
   }
@@ -4461,12 +4487,18 @@ function queueText(label, asked) {
 
 function paintQueue(snapshot) {
   const box = document.getElementById("queue");
-  box.textContent = "";
-  const waiting = snapshot.groups.flatMap(g => g.rows).filter(r => IS_EXCEPTION(r.state));
+  const built = buildQueue(snapshot);
   // Nothing waiting is said by the section not being there. At compact width
   // the waiting cards carry their questions themselves.
-  box.hidden = !waiting.length || compact;
-  if (box.hidden) return;
+  box.hidden = !built;
+  morph(box, built ?? document.createElement("div"));
+}
+
+// The queue as the frame says it should read, detached; null when it is not shown.
+function buildQueue(snapshot) {
+  const waiting = snapshot.groups.flatMap(g => g.rows).filter(r => IS_EXCEPTION(r.state));
+  if (!waiting.length || compact) return null;
+  const box = document.createElement("div");
 
   // Oldest first. A row with no start time cannot claim a place in the line,
   // so it goes to the back.
@@ -4490,7 +4522,7 @@ function paintQueue(snapshot) {
       // Nothing says what it asks, so nothing claims a kind: the session's
       // own colour, and the name alone.
       const mark = Object.assign(document.createElement("span"), {className: "swatch"});
-      if (SESSION_COLOURS[row.colour]) mark.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+      if (SESSION_COLOURS[row.colour]) mark.dataset.colour = row.colour;
       b.append(mark, label);
     }
     const ago = waited(row.blocked_since);
@@ -4499,7 +4531,7 @@ function paintQueue(snapshot) {
     const said = [row.label, "waiting", ago && `for ${ago}`].filter(Boolean).join(" ");
     b.setAttribute("aria-label", row.question ? `${said}, ${asksAloud(row.question)}` : said);
     // The row names a card that may sit off the list's edge; show it too.
-    b.addEventListener("click", () => { revealAfterPaint(row.session_id); act(row.session_id, "focus"); });
+    on(b, "click", () => { revealAfterPaint(row.session_id); act(row.session_id, "focus"); });
     const li = document.createElement("li");
     li.append(b);
     ul.append(li);
@@ -4510,6 +4542,7 @@ function paintQueue(snapshot) {
     box.append(Object.assign(document.createElement("div"),
                              {className: "more", textContent: `+${rest} more`}));
   }
+  return box;
 }
 
 const BUDGET_WINDOWS = [
@@ -4546,13 +4579,13 @@ function meterRow(label, used, at, {tick = null, ahead = false} = {}) {
   const name = Object.assign(document.createElement("span"), {className: "wl", textContent: label});
   const track = Object.assign(document.createElement("span"), {className: "track"});
   const fill = Object.assign(document.createElement("span"), {className: "fill"});
-  fill.style.width = used + "%";
+  fill.dataset.pct = Math.round(used);
   if (used >= 90) row.classList.add("near");
   else if (used >= 70) row.classList.add("climbing");
   track.append(fill);
   if (tick != null) {
     const mark = Object.assign(document.createElement("span"), {className: "tick"});
-    mark.style.left = Math.max(0, Math.min(100, tick)) + "%";
+    mark.dataset.pct = Math.round(Math.max(0, Math.min(100, tick)));
     track.append(mark);
   }
   const pct = Object.assign(document.createElement("span"), {className: "pct", textContent: Math.round(used) + "%"});
@@ -4604,32 +4637,23 @@ function addAccount() {
 
 let armedSwitch = null;
 let disarmTimer = null;
-// The inactive account the pointer is over. WebKit leaves a rebuilt element
-// without :hover until the mouse moves, so the page keeps the state itself.
-let hoveredAccount = null;
 
 // Arms on the first click and switches on the second, like Close: a switch
-// changes the login of every running session. Arming changes the button in
-// place; a repaint from a snapshot rebuilds it in the same state.
+// changes the login of every running session. The button is drawn from the
+// armed state, so arming repaints the foot and the disarm timer repaints it back.
 function switchButton(account) {
+  const armed = armedSwitch === account.id;
   const button = Object.assign(document.createElement("button"),
     {className: "acct-switch", type: "button"});
-  const label = document.createTextNode("");
-  button.append(metaIcon("switch"));
-  button.append(label);
-  const show = () => {
-    const armed = armedSwitch === account.id;
-    label.textContent = armed ? "Confirm switch" : "Switch";
-    button.setAttribute("aria-label", armed ? `confirm switching to ${account.name}` : `switch to ${account.name}`);
-    button.classList.toggle("armed", armed);
-  };
-  show();
-  button.addEventListener("click", () => {
+  button.append(metaIcon("switch"), armed ? "Confirm switch" : "Switch");
+  button.setAttribute("aria-label", armed ? `confirm switching to ${account.name}` : `switch to ${account.name}`);
+  button.classList.toggle("armed", armed);
+  on(button, "click", () => {
     clearTimeout(disarmTimer);
     if (armedSwitch !== account.id) {
       armedSwitch = account.id;
-      disarmTimer = setTimeout(() => { armedSwitch = null; show(); }, 4000);
-      show();
+      disarmTimer = setTimeout(() => { armedSwitch = null; paintBudget(lastSnapshot); }, 4000);
+      paintBudget(lastSnapshot);
       return;
     }
     armedSwitch = null;
@@ -4673,22 +4697,21 @@ function accountName(account, className, suffix = "") {
       {className: `${className} acct-rename`, type: "text", value: account.alias ?? "",
        placeholder: account.default_name, maxLength: 40});
     field.setAttribute("aria-label", `nickname for ${account.name}`);
-    field.addEventListener("keydown", event => {
+    on(field, "keydown", (event, self) => {
       event.stopPropagation();
-      if (event.key === "Enter") renameAccount(account, field.value);
+      if (event.key === "Enter") renameAccount(account, self.value);
       else if (event.key === "Escape") { renamingAccount = null; paintBudget(lastSnapshot); }
     });
-    field.addEventListener("blur", () => {
+    on(field, "blur", () => {
       if (renamingAccount !== account.id) return;
       renamingAccount = null;
       paintBudget(lastSnapshot);
     });
-    requestAnimationFrame(() => { field.focus(); field.select(); });
     return field;
   }
   const name = Object.assign(document.createElement("button"),
     {className, type: "button", textContent: account.name + suffix, title: "Click to rename"});
-  name.addEventListener("click", event => {
+  on(name, "click", event => {
     event.stopPropagation();
     renamingAccount = account.id;
     paintBudget(lastSnapshot);
@@ -4703,7 +4726,7 @@ function addButton(live) {
   if (live) {
     add.textContent = `Add ${live}`;
     add.title = `Store the login Claude Code is using now, ${live}, so the panel can meter it`;
-    add.addEventListener("click", addAccount);
+    on(add, "click", addAccount);
   } else {
     add.textContent = "Log in to Claude Code first";
     add.title = "Claude Code has no login to store; run claude and log in";
@@ -4759,7 +4782,7 @@ function autoSwitchRow() {
   sw.setAttribute("aria-checked", String(!!SETTINGS?.auto_switch));
   sw.setAttribute("aria-label", "Switch before a limit");
   sw.title = "Leave the active account before a limit stops your sessions";
-  sw.addEventListener("click", () => push({auto_switch: !SETTINGS?.auto_switch}));
+  on(sw, "click", () => push({auto_switch: !SETTINGS?.auto_switch}));
   row.append(Object.assign(document.createElement("span"), {textContent: "Auto-switch"}), sw);
   return row;
 }
@@ -4782,9 +4805,19 @@ function nextSwitchChip(next) {
     return chip;
   }
   if (!next?.near) return null;
-  const chip = Object.assign(document.createElement("span"), {className: "next-chip",
-    textContent: next.to ? `\u2192 ${next.to} soon` : "nowhere to go"});
-  chip.title = `${next.why}; switches at 90% or when a window is on course for 100%`;
+  // No target does not mean every account is full: the emptier one may need
+  // a login, or be too close to this one for the hop to be worth it.
+  const chip = Object.assign(document.createElement("span"), {className: "next-chip"});
+  if (next.to) {
+    chip.textContent = `\u2192 ${next.to} soon`;
+    chip.title = `${next.why}; switches at 90% or when a window is on course for 100%`;
+  } else if (next.login) {
+    chip.textContent = `log in to ${next.login}`;
+    chip.title = `${next.why}; ${next.login} is emptier but needs a login before it can take over`;
+  } else {
+    chip.textContent = "no better account";
+    chip.title = `${next.why}; no other account is at least 3 points emptier, so this one stays until one is`;
+  }
   return chip;
 }
 
@@ -4797,7 +4830,7 @@ function limitsHead(store) {
   toggle.setAttribute("aria-expanded", String(!folded));
   toggle.append(Object.assign(document.createElement("span"), {className: "chev", textContent: "›"}),
                 Object.assign(document.createElement("span"), {textContent: "Limits"}));
-  toggle.addEventListener("click", () => {
+  on(toggle, "click", () => {
     if (compact) { compactLimitsOpen = false; paintBudget(lastSnapshot); }
     else push({limits_folded: !SETTINGS?.limits_folded});
   });
@@ -4901,7 +4934,7 @@ function compactFoot(store, codex) {
     line.title = [windows.length ? said(active.name, windows) : `${active.name}: ${accountStatus(active)}`,
                   next?.textContent, theirs.length ? said("Codex", theirs) : null,
                   "Limits: every window and account"].filter(Boolean).join("\n");
-    line.addEventListener("click", open);
+    on(line, "click", open);
     box.append(line);
     return box;
   }
@@ -4911,7 +4944,7 @@ function compactFoot(store, codex) {
   toggle.setAttribute("aria-expanded", "false");
   toggle.title = "Limits: every window and account";
   toggle.append(el("span", "chev", "›"), el("span", "cacct", active.name));
-  toggle.addEventListener("click", open);
+  on(toggle, "click", open);
   const line = footLine(toggle, active.name, windows);
   if (!windows.length) line.append(el("span", "acct-status", accountStatus(active)));
   box.append(line);
@@ -4988,17 +5021,7 @@ function paintAccounts(strip, store) {
     const status = accountStatus(account);
     if (status) item.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: status}));
     item.append(...accountMeters(account));
-    if (active && !account.needs_login) {
-      itemHead.append(switchButton(account));
-      item.addEventListener("mouseenter", () => { hoveredAccount = account.id; item.classList.add("hover"); });
-      item.addEventListener("mouseleave", () => {
-        hoveredAccount = null; item.classList.remove("hover", "settled");
-      });
-      if (hoveredAccount === account.id) {
-        item.classList.add("hover", "settled");
-        requestAnimationFrame(() => requestAnimationFrame(() => item.classList.remove("settled")));
-      }
-    }
+    if (active && !account.needs_login) itemHead.append(switchButton(account));
     list.append(item);
   }
   if (!active) list.append(addButton(store.live));
@@ -5055,6 +5078,30 @@ const AGENT_KINDS = {
 };
 const agentKindOf = row => row.provider || "claude";
 const agentKind = row => AGENT_KINDS[agentKindOf(row)] || {name: agentKindOf(row), colour: "currentColor"};
+
+// Deepest subagent nesting drawn with its own indent; deeper ones sit at this depth.
+const NEST_DEPTHS = 8;
+// The branch chip's minimum width in characters, 1 to 6.
+const BRANCH_FLOOR_MAX = 6;
+// Every colour, agent, depth, floor and percent a painted node can wear, as
+// attribute rules written once. WebKit never gives back the memory of an
+// element that carried an inline style and was then discarded, so the per-frame
+// builders set these attributes and no inline custom property.
+function installPalette() {
+  const rules = [];
+  for (const [name, hex] of Object.entries(SESSION_COLOURS)) {
+    rules.push(`[data-colour="${name}"] { --hue: ${hex}; }`, `[data-family="${name}"] { --family: ${hex}; }`);
+  }
+  rules.push("[data-agent] { --agent: currentColor; }");
+  for (const [kind, {colour}] of Object.entries(AGENT_KINDS)) {
+    rules.push(`[data-agent="${kind}"] { --agent: ${colour}; }`, `.ptag[data-agent="${kind}"] { --ink: var(--ink-${kind}); }`);
+  }
+  for (let d = 1; d <= NEST_DEPTHS; d++) rules.push(`[data-depth="${d}"] { --depth: ${d}; }`);
+  for (let f = 1; f <= BRANCH_FLOOR_MAX; f++) rules.push(`[data-floor="${f}"] { --floor: ${f}; }`);
+  for (let p = 0; p <= 100; p++) rules.push(`[data-pct="${p}"] { --pct: ${p}%; }`);
+  document.head.append(Object.assign(document.createElement("style"), {id: "palette", textContent: rules.join("\n")}));
+}
+installPalette();
 // How a card says which agent it is: "tag", "corner", "groups" or "off".
 const agentMark = () => SETTINGS?.provider_mark ?? "groups";
 
@@ -5069,7 +5116,7 @@ function bucketHead(bucket, count) {
 
 function agentHead(row, count) {
   const head = Object.assign(document.createElement("li"), {className: "phead"});
-  head.style.setProperty("--agent", agentKind(row).colour);
+  head.dataset.agent = agentKindOf(row);
   head.append(providerIcon(agentKindOf(row), ""),
               Object.assign(document.createElement("h3"), {textContent: agentKind(row).name}),
               Object.assign(document.createElement("span"), {className: "n", textContent: count}));
@@ -5149,15 +5196,25 @@ setInterval(() => {
 function paintBudget(snapshot) {
   lastSnapshot = snapshot;
   const strip = document.getElementById("budget");
+  if (renamingAccount && strip.contains(document.activeElement)) return;
+  morph(strip, buildBudget(snapshot));
+  strip.hidden = strip.childElementCount === 0;
+  // The name just clicked is a field in this frame, so the typing goes there.
+  if (renamingAccount) {
+    const field = strip.querySelector("input.acct-rename");
+    if (field && document.activeElement !== field) { field.focus(); field.select(); }
+  }
+}
+
+// The foot as the frame says it should read, detached.
+function buildBudget(snapshot) {
+  const strip = document.createElement("div");
   const reporting = (snapshot.groups || []).flatMap(g => g.rows || [])
     .map(r => r.details).filter(Boolean);
   const store = snapshot.accounts;
-  if (renamingAccount && strip.contains(document.activeElement)) return;
-  strip.replaceChildren();
   if (compact && !compactLimitsOpen && !store?.error && store?.accounts?.some(a => a.active)) {
     strip.append(compactFoot(store, snapshot.codex));
-    strip.hidden = false;
-    return;
+    return strip;
   }
 
   // An error and the add button show whether folded or not: both ask for
@@ -5184,7 +5241,7 @@ function paintBudget(snapshot) {
   if (tiles && !tiles.childElementCount) tiles.remove();
 
   if (strip.childElementCount) strip.prepend(limitsHead(store));
-  strip.hidden = strip.childElementCount === 0;
+  return strip;
 }
 
 // A line that cannot fit even with its branch at two characters drops the
@@ -5274,24 +5331,37 @@ function twinSuffixes(rows) {
 // A card's name longer than its room goes round now and then: it glides
 // left at a reading pace while a copy follows it in, so its start comes back
 // from the right and the name lands where it began. Timed off the clock like
-// the shimmer, so a row rebuilt mid-lap carries on from where it was.
+// the shimmer, so a glide restarted when its room changes carries on from
+// where the clock says, not from the start.
 const GLIDE_PX_PER_S = 40;
 const GLIDE_REST_MS = 5000;
 // Between the end of the name and its copy coming in behind it.
 const GLIDE_GAP = 32;
+// What each running glide was started for, so a frame that changed neither
+// the name nor its room leaves it running.
+const gliding = new WeakMap();
 function glide(run, width) {
+  const want = MOTION.matches ? width : 0;
+  const text = [...run.childNodes].filter(n => !(n.nodeType === 1 && n.dataset[OWNER])).map(n => n.textContent).join("");
+  const going = gliding.get(run);
+  // Within a pixel: offsetWidth rounds, and a run measured with its copy
+  // rounds differently from the same run measured without.
+  if (going ? Math.abs(going.width - want) < 1 && going.text === text : !want) return;
   for (const a of run.getAnimations()) a.cancel();
   run.querySelector(":scope > .copy")?.remove();
   run.style.paddingRight = "";
-  if (!width || !MOTION.matches) return;
+  gliding.delete(run);
+  if (!want) return;
   // Name, gap, copy, gap: two equal halves, so moving the run by half of
   // itself puts the copy exactly where the name started, whatever the zoom.
   const copy = Object.assign(document.createElement("span"), {className: "copy"});
   copy.setAttribute("aria-hidden", "true");
+  copy.dataset.owner = "glide";
   copy.style.paddingLeft = `${GLIDE_GAP}px`;
   copy.append(...[...run.childNodes].map(n => n.cloneNode(true)));
   run.append(copy);
   run.style.paddingRight = `${GLIDE_GAP}px`;
+  gliding.set(run, {width: want, text});
   const total = GLIDE_REST_MS + (width + GLIDE_GAP) / GLIDE_PX_PER_S * 1000;
   const motion = run.animate([
     {transform: "translateX(0)"},
@@ -5452,7 +5522,7 @@ function compactAsk(asker, named) {
   const ask = el("cask", "");
   if (named) {
     const swatch = el("swatch", "");
-    if (SESSION_COLOURS[asker.colour]) swatch.style.setProperty("--hue", SESSION_COLOURS[asker.colour]);
+    if (SESSION_COLOURS[asker.colour]) swatch.dataset.colour = asker.colour;
     const who = el("cwho", "");
     who.append(swatch, asker.label);
     ask.append(who);
@@ -5482,7 +5552,7 @@ function mateGate(mate) {
   const asked = [...ask.children].slice(1).map(part => part.textContent);
   b.setAttribute("aria-label", [`${mate.label} is waiting on you`, ...asked].join(" \u2014 "));
   b.append(ask);
-  b.addEventListener("click", () => act(mate.session_id, "focus"));
+  on(b, "click", () => act(mate.session_id, "focus"));
   return b;
 }
 
@@ -5502,8 +5572,7 @@ function compactFace(row, mates) {
   pillWords(pill, pillFace, row);
   // A long turn the row says itself; a silent one only the pill would.
   if (key === "silent") pill.dataset.spoken = pill.title;
-  if (face.badge === "blocked") syncBreathe(pill);
-  if (face.badge === "idle") { syncShimmer(pill); addSweep(pill); }
+  if (face.badge === "idle") addSweep(pill);
   // The teammates' names are on their own rows; the card's row says them too.
   if (mates.length) pill.dataset.spoken = mates.map(mate => `${mate.label} is waiting on you`).join(" \u2014 ");
   if (parts.has("pill") || (parts.has("long") && long)) line.append(pill);
@@ -5541,7 +5610,7 @@ function compactFace(row, mates) {
     const pct = Math.max(0, Math.min(100, task.percent));
     const bar = el("cbar", "");
     const fill = el("cbar-fill", "");
-    fill.style.width = pct + "%";
+    fill.dataset.pct = Math.round(pct);
     bar.append(fill);
     bar.title = `about ${pct}% done, the session's own estimate`;
     box.append(bar);
@@ -5549,22 +5618,188 @@ function compactFace(row, mates) {
   return box;
 }
 
+// ------------------------------------------------------------- in place
+// A painter builds what its region should show into a detached tree, with
+// the builders as they read, and morph() makes the live region match it: a
+// live node survives when it pairs with a built one and has its text and
+// attributes brought up to date, a built node with no pair is inserted as it
+// is, and a live node with no pair is removed. One DOM per card, line and
+// chip thus lives across frames, which is what WebKit needs: it never gives
+// back the memory of a styled element that was made and dropped. Builders
+// never write .style, and morph never copies the style attribute, so a steady
+// frame writes no inline declaration on a kept node. After the call the live
+// tree reads as the built one did, whatever it held before, so a paint that
+// threw half way is repaired by the next.
+//
+// A pass that runs after the paint and adds children to a live node marks
+// them data-owner="<pass>": morph leaves an owned node where it is and never
+// descends into one.
+const OWNER = "owner";
+// Classes and attributes a pass sets on a live node after the paint, so
+// morph keeps them: the view watch speaks when a badge scrolls out of or
+// into the list, a card clips while it eases to a new height, a label is
+// clipped as the layout measures it, and a seam is plucked while the pair
+// moves. A report's stale class is not kept: every builder decides it afresh
+// from the frame, and the second timer only moves it forward between paints.
+const KEPT_CLASSES = ["out-of-view", "resizing", "clipped"];
+const KEPT_ATTRS = ["data-plucked"];
+// Expando properties a built node carries to the live node that stands for it.
+const CARRIED = ["_row", "_on"];
+
+function morph(live, built) {
+  morphChildren(live, built);
+}
+
+// The pairing identity of a child: a card by its data-key, a line by its
+// data-child-key, else the id. Keyed nodes pair only by key within one parent.
+function keyOf(node) {
+  return node.nodeType === 1 ? node.dataset.key ?? node.dataset.childKey ?? (node.id || null) : null;
+}
+
+// What an unkeyed node must share with its pair: tag, first class token and
+// owner. span.word pairs with span.word whether idle or waiting; span.busy
+// never pairs with span.swatch. Pairing decides what is reused, never the result.
+function signatureOf(node) {
+  if (node.nodeType !== 1) return "#text";
+  return `${node.tagName}.${(node.getAttribute("class") || "").split(/\s+/)[0]}[${node.dataset[OWNER] || ""}]`;
+}
+
+function morphChildren(live, built) {
+  const wanted = [...built.childNodes];
+  // Pass 1: pair. Keyed by key; unkeyed by signature in order, never
+  // backwards, so nothing moves that did not move. A key two rows share, two
+  // shells running one command, pairs each with the one in its place.
+  const byKey = new Map();
+  const unkeyed = [];
+  for (const node of live.childNodes) {
+    const key = keyOf(node);
+    if (key) byKey.set(key, [...(byKey.get(key) || []), node]);
+    else unkeyed.push(node);
+  }
+  const pair = new Map();
+  let at = 0;
+  for (const b of wanted) {
+    const key = keyOf(b);
+    let m = null;
+    if (key) m = byKey.get(key)?.shift() ?? null;
+    else for (let j = at; j < unkeyed.length; j++) {
+      if (signatureOf(unkeyed[j]) !== signatureOf(b)) continue;
+      m = unkeyed[j]; at = j + 1; break;
+    }
+    if (m && signatureOf(m) === signatureOf(b)) pair.set(b, m);
+  }
+  const kept = new Set(pair.values());
+  // Pass 2: place, in built order. The cursor passes over live nodes that go
+  // in pass 3 and owned nodes nobody built, so a node moves only when its
+  // order changed.
+  const adoptedNow = new Set();
+  let cursor = live.firstChild;
+  for (const b of wanted) {
+    while (cursor && !kept.has(cursor)) cursor = cursor.nextSibling;
+    const m = pair.get(b);
+    if (!m) { live.insertBefore(b, cursor); adoptedNow.add(b); adopted(b); continue; }
+    if (m !== cursor) { live.insertBefore(m, cursor); moved(m); }
+    else cursor = cursor.nextSibling;
+    update(m, b);
+  }
+  // Pass 3: remove what has no pair, except what a pass owns: a holder still
+  // fading, a glide's copy.
+  for (const node of [...live.childNodes]) {
+    if (kept.has(node) || adoptedNow.has(node) || (node.nodeType === 1 && node.dataset[OWNER])) continue;
+    unwatchMotion(node);
+    node.remove();
+  }
+}
+
+// Brings a paired live node up to its built twin.
+function update(live, built) {
+  if (live.nodeType !== 1) {
+    if (live.data !== built.data) live.data = built.data;
+    return;
+  }
+  const cls = built.getAttribute("class");
+  const wantClass = cls == null ? null : [cls, ...KEPT_CLASSES.filter(c => live.classList.contains(c))].join(" ");
+  const classChanged = live.getAttribute("class") !== wantClass;
+  for (const {name, value} of built.attributes) {
+    if (name === "style") continue;
+    const want = name === "class" ? wantClass : value;
+    if (live.getAttribute(name) !== want) live.setAttribute(name, want);
+  }
+  for (const {name} of [...live.attributes]) {
+    if (name !== "style" && !KEPT_ATTRS.includes(name) && !built.hasAttribute(name)) live.removeAttribute(name);
+  }
+  for (const name of CARRIED) live[name] = built[name];
+  if (built._on) for (const type in built._on) listen(live, type);
+  if (classChanged) { syncPhases(live); watchMotion(live); }
+  if (!live.dataset[OWNER]) morphChildren(live, built);
+}
+
+// A built node just became live: its listeners, its endless motion in step
+// with the clock, and its watch for leaving the list's view.
+function adopted(node) {
+  if (node.nodeType !== 1) return;
+  for (const el of [node, ...node.querySelectorAll("*")]) if (el._on) for (const type in el._on) listen(el, type);
+  syncPhases(node);
+  watchMotion(node);
+}
+
+// insertBefore restarted the CSS animations of the live node it moved.
+function moved(node) {
+  syncPhases(node);
+}
+
+// The phased motions: a shimmer and a breath start where the clock says the
+// sweep has reached, so every one on the page moves in step. Written when a
+// node is adopted, moved or changes class, never on a frame that kept it.
+const PHASED = [[".word.idle, .shimmer", syncShimmer], [".word.blocked", syncBreathe]];
+function syncPhases(node) {
+  if (node.nodeType !== 1) return;
+  for (const [selector, sync] of PHASED) {
+    for (const el of [node, ...node.querySelectorAll(selector)]) if (el.matches(selector)) sync(el);
+  }
+}
+
+// A handler is attached with on(): it gets the event and the live element
+// it reached, changes state and repaints. The bag on the element travels to
+// the live node every frame, so a kept node runs this frame's closure with
+// this frame's row. A built node that is dropped never gets a listener; the
+// trampoline, one per type, is installed when the node becomes live.
+function on(el, type, handler) {
+  (el._on ||= {})[type] = handler;
+}
+function listen(el, type) {
+  if ((el._heard ||= new Set()).has(type)) return;
+  el._heard.add(type);
+  el.addEventListener(type, event => el._on?.[type]?.(event, el));
+}
+
+// The rows whose Resume was clicked. A frame that follows carries new row
+// objects, so the daemon's next word, the pane reopened or the row as it
+// was, puts the button back.
+const resuming = new WeakSet();
+
 function paint(snapshot) {
   const root = document.getElementById("groups");
-  const focused = document.activeElement;
-  const keepId = focused && focused.dataset ? focused.dataset.sessionId : null;
-  const menuFocus = openMenu && openMenu.contains(focused) ? focused : null;
-  root.textContent = "";
-  // Whether the session with the open right-click menu is still listed.
-  let menuKept = false;
+  const keepId = document.activeElement?.dataset?.sessionId ?? null;
+  morph(root, buildGroups(snapshot));
+  // A session that closed took its menu with it.
+  if (openMenuKey && !root.querySelector(`[data-session-id="${CSS.escape(openMenuKey)}"]`)) closeMenu();
+  showOpenShell(root);
+  // Keep the keyboard where it was: a moved row is blurred by its move.
+  if (keepId && !root.contains(document.activeElement)) {
+    root.querySelector(`[data-session-id="${CSS.escape(keepId)}"]`)?.focus();
+  }
+}
 
+// The card list as the frame says it should read, detached.
+function buildGroups(snapshot) {
+  const built = document.createElement("div");
   if (!snapshot.groups.length) {
-    closeMenu();
     const p = document.createElement("p");
     p.id = "empty";
     p.textContent = "No sessions.";
-    root.append(p);
-    return;
+    built.append(p);
+    return built;
   }
 
   for (const group of snapshot.groups) {
@@ -5593,6 +5828,8 @@ function paint(snapshot) {
     // The card the rows that follow belong to. Rows arrive parent first, then
     // its teammates, so a depth-1 row always joins the card opened just above.
     let card = null;
+    // The agent and the bucket whose head opened the run the cards are in.
+    let lastAgent = null, lastBucket = null;
     for (const row of group.rows) {
       // A closed question is forgotten, so the same words asked again are a
       // new question with live buttons, as the daemon also treats them.
@@ -5611,10 +5848,12 @@ function paint(snapshot) {
         if (SESSION_COLOURS[row.colour]) li.dataset.hue = SESSION_COLOURS[row.colour];
         if (row.worktree_of && card && card.dataset.key === row.worktree_of) {
           li.classList.add("worktree");
-          if (card.dataset.hue) li.style.setProperty("--family", card.dataset.hue);
-          if (SESSION_COLOURS[row.colour]) li.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+          const family = group.rows.find(r => r.session_id === row.worktree_of).colour;
+          if (SESSION_COLOURS[family]) li.dataset.family = family;
+          if (SESSION_COLOURS[row.colour]) li.dataset.colour = row.colour;
           li.append(document.createElementNS("http://www.w3.org/2000/svg", "svg"));
           li.lastChild.setAttribute("class", "seam");
+          li.lastChild.dataset.owner = "seam";      // paintSeam draws the path inside
         }
         // The second card of a partnership, docked under the first: its block follows the first's in every order.
         const upper = row.partner_of && ul.querySelector(`li.line.card[data-key="${CSS.escape(row.partner_of)}"]`);
@@ -5655,7 +5894,7 @@ function paint(snapshot) {
       // Identity, always, and never as the ground.
       const mark = document.createElement("span");
       // The session's colour on the row itself, so the task graphic can wear it.
-      if (SESSION_COLOURS[row.colour]) b.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
+      if (SESSION_COLOURS[row.colour]) b.dataset.colour = row.colour;
       // A plain terminal running a command is busy the same way an agent
       // mid-turn is, so it gets the same dots, in grey for want of a colour.
       if ((row.state === "working" || row.running) && !shortCards) {
@@ -5668,9 +5907,7 @@ function paint(snapshot) {
       } else {
         mark.className = "swatch" + (row.state === "unknown" || row.state === "exited" ? " hollow" : "");
       }
-      if (SESSION_COLOURS[row.colour]) {
-        mark.style.setProperty("--hue", SESSION_COLOURS[row.colour]);
-      }
+      if (SESSION_COLOURS[row.colour]) mark.dataset.colour = row.colour;
       b.append(mark);
 
       const stack = document.createElement("span");
@@ -5705,12 +5942,12 @@ function paint(snapshot) {
       // mark in the row's corner. The glyph then leaves the facts line.
       const marked = group.name === "AGENTS" && !row.depth && !shortCards ? agentMark() : "off";
       if (marked === "tag" || marked === "corner") {
-        b.style.setProperty("--agent", agentKind(row).colour);
+        b.dataset.agent = agentKindOf(row);
         const glyph = providerIcon(agentKindOf(row), "");
         glyph.setAttribute("aria-hidden", "true");
         if (marked === "tag") {
           const tag = Object.assign(document.createElement("span"), {className: "ptag"});
-          if (AGENT_KINDS[agentKindOf(row)]) tag.style.setProperty("--ink", `var(--ink-${agentKindOf(row)})`);
+          tag.dataset.agent = agentKindOf(row);
           tag.append(glyph, agentKind(row).name);
           run.append(tag);
         } else {
@@ -5759,7 +5996,7 @@ function paint(snapshot) {
         const chip = document.createElement("span");
         chip.className = "mchip";
         chip.classList.add(kind === "branch" ? "branch" : kind === "title" ? "title" : "model-name");
-        if (kind === "branch") chip.style.setProperty("--floor", Math.min(value.length, 6));
+        if (kind === "branch") chip.dataset.floor = Math.min(value.length, BRANCH_FLOOR_MAX);
         const text = Object.assign(document.createElement("span"),
                                    {className: "mtext",
                                     textContent: kind === "title" ? shortTitle(value) : value});
@@ -5846,7 +6083,6 @@ function paint(snapshot) {
         const word = document.createElement("span");
         word.className = "word blocked";
         word.textContent = "Waiting";
-        syncBreathe(word);
         b.append(word);
       } else if (row.state === "working" && row.working_since
                  && Date.now() / 1000 - row.working_since >= LONG_TURN_SECONDS) {
@@ -5866,7 +6102,6 @@ function paint(snapshot) {
         const word = document.createElement("span");
         word.className = "word idle";
         word.textContent = "Idle";
-        syncShimmer(word);
         addSweep(word);
         b.append(word);
         b.classList.add("resting");
@@ -5899,19 +6134,13 @@ function paint(snapshot) {
                         .map(el => el.dataset.spoken)]
                        .filter(Boolean).join(" \u2014 "));
 
-      b.addEventListener("click", () => act(row.session_id, "focus"));
+      on(b, "click", () => act(row.session_id, "focus"));
       // Carried on the element, for the right-click menu and Details.
       b._row = row;
-      // An open menu floats outside the list, so a repaint leaves it where it
-      // is: its armed second click and its keyboard focus survive, and the
-      // repainted row opens that same node.
-      const keptMenu = openMenuKey === row.session_id && openMenu;
-      const menu = keptMenu || menuFor(row, group);
-      if (keptMenu) menuKept = true;
-      const host = card;       // `card` moves on with the loop; the menu stays
-      if (menu) {
-        b.addEventListener("contextmenu", e => openMenuAt(menu, host, e, row.session_id));
-      }
+      // The menu is built when the row is right-clicked and floats outside
+      // the list, so a repaint leaves it where it is: its armed second click
+      // and its keyboard focus survive.
+      on(b, "contextmenu", (e, self) => openMenuAt(menuFor(row, group), self.closest("li.line.card"), e, row.session_id));
 
       const linked = pairLine(row, snapshot.partners) || linkLine(row, snapshot.links);
       const lost = remoteLostLine(row);
@@ -5927,11 +6156,9 @@ function paint(snapshot) {
         if (standing) b.after(standing);
         if (refusal) b.after(refusal);
         if (linked) b.after(linked);
-        if (menu && !keptMenu) card.append(menu);
         continue;
       }
       li.append(b);
-      if (menu && !keptMenu) li.append(menu);
       // A remote card the daemon would type no key into now offers no button:
       // a click would spend it and type nothing.
       // The card's own gate first, then each teammate's under its name. At
@@ -5946,12 +6173,13 @@ function paint(snapshot) {
       // what is typed and refuses anything it no longer finds safe.
       if (row.resumable) {
         const resume = Object.assign(document.createElement("button"),
-                                     {className: "resume", type: "button", textContent: "Resume"});
+                                     {className: "resume", type: "button", textContent: resuming.has(row) ? "Resuming…" : "Resume"});
+        resume.disabled = resuming.has(row);
         resume.title = "Reopen this conversation at the prompt of the pane it exited in";
-        resume.addEventListener("click", () => {
-          resume.disabled = true;
-          resume.textContent = "Resuming…";
+        on(resume, "click", () => {
+          resuming.add(row);
           act(row.session_id, "resume");
+          render(LATEST, false, true);
         });
         li.append(resume);
       }
@@ -5963,18 +6191,18 @@ function paint(snapshot) {
       // head opens each run, and a list of one agent needs none.
       if (group.name === "AGENTS" && agentMark() === "groups" && !row.worktree_of
           && new Set(group.rows.map(agentKindOf)).size > 1
-          && agentKindOf(row) !== ul.dataset.lastAgent) {
-        ul.dataset.lastAgent = agentKindOf(row);
-        delete ul.dataset.lastBucket;
+          && agentKindOf(row) !== lastAgent) {
+        lastAgent = agentKindOf(row);
+        lastBucket = null;
         ul.append(agentHead(row, group.rows.filter(r => !r.depth && agentKindOf(r) === agentKindOf(row)).length));
       }
       // In the attention order the daemon sends the working cards and then
       // the resting ones; a head opens each run. One run alone gets none:
       // a head over everything says nothing.
-      if (row.bucket && !row.depth && !row.worktree_of && row.bucket !== ul.dataset.lastBucket) {
+      if (row.bucket && !row.depth && !row.worktree_of && row.bucket !== lastBucket) {
         const run = group.rows.filter(r => r.bucket && (agentMark() !== "groups" || agentKindOf(r) === agentKindOf(row)));
         if (new Set(run.map(r => r.bucket)).size > 1) {
-          ul.dataset.lastBucket = row.bucket;
+          lastBucket = row.bucket;
           ul.append(bucketHead(row.bucket, run.filter(r => r.bucket === row.bucket).length));
         }
       }
@@ -6014,8 +6242,7 @@ function paint(snapshot) {
         else if (done) { dots.innerHTML = ""; const mark = metaIcon("check"); mark.classList.add("done-mark"); dots.append(mark); }
         else dots.innerHTML = "<i></i><i></i><i></i>";
         if (done) sb.classList.add("finished");
-        if (sub.depth) sb.style.setProperty("--depth", sub.depth);
-        else sb.style.removeProperty("--depth");
+        if (sub.depth) sb.dataset.depth = Math.min(sub.depth, NEST_DEPTHS);
         const ran = sub.since == null ? null
           : forHumans((done ? sub.ended : Date.now() / 1000) - sub.since);
         const title = codex ? `Codex ${sub.type || "job"}` : sub.name || sub.type || "subagent";
@@ -6060,7 +6287,7 @@ function paint(snapshot) {
                                        sub.doing && !done && `doing ${sub.doing}`,
                                        ran && (failed ? `ended after ${ran}` : done ? `finished after ${ran}` : `running ${ran}`)]
                                        .filter(Boolean).join(", "));
-        sb.addEventListener("click", () => act(row.session_id, "focus"));
+        on(sb, "click", () => act(row.session_id, "focus"));
         if (folds && ended(sub)) folded.push(sb);
         else childrenOf(li).append(sb);
       }
@@ -6078,7 +6305,7 @@ function paint(snapshot) {
         sum.setAttribute("aria-expanded", String(open));
         sum.setAttribute("aria-controls", "finished-" + row.session_id);
         sum.setAttribute("aria-label", `${folded.length} finished subagents in ${row.label}`);
-        sum.addEventListener("click", () => {
+        on(sum, "click", () => {
           if (openFinished.has(row.session_id)) openFinished.delete(row.session_id);
           else openFinished.add(row.session_id);
           if (LATEST) render(LATEST);
@@ -6111,7 +6338,7 @@ function paint(snapshot) {
         sum.setAttribute("aria-expanded", String(open));
         sum.setAttribute("aria-controls", "tasks-" + row.session_id);
         sum.setAttribute("aria-label", `${tasks.length} open tasks in ${row.label}, ${doing} in progress`);
-        sum.addEventListener("click", () => {
+        on(sum, "click", () => {
           if (openTasks.has(row.session_id)) openTasks.delete(row.session_id);
           else openTasks.add(row.session_id);
           if (LATEST) render(LATEST);
@@ -6136,7 +6363,7 @@ function paint(snapshot) {
             tb.append(stackOf(running && t.doing ? t.doing : t.subject));
             tb.title = t.subject;
             tb.setAttribute("aria-label", `${running ? "running" : "pending"} task: ${t.subject}`);
-            tb.addEventListener("click", () => act(row.session_id, "focus"));
+            on(tb, "click", () => act(row.session_id, "focus"));
             rows.append(tb);
           }
           li.append(rows);
@@ -6174,13 +6401,12 @@ function paint(snapshot) {
                                    {className: "chev", textContent: "\u203a"});
         const count = Object.assign(document.createElement("span"),
                                     {className: "shimmer", textContent: `${n} command${n > 1 ? "s" : ""} running`});
-        syncShimmer(count);
         addSweep(count);
         sum.append(metaIcon("shells"), count, chev);
         sum.setAttribute("aria-expanded", String(open));
         sum.setAttribute("aria-controls", "shells-" + row.session_id);
         sum.setAttribute("aria-label", `${n} background shell${n > 1 ? "s" : ""} in ${row.label}`);
-        sum.addEventListener("click", () => {
+        on(sum, "click", () => {
           if (flippedShells.has(key)) flippedShells.delete(key); else flippedShells.add(key);
           if (LATEST) render(LATEST);
         });
@@ -6194,43 +6420,23 @@ function paint(snapshot) {
             sb.append(metaIcon("shells"), stackOf(shell.label));
             sb.setAttribute("aria-label", `shell in ${row.label}: ${shell.command}`);
             const popKey = row.session_id + "\n" + shell.command;
-            // A repaint puts the open popover back as the same node, so its
-            // Copy state and any selection survive, and without the unfold:
-            // re-inserting an element restarts its CSS animation.
-            const kept = openShellKey === popKey && openMenu;
-            const pop = kept || shellPopover([shell]);
-            if (kept) pop.classList.add("kept");
-            const place = () => { pop.style.top = sb.offsetTop + sb.offsetHeight + "px"; };
-            sb.addEventListener("pointerdown", e => e.stopPropagation());
-            sb.addEventListener("click", () => {
+            on(sb, "pointerdown", e => e.stopPropagation());
+            on(sb, "click", () => {
               if (openShellKey === popKey) { closeMenu(); return; }
-              place();
-              openShell(pop, popKey);
+              closeMenu();
+              hideCard();
+              openShellKey = popKey;
+              showOpenShell(document.getElementById("groups"));
             });
             rows.append(sb);
-            li.append(pop);
-            if (openShellKey === popKey) {
-              pop.hidden = false; openMenu = pop;
-              requestAnimationFrame(place);
-            }
+            li.append(shellPopover([shell], popKey));
           }
         }
       }
     }
-    root.append(h, ul);
+    built.append(h, ul);
   }
-
-  // A shell that has exited, or a session that closed, took its menu with it.
-  if (openMenuKey && !menuKept) closeMenu();
-  if (openMenu && !openMenu.isConnected) { openMenu = null; openShellKey = null; openMenuKey = null; }
-  if (menuFocus && menuFocus.isConnected) menuFocus.focus();
-
-  // Keep the keyboard where it was across a repaint, or the list is unusable
-  // the moment anything changes.
-  if (keepId) {
-    const again = root.querySelector(`[data-session-id="${CSS.escape(keepId)}"]`);
-    if (again) again.focus();
-  }
+  return built;
 }
 
 // Arrows move; Enter and Space activate (free, since rows are buttons).
