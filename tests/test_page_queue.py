@@ -15,7 +15,7 @@ PAGE = Path(__file__).resolve().parent.parent / "page.html"
 
 
 def test_a_row_that_sent_no_question_keeps_its_colour_and_claims_no_kind():
-    body = function(PAGE.read_text(encoding="utf-8"), "paintQueue")
+    body = function(PAGE.read_text(encoding="utf-8"), "buildQueue")
     asked, plain = body.split("if (row.question) {", 1)[1].split("} else {", 1)
     assert "queueKind(row.question)" in asked
     plain = plain.split("\n    }\n", 1)[0]
@@ -49,4 +49,4 @@ def test_a_screen_reader_hears_what_is_asked_with_its_parts_apart():
     page = PAGE.read_text(encoding="utf-8")
     assert '[asked.tool, asked.summary] : [first.header, first.question])\n    .filter(Boolean).join(": ")' \
         in function(page, "asksAloud")
-    assert 'row.question ? `${said}, ${asksAloud(row.question)}` : said' in function(page, "paintQueue")
+    assert 'row.question ? `${said}, ${asksAloud(row.question)}` : said' in function(page, "buildQueue")

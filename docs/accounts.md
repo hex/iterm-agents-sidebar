@@ -132,8 +132,10 @@ sooner, then to the emptier 5-hour window.
 
 While a switch is near, meaning the active account is at 80% or more or a
 window is on course for 100%, a chip beside the control names where it would go
-(`→ spare soon`), or says `nowhere to go`; point at it for the reason (`Fable
-at 86%`, or a window on course for 100%).
+(`→ spare soon`), asks for a login when the emptier account needs one
+(`log in to spare`), or says `no better account` when none is at least 3 points
+emptier; point at it for the reason (`Fable at 86%`, or a window on course for
+100%).
 
 Each automatic switch writes a line to
 `~/.claude/agents-sidebar-status/daemon.log`, and posts a macOS notice with the

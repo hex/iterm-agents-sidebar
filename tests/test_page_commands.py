@@ -50,7 +50,7 @@ def test_the_reason_shows_for_a_few_seconds_and_is_then_painted_away():
 def test_the_reason_shows_under_the_card_or_the_teammates_line_it_was_meant_for():
     """A teammate is one line inside its parent's card, so its reason goes
     right after that line, not at the foot of the parent's card."""
-    body = function(PAGE.read_text(encoding="utf-8"), "paint")
+    body = function(PAGE.read_text(encoding="utf-8"), "buildGroups")
     after = body.split("const refusal = refusalLine(row.session_id);\n", 1)[1]
     teammate, card = after.split("        continue;\n      }\n", 1)
     assert teammate.startswith("      if (row.depth && li === card) {")

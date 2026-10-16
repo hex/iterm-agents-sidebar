@@ -49,7 +49,8 @@ def test_a_short_branch_is_not_held_wider_than_its_name():
     flat, it left a hole after `main`."""
     source = PAGE.read_text(encoding="utf-8")
     assert "min-width: calc(var(--meta-icon) + 3px + var(--floor, 6) * 1ch);" in source
-    assert 'if (kind === "branch") chip.style.setProperty("--floor", Math.min(value.length, 6));' in source
+    assert 'if (kind === "branch") chip.dataset.floor = Math.min(value.length, BRANCH_FLOOR_MAX);' in source
+    assert "const BRANCH_FLOOR_MAX = 6;" in source
 
 
 def test_a_shell_rows_glyph_keeps_the_same_air_from_its_elbow_as_the_dots():

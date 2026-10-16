@@ -25,7 +25,7 @@ def test_no_glide_without_a_width_or_when_motion_is_reduced():
     page = PAGE.read_text(encoding="utf-8")
     assert 'const MOTION = window.matchMedia("(prefers-reduced-motion: no-preference)");' in page
     body = glide_body(page)
-    stop = body.index("if (!width || !MOTION.matches) return;")
+    stop = body.index("if (!want) return;")
     # Whatever an earlier glide left is gone before the check, so a name that
     # fits again, or a viewer who turned motion off, is left still.
     assert body.index("a.cancel()") < stop

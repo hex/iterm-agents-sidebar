@@ -351,6 +351,29 @@ Watch the GPU's active residency and the `com.apple.WebKit.GPU` and
 `WindowServer` rows, then add the change to the list. Other apps use the same
 GPU, so compare against a reading with the panel closed.
 
+## What the panel costs in memory
+
+WebKit keeps the memory of an element that was styled, drawn and dropped, so
+a page that rebuilt its rows on every frame grew without bound. The card list,
+the queue and the foot are instead built detached each frame and morphed onto
+the live ones: a row's node lives until the row leaves, and a frame changes
+text and attributes on it. `tests/test_page_in_place.py` holds the builders
+that run per frame to two rules, each an allowlist of the functions that may
+break it:
+
+- a builder writes no inline `style`; every value a node can wear is a data
+  attribute, and one generated stylesheet carries the rules
+- a builder calls no `addEventListener`; a handler goes through `on()`, so
+  the kept node runs this frame's closure
+
+The test reads source. The behaviour is measured by
+`.cs/local/e2e_in_place.mjs` in a session's local checks: a frame painted
+again adds and removes no element, and over a replayed minute of the stream
+an unchanged card keeps every element it had. A ten-minute footprint of the
+page in a WKWebView is the acceptance figure, and it must run on an
+unlocked screen: WebKit stops rendering a hidden page, so a locked Mac
+reads flat whatever the page does.
+
 ## The figures
 
 ```sh

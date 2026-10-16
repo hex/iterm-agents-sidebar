@@ -203,6 +203,13 @@ def test_the_outlook_has_nowhere_to_go_when_every_account_is_full():
     assert outlook(states, (A, B)) == {"to": None, "near": True, "why": "5-hour at 96%"}
 
 
+def test_the_outlook_names_an_emptier_account_held_back_by_its_login():
+    states = {"acct-1": state(usage(96, 10, 10)), "acct-2": state(usage(97, 10, 10)),
+              "acct-3": state(usage(5, 5, 5))}
+    assert outlook(states, (A, B, dict(C, needsLogin=True))) == {
+        "to": None, "near": True, "why": "5-hour at 96%", "login": "acct-3"}
+
+
 def test_the_outlook_is_empty_without_a_reading_of_the_active_account():
     assert outlook({"acct-2": state(usage(20, 20, 20))}, (A, B)) is None
 

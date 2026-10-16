@@ -620,17 +620,23 @@ def switch_outlook(active_id, states, accounts, now, models=None):
     out = runs_out(dict(scoped(state["usage"], models), fetched_at=fetched), rates)
     on_course = out is not None and out["seconds"] - age <= PROJECTION_HORIZON_SECONDS
     near = on_course or mine["figure"] >= SWITCH_THRESHOLD - NEAR_POINTS
-    candidates = []
+    candidates, logged_out = [], []
     for account in accounts:
         other = states.get(account["id"]) or {}
-        if account["id"] == active_id or account.get("needsLogin") or other.get("usage") is None:
+        if account["id"] == active_id or other.get("usage") is None:
             continue
         theirs = binding(other["usage"], now, models)
         if theirs is not None:
-            candidates.append((account["id"], theirs, runway(other["usage"], now, models),
-                               _five_hour(other["usage"])))
+            (logged_out if account.get("needsLogin") else candidates).append(
+                (account["id"], theirs, runway(other["usage"], now, models), _five_hour(other["usage"])))
     outlook = {"to": _target(mine, candidates, emergency=False), "near": near,
                "why": _why(mine, out, age) if near else None}
+    # An account that would be the target but for its login is named, so the
+    # panel can ask for the login instead of saying nothing fits.
+    if outlook["to"] is None and near and logged_out:
+        held = _target(mine, logged_out, emergency=False)
+        if held is not None:
+            outlook["login"] = held
     if exhausted:
         outlook["exhausted"] = exhausted
     return outlook
@@ -1297,6 +1303,9 @@ def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_s
         to = next_switch["to"]
         target = next((a for a in accounts if a["id"] == to), {"id": to}) if to else None
         outlook = dict(next_switch, to=_name(target, emails.get(to)) if target else None)
+        if next_switch.get("login"):
+            held = next((a for a in accounts if a["id"] == next_switch["login"]), {"id": next_switch["login"]})
+            outlook["login"] = _name(held, emails.get(held["id"]))
         if next_switch.get("exhausted"):
             by_id = {a["id"]: a for a in accounts}
             outlook["exhausted"] = [dict(gone, account=_name(by_id.get(gone["account_id"], {"id": gone["account_id"]}),

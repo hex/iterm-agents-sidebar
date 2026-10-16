@@ -37,6 +37,6 @@ def test_a_card_that_turns_blocked_or_asks_anew_is_brought_into_view():
 
 
 def test_a_queue_row_click_brings_its_card_into_view():
-    body = re.search(r"\nfunction paintQueue\(snapshot\) \{\n(.*?)\n\}\n",
+    body = re.search(r"\nfunction buildQueue\(snapshot\) \{\n(.*?)\n\}\n",
                      PAGE.read_text(encoding="utf-8"), re.S).group(1)
-    assert 'b.addEventListener("click", () => { revealAfterPaint(row.session_id); act(row.session_id, "focus"); });' in body
+    assert 'on(b, "click", () => { revealAfterPaint(row.session_id); act(row.session_id, "focus"); });' in body
