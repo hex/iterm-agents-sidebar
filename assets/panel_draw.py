@@ -12,6 +12,7 @@ PAGE = pathlib.Path(__file__).resolve().parent.parent / "page.html"
 # so beside a dark terminal it is dark too.
 BG, FG, DIM, RULE = "#1c1c1e", "#f2f2f7", "#98989d", "#3a3a3c"
 CARD, CARD_BORDER = "#2c2c2e", "#3a3a3c"
+FINISHED_BG, FINISHED_BORDER = "#1f2e22", "#2f6b3f"
 BLOCKED_BG, BLOCKED_BORDER, BADGE_INK = "#3a2500", "#ff9f0a", "#3a2500"
 BLOCKED_TEXT = "#ffd60a"
 SEV_OK, ACCENT_INK = "#30d158", "#1c1c1e"
@@ -127,9 +128,9 @@ def chips(x, baseline, items, fill=DIM, size=12.5):
 
 
 
-def card(x, w, top, height):
-    A(f'  <rect x="{x}" y="{top}" width="{w}" height="{height}" rx="10" fill="{CARD}" '
-      f'stroke="{CARD_BORDER}"/>')
+def card(x, w, top, height, fill=CARD, stroke=CARD_BORDER):
+    A(f'  <rect x="{x}" y="{top}" width="{w}" height="{height}" rx="10" fill="{fill}" '
+      f'stroke="{stroke}"/>')
 
 
 def swatch(x, top, hue, hollow=False):

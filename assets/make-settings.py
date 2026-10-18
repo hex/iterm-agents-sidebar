@@ -173,8 +173,8 @@ while i < len(rows):
     else:
         cards[-1][2].append(row)
 
-# Sound, Notifications, Focus, Experimental and Repository on the left; Rows, the tall one, on the right.
-left, right = cards[:3] + cards[4:], cards[3:4]
+# Sound, Notifications, Focus, Finished, Experimental and Repository on the left; Rows, the tall one, on the right.
+left, right = cards[:4] + cards[5:], cards[4:5]
 H = 24 + 20 + max(sum(TITLE_H + sum(row_height(r) for r in kids)
                       + (8 if kids and kids[-1].get("needs") else 0) + 9 for _, _, kids in col)
                   + (REPOSITORY_H + 9 if col is left else 0)

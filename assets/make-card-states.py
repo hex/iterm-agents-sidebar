@@ -31,7 +31,7 @@ def report(x, top, activity, age, done):
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
   f'aria-label="Five cards: one amber with a Waiting badge, its question and a button per answer, one at work with a report and ticks, '
-  f'one grey with an Idle outline, one grey with a green Done badge, and one at work for 25 minutes with a warm Long outline">')
+  f'one grey with an Idle outline, one washed green with a Done badge, and one at work for 25 minutes with a warm Long outline">')
 A('  <title>What a card says</title>')
 A(f'''  <defs>
     <pattern id="tickmask" width="9" height="5" patternUnits="userSpaceOnUse">
@@ -85,14 +85,15 @@ text(tx + 15, c + 52, "Complete", fill=SEV_OK, size=12.5, weight=600)
 facts(tx, c + 69, "main", "gpt-6-astra")
 badge(x + CARD_W - 16, c + 15.5, "Idle")
 
-# Finished while you looked elsewhere: the idle card, its badge filled green
-# with Done until you look at that session.
+# Finished while you looked elsewhere: the whole card washed in the panel's
+# green, the name in the full ink, and the badge filled with Done until you
+# look at that session.
 x = COLS[1]
 caption(x, c - 14, "FINISHED WHILE YOU LOOKED ELSEWHERE")
 tx = x + 44
-card(x, CARD_W, c, 80)
+card(x, CARD_W, c, 80, fill=FINISHED_BG, stroke=FINISHED_BORDER)
 swatch(x + 18, c + 20, "#6d9eeb")
-text(tx, c + 31, "cinder", fill=DIM, size=15, weight=500)
+text(tx, c + 31, "cinder", fill=FG, size=15, weight=600)
 tag(tx + NAME_W["cinder"] + 9, c + 31, "claude")
 mark("checked", tx, c + 52 - 10, 11, LIT)
 text(tx + 15, c + 52, "Complete", fill=SEV_OK, size=12.5, weight=600)

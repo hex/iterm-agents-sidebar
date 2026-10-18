@@ -82,14 +82,14 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 
 ### What a card says
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Five cards: one amber with a Waiting badge, its question and a button per answer, one at work with a report and ticks, one grey with an Idle outline, one grey with a green Done badge, and one at work for 25 minutes with a warm Long outline">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Five cards: one amber with a Waiting badge, its question and a button per answer, one at work with a report and ticks, one grey with an Idle outline, one washed green with a Done badge, and one at work for 25 minutes with a warm Long outline">
 
 | State | How it looks |
 | --- | --- |
 | Waiting on you | The whole card amber, with a Waiting badge and what it asks: the question with a button per answer (a question that takes more than one answer gets a box per option and a Submit button), or the reason it gave, the tool and the command it wants to run, with Yes and No |
 | Working | Dark name, working dots |
 | Idle | Grey name, Idle outline |
-| Finished while you looked elsewhere | A green Done badge in place of Idle, until you look at that session |
+| Finished while you looked elsewhere | The whole card washed green with a Done badge in place of Idle, lifted under any waiting card, and the word Done as iTerm2's badge in its pane, until you look at that session |
 | Working 20 minutes or more | A warm `Long 25m` outline, in case it has stalled |
 | Exited | Faded, with an Exited outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
 | Unknown | A hollow square: a turn silent for five minutes with no command or tool running under it |
@@ -192,6 +192,7 @@ A setting indented under another works only while that one is on.
 | Sound | Play sounds; under it When a session is blocked, When one finishes, Volume |
 | Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
 | Focus | Bring a blocked session forward; under it Go back once it resumes |
+| Finished | Finished first, Green wash, Badge in the pane, Tab colour |
 | Rows | Warn above, CPU heavy at, Memory heavy at, Order, Provider badge, Shell names, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
 | Experimental | Link cards, Keep remote control after a switch and Commit heatmap, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control) and [Commit heatmap](docs/usage.md#commit-heatmap) |
 | Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |

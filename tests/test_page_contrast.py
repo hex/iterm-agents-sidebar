@@ -18,6 +18,8 @@ PAIRS = [
     # A card long at rest in the attention order, and its name.
     ("--dim", "--rested-bg"), ("--fg", "--rested-bg"),
     ("--dim", "--neglected-bg"), ("--fg", "--neglected-bg"),
+    # A card whose finish you have not seen, and its name and dim lines.
+    ("--dim", "--finished-bg"), ("--fg", "--finished-bg"),
     ("--fg", "--card"),
     ("--blocked-text", "--blocked-bg"),
     # A waiting card's "+1 more" after its question.

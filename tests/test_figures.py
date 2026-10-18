@@ -39,7 +39,7 @@ def test_the_settings_figure_lists_every_setting_the_sheet_has():
     from panel_draw import setting_rows
     svg = (ASSETS / "settings.svg").read_text()
     labels = [row["label"] for row in setting_rows() if "label" in row]
-    assert len(labels) == 30
+    assert len(labels) == 34
     for label in labels:
         assert f">{label}<" in svg, label
 
@@ -57,6 +57,16 @@ def test_the_card_states_figure_shows_an_unseen_finish_in_the_panels_green():
     green = dark[dark.index("--sev-ok:"):].split(";")[0].split(":")[1].strip()
     svg = (ASSETS / "card-states.svg").read_text()
     assert re.search(rf'<rect [^>]*fill="{green}"[^>]*/><text [^>]*>Done</text>', svg)
+
+
+def test_the_card_states_figure_washes_the_unseen_finish_in_the_panels_finished_green():
+    """The whole card on the dark theme's --finished-bg, as the panel paints it, with its name in the full ink."""
+    css = (ASSETS.parent / "page.html").read_text()
+    dark = css[css.index("@media (prefers-color-scheme: dark)"):]
+    wash = dark[dark.index("--finished-bg:"):].split(";")[0].split(":")[1].strip()
+    svg = (ASSETS / "card-states.svg").read_text()
+    washed = re.search(rf'<rect [^>]*rx="10" fill="{wash}"[^>]*/>(.*?)<rect [^>]*rx="10"', svg, re.S).group(1)
+    assert re.search(r'<text [^>]*fill="#f2f2f7"[^>]*>cinder</text>', washed)
 
 
 @pytest.mark.parametrize("name", FIGURES)

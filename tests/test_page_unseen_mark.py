@@ -55,3 +55,76 @@ def test_the_unseen_word_is_a_green_filled_badge_cut_like_idle():
     assert word["font"] == "600 10px/calc(16px - 2 * var(--hair)) -apple-system, sans-serif"
     assert unseen == {"color": "var(--accent-ink)", "background": "var(--sev-ok)", "border-color": "var(--sev-ok)"}
     assert idle == {"color": "var(--dim)"}
+
+
+# ------------------------------------------------- the finished wash and band
+
+def source():
+    return PAGE.read_text(encoding="utf-8")
+
+
+def theme_block(which):
+    css = source()
+    if which == "light":
+        return re.search(r":root\s*\{(.*?)\}", css, re.S).group(1)
+    return re.search(r"@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{(.*?)\}", css, re.S).group(1)
+
+
+def test_an_unseen_finished_card_wears_the_finished_class_when_the_wash_is_on():
+    body = re.search(r"\nfunction buildGroups\(.*?\n\}\n", source(), re.S).group(0)
+    assert 'if (row.unseen && !row.depth && SETTINGS?.finished_wash !== false) li.classList.add("finished");' in body
+    assert "row.bucket && !row.depth && !row.worktree_of && row.bucket !== lastBucket" in body
+
+
+def test_the_finished_wash_outranks_rest_and_has_no_ring():
+    """A card has no border; its edge is a box-shadow, a soft drop in the light
+    theme. The washed card gets a one-pixel edge mixed toward the green in
+    both themes, and never the two-pixel inset ring the amber card wears."""
+    finished = rule("li.line.card.finished")
+    assert finished["background"] == "var(--finished-bg)"
+    assert finished["box-shadow"] == "0 0 0 1px color-mix(in srgb, var(--sev-ok) 45%, var(--card-border))"
+    assert "inset" not in finished["box-shadow"]
+    css = source()
+    assert css.index("li.line.card.finished {") > css.index("li.line.card.neglected {")
+
+
+def test_a_docked_worktree_takes_the_wash_over_its_family_tint():
+    """The worktree tint's selector outranks the plain finished rule, so the wash is restated at its weight, as the amber is."""
+    assert rule("li.line.card.worktree.finished[data-family]")["background"] == "var(--finished-bg)"
+
+
+def test_a_washed_cards_name_is_not_greyed():
+    assert rule("li.line.card.finished > button.row.quiet .label") == {"color": "var(--fg)"}
+
+
+def test_the_finished_tokens_are_the_specs_in_both_themes():
+    assert "--finished-bg: #e8f5ec" in theme_block("light")
+    assert "--finished-bg: #1f2e22" in theme_block("dark")
+
+
+def drop_order(shown, remembered):
+    """page.html's dropOrder() under node, with the cards on screen and the
+    remembered hand order stubbed: `shown` is (name, band) pairs top first."""
+    import json, subprocess
+    page = source()
+    limit = re.search(r"const HAND_ORDER_MAX = (\d+);", page).group(1)
+    script = "\n".join([
+        f"const HAND_ORDER_MAX = {limit};",
+        f"const SHOWN = {json.dumps([{'label': name, 'band': band} for name, band in shown])};",
+        f"const SETTINGS = {{hand_order: {json.dumps(remembered)}}};",
+        "const topCards = () => SHOWN.map(row => ({row}));",
+        "const cardRow = li => li.row;",
+        re.search(r"\nconst shownNames = .*?;\n", page, re.S).group(0),
+        re.search(r"\nfunction dropOrder\(.*?\n\}\n", page, re.S).group(0),
+        "console.log(JSON.stringify(dropOrder()));",
+    ])
+    out = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+def test_a_banded_card_keeps_its_remembered_index_in_the_drop_order():
+    assert drop_order(shown=[("x", "finished"), ("a", None), ("b", None)], remembered=["a", "x", "b", "c"]) == ["a", "x", "b", "c"]
+    assert drop_order(shown=[("x", "finished"), ("a", None)], remembered=[]) == ["a", "x"]
+    assert drop_order(shown=[("a", None), ("b", None)], remembered=["b", "c"]) == ["a", "b", "c"]
+    # A closed card remembered before the banded one must not push it past its neighbours.
+    assert drop_order(shown=[("x", "finished"), ("a", None), ("b", None)], remembered=["c", "a", "x", "b"]) == ["a", "x", "b", "c"]
