@@ -141,6 +141,7 @@ read against the source.
 - `links.py`: links between two cards, the one-shot hand-off, through each session's links folder.
 - `partners.py`: partner sessions: the record, each end's `partner.json`, and the tasks between them.
 - `remote.py`: Remote Control on each Claude card, from its state file, and turned back on after a panel switch.
+- `marks.py`: the word Done as iTerm2's badge in the pane of a session that finished unseen, and the tab colour, written through the session's own profile and restored when the pane is seen.
 - `agents-sidebar`: the command scripts use to list agents and wait on one;
   standard library only, and it runs on the Python 3.9 macOS ships.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and
@@ -157,7 +158,8 @@ read against the source.
 - `release.sh`: cuts a release to the public mirror.
 - `assets/`: the README figures and their scripts, and the notifier's source
   (`notifier.swift`) and icon.
-- `tests/`: the test suite.
+- `tests/`: the test suite; `tests/live/` holds manual scripts that drive a
+  real iTerm2 and are not collected.
 
 ## The tool identifier
 
@@ -302,7 +304,11 @@ on `plugin/` as the install ships it, and skips only on a machine without
 its readings (`tests/test_rebuild.py`: one process listing per rebuild, read in
 a thread, a burst of layout events folded into one more rebuild, a session's
 variables fetched together, a filed state read at once). The rest of `Bridge` gets a manual check against a
-live iTerm2.
+live iTerm2. `tests/live/` holds the scripts for that: each opens a throwaway
+window on a bare shell, drives the daemon or the iTerm2 API, prints a PASS or
+FAIL line per expectation and closes the window. Run them with iTerm2's own
+python and its cookie, as their docstrings say; they are not collected by
+pytest.
 
 ## Measuring what the machine executes
 
@@ -438,6 +444,8 @@ on since, so read the source for what runs now.
   Remote Control turned back on after an account switch, and the mark on a card that has it.
 - [superpowers/specs/2026-10-11-remote-panes-design.md](superpowers/specs/2026-10-11-remote-panes-design.md):
   cards for agents on another machine, reached through an ssh or Eternal Terminal pane.
+- [superpowers/specs/2026-10-18-finished-marks-design.md](superpowers/specs/2026-10-18-finished-marks-design.md):
+  a session that finished unseen lifted and washed in the panel, and the word Done as iTerm2's badge in its pane.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.
 - [superpowers/plans/2026-10-07-drag-order.md](superpowers/plans/2026-10-07-drag-order.md): the step-by-step
@@ -450,3 +458,5 @@ on since, so read the source for what runs now.
   plan for keeping Remote Control across switches.
 - [superpowers/plans/2026-10-11-remote-panes.md](superpowers/plans/2026-10-11-remote-panes.md): the step-by-step
   plan for cards of agents on another machine.
+- [superpowers/plans/2026-10-18-finished-marks.md](superpowers/plans/2026-10-18-finished-marks.md): the step-by-step
+  plan for the finished marks.

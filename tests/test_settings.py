@@ -264,3 +264,9 @@ def test_a_hand_order_keeps_at_most_two_hundred_names(tmp_path):
     names = [f"s{i:03}" for i in range(250)]
     save_settings({"hand_order": names}, store)
     assert load_settings(store)["hand_order"] == names[:200]
+
+
+def test_the_finished_settings_default_to_the_pane_badge_on_and_tab_colour_off(tmp_path):
+    s = load_settings(tmp_path / "none.json")
+    assert {k: s[k] for k in ("finished_first", "finished_wash", "mark_badge", "mark_tab")} == \
+        {"finished_first": True, "finished_wash": True, "mark_badge": True, "mark_tab": False}

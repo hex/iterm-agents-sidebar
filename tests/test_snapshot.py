@@ -1088,3 +1088,62 @@ def test_a_remote_row_carries_its_host_and_offers_no_context_breakdown():
 def test_a_local_row_carries_no_host():
     [row] = [r for g in snapshot([_agent()])["groups"] for r in g["rows"]]
     assert "host" not in row and "remote_refusal" not in row
+
+
+# ---------------------------------------------------------------- the band
+
+def card(sid, state, provider=None):
+    """A top-level agent row as band() sees it: the id, the state, no nesting."""
+    return {"session_id": sid, "label": sid, "state": state, "depth": 0, "provider": provider}
+
+
+def teammate(sid, of):
+    return {"session_id": sid, "label": sid, "state": "idle", "depth": 1, "lead": of}
+
+
+def test_the_band_lifts_blocked_then_unseen_finished_leads_and_keeps_the_rest_in_place():
+    rows = [card("a", "idle"), card("b", "working"), card("c", "idle"), card("d", "blocked"), card("e", "idle")]
+    out = sidebar.band(rows, unseen={"c", "e"}, by_provider=False)
+    assert [r["session_id"] for r in out] == ["d", "c", "e", "a", "b"]
+    assert [r.get("band") for r in out] == ["blocked", "finished", "finished", None, None]
+
+
+def test_a_block_moves_with_its_lead():
+    rows = [card("a", "idle"), card("b", "idle"), teammate("b1", of="b")]
+    out = sidebar.band(rows, unseen={"b"}, by_provider=False)
+    assert [r["session_id"] for r in out] == ["b", "b1", "a"]
+
+
+def test_a_banded_lead_loses_its_attention_bucket_and_rest():
+    row = card("a", "idle")
+    row["bucket"] = "idle"
+    row["rested"] = 2
+    [out] = sidebar.band([row], unseen={"a"}, by_provider=False)
+    assert "bucket" not in out and "rested" not in out
+
+
+def test_the_band_stays_inside_a_provider_run():
+    rows = [card("a", "idle", provider="claude"), card("b", "idle", provider="openai")]
+    out = sidebar.band(rows, unseen={"b"}, by_provider=True)
+    assert [r["session_id"] for r in out] == ["a", "b"]
+    assert out[1]["band"] == "finished"
+
+
+def test_an_unseen_teammate_never_bands():
+    rows = [card("a", "idle"), teammate("a1", of="a")]
+    out = sidebar.band(rows, unseen={"a1"}, by_provider=False)
+    assert [r.get("band") for r in out] == [None, None]
+
+
+def test_a_card_unseen_holds_its_place_through_a_stop_hooks_flip_to_working():
+    """Unseen keeps a sid through the few seconds a Stop hook's command reads as working; so does the band."""
+    out = sidebar.band([card("a", "working")], unseen={"a"}, by_provider=False)
+    assert out[0]["band"] == "finished"
+
+
+def test_a_docked_worktree_that_finished_unseen_lifts_its_block():
+    worktree = dict(card("w", "idle"), worktree_of="b")
+    rows = [card("a", "idle"), card("b", "idle"), worktree]
+    out = sidebar.band(rows, unseen={"w"}, by_provider=False)
+    assert [r["session_id"] for r in out] == ["b", "w", "a"]
+    assert [r.get("band") for r in out] == ["finished", None, None]

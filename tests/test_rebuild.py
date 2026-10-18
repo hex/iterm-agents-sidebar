@@ -41,6 +41,9 @@ class NoWindows:
     current_terminal_window = None
     app_active = None
 
+    def get_session_by_id(self, session_id):
+        return None
+
     async def async_refresh(self):
         pass
 
@@ -689,10 +692,10 @@ def test_each_rebuild_decides_the_alerts_and_carries_them_out(monkeypatch, tmp_p
     settings.write_text(json.dumps({"notify_done": False, "sound_blocked": False}))
     monkeypatch.setattr(sidebar, "SETTINGS_FILE", settings)
     monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
-    readings = iter([{"groups": [{"name": "AGENTS", "rows": [{"session_id": "a", "state": "working", "working_since": 100},
-                                           {"session_id": "b", "state": "working", "working_since": 100}]}]},
-                     {"groups": [{"name": "AGENTS", "rows": [{"session_id": "a", "state": "blocked"},
-                                           {"session_id": "b", "state": "idle"}]}]}])
+    readings = iter([{"groups": [{"name": "AGENTS", "rows": [{"session_id": "a", "state": "working", "working_since": 100, "depth": 0},
+                                           {"session_id": "b", "state": "working", "working_since": 100, "depth": 0}]}]},
+                     {"groups": [{"name": "AGENTS", "rows": [{"session_id": "a", "state": "blocked", "depth": 0},
+                                           {"session_id": "b", "state": "idle", "depth": 0}]}]}])
     monkeypatch.setattr(sidebar, "snapshot", lambda *_, **__: next(readings))
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())

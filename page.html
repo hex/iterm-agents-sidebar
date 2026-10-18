@@ -8,7 +8,7 @@
     /* A session is a card on the canvas; the one that needs you turns amber. */
     --card: #ffffff; --card-hover: #f9f9fb; --card-border: #e5e5ea;
     /* A card at rest ten minutes, then thirty: washed toward the canvas. */
-    --rested-bg: #f6f6f9; --neglected-bg: #eeeef2;
+    --rested-bg: #f6f6f9; --neglected-bg: #eeeef2; --finished-bg: #e8f5ec;
     /* The words of an agent's tag: its colour, deepened until it reads on its own tint. */
     --ink-claude: #a15840; --ink-openai: #0c795e; --ink-omp: #6655d8;
     --blocked-bg: #fff3dc; --blocked-border: #ff9500; --blocked-text: #7a4100;
@@ -57,7 +57,7 @@
     :root {
       --bg: #1c1c1e; --fg: #f2f2f7; --dim: #98989d; --rule: #3a3a3c;
       --card: #2c2c2e; --card-hover: #323236; --card-border: #3a3a3c;
-      --rested-bg: #272729; --neglected-bg: #222224;
+      --rested-bg: #272729; --neglected-bg: #222224; --finished-bg: #1f2e22;
       --ink-claude: #e08f75; --ink-openai: #3bb496; --ink-omp: #9f92ee;
       --blocked-bg: #3a2500; --blocked-border: #ff9f0a; --blocked-text: #ffd60a;
       --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
@@ -273,6 +273,15 @@
      canvas, and further after thirty: the ones that slipped the mind. */
   li.line.card.rested { background: var(--rested-bg); }
   li.line.card.neglected { background: var(--neglected-bg); }
+  /* A turn that ended while you looked elsewhere: the whole card in the
+     panel's calm green, below the amber of a question in weight, until you
+     focus its pane. The plain hover sits over the wash at its usual weight. */
+  li.line.card.finished { background: var(--finished-bg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--sev-ok) 45%, var(--card-border)); }
+  li.line.card.finished:has(> button.row:hover) { background: color-mix(in srgb, var(--fg) 4%, var(--finished-bg)); }
+  li.line.card.finished > button.row.quiet .label { color: var(--fg); }
+  /* A docked worktree's tint outranks the rule above, so the wash is restated at its weight. */
+  li.line.card.worktree.finished[data-family] { background: var(--finished-bg); }
+  li.line.card.worktree.finished[data-family]:has(> button.row:hover) { background: color-mix(in srgb, var(--fg) 4%, var(--finished-bg)); }
   /* Teammates, subagents and shells sit inside the card, one line each,
      each joined to the session by an elbow. */
   .children { margin: 0 0 4px; }
@@ -3240,10 +3249,21 @@ const cardRow = li => li.querySelector(":scope > button.row.agent")._row;
 const shownNames = () => [...new Set(topCards().map(li => cardRow(li).label).filter(Boolean))];
 
 // Every agent card's name as now shown, top first, then the remembered names
-// not on screen, so a closed session keeps its place for its return.
+// not on screen, so a closed session keeps its place for its return. A card
+// lifted into the band is where its state put it, not where it was dragged,
+// so it keeps its remembered place instead of taking the band's.
 function dropOrder() {
-  const names = [...new Set([...shownNames(), ...(SETTINGS?.hand_order || [])])];
-  return names.slice(0, HAND_ORDER_MAX);
+  const remembered = SETTINGS?.hand_order || [];
+  const banded = new Set(topCards().filter(li => cardRow(li).band).map(li => cardRow(li).label));
+  const names = shownNames().filter(name => !banded.has(name));
+  for (const name of banded) {
+    // Before the first shown card that was remembered after it; a name
+    // never remembered, or remembered after every shown card, goes last.
+    const at = remembered.indexOf(name);
+    const before = at < 0 ? -1 : names.findIndex(other => remembered.indexOf(other) > at);
+    names.splice(before < 0 ? names.length : before, 0, name);
+  }
+  return [...new Set([...names, ...remembered])].slice(0, HAND_ORDER_MAX);
 }
 
 function startDrag(event) {
@@ -6207,6 +6227,7 @@ function buildGroups(snapshot) {
         }
       }
       if (row.rested) li.classList.add(row.rested >= 2 ? "neglected" : "rested");
+      if (row.unseen && !row.depth && SETTINGS?.finished_wash !== false) li.classList.add("finished");
       ul.append(li);
 
       // Subagents run inside their parent's process with no terminal of their
@@ -6484,6 +6505,11 @@ const SETTING_ROWS = [
   {head: "Focus"},
   {k: "focus_blocked", label: "Bring a blocked session forward", master: true},
   {k: "return_after_blocked", label: "Go back once it resumes", needs: "focus_blocked"},
+  {head: "Finished"},
+  {k: "finished_first", label: "Finished first"},
+  {k: "finished_wash",  label: "Green wash"},
+  {k: "mark_badge",     label: "Badge in the pane"},
+  {k: "mark_tab",       label: "Tab colour"},
   {head: "Rows"},
   {k: "context_threshold", label: "Warn above", range: [0, 100, 5], pct: true},
   {k: "cpu_threshold", label: "CPU heavy at", range: [25, 400, 25], pct: true},

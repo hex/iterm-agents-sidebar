@@ -35,6 +35,7 @@ import partners  # noqa: E402
 import remote  # noqa: E402
 from sidebar_rules import prompt_refusal, remote_key_refusal, typing_refusal  # noqa: E402
 import sound  # noqa: E402
+import marks  # noqa: E402
 import statusline  # noqa: E402
 import update  # noqa: E402
 
@@ -124,6 +125,14 @@ DEFAULT_SETTINGS = {
     "sound_done": True,
     "focus_blocked": False,
     "return_after_blocked": True,
+    # A turn that ended while you looked elsewhere: its card lifted under
+    # any blocked card and washed green until you focus its pane, and the
+    # word Done as iTerm2's badge in that pane. Tab colour follows a tab's
+    # active pane alone, so it is off until asked for.
+    "finished_first": True,
+    "finished_wash": True,
+    "mark_badge": True,
+    "mark_tab": False,
     "notify": True,
     "notify_blocked": True,
     "notify_done": True,
@@ -1041,6 +1050,56 @@ def by_provider(rows):
         provider = block[0].get("provider") or "claude"
         return PROVIDER_ORDER.index(provider) if provider in PROVIDER_ORDER else len(PROVIDER_ORDER)
     return [row for block in sorted(_blocks(rows), key=place) for row in block]
+
+
+#: A lead's place in the band: a question held open, then a turn that ended
+#: unseen, then everyone else.
+BAND_TIERS = {"blocked": 0, "finished": 1}
+
+
+def band(rows, unseen, by_provider):
+    """Top-level cards gathered so that blocked leads come first, then leads
+    whose turn ended while nobody looked, then the rest, each tier in the
+    order it had. -> the rows, blocks intact.
+
+    This is the one exception to the terminal order's promise that nothing
+    a session does moves a card: a card that wants the eyes is lifted to
+    where they land, and sinks back when they have. "Finished first" off
+    keeps the promise whole. A lifted lead wears its tier as `band` and
+    sheds the attention order's bucket and rest, which no longer describe
+    its place. With the provider groups on, the band runs inside each
+    group, so no card crosses a provider heading.
+    """
+    def tier(block):
+        # Any card of the block speaks for it: the lead, a docked worktree
+        # or a linked partner each has a pane of its own that wants the
+        # eyes. Unseen alone says finished: it already drops a sid that
+        # began a turn, and keeps one through a Stop hook's brief flip.
+        cards = [row for row in block if not row["depth"]]
+        if any(row.get("state") == "blocked" for row in cards):
+            return "blocked"
+        if any(row["session_id"] in unseen for row in cards):
+            return "finished"
+        return None
+
+    def lift(blocks):
+        lifted = sorted(blocks, key=lambda block: BAND_TIERS.get(tier(block), len(BAND_TIERS)))
+        for block in lifted:
+            place = tier(block)
+            if place is not None:
+                block[0]["band"] = place
+                block[0].pop("bucket", None)
+                block[0].pop("rested", None)
+        return lifted
+
+    runs = []
+    for block in _blocks(rows):
+        provider = block[0].get("provider") if by_provider else None
+        if runs and runs[-1][0] == provider:
+            runs[-1][1].append(block)
+        else:
+            runs.append((provider, [block]))
+    return [row for _, blocks in runs for block in lift(blocks) for row in block]
 
 
 def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand_order=(), pairs=()):
@@ -3450,6 +3509,8 @@ class Bridge:
         self.watch = alerts.Watch()
         #: The sessions whose turn ended while you were looking elsewhere.
         self.unseen = alerts.Unseen()
+        #: Puts Done into those sessions' panes and takes it back.
+        self.marks = marks.Marker()
         #: Plays the panel's sounds; main() makes it before the server takes
         #: its first request, since making it writes the tone files.
         self.player = None
@@ -3789,6 +3850,10 @@ class Bridge:
             for row in group["rows"]:
                 if row["session_id"] in self.unseen.sids:
                     row["unseen"] = True
+            if settings["finished_first"] and group["name"] == "AGENTS":
+                group["rows"] = band(group["rows"], self.unseen.sids, settings["provider_mark"] == "groups")
+        agent_rows = [row for group in self.latest["groups"] if group["name"] == "AGENTS" for row in group["rows"]]
+        await self.marks.step(self.app, agent_rows, self.unseen.sids, settings, self.log)
         frame = sse_frame(self.latest)
         if frame != self._last_pushed:
             self._last_pushed = frame

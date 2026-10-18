@@ -35,7 +35,7 @@ agent's group while cards are grouped by provider (the default):
 
 | Choice | What you get |
 |---|---|
-| Follow the terminals | iTerm2's own order of windows, tabs and panes. A card sits where its tab does and nothing a session does moves it. The default |
+| Follow the terminals | iTerm2's own order of windows, tabs and panes. A card sits where its tab does and nothing a session does moves it, with one exception: while Finished first is on (see [A finish you have not seen](#a-finish-you-have-not-seen)) a card that waits on you or finished unseen is lifted to the top of its group until you answer or look. The default |
 | By name | Alphabetical |
 | By attention | The working cards first, the longest turn at the top, under a `Working` head; then every other card (at rest, exited, or not yet heard from), the longest rest at the top and the ones without a time last, under `Idle`. A card at rest for ten minutes is washed toward the background, and more after thirty: the sessions that slipped your mind. The heads appear only while a group holds both kinds |
 | By hand | The order you dragged the cards into. A new session goes to the bottom of its group, and a closed one keeps its place for when it comes back |
@@ -576,6 +576,24 @@ looking at that session wears a green Done badge in place of Idle until you do.
 Looking means the same as for banners: the session is in front of its window
 while iTerm2 is the frontmost app. The sound and banner switches don't change
 it, and omp cards get it too.
+
+The Finished card in settings adds four marks to that badge, each its own
+switch:
+
+| Setting | What you get | Default |
+|---|---|---|
+| Finished first | In every order, the cards that wait on you come first, then the ones that finished unseen, then the rest, each run in the order it had. A card moves only when its state changes, and a lead brings its teammates and worktrees with it; a docked worktree or a linked partner that finished lifts the block it sits in | On |
+| Green wash | The whole card in the panel's green, its name in the full ink, under the amber of a question in weight | On |
+| Badge in the pane | The word Done as iTerm2's badge in that session's pane, in the panel's green at about a third, large and faded. Its size, font and position are your profile's Badge settings: iTerm2 lets a session change only the text and colour. A pane whose badge already says something keeps it, and the daemon log says `badge busy` once | On |
+| Tab colour | The session's tab in the same green. A tab shows the colour of its active pane alone, so a finished pane behind the one you type in does not colour the tab; and a tab you coloured yourself is left alone. Off until you ask for it | Off |
+
+The pane marks go through the session's own profile, so your saved profile
+never changes; what a mark replaced comes back when it clears. Inside
+iTerm2's tmux integration every tmux pane is its own session and the mark
+lands on the right one; inside plain tmux one pane hosts several, and the
+mark covers the whole pane. A daemon that starts finds a badge reading
+exactly `Done` left by the daemon before it and clears it; a tab colour left
+behind is not recognisable and stays.
 
 Going to the session from its card, or a banner or a block bringing it
 forward, takes the mark off at once. Moving to the session inside iTerm2 takes it off at the next
