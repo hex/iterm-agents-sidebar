@@ -100,9 +100,13 @@ Under the name, an agent reports its own task: a title, then
 `Reading code · 40s`, then ticks for how far it says it has got. The
 percentage is the model's estimate, not a measurement, so a report older than
 five minutes puts `Last:` before what it said and reads `stale`, and a finished
-one reads `Complete`.
+one reads `Complete`. The ticks show only while the session works on a fresh
+report. A session at rest whose last words were `Waiting for you` says so in
+the warning colour: no prompt is open, so the card stays Idle, but the next
+move is yours.
 
-The line below carries the branch, the model with its effort letter (`[l]`,
+The line below carries the branch, shortened from its front so the last part
+stays readable, the model with its effort letter (`[l]`,
 `[m]`, `[h]`, `[xh]`, `[mx]`), the context percentage, and a `CPU` or `Mem`
 chip when the session's process tree is using a lot of the machine. While a
 chip shows, the details card adds a `CPU` or `Memory` row with the figure and the
@@ -156,8 +160,9 @@ A session's open tasks, the checklist it keeps
 with TaskCreate or the open steps of a Codex plan, fold into one line ("6 tasks · 1 in progress") that opens
 to a row per task, the running ones with the dots and what is being done.
 Background shells fold into
-one line ("2 commands running") that opens on a click, and clicking a shell
-shows the whole command with a Copy button.
+one line ("2 commands running") that opens on a click; a row shows a long
+path by its last part, and clicking a shell shows the whole command with a
+Copy button.
 
 ### Sessions on another machine
 
