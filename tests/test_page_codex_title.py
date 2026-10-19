@@ -12,4 +12,4 @@ PAGE = Path(__file__).resolve().parent.parent / "page.html"
 def test_a_codex_task_line_is_titled_as_codex_titled_the_conversation():
     page = PAGE.read_text(encoding="utf-8")
     assert ('stack.append(taskLine(row.provider === "openai" && row.topic'
-            ' ? {...row.task, title: row.topic} : row.task));') in page
+            ' ? {...row.task, title: row.topic} : row.task,') in page

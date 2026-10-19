@@ -32,6 +32,30 @@ def partners_record_of_the_test(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(partners, "PARTNERS_FILE", tmp_path_factory.mktemp("partners") / "partners.json")
 
 
+SIDEBAR_PY = str(Path(__file__).resolve().parent.parent / "sidebar.py")
+
+
+def sidebar_modules(test_module):
+    """Every loaded copy of sidebar.py: the one `import sidebar` shares and the ones a test file
+    makes for itself with importlib, which never reach sys.modules."""
+    seen = []
+    for module in list(sys.modules.values()) + list(vars(test_module).values()):
+        if isinstance(module, type(sys)) and getattr(module, "__file__", None) == SIDEBAR_PY and module not in seen:
+            seen.append(module)
+    return seen
+
+
+@pytest.fixture(autouse=True)
+def daemon_dirs_of_the_test(request, monkeypatch, tmp_path_factory):
+    """A daemon built in a test logs and reads hook state in the test's own folders: the real
+    daemon.log is this machine's record, and a test session id must never appear in it."""
+    status = tmp_path_factory.mktemp("status")
+    hook_state = tmp_path_factory.mktemp("hook-state")
+    for module in sidebar_modules(request.module):
+        monkeypatch.setattr(module, "STATUS_DIR", str(status))
+        monkeypatch.setattr(module, "HOOK_STATE_DIR", str(hook_state))
+
+
 @pytest.fixture(autouse=True, scope="session")
 def keychain_named_by_path():
     with pytest.MonkeyPatch.context() as patch:

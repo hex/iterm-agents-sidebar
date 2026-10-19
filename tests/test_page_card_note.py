@@ -19,3 +19,13 @@ def test_a_long_note_is_cut_with_an_ellipsis_inside_its_cell():
 def test_a_cut_note_can_still_be_read_whole():
     page = PAGE.read_text(encoding="utf-8")
     assert "note.textContent = note.title = value.note;" in page
+
+
+def test_a_resting_cards_waiting_for_you_words_wear_the_warning_ink():
+    """The task line's own protocol names "Waiting for you" for a turn handed
+    back; no hook sees it, so only the words say the card is owed an answer."""
+    page = PAGE.read_text(encoding="utf-8")
+    assert 'const WAITING_WORDS = /^waiting (for|on) you\\b/i;' in page
+    assert 'owedActivity = (task, resting) => resting && !!task && !task.done && WAITING_WORDS.test(task.activity || "")' in page
+    assert 'el("task-activity" + (owedActivity(task, resting) ? " owed" : ""), task.activity)' in page
+    assert '.task .task-activity.owed { color: var(--warn); font-weight: 500; }' in page
