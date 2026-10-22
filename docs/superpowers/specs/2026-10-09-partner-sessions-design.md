@@ -52,6 +52,12 @@ Decided:
   (picked: "Ask unless bypass" over "Toasts only", 2026-10-09, after
   §7 check 3 found that Claude Code runs a plugin's tool without a
   permission prompt in default mode). Bypass sessions do not ask.
+  Reversed 2026-10-22: the question is gone in every mode. Claude Code
+  2.1.308 seats a security default plugin ahead of a person's plugins on
+  Team and Enterprise accounts and on machines with managed settings, and
+  it keeps the classic prompt event, the only carrier of the permission
+  mode, from the mod; no other engine surface tells bypass from default.
+  Asking everywhere was the alternative and was declined.
 - **The fixed partner text rides on the next prompt** (picked: "Once at
   pairing" over a section in every session's system prompt, 2026-10-09,
   after §7 check 5 found the system prompt is read once per conversation):

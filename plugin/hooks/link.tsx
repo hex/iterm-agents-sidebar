@@ -247,7 +247,6 @@ async function failTakenAsks($: EngineInterface): Promise<void> {
 const NOT_LINKED = 'This session is not linked to another.'
 const LINKING_OFF = 'Linking is off in the agents sidebar: turn on Link cards under Experimental in its settings.'
 const FROM_SUBAGENT = 'Only the main conversation can use the partner tools, not a subagent.'
-const DECLINED = 'The user declined.'
 
 type Partner = {
   id: string; me: string; label: string; transcript: string | null; profile: string; key: string; introduction: string
@@ -255,8 +254,6 @@ type Partner = {
 }
 
 let partner: Partner | null = null
-// The permission mode of the latest prompt; until a prompt is seen the tools ask.
-let mode: string | null = null
 const tools = { read: '', delegate: '' }
 // The crossing the band shows: a task out from this session or in from its partner, then its answer for 10 s.
 let crossing: { from: string; to: string; state: 'asked' | 'answered'; until: number | null } | null = null
@@ -294,19 +291,8 @@ async function partnerTick($: EngineInterface): Promise<void> {
   await takeTasks($, path)
 }
 
-// Outside bypass mode each call asks you first; a dismissed dialog, or none to show (-p), is a no.
-async function allowed($: EngineInterface, question: string): Promise<boolean> {
-  if (mode === 'bypassPermissions') return true
-  try {
-    return (await $.ui.ask(question, ['Allow', 'Deny'])) === 'Allow'
-  } catch {
-    return false
-  }
-}
-
 async function readTool($: EngineInterface, asked: unknown): Promise<string> {
   const current = partner!
-  if (!(await allowed($, `Let this session read ${current.label}'s recent conversation?`))) return DECLINED
   const path = current.transcript
   if (!path || !home || !path.startsWith(`${home}/.claude/projects/`) || !path.endsWith('.jsonl') || path.includes('/../')) {
     return `${current.label}'s conversation cannot be read: the panel has no transcript for it.`
@@ -335,7 +321,6 @@ async function delegateTool($: EngineInterface, input: Record<string, unknown>, 
   const current = partner!
   const task = typeof input.task === 'string' ? input.task : ''
   const why = typeof input.why === 'string' ? input.why : ''
-  if (!(await allowed($, `Hand ${current.label} this task: ${firstWords(task)}?`))) return DECLINED
   const began = await $.clock.now()
   counter += 1
   const id = `${Math.floor(began).toString(36)}-${counter}`
@@ -552,13 +537,6 @@ export const register: Register = on => {
     if (!partner) return { result: (await linkingOn($)) ? NOT_LINKED : LINKING_OFF }
     if (e.tool === tools.read) return { result: await readTool($, input.turns) }
     return { result: await delegateTool($, input, next.signal) }
-  })
-
-  // The permission mode rides on this event alone. The security default plugin keeps it from a person's plugin,
-  // and the mode then stays unknown: each partner call asks.
-  on('classic.UserPromptSubmit', async ($, e, next) => {
-    if (typeof e.permission_mode === 'string') mode = e.permission_mode
-    return next(e)
   })
 
   on('turn.start', async ($, e, next) => {

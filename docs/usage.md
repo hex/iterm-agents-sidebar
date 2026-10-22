@@ -190,13 +190,9 @@ While linking is off, either tool answers that it is off and where to turn it
 on. Only the main conversation can use either tool; a subagent gets a
 refusal.
 
-In a session that is not in bypass mode, each call of either tool asks you
-first, in Claude Code's own question dialog; Deny, or closing it, declines.
-Claude Code itself runs a plugin's tool without asking in any mode, so this
-question is the panel's own. A bypass session never asks, with one exception:
-on a Team or Enterprise account, or a machine with managed settings, Claude
-Code keeps the prompt event that carries the mode from a plugin, so the panel
-cannot tell and asks there too.
+Claude Code runs a plugin's tool without asking in any mode, and the panel
+adds no question of its own: either tool runs when the model calls it,
+whatever the session's permission mode.
 
 A task waits behind whatever the partner is doing; if the partner waits on
 you, the task is not handed over. The asking session's turn runs while it
@@ -232,13 +228,13 @@ tool output) can do through this, and could not before:
 
 - make the other session act, unattended: each task runs at once with the
   partner's permissions, so a default-mode session can drive a bypass-mode
-  partner in another repository. The fence around a task frames it as the
-  partner's request, not yours; it is not a boundary. The toasts show each
-  hand-off, and untie stops it.
+  partner in another repository, and nothing asks you first. The fence
+  around a task frames it as the partner's request, not yours; it is not a
+  boundary. The toasts show each hand-off, and untie stops it.
 - reach the other's context when the profile changes: the partner's last
   reply rides in it, fenced and marked as its words.
 - read the other's recent conversation, which may hold pasted secrets or
-  command output. Outside bypass mode the panel asks you first.
+  command output. Nothing asks you first, in any mode.
 - pass injected text both ways: a task's answer returns to the asker.
 
 Partners are Claude Code with Claude Code only, and a worktree card cannot be
