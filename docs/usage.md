@@ -193,7 +193,10 @@ refusal.
 In a session that is not in bypass mode, each call of either tool asks you
 first, in Claude Code's own question dialog; Deny, or closing it, declines.
 Claude Code itself runs a plugin's tool without asking in any mode, so this
-question is the panel's own. A bypass session never asks.
+question is the panel's own. A bypass session never asks, with one exception:
+on a Team or Enterprise account, or a machine with managed settings, Claude
+Code keeps the prompt event that carries the mode from a plugin, so the panel
+cannot tell and asks there too.
 
 A task waits behind whatever the partner is doing; if the partner waits on
 you, the task is not handed over. The asking session's turn runs while it

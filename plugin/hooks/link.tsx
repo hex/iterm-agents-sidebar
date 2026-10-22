@@ -1,6 +1,6 @@
 // ABOUTME: Linked cards and partner sessions, inside a Claude session: link drops and partner tasks taken from the
 // ABOUTME: session's own folder, the two partner tools, replies filed, and the band above the prompt. One module per plugin.
-import type { EngineInterface, PromptSubmitInput, Register, Timer, TurnCompleteInput, TurnStartInput } from 'claude-code'
+import type { EngineInterface, PromptSubmitInput, Register, SessionAppendInput, Timer, TurnCompleteInput, TurnStartInput } from 'claude-code'
 import { TURNS_MAX, TAIL_BYTES, firstWords, readText } from './partner-text'
 
 const TICK_MS = 1000
@@ -34,6 +34,9 @@ let asked: { link: string; nonce: string; to: string; turnId: string | null; sto
 // Deliveries waiting for their turn, by nonce: several senders can hand this session work at once.
 const delivering = new Map<string, { link: string; from: string; to: string; fromHue: string; toHue: string }>()
 let running: string | null = null
+// The model's last text this turn, read off the transcript rows: what the turn stopped with, when a Stop hook then
+// sends it on. The security default plugin keeps classic.Stop from a person's plugin, so the first Stop is read here.
+let lastReply: string | null = null
 let band: Band | null = null
 // Remote Control the daemon asked this session to turn back on after an account switch: taken once, run when idle.
 // `taken` is where the job's file sits, so a /clear mid-job still removes it from the folder it was taken in.
@@ -446,22 +449,31 @@ async function partnerTurnStart($: EngineInterface, e: TurnStartInput): Promise<
   }
 }
 
-// The partner's part of the first Stop, which carries the turn's reply before any Stop hook answers it.
-async function partnerStop($: EngineInterface, e: { stop_hook_active: boolean; last_assistant_message?: string | null }): Promise<void> {
-  if (e.stop_hook_active) return
+// The partner's part of the first Stop: the turn's reply before any Stop hook answers it.
+async function partnerStop($: EngineInterface, text: string): Promise<void> {
   if (working && working.turnId === running && working.stopped === null) {
-    working.stopped = e.last_assistant_message ?? ''
+    working.stopped = text
     await remember($)
   } else if (yourTurn && yourTurn === running) {
-    const text = e.last_assistant_message ?? ''
     if (text.trim()) await writeWhole($, 'reply.json', { text, at: await $.clock.now() })
     yourTurn = null
   }
 }
 
+const textOf = (content: SessionAppendInput['message']['content']): string =>
+  content.filter(b => b.type === 'text').map(b => String(b.text)).join('\n')
+
+// A Stop hook that sends the turn on files its feedback as a note of the engine's own making.
+const sentOn = (e: SessionAppendInput): boolean =>
+  e.origin.kind === 'engine' && textOf(e.message.content).startsWith('Stop hook feedback:')
+
 // The partner's part of turn.complete, a subagent's aside: the task's answer is filed, or why it has none.
 async function partnerTurnComplete($: EngineInterface, e: TurnCompleteInput): Promise<void> {
-  if (e.turnId === yourTurn) yourTurn = null
+  // A turn no Stop hook sent on stopped with its answer; an interrupted one stopped with nothing.
+  if (e.turnId === yourTurn) {
+    yourTurn = null
+    if (e.reason === 'answer' && e.answer.trim()) await writeWhole($, 'reply.json', { text: e.answer, at: await $.clock.now() })
+  }
   if (!working || working.turnId !== e.turnId) return
   const { link, nonce, from, stopped } = working
   working = null
@@ -475,6 +487,21 @@ async function partnerTurnComplete($: EngineInterface, e: TurnCompleteInput): Pr
 
 // The partner's part of prompt.submit -> why your prompt goes back to the box, or null to let it in. A prompt you
 // type during a task's turn would join the answer that goes back.
+// What the model is told of its partner rides on the prompt, never in the system prompt, which Claude Code reads
+// once per conversation: the introduction once per pairing and conversation, a profile when it changed, the untie.
+async function partnerTold($: EngineInterface): Promise<string | null> {
+  const key = `given:${await $.session.id()}`
+  const given = (await $.store.get(key)) as { pair: string; key: string; label: string } | undefined
+  let told: string | null = null
+  if (partner && given?.pair !== partner.id) told = partner.introduction
+  else if (partner && given?.key !== partner.key) told = `What the panel knows of your partner ${partner.label} now:\n${partner.profile}`
+  else if (!partner && given) told = `You are no longer linked with ${given.label}; the partner tools now answer that.`
+  if (told === null) return null
+  if (partner) await $.store.set(key, { pair: partner.id, key: partner.key, label: partner.label })
+  else await $.store.delete(key)
+  return told
+}
+
 async function partnerHeldPrompt($: EngineInterface, e: PromptSubmitInput): Promise<string | null> {
   const yours = e.origin.kind === 'composer' || e.origin.kind === 'bridge'
   if (yours && working && running === working.turnId) {
@@ -527,26 +554,17 @@ export const register: Register = on => {
     return { result: await delegateTool($, input, next.signal) }
   })
 
-  // What the model is told of its partner rides on the prompt, never in the system prompt, which Claude Code reads
-  // once per conversation: the introduction once per pairing and conversation, a profile when it changed, the untie.
+  // The permission mode rides on this event alone. The security default plugin keeps it from a person's plugin,
+  // and the mode then stays unknown: each partner call asks.
   on('classic.UserPromptSubmit', async ($, e, next) => {
-    const result = await next(e)
     if (typeof e.permission_mode === 'string') mode = e.permission_mode
-    const key = `given:${await $.session.id()}`
-    const given = (await $.store.get(key)) as { pair: string; key: string; label: string } | undefined
-    let told: string | null = null
-    if (partner && given?.pair !== partner.id) told = partner.introduction
-    else if (partner && given?.key !== partner.key) told = `What the panel knows of your partner ${partner.label} now:\n${partner.profile}`
-    else if (!partner && given) told = `You are no longer linked with ${given.label}; the partner tools now answer that.`
-    if (told === null) return result
-    if (partner) await $.store.set(key, { pair: partner.id, key: partner.key, label: partner.label })
-    else await $.store.delete(key)
-    return { ...result, additionalContext: [...(result.additionalContext ?? []), told] }
+    return next(e)
   })
 
   on('turn.start', async ($, e, next) => {
     // A subagent's run raises no turn.start, so the running turn is always the main loop's.
     running = e.turnId
+    lastReply = null
     if (asked && asked.turnId === null && e.text.includes(`(link ${asked.nonce})`)) asked.turnId = e.turnId
     for (const [nonce, delivery] of delivering) {
       if (!e.text.includes(`(link ${nonce})`)) continue
@@ -588,13 +606,23 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The asked turn's first Stop carries its reply before any Stop hook answers; later Stops in the same turn
-  // carry the replies to those hooks.
-  on('classic.Stop', async ($, e, next) => {
-    if (asked?.turnId && !e.stop_hook_active) {
-      asked.stopped = e.last_assistant_message ?? ''
+  // The turn's first Stop, read off the main loop's transcript rows: the model's last text before a Stop hook's
+  // feedback is the reply the turn stopped with. Later feedback in the same turn follows the replies to those hooks.
+  // A turn no hook sends on has no such note, and turn.complete's answer is then that reply.
+  on('session.append', { door: 'response' }, async ($, e, next) => {
+    if (!e.agentId && running) {
+      const text = textOf(e.message.content)
+      if (text) lastReply = text
     }
-    await partnerStop($, e)
+    return next(e)
+  })
+  on('session.append', { door: 'note' }, async ($, e, next) => {
+    if (!e.agentId && running && sentOn(e)) {
+      const text = lastReply ?? ''
+      lastReply = null
+      if (asked?.turnId === running && asked.stopped === null) asked.stopped = text
+      await partnerStop($, text)
+    }
     return next(e)
   })
 
@@ -603,7 +631,11 @@ export const register: Register = on => {
     const yours = e.origin.kind === 'composer' || e.origin.kind === 'bridge'
     if (!yours || !asked?.turnId || running !== asked.turnId) {
       const held = await partnerHeldPrompt($, e)
-      return held === null ? next(e) : { drop: held }
+      if (held !== null) return { drop: held }
+      const result = await next(e)
+      if (result.drop !== undefined) return result
+      const told = await partnerTold($)
+      return told === null ? result : { ...result, context: [...(result.context ?? []), told] }
     }
     // The box takes text alone, so an image or file sent with the prompt has to be added again.
     await $.prompt.fill({ text: e.text })

@@ -103,7 +103,8 @@ five minutes puts `Last:` before what it said and reads `stale`, and a finished
 one reads `Complete`. The ticks show only while the session works on a fresh
 report. A session at rest whose last words were `Waiting for you` says so in
 the warning colour: no prompt is open, so the card stays Idle, but the next
-move is yours.
+move is yours. The compact card draws no activity line on an idle card, so
+there the words do not show.
 
 The line below carries the branch, shortened from its front so the last part
 stays readable, the model with its effort letter (`[l]`,

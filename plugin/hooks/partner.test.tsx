@@ -75,7 +75,7 @@ function world(on: On): World {
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('classic.Stop', () => ({}))
+  on('session.append', ($, e, next) => next(e))
   on('classic.UserPromptSubmit', () => ({}))
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     const { Box } = $.ui.resolve(e)
@@ -298,6 +298,12 @@ const TASK = `Your partner “alpha” handed you this task (it owns the repo). 
 const turnStart = ($: any, turnId: string, text: string) => $.turn.start({ turnId, text })
 const turnEnd = ($: any, turnId: string, answer: string, extra: Record<string, unknown> = {}) =>
   $.turn.complete({ turnId, answer, durationMs: 10, isAborted: false, reason: 'answer', ...extra })
+
+// The transcript rows the first Stop is read from: the model's reply, then the note a Stop hook's block files.
+const replied = ($: any, text: string) =>
+  $.session.append({ message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text }] }, door: 'response', origin: { kind: 'model', model: 'claude' }, uuid: 'row' })
+const sentOn = ($: any) =>
+  $.session.append({ message: { type: 'user', role: 'user', isMeta: true, content: [{ type: 'text', text: 'Stop hook feedback:\nNarrative check.' }] }, door: 'note', origin: { kind: 'engine' }, uuid: 'row' })
 const typed = ($: any, text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
 const PLUGIN_TURN = `The agents-sidebar plugin sent a message:\n${TASK}`
 
@@ -340,8 +346,9 @@ test("the task's answer is its reply at the first Stop, not a hook's follow-up",
   const w = world(on)
   const clock = mock.clock(on, { now: 1_000_000 })
   await taskRunning($, w, clock)
-  await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'All 12 pass.' })
-  await $.classic.Stop({ stop_hook_active: true, last_assistant_message: 'Narrative updated.' })
+  await replied($, 'All 12 pass.')
+  await sentOn($)
+  await replied($, 'Narrative updated.')
   await turnEnd($, 't1', 'Narrative updated.')
   expect(JSON.parse(w.files.get(`${F}/result-T1.json`)!)).toEqual({ link: 'T1', nonce: NONCE, text: 'All 12 pass.' })
   expect(w.files.has(`${F}/reply.json`)).toBe(false)
@@ -386,14 +393,25 @@ test('the first Stop of a turn you started is filed as your last reply; a task t
   await start($)
   await typed($, 'what changed?')
   await turnStart($, 't0', 'what changed?')
-  await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'The API moved to v2.' })
-  await $.classic.Stop({ stop_hook_active: true, last_assistant_message: 'Narrative updated.' })
+  await replied($, 'The API moved to v2.')
+  await sentOn($)
+  await replied($, 'Narrative updated.')
   await turnEnd($, 't0', 'Narrative updated.')
   expect(JSON.parse(w.files.get(`${F}/reply.json`)!)).toEqual({ text: 'The API moved to v2.', at: 1_000_000 })
 })
 
-const context = async ($: any, mode = 'bypassPermissions') =>
-  ((await prompted($, mode)) as any)?.additionalContext ?? []
+test('a turn you started and interrupted before it stopped files no reply', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await start($)
+  await typed($, 'what changed?')
+  await turnStart($, 't0', 'what changed?')
+  await turnEnd($, 't0', 'half a th', { isAborted: true, reason: 'aborted' })
+  expect(w.files.has(`${F}/reply.json`)).toBe(false)
+})
+
+const context = async ($: any, origin: Record<string, unknown> = { kind: 'composer' }) =>
+  ((await $.prompt.submit({ text: 'hi', wait: false, origin })) as any)?.context ?? []
 
 test('the first prompt after linking gets the introduction once', async ($, on) => {
   const w = world(on)
@@ -464,8 +482,7 @@ test('the context goes with a plugin prompt too', async ($, on) => {
   linked(w)
   await start($)
   await clock.advance(1000)
-  const given = await $.classic.UserPromptSubmit({ prompt: 'a task', permission_mode: 'bypassPermissions' })
-  expect((given as any).additionalContext).toEqual(['You are linked with “bravo”. bravo profile'])
+  expect(await context($, { kind: 'plugin', plugin: 'other' })).toEqual(['You are linked with “bravo”. bravo profile'])
 })
 
 const PROPS = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4 } }
