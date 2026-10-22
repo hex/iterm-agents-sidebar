@@ -101,7 +101,7 @@ function world(on: On): World {
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('classic.Stop', () => ({}))
+  on('session.append', ($, e, next) => next(e))
   on('fs.exists', ($, e) => ({ value: w.files.has(e.path) }))
   on('tool.register', ($, e) => ({ value: { tool: `mcp__agents-sidebar__${e.name}` } }))
   on('store.get', () => ({ value: undefined }))
@@ -124,6 +124,12 @@ const turnStart = ($: any, turnId: string, text: string) => $.turn.start({ turnI
 const turnEnd = ($: any, turnId: string, answer: string, extra: Record<string, unknown> = {}) =>
   $.turn.complete({ turnId, answer, durationMs: 10, isAborted: false, reason: 'answer', ...extra })
 const typed = ($: any, text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
+
+// The transcript rows the first Stop is read from: the model's reply, then the note a Stop hook's block files.
+const replied = ($: any, text: string) =>
+  $.session.append({ message: { type: 'assistant', role: 'assistant', content: [{ type: 'text', text }] }, door: 'response', origin: { kind: 'model', model: 'claude' }, uuid: 'row' })
+const sentOn = ($: any) =>
+  $.session.append({ message: { type: 'user', role: 'user', isMeta: true, content: [{ type: 'text', text: 'Stop hook feedback:\nNarrative check.' }] }, door: 'note', origin: { kind: 'engine' }, uuid: 'row' })
 
 // The asked turn is running: the ask was taken on a tick and its turn started.
 async function askedTurnRunning($: any, w: World, clock: any) {
@@ -184,8 +190,9 @@ test("a Stop hook that sends the asked turn on does not replace its result with 
   const w = world(on)
   const clock = mock.clock(on, { now: 1_000_000 })
   await askedTurnRunning($, w, clock)
-  await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'the result for bravo' })
-  await $.classic.Stop({ stop_hook_active: true, last_assistant_message: 'Narrative updated.' })
+  await replied($, 'the result for bravo')
+  await sentOn($)
+  await replied($, 'Narrative updated.')
   await turnEnd($, 't1', 'Narrative updated.')
   expect(JSON.parse(w.files.get(`${F}/result-L1.json`)!)).toEqual({ link: 'L1', nonce: NONCE, text: 'the result for bravo' })
 })
@@ -197,18 +204,19 @@ test("the Stop of the turn an ask waited behind is not the asked turn's result",
   await turnStart($, 't0', 'something else')
   dropFile(w, 'L1', 'ask')
   await clock.advance(1000)
-  await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'not it' })
+  await replied($, 'not it')
   await turnEnd($, 't0', 'not it')
   await turnStart($, 't1', ASK)
   await turnEnd($, 't1', 'it')
   expect(JSON.parse(w.files.get(`${F}/result-L1.json`)!)).toEqual({ link: 'L1', nonce: NONCE, text: 'it' })
 })
 
-test('an asked turn interrupted after it stopped with a reply still sends that reply', async ($, on) => {
+test('an asked turn a hook sent on, then interrupted, still sends the reply it stopped with', async ($, on) => {
   const w = world(on)
   const clock = mock.clock(on, { now: 1_000_000 })
   await askedTurnRunning($, w, clock)
-  await $.classic.Stop({ stop_hook_active: false, last_assistant_message: 'the result for bravo' })
+  await replied($, 'the result for bravo')
+  await sentOn($)
   await turnEnd($, 't1', '', { isAborted: true, reason: 'aborted' })
   expect(JSON.parse(w.files.get(`${F}/result-L1.json`)!)).toEqual({ link: 'L1', nonce: NONCE, text: 'the result for bravo' })
 })
