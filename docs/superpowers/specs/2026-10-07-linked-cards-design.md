@@ -254,6 +254,17 @@ badge shrinks away over 220 ms. With reduced motion the ring stands at its
 reach for those 620 ms and goes. On drop the target shows
 "Sent · from ‹A›" for 2 s.
 
+**Note, 2026-10-23.** A session docked under another as a linked git
+worktree of its repo no longer joins it with a dashed seam that plucked when
+the pair moved. The two, and any further worktrees of the same session, draw
+as one cluster: one outline, cut open at each join so no card's shadow
+crosses it; a hairline between faces that starts after the mark column; no
+tint in the main session's colour; and a waiting or finished worktree marked
+on its own face, its ring drawn inside. The worktree card's mark is
+Phosphor's git-fork glyph in the main session's colour, hung from the card
+above by a stem measured to the glyph. The tether's corner squaring in this
+section (`seam()`, `SEAM_PX`) is a separate mechanism and did not change.
+
 ## 4. The mod
 
 A module in the agents-sidebar plugin (`plugin/hooks/hooks.json` gains

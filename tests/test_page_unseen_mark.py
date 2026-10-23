@@ -82,15 +82,19 @@ def test_the_finished_wash_outranks_rest_and_has_no_ring():
     both themes, and never the two-pixel inset ring the amber card wears."""
     finished = rule("li.line.card.finished")
     assert finished["background"] == "var(--finished-bg)"
-    assert finished["box-shadow"] == "0 0 0 1px color-mix(in srgb, var(--sev-ok) 45%, var(--card-border))"
+    assert finished["--finished-ring"] == "color-mix(in srgb, var(--sev-ok) 45%, var(--card-border))"
+    assert finished["box-shadow"] == "0 0 0 1px var(--finished-ring)"
     assert "inset" not in finished["box-shadow"]
     css = source()
     assert css.index("li.line.card.finished {") > css.index("li.line.card.neglected {")
 
 
-def test_a_docked_worktree_takes_the_wash_over_its_family_tint():
-    """The worktree tint's selector outranks the plain finished rule, so the wash is restated at its weight, as the amber is."""
-    assert rule("li.line.card.worktree.finished[data-family]")["background"] == "var(--finished-bg)"
+def test_a_docked_worktree_takes_the_wash_on_its_own_face():
+    """A worktree face has no tint to outrank the plain finished rule, so it takes the wash as any card does; no
+    worktree rule restates or overrides it."""
+    assert rule("li.line.card.finished")["background"] == "var(--finished-bg)"
+    restated = re.findall(r"\n  (li\.line\.card\.worktree\.finished[^{]*) \{([^}]*)\}", source())
+    assert [selector for selector, body in restated if "background" in body] == []
 
 
 def test_a_washed_cards_name_is_not_greyed():
