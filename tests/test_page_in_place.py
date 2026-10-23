@@ -23,6 +23,8 @@ PAGE = Path(__file__).resolve().parent.parent / "page.html"
 STYLE_WRITERS = {
     # written on an event, never on a frame that kept the node
     "syncShimmer", "syncBreathe", "glide", "showOpenShell", "applyShellFont", "applyScale",
+    # a worktree stem's measured lengths, written only when one changed
+    "paintStems",
     # the floating menu, the details card and its context breakdown
     "openMenuAt", "showCard", "moveCard", "ctxItemList", "breakdownBar", "tinted",
     # FLIP's holders for what left, and the drag with its ghost, tether and landings

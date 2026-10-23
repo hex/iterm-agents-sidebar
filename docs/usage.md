@@ -388,7 +388,15 @@ name and badge colour Claude Code gave it.
 
 A session in a linked git worktree of another open session's repo (a cs feature
 session in `<repo>@worktree`, for example) keeps its own card, right after that
-session's card and tied to it by a short line across the gap. Its name is the
+session's card, and the two draw as one: one outline round both, square
+corners where they meet, and a hairline between them that starts after the
+mark column. The worktree card's mark is a fork in the main session's colour,
+hung from the card above by a short line. It stays a fork while the session
+works, and its state shows on the badge. Every worktree of one session stacks
+under it inside the same outline, a hairline before each unless that card or
+the one above it wears a ring, which is then the line between them. A worktree that
+waits on you, or finished while you looked elsewhere, turns amber or green on
+its own part of the outline only. Its name is the
 feature, the part after the `@`, since the branch has its own chip. A worktree
 directory without an `@` takes its branch as its name. A directory named
 `<base>@<feature>` beside a session directory `<base>` docks there by name

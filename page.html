@@ -159,11 +159,13 @@
   li.line.card:has(> button.row:hover) { background: var(--card-hover); }
   li.line.card > button.row { border-radius: 7px; }
   /* A card easing to a new height (animateRows) is clipped, so a growing one
-     never shows what has not arrived yet. A worktree card's seam lies on and
-     above its top edge, where overflow would cut it, so that card is clipped
-     by a shape open at the top. */
+     never shows what has not arrived yet. */
   li.line.card.resizing { overflow: clip; }
-  li.line.card.worktree.resizing { overflow: visible; clip-path: inset(-16px 0 0 0 round 0 0 8px 8px); }
+  /* A card of a worktree cluster draws its edge outside itself, where
+     overflow would cut it, so it is cut only along its foot. */
+  :where(#groups) li.line.card.resizing:where(.worktree, :has(+ li.line.card.worktree)) {
+    overflow: visible; clip-path: inset(-16px -16px 0);
+  }
   li.line.card > button.row:hover { background: none; }
   /* A dragged card: its ghost rises over the list and follows the pointer,
      and the card itself stays behind, faded, in the place it would drop. */
@@ -177,6 +179,13 @@
       0 8px 28px -6px color-mix(in srgb, var(--fg) 34%, transparent),
       0 2px 6px -2px color-mix(in srgb, var(--fg) 18%, transparent);
   }
+  /* The ghost of a worktree cluster keeps each card's own edge and lift, cut
+     at the joins so neither crosses into the next card. A cut is smoothed
+     across the pixel it falls in, and the lift showed through two cuts
+     meeting there, so the lower card rides a pixel up over the upper. */
+  .drag-ghost li.line.card:has(+ li.line.card.worktree) { clip-path: inset(-40px -40px 0); }
+  .drag-ghost li.line.card.worktree { margin-top: -1px; clip-path: inset(0 -40px -40px); }
+  .drag-ghost li.line.card.worktree:has(+ li.line.card.worktree) { clip-path: inset(0 -40px); }
   li.line.card.placeholder { opacity: .35; transition: none; }
   /* A dragged card held over another links the two: the tether between them
      is drawn over the whole panel, and a card that cannot link says why
@@ -201,24 +210,41 @@
   :is(#link-overlay, #link-confirm) .tether-badge .mi { color: var(--fg); }
   #link-confirm .tether-ripple { fill: none; stroke-width: 2; }
   /* A session in a linked worktree of the card above: its own card, docked
-     under that one with no gap and a dashed seam, so the pair reads as one
-     object holding two sessions, washed lightly in the main session's
-     colour. The seam is the elastic part: a dashed line drawn across the
-     card's top edge, straight at rest, and plucked like a string whenever
-     the pair moves, so it bows a few pixels and rings back flat. It is
-     drawn (paintSeams) rather than being a border, since a border cannot
-     bend. */
+     under that one with no gap, the two drawn as one cluster. One edge goes
+     round the cluster, the corners where its cards meet are square, and
+     between two faces a hairline starts after the mark column. Several
+     worktrees stack in one cluster and the last takes the bottom corners.
+     A card's own shadow would fall across the join and split the cluster
+     again, so a card in one leaves its box-shadow to the rings of its own
+     face, and the edge is drawn by its ::after, cut open where it meets the
+     next card or the last. That holds in the list only: the drag ghost
+     keeps each card's own edge and lift, cut by the rules above. */
   li.line.card:has(+ li.line.card.worktree) {
     margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
   }
   li.line.card.worktree {
-    margin-top: -1px; border-top-color: transparent;
     border-top-left-radius: 0; border-top-right-radius: 0;
   }
-  li.line.card.worktree > svg.seam {
-    position: absolute; z-index: 1; overflow: visible; pointer-events: none;
-    left: 0; top: -1px; width: 100%; height: 1px; color: var(--card-border);
+  :where(#groups) li.line.card:where(.worktree, :has(+ li.line.card.worktree)) {
+    box-shadow: none;
   }
+  :where(#groups) li.line.card:has(+ li.line.card.worktree)::after,
+  :where(#groups) li.line.card.worktree::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    box-shadow: var(--card-edge);
+  }
+  :where(#groups) li.line.card:has(+ li.line.card.worktree)::after { clip-path: inset(-16px -16px 0); }
+  :where(#groups) li.line.card.worktree::after { clip-path: inset(0 -16px -16px); }
+  :where(#groups) li.line.card.worktree:has(+ li.line.card.worktree)::after { clip-path: inset(0 -16px); }
+  li.line.card.worktree::before {
+    content: ""; position: absolute; top: 0; height: 1px; pointer-events: none;
+    left: calc(var(--row-pad) + var(--mark) + var(--row-gap)); right: 10px;
+    background: var(--card-border);
+  }
+  /* A waiting or finished face rings itself, and its ring is the line
+     between it and its neighbour; a hairline on top would cut the ring. */
+  li.line.card.worktree:is(.blocked, .finished)::before,
+  li.line.card:is(.blocked, .finished) + li.line.card.worktree::before { content: none; }
   /* A partner card: the second of two linked sessions, docked under the first as one card. The join is a hairline
      (the card border between them), and the badge sits on it, its ring half in each session's colour. */
   li.line.card:has(+ li.line.card.partner) {
@@ -244,28 +270,18 @@
     .pair-badge.open { animation: pair-breathe 1.9s ease-in-out infinite; animation-delay: var(--breathe-delay, 0ms); }
   }
   @keyframes pair-breathe { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: .75; } }
-  /* A light wash of the colour of the session it belongs to; its own colour
-     stays on its mark and the band. A session without a colour leaves the
-     card plain. */
-  li.line.card.worktree[data-family] {
-    background: color-mix(in srgb, var(--family) 4%, var(--card));
-  }
-  li.line.card.worktree[data-family]:has(> button.row:hover) {
-    background: color-mix(in srgb, var(--family) 7%, var(--card-hover));
-  }
   /* The one exception: amber across the whole card and a heavier edge all
      round, visible without reading a word. The extra weight is an inset ring
      rather than a wider border, so the card keeps its size and nothing shifts
      when a session starts or stops waiting. */
   li.line.card.blocked {
+    --ring: 2px;
     background: var(--blocked-bg); border-color: var(--blocked-border);
-    box-shadow: inset 0 0 0 2px var(--blocked-border);
+    box-shadow: inset 0 0 0 var(--ring) var(--blocked-border);
   }
-  /* The plain and worktree hovers, and a worktree's wash, outrank the rule
-     above, so the amber is restated at their weight. */
-  li.line.card.worktree.blocked[data-family] { background: var(--blocked-bg); }
-  li.line.card.blocked:has(> button.row:hover),
-  li.line.card.worktree.blocked[data-family]:has(> button.row:hover) {
+  /* The plain hover outranks the rule above, so the amber is restated at
+     its weight. */
+  li.line.card.blocked:has(> button.row:hover) {
     background: color-mix(in srgb, var(--blocked-border) 8%, var(--blocked-bg));
   }
   li.line.card.blocked > button.row .label { color: var(--blocked-text); }
@@ -276,12 +292,15 @@
   /* A turn that ended while you looked elsewhere: the whole card in the
      panel's calm green, below the amber of a question in weight, until you
      focus its pane. The plain hover sits over the wash at its usual weight. */
-  li.line.card.finished { background: var(--finished-bg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--sev-ok) 45%, var(--card-border)); }
+  li.line.card.finished {
+    --finished-ring: color-mix(in srgb, var(--sev-ok) 45%, var(--card-border));
+    background: var(--finished-bg); box-shadow: 0 0 0 1px var(--finished-ring);
+  }
   li.line.card.finished:has(> button.row:hover) { background: color-mix(in srgb, var(--fg) 4%, var(--finished-bg)); }
   li.line.card.finished > button.row.quiet .label { color: var(--fg); }
-  /* A docked worktree's tint outranks the rule above, so the wash is restated at its weight. */
-  li.line.card.worktree.finished[data-family] { background: var(--finished-bg); }
-  li.line.card.worktree.finished[data-family]:has(> button.row:hover) { background: color-mix(in srgb, var(--fg) 4%, var(--finished-bg)); }
+  /* In a worktree cluster the ring is drawn inside the face, so the
+     cluster's outline stays one. */
+  li.line.card.finished:where(.worktree, :has(+ li.line.card.worktree)) { --ring: 1px; box-shadow: inset 0 0 0 var(--ring) var(--finished-ring); }
   /* Teammates, subagents and shells sit inside the card, one line each,
      each joined to the session by an elbow. */
   .children { margin: 0 0 4px; }
@@ -1073,7 +1092,7 @@
      few pixels to stay legible, and the box keeps the name where a swatch would. */
   .shell-mark { display: flex; width: var(--mark); height: var(--mark); flex-shrink: 0;
                 align-items: center; justify-content: center; color: var(--hue, var(--dim)); }
-  .shell-mark .mi { width: calc(var(--mark) + 3px); height: calc(var(--mark) + 3px); opacity: 1; }
+  :is(.shell-mark, .swatch.fork) .mi { width: calc(var(--mark) + 3px); height: calc(var(--mark) + 3px); opacity: 1; }
   .swatch::before {
     content: ""; width: var(--mark); height: var(--mark); border-radius: 3px;
     background: var(--hue, var(--rule));
@@ -1120,6 +1139,18 @@
 
   .swatch.hollow::before {
     background: none; box-shadow: inset 0 0 0 1.5px var(--dim);
+  }
+  /* A docked worktree's mark, whatever it is doing: the git-fork glyph in
+     its main session's colour, overflowing the slot by a few pixels to stay
+     legible, sized with the shell glyph. */
+  .swatch.fork { color: var(--family, var(--dim)); }
+  .swatch.fork::before { content: none; }
+  /* The fork hangs from the card above by a line down the mark column, from
+     that card's foot to the top of the glyph; paintStems measures where. */
+  /* A ringed face's ring is its top line, so the stem hangs from under it. */
+  li.line.card.worktree > .stem {
+    position: absolute; top: var(--ring, 0); width: 1px; pointer-events: none;
+    background: color-mix(in srgb, var(--fg) 32%, transparent);
   }
 
 
@@ -1854,6 +1885,7 @@
   html.compact li.line.card:has(> button.row.agent) { padding-block: 0; }
   html.compact li.line.card > button.row.agent { --badge-room: 0px; align-items: flex-start; padding: 7px 9px; }
   html.compact li.line.card > button.row.agent > .swatch { margin-top: 3px; }
+  html.compact li.line.card.worktree::before { left: calc(9px + var(--mark) + var(--row-gap)); }
   html.compact li.line.card > button.row.agent .label { font-size: 12px; letter-spacing: -.01em; }
   html.compact .cface {
     display: flex; flex-direction: column; gap: 3px; align-self: stretch; min-width: 0;
@@ -1923,13 +1955,22 @@
     background: none; box-shadow: none;
   }
   html.tiny #groups li.line.card:has(> button.row:hover) { background: var(--card-hover); }
+  /* No cards, so no cluster edge and no rings; the cluster's hairline is
+     the line between its rows, starting after the square, at this width's
+     own padding and gap, and every stem hangs from the row above. */
+  html.tiny #groups li.line.card::after { content: none; }
+  html.tiny #groups li.line.card.worktree::before {
+    content: ""; left: calc(4px + var(--mark) + 5px);
+    height: var(--hair); background: color-mix(in srgb, var(--fg) 11%, transparent);
+  }
+  html.tiny #groups li.line.card.worktree > .stem { top: 0; }
   /* A hairline between sessions, the rule the details card draws between its
      parts: without cards, nothing else says where one row ends. A worktree
      and a partner keep their own join. */
   html.tiny #groups li.line.card + li.line.card:not(.worktree, .partner) {
     border-top: var(--hair) solid color-mix(in srgb, var(--fg) 11%, transparent); border-radius: 0;
   }
-  html.tiny li.line.card > :not(button.row, svg.seam, svg.pair-badge),
+  html.tiny li.line.card > :not(button.row, .stem, svg.pair-badge),
   html.tiny li.line.card > button.row > :not(.shell-mark, .swatch, .stack),
   html.tiny .cplus, html.tiny .remote-mark { display: none; }
   html.tiny #groups li.line.card > button.row { padding: 6px 4px; }
@@ -2065,6 +2106,8 @@ const META_ICONS = {
   memory: '<path d="M232,56H24A16,16,0,0,0,8,72V200a8,8,0,0,0,16,0V184H40v16a8,8,0,0,0,16,0V184H72v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V184h16v16a8,8,0,0,0,16,0V72A16,16,0,0,0,232,56ZM24,72H232v96H24Zm88,80a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H48a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8ZM56,104h48v32H56Zm88,48h64a8,8,0,0,0,8-8V96a8,8,0,0,0-8-8H144a8,8,0,0,0-8,8v48A8,8,0,0,0,144,152Zm8-48h48v32H152Z"/>',
   // Another machine: the host a remote session runs on.
   host: '<path d="M216,72a8,8,0,0,1-8,8H176a8,8,0,0,1,0-16h32A8,8,0,0,1,216,72Zm-8,24H176a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16Zm40-48V208a16,16,0,0,1-16,16H152a16,16,0,0,1-16-16V192H96v16h16a8,8,0,0,1,0,16H64a8,8,0,0,1,0-16H80V192H32A24,24,0,0,1,8,168V96A24,24,0,0,1,32,72H136V48a16,16,0,0,1,16-16h80A16,16,0,0,1,248,48ZM136,176V88H32a8,8,0,0,0-8,8v72a8,8,0,0,0,8,8Zm96,32V48H152V208h80Zm-40-40a12,12,0,1,0,12,12A12,12,0,0,0,192,168Z"/>',
+  // A docked worktree: forked from the session above it.
+  fork: '<path d="M224,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V95a32,32,0,1,0-16,0v17a24,24,0,0,0,24,24h40v25a32,32,0,1,0,16,0V136h40a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,224,64ZM48,64A16,16,0,1,1,64,80,16,16,0,0,1,48,64Zm96,128a16,16,0,1,1-16-16A16,16,0,0,1,144,192ZM192,80a16,16,0,1,1,16-16A16,16,0,0,1,192,80Z"/>',
 };
 
 // A level the picker does not have gets no letter rather than a guessed one.
@@ -3117,14 +3160,6 @@ function animateRows(before) {
                {...MOVE, delay: settleAt, fill: "backwards"});
   }
 
-  // The elastic seam: a docked worktree card whose pair moved, resized or
-  // arrived has its dashed seam plucked.
-  const stirred = new Set([...moving, ...resizing].map(m => m.li).concat(entering));
-  for (const li of cards) {
-    if (!li.classList.contains("worktree")) continue;
-    if (stirred.has(li) || stirred.has(li.previousElementSibling)) pluck(li);
-  }
-
   // Beat three.
   for (const el of entering) {
     el.animate([{opacity: 0}, {opacity: 1}], {...FADE, delay: arriveAt, fill: "backwards"});
@@ -4161,7 +4196,7 @@ function paintAll(snapshot) {
   paintQueue(snapshot);
   paintBudget(snapshot);
   fitMeta();
-  paintSeams();
+  paintStems();
   paintVersion();
   paintRepository();
   paintStatuslineOffer();
@@ -4176,39 +4211,26 @@ function paintAll(snapshot) {
   animateRows(before);
 }
 
-// The dashed seam between a docked worktree card and the card it hangs
-// from: a line across the card's top edge, bowed by `sag` pixels at its
-// middle. Zero is the resting line, which looks like a dashed border. One
-// path, made the first time and redrawn only when its shape changes.
-function paintSeam(li, sag) {
-  const svg = li.querySelector(":scope > svg.seam");
-  if (!svg) return;
-  let path = svg.firstElementChild;
-  if (!path) {
-    path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    for (const [name, value] of Object.entries({fill: "none", stroke: "currentColor", "stroke-width": "1", "stroke-dasharray": "4 3"})) {
-      path.setAttribute(name, value);
-    }
-    svg.append(path);
+// The stem of each docked worktree card, from where it starts to the top of
+// its fork. Measured, since the fork sits lower on a card with a report and a
+// narrow card pads its row by hand, and turned from the viewport's pixels into
+// the page's, which differ by the text size's zoom: read off the card's width,
+// since its height is often a fraction its rounded offsetHeight drops. Written
+// only when a length changes, so a frame that kept the card writes nothing.
+function paintStems() {
+  const px = n => `${Math.round(n * 100) / 100}px`;
+  const measured = [...document.querySelectorAll("#groups li.line.card.worktree")].map(li => {
+    const stem = li.querySelector(":scope > .stem");
+    const glyph = li.querySelector(":scope > button.row > .swatch.fork > svg").getBoundingClientRect();
+    const box = li.getBoundingClientRect();
+    const scale = box.width / li.offsetWidth || 1;
+    return {stem, left: px((glyph.left + glyph.width / 2 - box.left) / scale - .5),
+            height: px((glyph.top - box.top) / scale - stem.offsetTop)};
+  });
+  for (const {stem, left, height} of measured) {
+    if (stem.style.left !== left) stem.style.left = left;
+    if (stem.style.height !== height) stem.style.height = height;
   }
-  const width = li.clientWidth + 2;                         // border to border
-  const d = `M-1 .5 Q ${width / 2 - 1} ${.5 + sag * 2} ${width - 1} .5`;
-  if (path.getAttribute("d") !== d) path.setAttribute("d", d);
-}
-function paintSeams() {
-  for (const li of document.querySelectorAll("li.card.worktree")) if (!li.dataset.plucked) paintSeam(li, 0);
-}
-// Plucked: displaced and let go, ringing down to flat in about half a second.
-function pluck(li) {
-  const began = performance.now(), LASTS = 560, REACH = 7;
-  li.dataset.plucked = "1";
-  (function frame(now) {
-    const t = Math.min(1, (now - began) / LASTS);
-    if (!li.isConnected) return;
-    if (t >= 1) { delete li.dataset.plucked; paintSeam(li, 0); return; }
-    paintSeam(li, REACH * Math.exp(-5.5 * t) * Math.cos(15 * t));
-    requestAnimationFrame(frame);
-  })(began);
 }
 
 // The session's own account of its work. Self-reported, so the age is
@@ -5416,7 +5438,7 @@ function glide(run, width) {
   motion.currentTime = Date.now() % total;
   steerScripted([motion]);
 }
-window.addEventListener("resize", () => { syncCompact(); fitMeta(); paintSeams(); });
+window.addEventListener("resize", () => { syncCompact(); fitMeta(); paintStems(); });
 
 // The indented block inside a card that holds its teammates, subagents and
 // shells, made on first use.
@@ -5680,14 +5702,12 @@ function compactFace(row, mates) {
 // them data-owner="<pass>": morph leaves an owned node where it is and never
 // descends into one.
 const OWNER = "owner";
-// Classes and attributes a pass sets on a live node after the paint, so
-// morph keeps them: the view watch speaks when a badge scrolls out of or
-// into the list, a card clips while it eases to a new height, a label is
-// clipped as the layout measures it, and a seam is plucked while the pair
-// moves. A report's stale class is not kept: every builder decides it afresh
+// Classes a pass sets on a live node after the paint, so morph keeps them:
+// the view watch speaks when a badge scrolls out of or into the list, a card
+// clips while it eases to a new height, and a label is clipped as the layout
+// measures it. A report's stale class is not kept: every builder decides it afresh
 // from the frame, and the second timer only moves it forward between paints.
 const KEPT_CLASSES = ["out-of-view", "resizing", "clipped"];
-const KEPT_ATTRS = ["data-plucked"];
 // Expando properties a built node carries to the live node that stands for it.
 const CARRIED = ["_row", "_on"];
 
@@ -5771,7 +5791,7 @@ function update(live, built) {
     if (live.getAttribute(name) !== want) live.setAttribute(name, want);
   }
   for (const {name} of [...live.attributes]) {
-    if (name !== "style" && !KEPT_ATTRS.includes(name) && !built.hasAttribute(name)) live.removeAttribute(name);
+    if (name !== "style" && !built.hasAttribute(name)) live.removeAttribute(name);
   }
   for (const name of CARRIED) live[name] = built[name];
   if (built._on) for (const type in built._on) listen(live, type);
@@ -5873,6 +5893,9 @@ function buildGroups(snapshot) {
     // The card the rows that follow belong to. Rows arrive parent first, then
     // its teammates, so a depth-1 row always joins the card opened just above.
     let card = null;
+    // The session the cards just above dock to: the last card that is not a
+    // worktree, which its worktrees follow one after another.
+    let docksTo = null;
     // The agent and the bucket whose head opened the run the cards are in.
     let lastAgent = null, lastBucket = null;
     for (const row of group.rows) {
@@ -5887,18 +5910,19 @@ function buildGroups(snapshot) {
       if (li !== card) {
         li.className = "line card";
         li.dataset.key = row.session_id;
-        // Tied to the card just above only when that card is the session
-        // whose repo this worktree belongs to; anything else in between and
-        // the line would join the wrong two.
         if (SESSION_COLOURS[row.colour]) li.dataset.hue = SESSION_COLOURS[row.colour];
-        if (row.worktree_of && card && card.dataset.key === row.worktree_of) {
+        // Tied to the card just above only when that card is the session
+        // whose repo this worktree belongs to, or another worktree docked to
+        // it; anything else in between and the cluster would join the wrong
+        // cards.
+        if (row.worktree_of && docksTo === row.worktree_of) {
           li.classList.add("worktree");
           const family = group.rows.find(r => r.session_id === row.worktree_of).colour;
           if (SESSION_COLOURS[family]) li.dataset.family = family;
           if (SESSION_COLOURS[row.colour]) li.dataset.colour = row.colour;
-          li.append(document.createElementNS("http://www.w3.org/2000/svg", "svg"));
-          li.lastChild.setAttribute("class", "seam");
-          li.lastChild.dataset.owner = "seam";      // paintSeam draws the path inside
+          li.append(Object.assign(document.createElement("i"), {className: "stem"}));
+        } else {
+          docksTo = row.session_id;
         }
         // The second card of a partnership, docked under the first: its block follows the first's in every order.
         const upper = row.partner_of && ul.querySelector(`li.line.card[data-key="${CSS.escape(row.partner_of)}"]`);
@@ -5940,9 +5964,14 @@ function buildGroups(snapshot) {
       const mark = document.createElement("span");
       // The session's colour on the row itself, so the task graphic can wear it.
       if (SESSION_COLOURS[row.colour]) b.dataset.colour = row.colour;
-      // A plain terminal running a command is busy the same way an agent
-      // mid-turn is, so it gets the same dots, in grey for want of a colour.
-      if ((row.state === "working" || row.running) && !shortCards) {
+      // A worktree card's own row is marked by the fork, whatever it is doing:
+      // its state is the badge's and the band's.
+      if (card.classList.contains("worktree") && !row.depth) {
+        mark.className = "swatch fork";
+        mark.append(metaIcon("fork"));
+      } else if ((row.state === "working" || row.running) && !shortCards) {
+        // A plain terminal running a command is busy the same way an agent
+        // mid-turn is, so it gets the same dots, in grey for want of a colour.
         mark.className = "busy" + (row.depth ? " down" : "");
         mark.innerHTML = "<i></i><i></i><i></i>";
       } else if (group.name !== "AGENTS" && !row.depth) {
