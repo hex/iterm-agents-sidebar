@@ -629,6 +629,8 @@ The ticks show the estimate as a count you can glance at. They are not the
 solid bars of the limit meters in the foot, on purpose: those go green, amber
 and red, and that would make being nearly done look like a warning.
 
+A Claude session reports through two tools the plugin registers,
+`task_begin` and `task_report`; a Codex session runs the plugin's `task.py`.
 `docs/task-line-design.md` has the hook cadence and the note format.
 
 ## Tasks

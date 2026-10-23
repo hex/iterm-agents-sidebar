@@ -32,7 +32,12 @@ One JSON file per session, `~/.claude/agents-sidebar-tasks/<session_id>.json`:
 - `percent 100` sets `done`; a done task rejects further reports.
 - `ts` is the time of the last `begin` or `report`.
 
-Written by `plugin/hooks-handlers/task.py`, which the model runs:
+Two writers, one note. A Claude session reports through two tools its
+link mod registers, `task_begin {title}` and `task_report {activity,
+percent}`, with `percent` an integer or null for unknown; the mod writes the
+note in its own process, staged then renamed, with calls in one message
+serialised. A Codex session, which has no mod engine, runs
+`plugin/hooks-handlers/task.py`:
 
 ```
 task.py --session <id> begin --title "Fix the login bug"
@@ -42,9 +47,17 @@ task.py --session <id> report --activity "All checks pass" --percent 100
 ```
 
 `begin` replaces any task, done or not. `report` needs a task. Every write
-is atomic (temp file then rename). Errors go to stderr with exit 1 and one
-line; the instructions tell the model never to retry in a loop. SessionEnd
-deletes the note (emit-state already clears its own state there).
+is atomic (temp file then rename). A refusal is one line: a tool result that
+starts `Not recorded:`, or stderr with exit 1 from the script; the
+instructions tell the model never to retry in a loop. The rules live once in
+`plugin/hooks/task-cases.ts`, a case list both the script's tests and the
+mod's kit tests run, so the two cannot drift without a failing test.
+SessionEnd deletes the note (emit-state already clears its own state there).
+The mod stamps `task-tools.json` beside `ready` in the session's links
+folder, each tick and at every turn's start, naming the tools or the reason
+the engine refused them; the whisper names the tools only while that marker
+is fresh and the session's own, else the commands. The design is
+[superpowers/specs/2026-10-23-task-line-tools-design.md](superpowers/specs/2026-10-23-task-line-tools-design.md).
 
 ## The whisper
 
@@ -54,16 +67,18 @@ and for Codex. It gains one output: `{"hookSpecificOutput":
 of the current `{}`, when there is something to say.
 
 - UserPromptSubmit: the instructions (below), the current note as JSON or
-  `none`, and the exact commands with the session id and the script path
-  filled in. Always.
+  `none`, and the calls to report through: the two tools, with the ToolSearch
+  line that loads their schemas, when the mod's marker names them; else the
+  exact commands with the session id and the script path filled in. Always.
 - PostToolUse: one line, "Progress check-in is due if this is a natural
   boundary. Reassess; do not invent progress." plus the command, only when
   the note's `ts` is over 60 s old and the task is not done, or there is no
   note and the last reminder was over 60 s ago. The note keeps the reminder time
   (`reminded`); with no note, the emit-state state document keeps it.
 - Never when the payload carries `agent_id` or its transcript path contains
-  `/subagents/` (a subagent), never when `tool_input` mentions `task.py`
-  (the report itself), never on other events.
+  `/subagents/` (a subagent), never when `tool_input` mentions `task.py` or
+  `tool_name` is one of the marker's tools (the report itself), never on
+  other events.
 
 Instructions text (kept in `plugin/hooks-handlers/task-instructions.md`,
 read by emit-state): report the whole current request's progress; new work
@@ -120,7 +135,9 @@ live as part of the proof; if Codex ignores it, Codex rows show nothing.
 
 Pure functions with fixtures, no mocks:
 
-- task.py: begin/report/done rules, limits, cleaning, atomic write, rejects.
+- task.py and task-line.ts: begin/report/done rules, limits, cleaning, rejects,
+  through the shared cases; the mod's kit tests cover the tools, the marker
+  and a refused registration.
 - emit-state: whisper decision (event, age, subagent, self-report, done);
   published payload carries the session.
 - sidebar: `parse_session`, `read_task`, row shape, age; sweep covers the

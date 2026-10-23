@@ -100,6 +100,10 @@ TASKS_DIR = os.path.expanduser("~/.claude/agents-sidebar-tasks")
 #: no session is nudged more often than this.
 NUDGE_AFTER = 60
 INSTRUCTIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "task-instructions.md")
+#: The link mod's marker naming the task tools it registered, beside `ready` in the session's links folder; trusted
+#: for this long after its last write, the window `ready` itself has.
+TOOLS_FRESH = 60
+_TOOL_NAME = re.compile(r"^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+$")
 
 def read_payload():
     raw = sys.stdin.read() if not sys.stdin.isatty() else ""
@@ -738,14 +742,57 @@ def clear_note(session_id):
         pass
 
 
-def whisper(event, payload, note, now, reminded, script):
+def task_tools(session_id, now, root=None):
+    """The task tools the session's link mod registered -> (begin, report), or None.
+
+    None when the marker is missing, stale, not a regular file, names another
+    session, records a refusal, or carries a name that is not a plain tool
+    name. The names reach the model's context, so the file is parsed here
+    like any file another process wrote. None means the commands, which work
+    everywhere.
+    """
+    if not session_id or not _SESSION.match(session_id):
+        return None
+    path = os.path.join(root or LINKS_DIR, session_id, "task-tools.json")
+    try:
+        info = os.lstat(path)
+        if not stat.S_ISREG(info.st_mode) or now - info.st_mtime > TOOLS_FRESH:
+            return None
+        with open(path, encoding="utf-8") as fh:
+            marker = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(marker, dict) or marker.get("session") != session_id:
+        return None
+    names = (marker.get("begin"), marker.get("report"))
+    if not all(isinstance(name, str) and _TOOL_NAME.match(name) for name in names):
+        return None
+    return names
+
+
+def report_calls(bound, tools):
+    """The example calls the prompt names, in the shape the session reports through: the three bound
+    commands, or the two tools with the line that loads their schemas."""
+    if tools is None:
+        return (f"Commands:\n{bound} begin --title 'Task title'\n"
+                f"{bound} report --activity 'Reading code' --percent 25\n"
+                f"{bound} report --activity 'Assessing task' --unknown\n")
+    begin, report = tools
+    return (f"Tools (deferred: load them once with ToolSearch \"select:{begin},{report}\"):\n"
+            f'{begin} {{"title": "Task title"}}\n'
+            f'{report} {{"activity": "Reading code", "percent": 25}}\n'
+            f'{report} {{"activity": "Assessing task", "percent": null}}\n')
+
+
+def whisper(event, payload, note, now, reminded, script, tools=None):
     """What to add to the agent's context about its task line, or None.
 
     The agent writes the note itself; this is the reminder. Every prompt
-    gets the instructions and the bound commands. A tool boundary gets one
-    line, when the last report is a minute old and no reminder went out in
-    the last minute. Subagents never hear it, and the report itself is not a
-    boundary worth a nudge.
+    gets the instructions and the calls it reports through: the tools the
+    session's mod registered (`tools`, from task_tools), else the bound
+    commands. A tool boundary gets one line, when the last report is a
+    minute old and no reminder went out in the last minute. Subagents never
+    hear it, and the report itself is not a boundary worth a nudge.
     """
     if payload.get("agent_id") or "/subagents/" in str(payload.get("transcript_path") or ""):
         return None
@@ -760,18 +807,17 @@ def whisper(event, payload, note, now, reminded, script):
         except OSError:
             return None
         current = json.dumps(note) if note else "none"
-        return (f"{instructions}\n\nCurrent task: {current}\n\nCommands:\n"
-                f"{bound} begin --title 'Task title'\n"
-                f"{bound} report --activity 'Reading code' --percent 25\n"
-                f"{bound} report --activity 'Assessing task' --unknown\n")
+        return f"{instructions}\n\nCurrent task: {current}\n\n{report_calls(bound, tools)}"
     if event != "PostToolUse" or "task.py" in json.dumps(payload.get("tool_input") or {}):
+        return None
+    if tools and payload.get("tool_name") in tools:
         return None
     if now - reminded < NUDGE_AFTER:
         return None
     if note and (note.get("done") or now - (note.get("ts") or 0) < NUDGE_AFTER):
         return None
-    return ("Progress check-in is due if this is a natural boundary. Reassess the "
-            f"current task; do not invent progress. {bound} report --activity '...' --percent N")
+    how = f'{tools[1]} {{"activity": "...", "percent": N}}' if tools else f"{bound} report --activity '...' --percent N"
+    return f"Progress check-in is due if this is a natural boundary. Reassess the current task; do not invent progress. {how}"
 
 
 def hook_output(event, text):
@@ -1507,7 +1553,8 @@ def main():
     # The task line: what the agent should be told about reporting its work.
     # Only where the panel runs: a machine with hooks alone has nothing that reads the reports.
     context = whisper(event, payload, read_note(session_id), time.time(), doc.get("reminded") or 0,
-                      os.path.join(os.path.dirname(os.path.abspath(__file__)), "task.py")) \
+                      os.path.join(os.path.dirname(os.path.abspath(__file__)), "task.py"),
+                      None if codex else task_tools(session_id, time.time())) \
         if os.path.exists(ENDPOINT) else None
     if context:
         mark_reminded(session_id, time.time())
