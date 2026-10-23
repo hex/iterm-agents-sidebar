@@ -1,7 +1,8 @@
-// ABOUTME: Linked cards and partner sessions, inside a Claude session: link drops and partner tasks taken from the
-// ABOUTME: session's own folder, the two partner tools, replies filed, and the band above the prompt. One module per plugin.
+// ABOUTME: Linked cards, partner sessions and the task line, inside a Claude session: link drops and partner tasks taken
+// ABOUTME: from the session's own folder, the four tools, replies filed, and the band above the prompt. One module per plugin.
 import type { EngineInterface, PromptSubmitInput, Register, SessionAppendInput, Timer, TurnCompleteInput, TurnStartInput } from 'claude-code'
 import { TURNS_MAX, TAIL_BYTES, firstWords, readText } from './partner-text'
+import { TASK_TOOLS, parseNote, summary, taskCall, taskIdAt, type TaskToolKind } from './task-line'
 
 const TICK_MS = 1000
 const CLEAR_MS = 10_000
@@ -86,9 +87,25 @@ async function folderFor($: EngineInterface): Promise<string | null> {
 // Written to a dot-file, made 0600, then renamed, so the daemon never reads half a file.
 async function writeWhole($: EngineInterface, name: string, value: unknown): Promise<void> {
   if (!folder) return
-  const staged = `${folder}/.${name}`
-  await $.fs.write(staged, JSON.stringify(value))
-  if (await succeeded($, ['chmod', '600', staged])) await succeeded($, ['mv', staged, `${folder}/${name}`])
+  await replaceFile($, `${folder}/${name}`, JSON.stringify(value), true)
+}
+
+// Staged as a dot-file beside `path`, then renamed over it: a reader on a timer never sees half a file. The failing
+// step's error comes back, so a caller that must tell the model can; writeWhole drops it, as its callers always have.
+async function replaceFile($: EngineInterface, path: string, text: string, locked: boolean): Promise<{ ok: true } | { ok: false; error: string }> {
+  const slash = path.lastIndexOf('/')
+  const staged = `${path.slice(0, slash)}/.${path.slice(slash + 1)}`
+  try {
+    await $.fs.write(staged, text)
+  } catch (error) {
+    return { ok: false, error: String(error) }
+  }
+  const steps = locked ? [['chmod', '600', staged], ['mv', staged, path]] : [['mv', staged, path]]
+  for (const argv of steps) {
+    const run = await $.process.run(argv)
+    if (run.exitCode !== 0) return { ok: false, error: run.stderr.trim() || `${argv[0]} exited ${run.exitCode}` }
+  }
+  return { ok: true }
 }
 
 // A file's JSON, or null when it is missing or not yet whole. Typed any as JSON.parse is: every caller checks
@@ -175,6 +192,7 @@ async function tick($: EngineInterface): Promise<void> {
   const path = await folderFor($)
   if (!path) return
   await $.fs.write(`${path}/ready`, await $.session.id())
+  await stampTaskTools($, path)
   const now = await $.clock.now()
   if (band && band.until !== null && now >= band.until) {
     band = null
@@ -247,6 +265,65 @@ async function failTakenAsks($: EngineInterface): Promise<void> {
 const NOT_LINKED = 'This session is not linked to another.'
 const LINKING_OFF = 'Linking is off in the agents sidebar: turn on Link cards under Experimental in its settings.'
 const FROM_SUBAGENT = 'Only the main conversation can use the partner tools, not a subagent.'
+
+// The task line: the two tools a Claude session reports its work through, writing the note task.py writes for Codex.
+const FROM_SUBAGENT_TASK = 'Not recorded: only the main conversation reports the task line, not a subagent.'
+// The task tools' full names once registered, or why the engine refused them; null until session.start tries.
+let taskTools: { begin: string; report: string } | { refused: string } | null = null
+// Every read-then-write of the note runs on this chain: tool calls in one message run concurrently, and two reports
+// reading the same note would lose one. The in-process stand-in for task.py's flock.
+let noteChain: Promise<unknown> = Promise.resolve()
+let taskCounter = 0
+
+// Both tools or neither, and a refusal is a fact for the marker, not an error: the session then gets the commands.
+async function registerTaskTools($: EngineInterface): Promise<void> {
+  try {
+    const begin = (await $.tool.register(TASK_TOOLS.begin)).tool
+    const report = (await $.tool.register(TASK_TOOLS.report)).tool
+    taskTools = { begin, report }
+  } catch (error) {
+    taskTools = { refused: String(error) }
+  }
+}
+
+function taskToolOf(tool: string): TaskToolKind | null {
+  if (!taskTools || 'refused' in taskTools) return null
+  return tool === taskTools.begin ? 'begin' : tool === taskTools.report ? 'report' : null
+}
+
+// The marker emit-state.py reads to name the tools, or the refusal, beside `ready`: written each tick and at every
+// turn's start, under the id of the moment, so a /clear never leaves a prompt without it.
+async function stampTaskTools($: EngineInterface, path: string): Promise<void> {
+  if (!taskTools) return
+  const id = await $.session.id()
+  const marker = 'refused' in taskTools ? { session: id, refused: taskTools.refused } : { session: id, ...taskTools }
+  await $.fs.write(`${path}/task-tools.json`, JSON.stringify(marker))
+}
+
+function serialized<T>(work: () => Promise<T>): Promise<T> {
+  const run = noteChain.then(work, work)
+  noteChain = run.catch(() => undefined)
+  return run
+}
+
+// One task tool call, start to finish, to the line the model reads. Never throws: a reporting failure is one line.
+async function serveTask($: EngineInterface, kind: TaskToolKind, input: Record<string, unknown>, signal: AbortSignal): Promise<string> {
+  if (input.agentId) return FROM_SUBAGENT_TASK
+  const id = await $.session.id()
+  if (!home || !SESSION_ID.test(id)) return 'Not recorded: the session has no plain id to file the note under.'
+  const dir = `${home}/.claude/agents-sidebar-tasks`
+  const path = `${dir}/${id}.json`
+  return serialized(async () => {
+    if (!(await succeeded($, ['mkdir', '-p', dir]))) return 'Not recorded: the task folder could not be made.'
+    const current = parseNote(await readJson($, path))
+    const nowMs = await $.clock.now()
+    const call = taskCall(kind, input, current, Math.round(nowMs / 1000), taskIdAt(nowMs, ++taskCounter))
+    if (call.kind === 'refused') return `Not recorded: ${call.reason}`
+    if (signal.aborted) return 'Not recorded: the call was interrupted before the note was written.'
+    const placed = await replaceFile($, path, JSON.stringify(call.note), false)
+    return placed.ok ? summary(call.note) : `Not recorded: the note could not be written: ${placed.error}`
+  })
+}
 
 type Partner = {
   id: string; me: string; label: string; transcript: string | null; profile: string; key: string; introduction: string
@@ -523,6 +600,7 @@ export const register: Register = on => {
     const kept = await $.store.get(`task:${await $.session.id()}`)
     if (kept && typeof kept === 'object') working = kept as Working
     $.clock.every(TICK_MS, () => { void tick($) })
+    await registerTaskTools($)
     await registerPartnerTools($)
     $.clock.every(TICK_MS, () => { void partnerTick($) })
     return started
@@ -530,9 +608,11 @@ export const register: Register = on => {
 
   // The serving hook for both partner tools; any other tool passes on untouched.
   on('tool.call', async ($, e, next) => {
-    if (e.tool !== tools.read && e.tool !== tools.delegate) return next(e)
     // An MCP tool's input carries its own arguments untyped beside the envelope.
     const input = e as unknown as Record<string, unknown>
+    const task = taskToolOf(e.tool)
+    if (task) return { result: await serveTask($, task, input, next.signal) }
+    if (e.tool !== tools.read && e.tool !== tools.delegate) return next(e)
     if (input.agentId) return { result: FROM_SUBAGENT }
     if (!partner) return { result: (await linkingOn($)) ? NOT_LINKED : LINKING_OFF }
     if (e.tool === tools.read) return { result: await readTool($, input.turns) }
@@ -543,6 +623,8 @@ export const register: Register = on => {
     // A subagent's run raises no turn.start, so the running turn is always the main loop's.
     running = e.turnId
     lastReply = null
+    const stamped = await folderFor($)
+    if (stamped) await stampTaskTools($, stamped)
     if (asked && asked.turnId === null && e.text.includes(`(link ${asked.nonce})`)) asked.turnId = e.turnId
     for (const [nonce, delivery] of delivering) {
       if (!e.text.includes(`(link ${nonce})`)) continue

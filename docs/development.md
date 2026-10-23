@@ -147,8 +147,9 @@ read against the source.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and
   `statusline-bridge.sh`; `plugin/omp/` holds omp's extension, which runs the
   same hook with `--agent omp`, and its `bun test` cases. `hooks/link.tsx` is
-  the mod for linked cards and partners, with its helper `partner-text.ts` and
-  its `*.test.tsx` kit tests.
+  the mod for linked cards, partners and the task line's two tools, with its
+  helpers `partner-text.ts`, `task-line.ts` and `task-cases.ts`, the test world
+  `test-world.tsx`, and its `*.test.tsx` kit tests.
 - `install.sh`, `uninstall.sh`: put everything in place, and take it out.
 - `get.sh`: the one-line installer.
 - `codex-hooks.sh`: adds the state hook to Codex's `hooks.json`.
@@ -184,7 +185,7 @@ Inspect Element.
 ## Where each fact comes from
 
 - **Shells:** the process tree, because Claude Code publishes them nowhere. The
-  panel's own task report (`task.py`, run when the prompt hook asks) is
+  panel's own task report (`task.py`, run by a Codex session when the prompt hook asks) is
   filtered out, and a home directory in a command reads as `~`.
 - **Teammates:** the lead's session id in the teammate's
   `--parent-session-id`, matched against the lead's own id from its statusline
@@ -428,6 +429,8 @@ on since, so read the source for what runs now.
 - [task-line-design.md](task-line-design.md): the task line, a session's own account of its
   work.
 - [task-line-mcp-design.md](task-line-mcp-design.md): the task line over MCP, rejected.
+- [superpowers/specs/2026-10-23-task-line-tools-design.md](superpowers/specs/2026-10-23-task-line-tools-design.md): the
+  task line as two tools the link mod registers.
 - [superpowers/specs/2026-09-18-account-autoswitch-design.md](superpowers/specs/2026-09-18-account-autoswitch-design.md): switching
   accounts on their own before a limit stalls a session.
 - [superpowers/specs/2026-09-21-agent-providers-design.md](superpowers/specs/2026-09-21-agent-providers-design.md): how more

@@ -5,6 +5,8 @@ request, a rough percent that may fall, a short activity, 100 locks.
 """
 import importlib.util
 import json
+
+import pytest
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
@@ -128,3 +130,29 @@ def test_a_report_waits_for_whoever_holds_the_note(tmp_path, monkeypatch, capsys
     holder.close()
     worker.join(2)
     assert not (tmp_path / "tasks" / "s1.json").exists(), "a report must not recreate a removed note"
+
+
+# The cases both implementations answer to: the TypeScript module the link mod serves its tools from runs the
+# same file in its kit test, so a rule changed on one side fails the other's run.
+CASES = json.loads((Path(__file__).resolve().parent.parent / "plugin" / "hooks" / "task-cases.ts").read_text()
+                   .split("export default ", 1)[1])
+
+
+@pytest.mark.parametrize("case", CASES, ids=[case["name"] for case in CASES])
+def test_the_shared_cases_hold_for_the_script(case, tmp_path, monkeypatch, capsys):
+    for i, step in enumerate(case["steps"]):
+        monkeypatch.setattr(task.time, "time", lambda now=step["now"]: now)
+        if step["verb"] == "begin":
+            argv = ["begin", "--title", step["title"]]
+        else:
+            how = ["--unknown"] if step["percent"] is None else ["--percent", str(step["percent"])]
+            argv = ["report", "--activity", step["activity"], *how]
+        code, out = run(["--session", "s1", *argv], tmp_path, monkeypatch, capsys)
+        last = i == len(case["steps"]) - 1
+        if last and "error" in case:
+            assert code == 1 and out.err.strip() == f"task.py: {case['error']}"
+        else:
+            assert code == 0, out.err
+    if "expect" in case:
+        got = note(tmp_path)
+        assert {key: got[key] for key in case["expect"]} == case["expect"]

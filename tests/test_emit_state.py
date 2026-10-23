@@ -293,8 +293,51 @@ NOTE = {"task": "t1", "title": "Fix login", "activity": "Reading code",
 SCRIPT = "/plugin/hooks-handlers/task.py"
 
 
-def whisper(event, payload, note=None, now=1789000030, reminded=0):
-    return emit_state.whisper(event, dict(payload, session_id="abc-123"), note, now, reminded, SCRIPT)
+def whisper(event, payload, note=None, now=1789000030, reminded=0, tools=None):
+    return emit_state.whisper(event, dict(payload, session_id="abc-123"), note, now, reminded, SCRIPT, tools)
+
+
+TOOLS = ("mcp__agents-sidebar__task_begin", "mcp__agents-sidebar__task_report")
+
+
+def marker(tmp_path, body, session="abc-123", age=0, now=1789000030):
+    folder = tmp_path / session
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "task-tools.json"
+    path.write_text(body if isinstance(body, str) else json.dumps(body))
+    os.utime(path, (now - age, now - age))
+    return tmp_path
+
+
+def test_a_prompt_names_the_tools_when_the_mod_registered_them_and_the_nudge_follows():
+    text = whisper("UserPromptSubmit", {"prompt": "fix it"}, NOTE, tools=TOOLS)
+    assert 'mcp__agents-sidebar__task_begin {"title": "Task title"}' in text
+    assert 'mcp__agents-sidebar__task_report {"activity": "Assessing task", "percent": null}' in text
+    assert 'ToolSearch "select:mcp__agents-sidebar__task_begin,mcp__agents-sidebar__task_report"' in text
+    assert "--session" not in text and SCRIPT not in text
+    assert "five" in text.lower() and "100" in text
+    nudge = whisper("PostToolUse", {}, NOTE, now=NOTE["ts"] + 61, tools=TOOLS)
+    assert nudge.endswith('mcp__agents-sidebar__task_report {"activity": "...", "percent": N}')
+    assert whisper("PostToolUse", {"tool_name": TOOLS[1]}, NOTE, now=NOTE["ts"] + 61, tools=TOOLS) is None
+    assert whisper("PostToolUse", {"tool_name": TOOLS[1]}, NOTE, now=NOTE["ts"] + 61) is not None
+
+
+def test_the_marker_names_the_tools_only_when_fresh_whole_and_the_sessions_own(tmp_path):
+    good = {"session": "abc-123", "begin": TOOLS[0], "report": TOOLS[1]}
+    now = 1789000030
+    assert emit_state.task_tools("abc-123", now, marker(tmp_path, good)) == TOOLS
+    assert emit_state.task_tools("abc-123", now, marker(tmp_path, good, age=61)) is None
+    assert emit_state.task_tools("abc-123", now, marker(tmp_path, dict(good, session="other"))) is None
+    assert emit_state.task_tools("abc-123", now, marker(tmp_path, {"session": "abc-123", "refused": "policy"})) is None
+    assert emit_state.task_tools("abc-123", now, marker(tmp_path, dict(good, report="rm -rf /"))) is None
+    assert emit_state.task_tools("abc-123", now, marker(tmp_path, '{"session": "abc-1')) is None
+    assert emit_state.task_tools("abc-123", now, tmp_path / "nowhere") is None
+    assert emit_state.task_tools("../x", now, marker(tmp_path, good)) is None
+    link = tmp_path / "abc-123" / "task-tools.json"
+    link.unlink()
+    link.symlink_to(tmp_path / "elsewhere.json")
+    (tmp_path / "elsewhere.json").write_text(json.dumps(good))
+    assert emit_state.task_tools("abc-123", now, tmp_path) is None
 
 
 def test_a_prompt_gets_the_instructions_the_note_and_the_bound_commands():
