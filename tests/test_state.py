@@ -358,6 +358,20 @@ def test_when_both_are_set_the_newer_report_wins():
     assert agent_variable({"claude": newer_claude, "openai": CODEX_RAW}) == (newer_claude, "claude")
 
 
+def test_the_program_in_front_decides_between_two_reports():
+    """A `codex exec` run detached from a Claude session (a side check started
+    by a hook) shares the pane's terminal, so its hooks set codexState on the
+    Claude pane, newer than claudeState: measured 2026-10-25, the card turned
+    Codex for a rebuild and dropped its task, model and subagents. The pane's
+    foreground job is the agent a person sits in front of; only when it names
+    neither does the newer report decide."""
+    assert agent_variable({"claude": CLAUDE_RAW, "openai": CODEX_RAW}, job="claude") == (CLAUDE_RAW, "claude")
+    newer_claude = json.dumps({"state": "working", "pid": 702, "ts": 1789480900})
+    assert agent_variable({"claude": newer_claude, "openai": CODEX_RAW}, job="codex") == (CODEX_RAW, "openai")
+    assert agent_variable({"claude": CLAUDE_RAW, "openai": CODEX_RAW}, job="zsh") == (CODEX_RAW, "openai")
+    assert agent_variable({"claude": None, "openai": CODEX_RAW}, job="claude") == (CODEX_RAW, "openai")
+
+
 def test_a_report_without_a_readable_time_loses_to_one_with():
     assert agent_variable({"claude": "not json", "openai": CODEX_RAW}) == (CODEX_RAW, "openai")
 

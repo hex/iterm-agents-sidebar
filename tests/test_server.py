@@ -420,6 +420,34 @@ def test_a_statusline_install_needs_the_token(tmp_path):
     assert statusline_server(tmp_path, lambda: "").handle("POST", "/statusline", b"")[0] == 403
 
 
+def tab_status_server(tmp_path, hand_over):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda *a: None, hand_over_fn=hand_over)
+
+
+def test_handing_the_tab_status_over_says_how_many_hooks_went(tmp_path):
+    calls = []
+    server = tab_status_server(tmp_path, lambda: calls.append("hand over") or 10)
+    status, _, body = server.handle("POST", f"/tab-status?token={TOKEN}", b"")
+    assert (status, json.loads(body), calls) == (200, {"ok": True, "removed": 10}, ["hand over"])
+
+
+def test_a_refused_hand_over_carries_the_reason(tmp_path):
+    def refuse():
+        raise ValueError("/Users/x/.claude/settings.json is not valid JSON; left unchanged")
+    status, _, body = tab_status_server(tmp_path, refuse).handle("POST", f"/tab-status?token={TOKEN}", b"")
+    assert (status, json.loads(body)) == (
+        409, {"error": "/Users/x/.claude/settings.json is not valid JSON; left unchanged"})
+
+
+def test_a_hand_over_needs_the_token_and_a_daemon_that_can(tmp_path):
+    assert tab_status_server(tmp_path, lambda: 1).handle("POST", "/tab-status", b"")[0] == 403
+    status, _, body = statusline_server(tmp_path, lambda: "").handle("POST", f"/tab-status?token={TOKEN}", b"")
+    assert (status, json.loads(body)) == (400, {"error": "this daemon cannot hand the tab status over"})
+
+
 def test_the_bridge_is_offered_only_while_missing_and_not_declined():
     from sidebar import statusline_offer
     assert statusline_offer("missing", {"offer_statusline": True}) is True

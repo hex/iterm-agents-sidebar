@@ -233,6 +233,27 @@ def test_a_face_for_shell_names_that_is_not_one_of_them_is_refused():
         assert sidebar._clean({"shell_font": junk})["shell_font"] == "system"
 
 
+def test_session_rows_are_cards_until_another_style_is_chosen(tmp_path):
+    """One of five: today's cards, hairlines between rows, air between them,
+    rules inset to the text column, or outlines with the canvas for a fill."""
+    store = tmp_path / "settings.json"
+    assert DEFAULT_SETTINGS["card_style"] == "cards"
+    for choice in ("hairlines", "air", "inset", "outlines", "cards"):
+        assert save_settings({"card_style": choice}, store)["card_style"] == choice
+        assert load_settings(store)["card_style"] == choice
+
+
+def test_a_settings_file_saved_before_card_styles_loads_as_cards(tmp_path):
+    store = tmp_path / "settings.json"
+    store.write_text(json.dumps({"shell_font": "mono"}))
+    assert load_settings(store)["card_style"] == "cards"
+
+
+def test_a_card_style_that_is_not_one_of_them_is_refused():
+    for junk in ("Hairlines", "flat", "", None, 2, True, ["air"]):
+        assert sidebar._clean({"card_style": junk})["card_style"] == "cards"
+
+
 def test_a_stored_muted_flag_is_ignored(tmp_path):
     """Mute everything was a second off switch for sounds; a file that still
     carries it loads without it."""
@@ -266,7 +287,15 @@ def test_a_hand_order_keeps_at_most_two_hundred_names(tmp_path):
     assert load_settings(store)["hand_order"] == names[:200]
 
 
-def test_the_finished_settings_default_to_the_pane_badge_on_and_tab_colour_off(tmp_path):
+def test_the_finished_settings_and_the_tab_status_default_on(tmp_path):
     s = load_settings(tmp_path / "none.json")
-    assert {k: s[k] for k in ("finished_first", "finished_wash", "mark_badge", "mark_tab")} == \
-        {"finished_first": True, "finished_wash": True, "mark_badge": True, "mark_tab": False}
+    assert {k: s[k] for k in ("finished_first", "finished_wash", "mark_badge", "tab_status", "offer_tab_status")} == \
+        {"finished_first": True, "finished_wash": True, "mark_badge": True, "tab_status": True, "offer_tab_status": True}
+
+
+def test_a_new_setting_takes_its_default_on_an_install_that_saved_before_it(tmp_path):
+    """The tab status defaults on everywhere, not only where nothing was saved yet."""
+    store = tmp_path / "settings.json"
+    store.write_text('{"mark_badge": false, "offer_statusline": false}')
+    s = load_settings(store)
+    assert (s["tab_status"], s["offer_tab_status"], s["mark_badge"]) == (True, True, False)

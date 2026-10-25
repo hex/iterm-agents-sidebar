@@ -345,9 +345,34 @@ state goes unknown and it takes no answer. Under Eternal Terminal a pane
 closed here can leave the session running on the other machine, where the
 panel no longer sees it.
 
+## Card style
+
+The Style card in settings holds how the rows look: Card style, Follow the
+terminal's background, Text size, Shell names, Provider badge, Green wash,
+and the switches for each line a card can show. Card style picks how a
+session stands on the panel's background:
+
+| Choice | What you get |
+|---|---|
+| Cards | Each session on a card of its own, with a gap between cards. The default |
+| Hairlines | No card. A line the panel's full width runs between two sessions, and a session that waits on you or finished unseen is a band of amber or green across that width |
+| Air | No card and no lines, and more room between sessions. A session that waits on you or finished unseen gets a rounded card of its own, with its ring |
+| Inset rules | No card. The line between two sessions starts where the names start, and a session that waits on you or finished unseen is a rounded wash with no ring |
+| Outlines | The card's outline only, a hairline, with the panel's background as its fill. A session that waits on you or finished unseen keeps its full card |
+
+Hovering a session tints it in every style. In Hairlines, Air, Inset rules
+and Outlines, a session at rest in the By attention order fades instead of
+sinking toward the background. A worktree keeps its fork and its stem in every
+style. Cards and Outlines draw one outline round a worktree and its session;
+in the other styles the hairline after the mark column is the only line
+between them. A card you drag lifts as
+a card in every style. Below 120 px a session is a row in every style ([A
+narrow panel](#a-narrow-panel)). Details and the settings drawer keep their
+own card.
+
 ## Which agent a card runs
 
-Provider badge, under Rows in settings, picks how a card says whether it runs
+Provider badge, under Style in settings, picks how a card says whether it runs
 Claude Code, Codex or omp:
 
 | Choice | What you get |
@@ -362,7 +387,7 @@ once. The Order choice still applies inside each group.
 
 ## Shell names
 
-Shell names, under Rows in settings, picks the face of a shell card's name
+Shell names, under Style in settings, picks the face of a shell card's name
 in the Sessions group, which is a path or a command:
 
 | Choice | What you get |
@@ -372,6 +397,29 @@ in the Sessions group, which is a path or a command:
 | Terminal font | The font of your default iTerm2 profile, at the panel's size. The daemon reads it when it starts, so a profile font you change later shows after the next iTerm2 start, or a [daemon restart](development.md#the-install-and-the-port). When the panel could not read it, the choice reads `Terminal font (not read)` and the names use SF Mono |
 
 Agent names and the rows under a card keep their face whichever you pick.
+
+## The terminal's background
+
+Follow the terminal's background, under Style in settings and on by default,
+paints the panel in the background colour of the pane in front of iTerm2's
+key window. The daemon reads that pane's profile on every refresh, so the
+panel changes colour as you move between panes. A profile with separate
+colours for light and dark mode gives the one for iTerm2's current theme.
+
+Every surface comes from that colour. The panel's canvas sits .03 darker than
+the terminal in oklch lightness, so the panel reads as its own plane beside
+it. On a dark colour the cards sit .06 darker than the canvas; on a light one
+they sit .015 lighter than the terminal with 60% of its tint. A card at rest takes a smaller step and the lines a
+larger one, and the waiting, warning and finished
+washes mix into the card's colour. A colour whose relative luminance, as the
+Web Content Accessibility Guidelines define it, is under .4 gets the dark theme
+and any other the light one, whatever the macOS appearance is.
+
+With no pane in front, the panel keeps the last colour it read. The line under
+the switch names the colour, as `Terminal background #282a36`. When the daemon
+could not read it, the line reads `Terminal background (not read)` and the
+panel uses its own colours in the macOS theme. Turned off, the daemon does not
+read the profile and the panel uses its own colours.
 
 ## A long name
 
@@ -584,23 +632,22 @@ Looking means the same as for banners: the session is in front of its window
 while iTerm2 is the frontmost app. The sound and banner switches don't change
 it, and omp cards get it too.
 
-The Finished card in settings adds four marks to that badge, each its own
-switch:
+The Finished card in settings, with Green wash under Style, adds three marks
+to that badge, each its own switch, and the tab says `done` under its title
+([The status under a tab](#the-status-under-a-tab)):
 
 | Setting | What you get | Default |
 |---|---|---|
 | Finished first | In every order, the cards that wait on you come first, then the ones that finished unseen, then the rest, each run in the order it had. A card moves only when its state changes, and a lead brings its teammates and worktrees with it; a docked worktree or a linked partner that finished lifts the block it sits in | On |
 | Green wash | The whole card in the panel's green, its name in the full ink, under the amber of a question in weight | On |
 | Badge in the pane | The word Done as iTerm2's badge in that session's pane, in the panel's green at about a third, large and faded. Its size, font and position are your profile's Badge settings: iTerm2 lets a session change only the text and colour. A pane whose badge already says something keeps it, and the daemon log says `badge busy` once | On |
-| Tab colour | The session's tab in the same green. A tab shows the colour of its active pane alone, so a finished pane behind the one you type in does not colour the tab; and a tab you coloured yourself is left alone. Off until you ask for it | Off |
 
-The pane marks go through the session's own profile, so your saved profile
-never changes; what a mark replaced comes back when it clears. Inside
+The badge goes through the session's own profile, so your saved profile
+never changes; what it replaced comes back when it clears. Inside
 iTerm2's tmux integration every tmux pane is its own session and the mark
 lands on the right one; inside plain tmux one pane hosts several, and the
 mark covers the whole pane. A daemon that starts finds a badge reading
-exactly `Done` left by the daemon before it and clears it; a tab colour left
-behind is not recognisable and stays.
+exactly `Done` left by the daemon before it and clears it.
 
 Going to the session from its card, or a banner or a block bringing it
 forward, takes the mark off at once. Moving to the session inside iTerm2 takes it off at the next
@@ -611,6 +658,45 @@ flips the session back to working does not, since that is not a new turn.
 The marks live in the daemon's memory, so a daemon restart clears them. A
 turn that went unknown before it ended is not counted as finished. Two panes
 showing one conversation each keep their own mark.
+
+## The status under a tab
+
+An agent's tab shows what its session is doing under the title, in the
+panel's words:
+
+| The card says | Under the tab | Dot and text | Detail |
+|---|---|---|---|
+| Working | `working` | iTerm2's own working orange | What the agent says it is doing, when it says |
+| Waiting on you | `needs you` | The panel's amber | The question, or the tool asking for permission and what it wants, else what it was doing |
+| Done (finished while you looked elsewhere) | `done` | The panel's done green | Nothing |
+| Idle, exited, no report | Nothing | Nothing | Nothing |
+
+The number beside the word counts running subagents and background shells. A
+teammate's pane shows working and needs you but never done, as on the panel.
+The panel writes remote sessions' tabs as it writes local ones. When one pane
+holds more than one agent, as inside plain tmux, its tab shows the one that
+most needs you.
+
+Settings > Terminal > **Status under the tab title** turns this on and off
+(default on). With it off, or when the panel stops, the words come off the
+tabs. A daemon that died without taking them back finds its own words at its
+next start, by their colours, and corrects them.
+
+iTerm2's Claude Code integration writes the same line from hooks of its own,
+`cc-status` in `~/.claude/settings.json`. While those hooks are there, the
+panel leaves Claude tabs to them and writes only Codex, omp and remote tabs,
+and the foot offers **Remove iTerm2 hooks**, which deletes only the
+`cc-status` entries from the file (it keeps a copy beside it as
+`settings.json.before-tab-status`), or **Not now**. The button's tooltip names
+the file, the copy and the restart. Settings > Rows > **Offer to take the tab status from iTerm2**
+brings the offer back. Once the hooks leave the file, the panel takes over the words
+iTerm2 left on Claude tabs. A Claude session already open when the hooks go
+keeps running them until it restarts, so its tab can flip between iTerm2's
+words and the panel's until then. To put iTerm2's hooks back, restore the copy
+or run iTerm2's Claude Code integration setup again.
+
+The line needs iTerm2 3.7.6 or later. On an older iTerm2 the setting says
+"Needs iTerm2 3.7.6" and the panel writes nothing.
 
 ## Focus
 
@@ -662,7 +748,7 @@ its sessions make no plan until `~/.codex/config.toml` has:
 enabled = true
 ```
 
-Settings > Rows > Task > Task list turns the fold off; that switch hides while
+Settings > Style > Task > Task list turns the fold off; that switch hides while
 Task is off.
 
 ## Background shells

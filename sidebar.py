@@ -14,6 +14,7 @@ import os
 import re
 import secrets
 import select
+import signal
 import socket
 import subprocess
 import sys
@@ -37,6 +38,7 @@ from sidebar_rules import prompt_refusal, remote_key_refusal, typing_refusal  # 
 import sound  # noqa: E402
 import marks  # noqa: E402
 import statusline  # noqa: E402
+import tabstatus  # noqa: E402
 import update  # noqa: E402
 
 #: Where the `cs` tool keeps its managed sessions. A terminal sitting anywhere
@@ -109,6 +111,20 @@ def terminal_font(normal_font):
     return name if re.fullmatch(r"[A-Za-z0-9._-]+", name) else None
 
 
+def terminal_background(profile, theme):
+    """The background iTerm2 paints for a session's profile -> "#rrggbb".
+
+    A profile with separate colours for light and dark mode paints the one for
+    iTerm2's theme, whose words (`theme`, from async_get_theme) say "dark" or
+    "light"; its plain background colour is then unused.
+    """
+    if profile.use_separate_colors_for_light_and_dark_mode:
+        colour = profile.background_color_dark if "dark" in theme else profile.background_color_light
+    else:
+        colour = profile.background_color
+    return "#" + "".join(f"{max(0, min(255, round(c))):02x}" for c in (colour.red, colour.green, colour.blue))
+
+
 def version(path=None):
     """-> the release number, or None for a checkout that has none."""
     try:
@@ -127,12 +143,10 @@ DEFAULT_SETTINGS = {
     "return_after_blocked": True,
     # A turn that ended while you looked elsewhere: its card lifted under
     # any blocked card and washed green until you focus its pane, and the
-    # word Done as iTerm2's badge in that pane. Tab colour follows a tab's
-    # active pane alone, so it is off until asked for.
+    # word Done as iTerm2's badge in that pane.
     "finished_first": True,
     "finished_wash": True,
     "mark_badge": True,
-    "mark_tab": False,
     "notify": True,
     "notify_blocked": True,
     "notify_done": True,
@@ -153,6 +167,10 @@ DEFAULT_SETTINGS = {
     # The foot offers the statusline bridge while settings.json lacks it,
     # until the offer is declined.
     "offer_statusline": True,
+    # The word under each agent's tab title, in the panel's words; and the
+    # foot's offer to take it over from iTerm2's own hooks, until declined.
+    "tab_status": True,
+    "offer_tab_status": True,
     "show_agents": True,
     "show_shells": True,
     # The list follows the terminals by default: a card sits where its tab
@@ -173,6 +191,13 @@ DEFAULT_SETTINGS = {
     # The face a shell card's name wears: the panel's own, SF Mono, or the
     # default iTerm2 profile's font.
     "shell_font": "system",
+    # How a session row stands on the canvas: a card, a hairline between
+    # rows, air between them, a rule inset to the text column, or the card's
+    # outline alone.
+    "card_style": "cards",
+    # The panel's canvas takes the background of the terminal in front, and
+    # every surface on it is derived from that colour.
+    "follow_terminal": True,
     # Experimental: dragging a card onto another links the two. Off, nothing
     # is linked and a link already made ends.
     "links": False,
@@ -203,7 +228,8 @@ LINKS_TURNED_OFF = "linking was turned off"
 #: The values a setting that is one of a few words can take.
 SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off"),
                    "order": ("terminal", "name", "attention", "hand"),
-                   "shell_font": ("system", "mono", "terminal")}
+                   "shell_font": ("system", "mono", "terminal"),
+                   "card_style": ("cards", "hairlines", "air", "inset", "outlines")}
 
 
 def _clean(settings):
@@ -2213,15 +2239,25 @@ def with_detail(raw, directory=None):
     return json.dumps(dict(envelope, subagents=whole.get("subagents"), tasks=whole.get("tasks")))
 
 
-def agent_variable(reports):
+#: The foreground job that names each provider's agent.
+PROVIDER_JOBS = {"claude": "claude", "codex": "openai", "omp": "omp"}
+
+
+def agent_variable(reports, job=None):
     """A pane's state variables, {provider: raw} -> (the one that speaks for it, provider).
 
-    More than one is set only when one agent left its variable behind and
-    another started in the same pane (a Claude killed without SessionEnd, then
-    Codex); the newest report is the one still running. A report with no
-    readable time loses to one with, and of equal times the later provider in
-    `reports` wins. (None, None) when none reported.
+    More than one is set when one agent left its variable behind and another
+    started in the same pane (a Claude killed without SessionEnd, then Codex),
+    or when a `codex exec` started detached under a Claude shares its terminal
+    and its hooks write there. The pane's foreground `job` is the agent in
+    front of a person, so a provider it names speaks when that provider
+    reported. Otherwise the newest report is the one still running; one with
+    no readable time loses to one with, and of equal times the later provider
+    in `reports` wins. (None, None) when none reported.
     """
+    named = PROVIDER_JOBS.get(job)
+    if named and reports.get(named):
+        return reports[named], named
     chosen = (None, None)
     for provider, raw in reports.items():
         if not raw:
@@ -3112,7 +3148,7 @@ class Sidebar:
 
     def __init__(self, token, page_path, snapshot_fn, action_fn,
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
-                 context_fn=None, link_fn=None, github_fn=None, untie_fn=None,
+                 context_fn=None, link_fn=None, github_fn=None, untie_fn=None, hand_over_fn=None,
                  log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
@@ -3124,6 +3160,8 @@ class Sidebar:
         self.update_fn = update_fn
         #: () -> the statusline it displaced; raises ValueError when it may not.
         self.statusline_fn = statusline_fn
+        #: () -> how many cc-status hooks it took out; raises ValueError when it may not.
+        self.hand_over_fn = hand_over_fn
         #: session id -> context_usage.parse()'s breakdown; raises context_usage.Refused.
         self.context_fn = context_fn
         #: (source pane, target pane) -> the link's frame; raises links.Refused.
@@ -3179,6 +3217,16 @@ class Sidebar:
                 print(f"sidebar: statusline bridge refused: {refusal}", flush=True)
                 return self._json(409, {"error": str(refusal)})
             return self._json(200, {"ok": True})
+
+        if method == "POST" and path == "/tab-status":
+            if self.hand_over_fn is None:
+                return self._json(400, {"error": "this daemon cannot hand the tab status over"})
+            try:
+                removed = self.hand_over_fn()
+            except (ValueError, OSError) as refusal:
+                print(f"sidebar: tab status hand-over refused: {refusal}", flush=True)
+                return self._json(409, {"error": str(refusal)})
+            return self._json(200, {"ok": True, "removed": removed})
 
         if method == "POST" and path == "/context":
             return self._context(body)
@@ -3314,6 +3362,8 @@ ACCOUNT_TICK_SECONDS = 30
 POLL_SECONDS = 2
 #: How often the mirror is asked for a newer release.
 RELEASE_CHECK_SECONDS = 24 * 60 * 60
+#: How long a stopping daemon waits for its words to come off the tabs.
+STOP_SECONDS = 2
 
 #: The state the plugin hook writes, one variable per agent: Claude Code's,
 #: Codex's, and omp's through its extension. Each is watched as well as read.
@@ -3459,6 +3509,11 @@ class Bridge:
         #: The default profile's font, read once at start: a profile edited
         #: later shows after the daemon restarts.
         self.terminal_font = None
+        #: The front session's background, read each rebuild while the panel
+        #: follows it; None when the last read failed.
+        self.terminal_background = None
+        #: The last failure to read it that was logged, so each kind is said once.
+        self._background_failure = None
         self._last_pushed = None
         #: When a rebuild last completed. None until the first one lands, so a
         #: daemon that has never reached iTerm2 reports unfresh rather than
@@ -3511,9 +3566,31 @@ class Bridge:
         self.unseen = alerts.Unseen()
         #: Puts Done into those sessions' panes and takes it back.
         self.marks = marks.Marker()
+        #: Writes the status under each agent's tab title and takes it back.
+        self.status = tabstatus.Writer(invoke=self.invoke_function)
         #: Plays the panel's sounds; main() makes it before the server takes
         #: its first request, since making it writes the tone files.
         self.player = None
+
+    async def invoke_function(self, name, args):
+        """One iTerm2 function call -> its answer. The call's text is built by
+        the iterm2 library, which defines its grammar and escapes its strings."""
+        import iterm2
+        import iterm2.util
+        return await iterm2.async_invoke_function(self.connection, iterm2.util.invocation_string(name, args))
+
+    async def stop(self):
+        """SIGTERM: take every tab status back, then end the process. Bounded,
+        so a call iTerm2 never answers cannot keep a stopping daemon alive."""
+        try:
+            await asyncio.wait_for(self.status.clear_all(self.log), STOP_SECONDS)
+        except asyncio.TimeoutError:
+            self.log(f"stopping: tab statuses not taken back within {STOP_SECONDS:g} s")
+        except Exception as error:  # noqa: BLE001 -- said, then the stop goes on: SIGTERM must end the daemon
+            self.log(f"stopping: tab statuses not taken back: {error!r}")
+        # Raised from a plain callback rather than this task, so SystemExit
+        # leaves iterm2.run_forever with no unretrieved task behind it.
+        asyncio.get_running_loop().call_soon(sys.exit, 0)
 
     def active_session_id(self):
         """The session in front of the key iTerm2 window, or None."""
@@ -3553,7 +3630,8 @@ class Bridge:
                     tty = (pane.get("tty") or values["tty"] or "").removeprefix("/dev/")
                     raw, provider = agent_variable({"claude": values["user.claudeState"],
                                                     "openai": values["user.codexState"],
-                                                    "omp": values["user.ompState"]})
+                                                    "omp": values["user.ompState"]},
+                                                   job=values["jobName"] or pane.get("job"))
                     # A state from another machine filed its detail there: a
                     # file of its session id here would be another session's.
                     raw = raw if remote_host(raw, here) else with_detail(raw)
@@ -3826,6 +3904,11 @@ class Bridge:
                                hand_order=settings["hand_order"], pairs=self.partners.pairs())
         self.latest["version"] = version()
         self.latest["terminal_font"] = self.terminal_font
+        if settings["follow_terminal"]:
+            await self.read_terminal_background()
+        else:
+            self.terminal_background = None
+        self.latest["terminal_background"] = self.terminal_background
         self.answered = still_answered(self.answered, self.latest)
         if statusline_offer(statusline.state(CLAUDE_SETTINGS, BRIDGE), settings):
             self.latest["statusline"] = "missing"
@@ -3854,6 +3937,11 @@ class Bridge:
                 group["rows"] = band(group["rows"], self.unseen.sids, settings["provider_mark"] == "groups")
         agent_rows = [row for group in self.latest["groups"] if group["name"] == "AGENTS" for row in group["rows"]]
         await self.marks.step(self.app, agent_rows, self.unseen.sids, settings, self.log)
+        hooks = statusline.cc_status(CLAUDE_SETTINGS)
+        await self.status.step(self.app, agent_rows, self.unseen.sids, settings, hooks, self.log)
+        note = tabstatus.notice(settings, hooks, self.status.available)
+        if note:
+            self.latest["tab_status"] = note
         frame = sse_frame(self.latest)
         if frame != self._last_pushed:
             self._last_pushed = frame
@@ -4032,6 +4120,27 @@ class Bridge:
             return
         if self.terminal_font is None:
             self.log("terminal font refused:", repr(profile.normal_font))
+
+    async def read_terminal_background(self):
+        """Keep the background of the session in front of the key window, for
+        the panel to paint itself from. With no session in front the last one
+        read stands; a failed read leaves None, never the colour before it,
+        and each kind of failure is logged once."""
+        session_id = self.active_session_id()
+        if session_id is None:
+            return
+        try:
+            profile = await self.app.get_session_by_id(session_id).async_get_profile()
+            theme = (await self.app.async_get_theme()
+                     if profile.use_separate_colors_for_light_and_dark_mode else ())
+            self.terminal_background = terminal_background(profile, theme)
+        except Exception as error:                   # noqa: BLE001
+            self.terminal_background = None
+            if repr(error) != self._background_failure:
+                self._background_failure = repr(error)
+                self.log("terminal background not read:", repr(error))
+            return
+        self._background_failure = None
 
     def link_end(self, pane):
         """One card as a link end: its frame row's facts plus the agent's own session id."""
@@ -4502,6 +4611,7 @@ async def main(connection):
         accounts_fn=lambda op, request: bridge.account_op(op, request),
         update_fn=lambda: update.take(here, bridge.update),
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
+        hand_over_fn=lambda: statusline.drop_cc_status(CLAUDE_SETTINGS),
         context_fn=lambda session_id: bridge.read_context(session_id),
         link_fn=lambda source, target: bridge.link(source, target),
         untie_fn=lambda pane: bridge.untie(pane),
@@ -4513,6 +4623,9 @@ async def main(connection):
     bridge.player = sound.Player.for_dir(os.path.join(STATUS_DIR, "tones"), bridge.log)
     bridge.app = await iterm2.async_get_app(connection)
     await bridge.read_terminal_font()
+    # The tab statuses come off before the daemon goes: a tab still saying
+    # working after the panel has stopped is old news passed off as current.
+    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(bridge.stop()))
 
     port = await start_serving(server, bridge, token, ENDPOINT_FILE)
     await bridge.sweep_notices()

@@ -9,6 +9,13 @@ Ways this can go wrong, and the test for each:
 - a second install saves the bridge itself as the "original", so the bridge
   then calls itself on every render;
 - no settings.json at all (a fresh machine) stops the install.
+
+And for iTerm2's own status hook (cc-status), which the panel takes over:
+- a hook written with its machine's own path, or with arguments, goes unseen;
+- the hand-over drops other hooks that share an event or a group with it;
+- it leaves empty groups or events behind;
+- a second hand-over overwrites the backup with a file already without the hooks;
+- a settings.json that is not JSON gets overwritten.
 """
 import json
 import sys
@@ -88,6 +95,57 @@ def test_another_checkouts_bridge_is_never_kept_as_the_original(tmp_path):
     assert statusline.install(path, BRIDGE, status) == ""
     assert (status / "original-statusline").read_text() == "cs-statusline"
     assert json.loads(path.read_text())["statusLine"]["command"] == BRIDGE
+
+
+def cc(path="/Users/someone/.config/iterm2/cc-status"):
+    return {"type": "command", "command": path}
+
+
+#: iTerm2's Claude Code integration as it installs itself: one group per event, no matcher.
+ITERM2_HOOKS = {event: [{"hooks": [cc()]}] for event in ("PreToolUse", "PostToolUse", "Stop", "Notification")}
+OWN = {"type": "command", "command": "~/.claude/hooks/vale-lint.sh"}
+
+
+def test_cc_status_is_found_by_its_name_whatever_the_path_or_arguments(tmp_path):
+    assert statusline.cc_status(settings_file(tmp_path, {"hooks": ITERM2_HOOKS})) == "present"
+    with_args = {"hooks": {"Stop": [{"hooks": [OWN, cc("/opt/iTerm.app/utilities/cc-status --quiet")]}]}}
+    assert statusline.cc_status(settings_file(tmp_path, with_args)) == "present"
+    lookalike = {"hooks": {"Stop": [{"hooks": [cc("/usr/local/bin/cc-status-report")]}]}}
+    assert statusline.cc_status(settings_file(tmp_path, lookalike)) == "absent"
+    assert statusline.cc_status(settings_file(tmp_path, {"hooks": {"Stop": [{"hooks": [OWN]}]}})) == "absent"
+    assert statusline.cc_status(settings_file(tmp_path, {"model": "opus"})) == "absent"
+    assert statusline.cc_status(tmp_path / "absent.json") == "absent"
+    assert statusline.cc_status(settings_file(tmp_path, '{"hooks": ')) == "unreadable"
+
+
+def test_the_hand_over_drops_only_cc_status_and_the_groups_and_events_it_leaves_empty(tmp_path):
+    hooks = dict(ITERM2_HOOKS, PostToolUse=[{"matcher": "Edit|Write", "hooks": [OWN, cc()]}, {"hooks": [cc()]}])
+    path = settings_file(tmp_path, {"model": "opus", "hooks": hooks})
+    original = path.read_text()
+    assert statusline.drop_cc_status(path) == 5
+    assert json.loads(path.read_text()) == {"model": "opus",
+                                            "hooks": {"PostToolUse": [{"matcher": "Edit|Write", "hooks": [OWN]}]}}
+    assert (tmp_path / "settings.json.before-tab-status").read_text() == original
+    assert statusline.cc_status(path) == "absent"
+
+
+def test_a_second_hand_over_writes_nothing_and_keeps_the_backup(tmp_path):
+    path = settings_file(tmp_path, {"hooks": ITERM2_HOOKS})
+    original = path.read_text()
+    statusline.drop_cc_status(path)
+    after = path.read_text()
+    assert statusline.drop_cc_status(path) == 0
+    assert path.read_text() == after
+    assert (tmp_path / "settings.json.before-tab-status").read_text() == original
+
+
+def test_the_hand_over_refuses_settings_that_are_not_json_and_ignores_a_missing_file(tmp_path):
+    broken = settings_file(tmp_path, '{"hooks": ')
+    with pytest.raises(ValueError, match="settings.json is not valid JSON"):
+        statusline.drop_cc_status(broken)
+    assert broken.read_text() == '{"hooks": '
+    assert not (tmp_path / "settings.json.before-tab-status").exists()
+    assert statusline.drop_cc_status(tmp_path / "none" / "settings.json") == 0
 
 
 def test_a_machine_with_no_settings_file_gets_one(tmp_path):

@@ -55,8 +55,11 @@ and being first-party, so it survives iTerm2 upgrades without a daemon.
 
 ## Decision
 
-Keep ours. Theirs is a status dot; ours is the reason to look. One thing
-borrowed since: the `working` hold while background tasks run. Workgroups
+Keep ours. Theirs is a status dot; ours is the reason to look. Two things
+borrowed since: the `working` hold while background tasks run, and on
+2026-10-25 the status under each tab title, which the panel writes through
+the same call on iTerm2 3.7.6 and later and offers to take over from
+`cc-status` ([The status under a tab](usage.md#the-status-under-a-tab)). Workgroups
 were looked at on 2026-09-17 and skipped: the Python API has no workgroup
 calls, only the menu items reach one, and a pane layout around a session is
 what cs already arranges with tmux.

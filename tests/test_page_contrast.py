@@ -44,7 +44,8 @@ def tokens(theme):
     """The custom properties of one theme, {name: hex}."""
     css = PAGE.read_text(encoding="utf-8")
     light = re.search(r":root\s*\{(.*?)\}", css, re.S).group(1)
-    dark = re.search(r"@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{(.*?)\}", css, re.S).group(1)
+    dark = re.search(r'@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-term-theme="light"\]\)\s*\{(.*?)\}',
+                     css, re.S).group(1)
     block = light if theme == "light" else dict_merge(light, dark)
     return dict(re.findall(r"(--[\w-]+):\s*(#[0-9a-fA-F]{6})\b", block))
 

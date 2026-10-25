@@ -75,7 +75,8 @@ def test_a_worktree_face_wears_no_tint_of_its_family():
     rules = re.findall(r"\n  ([^{}\n]*worktree[^{}\n]*) \{([^}]*)\}", css())
     painted = [s for s, body in rules if re.search(r"\bbackground(-color)?:", body)]
     assert painted == ["li.line.card.worktree::before", "li.line.card.worktree > .stem",
-                       "html.tiny #groups li.line.card.worktree::before"]
+                       "html.tiny #groups li.line.card.worktree::before",
+                       ':root:not(.tiny)[data-card-style="inset"] #groups li.line.card + li.line.card:not(.worktree, .partner)::before']
 
 
 def test_a_waiting_or_finished_card_in_a_cluster_marks_its_own_face_with_an_inset_ring():

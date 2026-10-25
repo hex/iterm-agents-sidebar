@@ -53,8 +53,13 @@
     :root { --hair: 1px; }
   }
   html { zoom: var(--scale); }
+  /* The dark theme is macOS's, unless the panel follows a terminal colour:
+     then data-term-theme names the theme that colour's lightness picks. A
+     media query cannot share a selector list, so each dark block stands
+     twice, once per way in; tests/test_page_terminal_background.py holds the
+     two copies equal. */
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-term-theme="light"]) {
       --bg: #1c1c1e; --fg: #f2f2f7; --dim: #98989d; --rule: #3a3a3c;
       --card: #2c2c2e; --card-hover: #323236; --card-border: #3a3a3c;
       --rested-bg: #272729; --neglected-bg: #222224; --finished-bg: #1f2e22;
@@ -69,6 +74,56 @@
       --ctx-conv: #3987e5; --ctx-sys: #d95926; --ctx-mem: #199e70; --ctx-agents: #c98500;
       --card-edge: 0 0 0 1px var(--card-border);
     }
+  }
+  :root[data-term-theme="dark"] {
+      --bg: #1c1c1e; --fg: #f2f2f7; --dim: #98989d; --rule: #3a3a3c;
+      --card: #2c2c2e; --card-hover: #323236; --card-border: #3a3a3c;
+      --rested-bg: #272729; --neglected-bg: #222224; --finished-bg: #1f2e22;
+      --ink-claude: #e08f75; --ink-openai: #3bb496; --ink-omp: #9f92ee;
+      --blocked-bg: #3a2500; --blocked-border: #ff9f0a; --blocked-text: #ffd60a;
+      --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
+      --accent-ink: #1c1c1e; --badge-ink: #3a2500; --switch-bg: #d97757;
+      --lit: #8ec07c; --alert: #fb8b5e; --lit-ink: #8ec07c;
+      --alert-bg: #fb8b5e2b;
+      --sev-ok: #30d158; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
+      --rec-ink: #8ec07c;
+      --ctx-conv: #3987e5; --ctx-sys: #d95926; --ctx-mem: #199e70; --ctx-agents: #c98500;
+      --card-edge: 0 0 0 1px var(--card-border);
+  }
+  /* The sheet's pickers and sliders follow the theme the colour picked. */
+  :root[data-term-theme="light"] { color-scheme: light; }
+  :root[data-term-theme="dark"] { color-scheme: dark; }
+  /* Following a terminal colour, every surface is derived from it in oklch
+     lightness. The canvas sits .03 darker than the terminal, so the panel
+     reads as its own plane beside it. In the dark theme a card sinks .06
+     below the canvas; in the light one it lifts .015 above the terminal's own
+     colour with 60% of its chroma. A card at rest takes a smaller step,
+     the rule a further one, and each wash mixes into the card. A wash mixes in
+     oklab, not oklch: oklch travels the hue circle between the two, so on a
+     grey card (hue 0, a red) the green would wash pink and on Dracula's blue
+     teal. After the dark blocks, which these override at the same
+     specificity. */
+  :root[data-term-theme] { --bg: oklch(from var(--term-bg) calc(l - .03) c h); }
+  :root[data-term-theme="dark"] {
+    --card: oklch(from var(--bg) calc(l - .06) c h);
+    --card-hover: oklch(from var(--bg) calc(l - .06 + .025) c h);
+    --rested-bg: oklch(from var(--bg) calc(l - .06 * .6) c h);
+    --neglected-bg: oklch(from var(--bg) calc(l - .06 * .3) c h);
+    --rule: oklch(from var(--bg) calc(l + .11) c h); --card-border: var(--rule);
+    --finished-bg: color-mix(in oklab, var(--card) 86%, var(--sev-ok));
+    --blocked-bg: color-mix(in oklab, var(--card) 72%, var(--blocked-border));
+    --warn-bg: color-mix(in oklab, var(--card) 85%, var(--warn));
+    --accent-ink: var(--bg);
+  }
+  :root[data-term-theme="light"] {
+    --card: oklch(from var(--term-bg) calc(min(1, l + .015)) calc(c * .6) h);
+    --card-hover: oklch(from var(--card) calc(l - .015) c h);
+    --rested-bg: oklch(from var(--term-bg) calc(min(1, l + .015 * .5)) calc(c * .6) h);
+    --neglected-bg: oklch(from var(--term-bg) calc(l - .02) c h);
+    --rule: oklch(from var(--term-bg) calc(l - .075) c h); --card-border: var(--rule);
+    --finished-bg: color-mix(in oklab, var(--card) 88%, var(--sev-ok));
+    --blocked-bg: color-mix(in oklab, var(--card) 80%, var(--blocked-border));
+    --warn-bg: color-mix(in oklab, var(--card) 88%, var(--warn));
   }
   * { box-sizing: border-box; }
   /* The hidden attribute only hides through a UA rule, which any author rule
@@ -1043,10 +1098,14 @@
     --effort-xhigh: #8700ff; --effort-max-1: #82aadc; --effort-max-2: #c882b3;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-term-theme="light"]) {
       --effort-low: #bb9f6d; --effort-medium: #76a97e; --effort-high: #929efa;
       --effort-xhigh: #b159ff; --effort-max-1: #aec8e8; --effort-max-2: #dbaece;
     }
+  }
+  :root[data-term-theme="dark"] {
+      --effort-low: #bb9f6d; --effort-medium: #76a97e; --effort-high: #929efa;
+      --effort-xhigh: #b159ff; --effort-max-1: #aec8e8; --effort-max-2: #dbaece;
   }
   /* Sits against the model it qualifies: the line's 5px gap, less 1. */
   .effort { margin-left: -1px; font-weight: 600; flex-shrink: 0; }
@@ -1412,7 +1471,8 @@
     position: fixed; inset: 0; z-index: 18;
     background: color-mix(in srgb, #000 22%, transparent);
   }
-  @media (prefers-color-scheme: dark) { #scrim { background: color-mix(in srgb, #000 42%, transparent); } }
+  @media (prefers-color-scheme: dark) { :root:not([data-term-theme="light"]) #scrim { background: color-mix(in srgb, #000 42%, transparent); } }
+  :root[data-term-theme="dark"] #scrim { background: color-mix(in srgb, #000 42%, transparent); }
   /* Grid, not flex: the label column is minmax(0, 1fr), so it gives way
      instead of pushing the control off the panel. With flex the label kept a
      percentage basis and the row grew wider than the sheet at large text
@@ -1461,8 +1521,10 @@
   .set.child { padding: 6px 10px 6px 22px; }
   /* What a setting does, under its name and across the row. Placed on the
      second line outright, so the control stays the row's last child and
-     keeps its place in the final column. */
-  .set > .set-note {
+     keeps its place in the final column. A span, so it outranks the rule
+     that sends every control to the row's end, which would push a note
+     shorter than the row to the right. */
+  .set > span.set-note {
     grid-row: 2; grid-column: 1 / -1; justify-self: stretch;
     color: var(--dim); font-size: 11px; line-height: 1.35;
   }
@@ -1615,25 +1677,25 @@
     border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
   }
   body.stale #queue { opacity: .55; }
-  /* The one thing the panel asks of its own setup, above the meters: bare,
-     since it is about the panel and not a session. */
-  #sl-offer {
+  /* What the panel asks of its own setup, above the meters: bare, since it
+     is about the panel and not a session. */
+  .offer {
     margin: 0 8px; padding: 8px 2px 9px;
     border-top: .5px solid color-mix(in srgb, var(--fg) 14%, transparent);
     font: 400 11px/1.4 -apple-system, sans-serif; color: var(--dim);
   }
-  #sl-offer .sl-head { display: flex; align-items: center; gap: 6px;
+  .offer .sl-head { display: flex; align-items: center; gap: 6px;
     font: 600 12px/1.3 -apple-system, sans-serif; color: var(--fg); }
-  #sl-offer .sl-head .mi { width: 14px; height: 14px; flex: none; color: var(--dim); }
-  #sl-offer .sl-head > span { flex: 1; min-width: 0; }
-  #sl-offer p { margin: 4px 0 0; }
-  #sl-offer p.refused { color: var(--alert); }
-  #sl-offer button { height: 20px; padding: 0 9px; border: 0; border-radius: 6px; flex: none;
+  .offer .sl-head .mi { width: 14px; height: 14px; flex: none; color: var(--dim); }
+  .offer .sl-head > span { flex: 1; min-width: 0; }
+  .offer p { margin: 4px 0 0; }
+  .offer p.refused { color: var(--alert); }
+  .offer button { height: 20px; padding: 0 9px; border: 0; border-radius: 6px; flex: none;
     font: 500 11px/1 -apple-system, sans-serif; color: var(--fg); background: var(--tint-ctl); }
-  #sl-offer button:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }
-  #sl-offer button.go { color: #fff; background: color-mix(in srgb, AccentColor 92%, #000); }
-  #sl-offer button.go:hover { background: AccentColor; }
-  #sl-offer button:disabled { opacity: .5; }
+  .offer button:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+  .offer button.go { color: #fff; background: color-mix(in srgb, AccentColor 92%, #000); }
+  .offer button.go:hover { background: AccentColor; }
+  .offer button:disabled { opacity: .5; }
   /* Warm type, no surface: the heading in the waiting card's ink and the
      count as a small filled pill like the card's Waiting badge. In grey type
      alone the section was easy to miss; a slab would repeat the card. */
@@ -2023,6 +2085,89 @@
     font: 600 10px/1 -apple-system, sans-serif; color: var(--sev-crit);
     background: color-mix(in srgb, var(--sev-crit) 12%, transparent);
   }
+  /* Card styles: how a session row stands on the canvas, named on the root
+     by applyCardStyle. Cards, the default, has no rules here: it is the
+     sheet above. Only the list's own rows change; the drag ghost stays a
+     lifted card, so a drag still reads, and tiny, a row and not a card
+     already, keeps its look in every style. */
+  /* Hairlines, Air and Inset rules take the card away: no face, no edge, no
+     corner and no gap, and the cluster's outline with it. A worktree keeps
+     its stem and the hairline past the mark column as its join. A plain tint
+     on hover, and a card at rest fades rather than sinking to the canvas,
+     which it is already on. A waiting or finished card keeps its fill, and
+     its hover restates it, since the plain tint outranks it here. */
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card {
+    background: none; box-shadow: none; border-radius: 0; margin-bottom: 0;
+  }
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card::after { content: none; }
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card > button.row { border-radius: 0; }
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card:not(.blocked, .finished):has(> button.row:hover) {
+    background: color-mix(in srgb, var(--fg) 5%, transparent);
+  }
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card:is(.rested, .neglected):not(.placeholder) {
+    background: none; opacity: .72;
+  }
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card.blocked { background: var(--blocked-bg); }
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card.finished { background: var(--finished-bg); }
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card.blocked:has(> button.row:hover) {
+    background: color-mix(in srgb, var(--blocked-border) 8%, var(--blocked-bg));
+  }
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card.finished:has(> button.row:hover) {
+    background: color-mix(in srgb, var(--fg) 4%, var(--finished-bg));
+  }
+  /* A partner badge's face is the ground it sits on: here, and in Outlines, the canvas. */
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"], [data-card-style="outlines"]) #groups .pair-face { fill: var(--bg); }
+  /* Hairlines: a rule the panel's width between sessions, and a waiting or
+     finished one a band across it. A worktree and a partner keep their own join. */
+  :root:not(.tiny)[data-card-style="hairlines"] #groups ul { padding-inline: 0; }
+  :root:not(.tiny)[data-card-style="hairlines"] #groups li.line.card + li.line.card:not(.worktree, .partner) {
+    border-top: var(--hair) solid var(--rule);
+  }
+  /* Air: no rules, more room between sessions, and only a waiting or
+     finished one gets a face, rounded and ringed as a card's is. A cluster
+     and a pair stay docked. */
+  :root:not(.tiny)[data-card-style="air"] #groups li.line.card { margin-bottom: 14px; }
+  :root:not(.tiny)[data-card-style="air"] #groups li.line.card:has(+ li.line.card:is(.worktree, .partner)) { margin-bottom: 0; }
+  :root:not(.tiny)[data-card-style="air"] #groups li.line.card.blocked { border-radius: 8px; box-shadow: inset 0 0 0 2px var(--blocked-border); }
+  :root:not(.tiny)[data-card-style="air"] #groups li.line.card.finished { border-radius: 8px; box-shadow: 0 0 0 1px var(--finished-ring); }
+  :root:not(.tiny)[data-card-style="air"] #groups li.line.card.finished:is(.worktree, :has(+ li.line.card.worktree)) {
+    box-shadow: inset 0 0 0 1px var(--finished-ring);
+  }
+  /* Inset rules: the rule between sessions starts at the text column, as a
+     list on iOS does, and a waiting or finished one is a soft rounded wash
+     with no ring and no rule against it. */
+  :root:not(.tiny)[data-card-style="inset"] #groups li.line.card + li.line.card:not(.worktree, .partner)::before {
+    content: ""; position: absolute; top: 0; height: var(--hair); pointer-events: none;
+    left: calc(var(--row-pad) + var(--mark) + var(--row-gap)); right: 0; background: var(--rule);
+  }
+  :root.compact:not(.tiny)[data-card-style="inset"] #groups li.line.card + li.line.card:not(.worktree, .partner)::before {
+    left: calc(9px + var(--mark) + var(--row-gap));
+  }
+  :root:not(.tiny)[data-card-style="inset"] #groups li.line.card:is(.blocked, .finished) { border-radius: 8px; }
+  :root:not(.tiny)[data-card-style="inset"] #groups li.line.card:is(.blocked, .finished)::before,
+  :root:not(.tiny)[data-card-style="inset"] #groups li.line.card:is(.blocked, .finished) + li.line.card::before { content: none; }
+  /* A rounded face docked to a worktree or a partner is square where they meet. */
+  :root:not(.tiny):is([data-card-style="air"], [data-card-style="inset"]) #groups li.line.card:is(.blocked, .finished):has(+ li.line.card:is(.worktree, .partner)) {
+    border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+  }
+  :root:not(.tiny):is([data-card-style="air"], [data-card-style="inset"]) #groups li.line.card:is(.blocked, .finished):is(.worktree, .partner) {
+    border-top-left-radius: 0; border-top-right-radius: 0;
+  }
+  /* Outlines: the card stays as a line only, with the canvas for its fill;
+     a cluster keeps one outline round it, drawn the same hairline. A waiting
+     or finished card is the card it always is. */
+  :root:not(.tiny)[data-card-style="outlines"] #groups li.line.card:not(.blocked, .finished) {
+    background: transparent; box-shadow: 0 0 0 var(--hair) var(--rule);
+  }
+  :root:not(.tiny)[data-card-style="outlines"] #groups li.line.card:not(.blocked, .finished):is(.worktree, :has(+ li.line.card.worktree)) { box-shadow: none; }
+  :root:not(.tiny)[data-card-style="outlines"] #groups li.line.card::after { box-shadow: 0 0 0 var(--hair) var(--rule); }
+  /* A pair's two outlines meet as one line: the lower card stands a hairline
+     off the upper, so the ring under one is the ring over the other. */
+  :root:not(.tiny)[data-card-style="outlines"] #groups li.line.card.partner { margin-top: var(--hair); }
+  :root:not(.tiny)[data-card-style="outlines"] #groups li.line.card:not(.blocked, .finished):has(> button.row:hover) {
+    background: color-mix(in srgb, var(--fg) 4%, transparent);
+  }
+  :root:not(.tiny)[data-card-style="outlines"] #groups li.line.card:is(.rested, .neglected):not(.placeholder) { background: transparent; opacity: .72; }
 </style>
 
 <div id="banner" role="status" aria-live="polite">
@@ -2031,7 +2176,8 @@
 <div id="groups"></div>
 <div id="foot">
   <p id="row-help" class="offscreen">Press Enter to bring this session's pane forward. Right-click it for its options.</p>
-  <section id="sl-offer" aria-label="Statusline bridge" hidden></section>
+  <section id="sl-offer" class="offer" aria-label="Statusline bridge" hidden></section>
+  <section id="ts-offer" class="offer" aria-label="Tab status" hidden></section>
   <section id="queue" aria-label="Sessions waiting on you" hidden></section>
   <div id="budget" hidden></div>
 </div>
@@ -2285,6 +2431,45 @@ function applyShellFont(snapshot) {
   if (root.style.getPropertyValue("--terminal-font") === font) return;
   if (font) root.style.setProperty("--terminal-font", font);
   else root.style.removeProperty("--terminal-font");
+}
+
+// How a session row stands on the canvas; the stylesheet keys every look
+// but the card's own off this attribute.
+function applyCardStyle() {
+  document.documentElement.dataset.cardStyle = SETTINGS?.card_style ?? "cards";
+}
+
+// The theme a terminal colour wants: dark below a WCAG relative luminance of .4.
+function termTheme(hex) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(v => v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+  return .2126 * r + .7152 * g + .0722 * b < .4 ? "dark" : "light";
+}
+
+// While the setting is on, the canvas is the colour of the terminal in front
+// and the theme is the one that colour wants, whatever macOS's is. With no
+// colour, unread or unwanted, the page is as macOS's theme paints it.
+function applyTerminalBackground(snapshot) {
+  const root = document.documentElement;
+  const colour = SETTINGS?.follow_terminal === false ? null : snapshot.terminal_background;
+  const note = document.getElementById("set-note-follow_terminal");
+  if (note) terminalBackgroundNote(note, snapshot);
+  if (root.style.getPropertyValue("--term-bg") === (colour || "")) return;
+  if (colour) {
+    root.style.setProperty("--term-bg", colour);
+    root.dataset.termTheme = termTheme(colour);
+  } else {
+    root.style.removeProperty("--term-bg");
+    delete root.dataset.termTheme;
+  }
+}
+
+// The settings line under the switch: the colour the daemon read, or that it
+// could not. Off, the daemon does not read it and the line has nothing to say.
+function terminalBackgroundNote(note, snapshot) {
+  note.hidden = SETTINGS?.follow_terminal === false;
+  note.textContent = snapshot.terminal_background
+    ? `Terminal background ${snapshot.terminal_background}` : "Terminal background (not read)";
 }
 
 let staleTimer = null;
@@ -4192,6 +4377,8 @@ function render(snapshot, arrived = false, now = false) {
 function paintAll(snapshot) {
   const before = measureRows();
   applyShellFont(snapshot);
+  applyCardStyle();
+  applyTerminalBackground(snapshot);
   paint(snapshot);
   paintQueue(snapshot);
   paintBudget(snapshot);
@@ -4199,7 +4386,7 @@ function paintAll(snapshot) {
   paintStems();
   paintVersion();
   paintRepository();
-  paintStatuslineOffer();
+  paintOffers(snapshot);
   // Work crossing a pair: a new landing starts, and one already playing draws onto the badge, which the paint left at rest, at once.
   for (const id of landingNow.keys()) stepLanding(id);
   playLandings(snapshot.partners);
@@ -6566,19 +6753,18 @@ const SETTING_ROWS = [
   {k: "return_after_blocked", label: "Go back once it resumes", needs: "focus_blocked"},
   {head: "Finished"},
   {k: "finished_first", label: "Finished first"},
-  {k: "finished_wash",  label: "Green wash"},
   {k: "mark_badge",     label: "Badge in the pane"},
-  {k: "mark_tab",       label: "Tab colour"},
-  {head: "Rows"},
-  {k: "context_threshold", label: "Warn above", range: [0, 100, 5], pct: true},
-  {k: "cpu_threshold", label: "CPU heavy at", range: [25, 400, 25], pct: true},
-  {k: "memory_threshold", label: "Memory heavy at", range: [0.5, 8, 0.5], unit: " GB"},
-  {k: "order", label: "Order",
-   choices: [["terminal", "Follow the terminals"], ["name", "By name"], ["attention", "By attention"], ["hand", "By hand"]]},
-  {k: "provider_mark", label: "Provider badge",
-   choices: [["tag", "Tag by the name"], ["corner", "Icon in the corner"], ["groups", "Group by provider"], ["off", "Off"]]},
+  {head: "Style"},
+  {k: "card_style", label: "Card style",
+   choices: [["cards", "Cards"], ["hairlines", "Hairlines"], ["air", "Air"], ["inset", "Inset rules"], ["outlines", "Outlines"]]},
+  {k: "follow_terminal", label: "Follow the terminal's background"},
+  {k: "ui_scale",     label: "Text size",
+   steps: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]},
   {k: "shell_font", label: "Shell names",
    choices: [["system", "System"], ["mono", "SF Mono"], ["terminal", "Terminal font"]]},
+  {k: "provider_mark", label: "Provider badge",
+   choices: [["tag", "Tag by the name"], ["corner", "Icon in the corner"], ["groups", "Group by provider"], ["off", "Off"]]},
+  {k: "finished_wash",  label: "Green wash"},
   {k: "show_branch",  label: "Branch"},
   {k: "show_task",    label: "Task"},
   {k: "show_task_activity", label: "What it is doing", needs: "show_task"},
@@ -6589,9 +6775,16 @@ const SETTING_ROWS = [
   {k: "show_agents",  label: "Subagents"},
   {k: "show_shells",  label: "Background shells"},
   {k: "expand_shells", label: "Start expanded", needs: "show_shells"},
-  {k: "ui_scale",     label: "Text size",
-   steps: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]},
+  {head: "Terminal"},
+  {k: "tab_status",     label: "Status under the tab title"},
+  {head: "Rows"},
+  {k: "context_threshold", label: "Warn above", range: [0, 100, 5], pct: true},
+  {k: "cpu_threshold", label: "CPU heavy at", range: [25, 400, 25], pct: true},
+  {k: "memory_threshold", label: "Memory heavy at", range: [0.5, 8, 0.5], unit: " GB"},
+  {k: "order", label: "Order",
+   choices: [["terminal", "Follow the terminals"], ["name", "By name"], ["attention", "By attention"], ["hand", "By hand"]]},
   {k: "offer_statusline", label: "Offer the statusline bridge"},
+  {k: "offer_tab_status", label: "Offer to take the tab status from iTerm2"},
   {head: "Experimental"},
   {k: "links",        label: "Link cards",
    note: "Hold a dragged card over another to link them. Two Claude Code sessions become partners that hand each other tasks; with Codex or omp, one hands the other its latest result."},
@@ -6650,9 +6843,11 @@ function settingRow(row, kind) {
   const name = document.createElement("span");
   name.textContent = row.label;
   line.append(name);
-  const note = row.note && Object.assign(document.createElement("span"),
-                                         {className: "set-note", id: `set-note-${row.k}`, textContent: row.note});
+  const note = (row.note || row.k === "follow_terminal" || row.k === "tab_status") && Object.assign(document.createElement("span"),
+                                         {className: "set-note", id: `set-note-${row.k}`, textContent: row.note || ""});
   if (note) line.append(note);
+  if (row.k === "follow_terminal") SETTING_SYNC.push(() => terminalBackgroundNote(note, LATEST));
+  if (row.k === "tab_status") SETTING_SYNC.push(() => tabStatusNote(note, LATEST));
   const off = () => !!(row.needs && !SETTINGS[row.needs]);
 
   if (row.choices) {
@@ -6926,59 +7121,98 @@ function takeRelease() {
     .then(paintVersion);
 }
 
-// The statusline payload is the panel's only source for a card's context,
-// model and effort and for the hover's cost, limits and cache. While
-// settings.json lacks the bridge, the foot says so and offers to put it in.
-// "installing", "installed", or a refusal's text; null while nothing is asked.
-let statuslineState = null;
-function paintStatuslineOffer() {
-  const box = document.getElementById("sl-offer");
-  const offered = LATEST.statusline === "missing" && SETTINGS?.offer_statusline !== false;
-  box.hidden = !offered && statuslineState !== "installed";
+// What the foot offers to change in the panel's own setup, each while its
+// snapshot says so and until declined: a head with the offer's icon, title and
+// two buttons, the reason under it, and what came of the button.
+const OFFERS = [
+  // The statusline payload is the panel's only source for a card's context,
+  // model and effort and for the hover's cost, limits and cache.
+  {box: "sl-offer", setting: "offer_statusline", endpoint: "/statusline", icon: "plug",
+   offered: snapshot => snapshot.statusline === "missing",
+   title: "No context figures", go: "Install", going: "Installing…",
+   goTitle: "Point statusLine in ~/.claude/settings.json at the bridge; settings.json is backed up first",
+   laterTitle: "Stop offering it; Settings > Offer the statusline bridge brings it back",
+   why: "Cards miss their context %, model and effort, and the details card misses cost, limits and cache, "
+      + "because the statusline bridge is not in ~/.claude/settings.json. Your own statusline keeps running inside it.",
+   doneTitle: "Statusline bridge installed", done: "Sessions started from now on show their context figures."},
+  // iTerm2's own hooks write Claude tabs, and the panel yields them while they are there.
+  {box: "ts-offer", setting: "offer_tab_status", endpoint: "/tab-status", icon: "computer",
+   offered: snapshot => snapshot.tab_status === "contested",
+   title: "iTerm2 writes the Claude tabs", go: "Remove iTerm2 hooks", going: "Removing…",
+   goTitle: "Deletes every cc-status hook entry from ~/.claude/settings.json and nothing else. "
+          + "The file is copied first to ~/.claude/settings.json.before-tab-status. "
+          + "Claude sessions already open keep the hooks until they restart.",
+   laterTitle: "Stop offering it; Settings > Offer to take the tab status from iTerm2 brings it back",
+   why: "iTerm2's Claude Code integration writes the status under Claude tabs from its cc-status hooks in "
+      + "~/.claude/settings.json, so the panel leaves those tabs alone. Removing the hooks lets the panel write "
+      + "every agent's tab, with the question and done-while-away. A copy of the file is kept first.",
+   doneTitle: "iTerm2 hooks removed",
+   done: "A copy is in ~/.claude/settings.json.before-tab-status. Claude sessions open now keep the hooks until they restart."},
+];
+
+// Per offer box: "working", "done", a refusal's text, or null while nothing is asked.
+const offerState = {};
+
+function paintOffers(snapshot) {
+  for (const offer of OFFERS) paintOffer(offer, snapshot);
+  const note = document.getElementById("set-note-tab_status");
+  if (note) tabStatusNote(note, snapshot);
+}
+
+function paintOffer(offer, snapshot) {
+  const box = document.getElementById(offer.box);
+  const state = offerState[offer.box] ?? null;
+  const offered = offer.offered(snapshot) && SETTINGS?.[offer.setting] !== false;
+  box.hidden = !offered && state !== "done";
   if (box.hidden) return;
-  const key = `${offered}|${statuslineState}`;
+  const key = `${offered}|${state}`;
   if (box.dataset.key === key) return;
   box.dataset.key = key;
   box.replaceChildren();
   const head = Object.assign(document.createElement("div"), {className: "sl-head"});
   const title = document.createElement("span");
-  head.append(metaIcon("plug"), title);
+  head.append(metaIcon(offer.icon), title);
   box.append(head);
   const say = (text, cls = "") => box.append(Object.assign(document.createElement("p"), {className: cls, textContent: text}));
-  if (statuslineState === "installed") {
-    title.textContent = "Statusline bridge installed";
-    say("Sessions started from now on show their context figures.");
+  if (state === "done") {
+    title.textContent = offer.doneTitle;
+    say(offer.done);
     return;
   }
-  title.textContent = "No context figures";
-  const install = Object.assign(document.createElement("button"),
-                                {className: "go", type: "button", textContent: statuslineState === "installing" ? "Installing…" : "Install"});
-  install.disabled = statuslineState === "installing";
-  install.title = "Point statusLine in ~/.claude/settings.json at the bridge; settings.json is backed up first";
-  install.addEventListener("click", installStatusline);
+  title.textContent = offer.title;
+  const go = Object.assign(document.createElement("button"),
+                           {className: "go", type: "button", textContent: state === "working" ? offer.going : offer.go});
+  go.disabled = state === "working";
+  go.title = offer.goTitle;
+  go.addEventListener("click", () => takeOffer(offer));
   const later = Object.assign(document.createElement("button"), {type: "button", textContent: "Not now"});
-  later.title = "Stop offering it; Settings > Offer the statusline bridge brings it back";
-  later.addEventListener("click", () => { statuslineState = null; push({offer_statusline: false}); });
-  head.append(install, later);
-  say("Cards miss their context %, model and effort, and the details card misses cost, limits and cache, "
-      + "because the statusline bridge is not in ~/.claude/settings.json. Your own statusline keeps running inside it.");
-  if (statuslineState && statuslineState !== "installing") say(statuslineState, "refused");
+  later.title = offer.laterTitle;
+  later.addEventListener("click", () => { offerState[offer.box] = null; push({[offer.setting]: false}); });
+  head.append(go, later);
+  say(offer.why);
+  if (state && state !== "working") say(state, "refused");
 }
 
-function installStatusline() {
-  statuslineState = "installing";
-  paintStatuslineOffer();
-  fetch(`/statusline?token=${encodeURIComponent(TOKEN)}`, {method: "POST"})
+function takeOffer(offer) {
+  offerState[offer.box] = "working";
+  paintOffer(offer, LATEST);
+  fetch(`${offer.endpoint}?token=${encodeURIComponent(TOKEN)}`, {method: "POST"})
     .then(async r => {
       const body = await r.json().catch(() => ({}));
-      statuslineState = r.ok ? "installed" : (body.error || `install failed (${r.status})`);
+      offerState[offer.box] = r.ok ? "done" : (body.error || `${offer.go} failed (${r.status})`);
     })
-    .catch(err => { statuslineState = String(err); })
+    .catch(err => { offerState[offer.box] = String(err); })
     .then(() => {
-      paintStatuslineOffer();
+      paintOffer(offer, LATEST);
       // The confirmation is news once; after that it is only a resting state.
-      if (statuslineState === "installed") setTimeout(() => { statuslineState = null; paintStatuslineOffer(); }, 8000);
+      if (offerState[offer.box] === "done") setTimeout(() => { offerState[offer.box] = null; paintOffer(offer, LATEST); }, 8000);
     });
+}
+
+// The settings line under the tab status switch, said only while iTerm2 is too old for it.
+function tabStatusNote(note, snapshot) {
+  note.hidden = snapshot.tab_status !== "unavailable";
+  note.textContent = "Needs iTerm2 3.7.6";
 }
 
 function push(change) {

@@ -126,6 +126,10 @@ A Claude card whose session has Remote Control on shows a small grey
 broadcast glyph after its name ([usage](docs/usage.md#remote-control)).
 In a narrow panel, or at a large text size, an agent card shows its name
 and its state, and the foot is one line ([usage](docs/usage.md#a-narrow-panel)).
+The panel takes the background colour of the pane in front and draws its cards
+in shades of it, light or dark as that colour is ([usage](docs/usage.md#the-terminals-background)).
+Each agent's tab says the same under its title: `working`, `needs you` with
+the question, or `done`, in the panel's colours ([usage](docs/usage.md#the-status-under-a-tab)).
 
 An omp session reports its state through the extension the install writes:
 when a turn starts and ends, when an approval or a question waits on you, and
@@ -188,7 +192,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 
 ### Settings
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: a card each for sounds, notifications, focus, the rows and experiments, every setting with its default, and the repository the install comes from">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: a card each for sounds, notifications, focus, finished sessions, the style of the rows, the terminal, the rows and experiments, every setting with its default, and the repository the install comes from">
 
 The gear opens the drawer; every setting is there with its default, as above.
 A setting indented under another works only while that one is on.
@@ -198,8 +202,10 @@ A setting indented under another works only while that one is on.
 | Sound | Play sounds; under it When a session is blocked, When one finishes, Volume |
 | Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
 | Focus | Bring a blocked session forward; under it Go back once it resumes |
-| Finished | Finished first, Green wash, Badge in the pane, Tab colour |
-| Rows | Warn above, CPU heavy at, Memory heavy at, Order, Provider badge, Shell names, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded), Text size, Offer the statusline bridge |
+| Finished | Finished first, Badge in the pane |
+| Style | Card style, Follow the terminal's background, Text size, Shell names, Provider badge, Green wash, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded): see [Card style](docs/usage.md#card-style) |
+| Terminal | Status under the tab title: see [The status under a tab](docs/usage.md#the-status-under-a-tab) |
+| Rows | Warn above, CPU heavy at, Memory heavy at, Order, Offer the statusline bridge, Offer to take the tab status from iTerm2 |
 | Experimental | Link cards, Keep remote control after a switch and Commit heatmap, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control) and [Commit heatmap](docs/usage.md#commit-heatmap) |
 | Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |
 

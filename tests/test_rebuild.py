@@ -62,7 +62,13 @@ def bridge(monkeypatch, readings, started=None):
     monkeypatch.setattr(sidebar.codex, "read_limits", lambda *_: {})
     b = sidebar.Bridge(None, Quiet())
     b.app = NoWindows()
+    b.status = sidebar.tabstatus.Writer(invoke=no_status)
     return b
+
+
+async def no_status(name, args):
+    """iTerm2's status functions over sessions that show none."""
+    return {"status": None, "dot_color": None}
 
 
 class GoneAway(NoWindows):
@@ -1430,3 +1436,174 @@ def test_a_tmux_server_that_did_not_answer_is_left_alone_for_a_while(monkeypatch
     assert asyncio.run(b.read_tmux_tables({"slow"})) == {}
     assert len(asked) == 2
     assert (tmp_path / "daemon.log").read_text().count("not read") == 1
+
+
+# ------------------------------------------------- the terminal's background
+
+class Colour:
+    """iterm2.Color as a profile hands it out: floats from 0 to 255."""
+    def __init__(self, red, green, blue):
+        self.red, self.green, self.blue = red, green, blue
+
+
+class Profile:
+    def __init__(self, plain, light=None, dark=None, separate=False):
+        self.background_color = plain
+        self.background_color_light = light
+        self.background_color_dark = dark
+        self.use_separate_colors_for_light_and_dark_mode = separate
+
+
+class ProfiledPane(Session):
+    """A pane whose profile the test sets, or whose profile read fails with `error`."""
+    def __init__(self, profile=None, error=None):
+        self.profile, self.error, self.reads = profile, error, 0
+
+    async def async_get_profile(self):
+        self.reads += 1
+        if self.error:
+            raise self.error
+        return self.profile
+
+
+def themed(app, words):
+    async def async_get_theme():
+        return words
+    app.async_get_theme = async_get_theme
+    return app
+
+
+def facing(monkeypatch, pane):
+    """A bridge whose iTerm2 has `pane` in front, findable by its id. The marks'
+    start-up sweep, which reads every profile too, has already run."""
+    b = bridge(monkeypatch, [])
+    b.server = Frames()
+    b.app = in_front(one_session(pane), pane)
+    b.app.get_session_by_id = lambda sid: pane if sid == pane.session_id else None
+    b.marks.swept = True
+    return b
+
+
+DRACULA = Colour(40.0, 42.0, 54.0)
+SEPARATE = Profile(DRACULA, light=Colour(253.0, 246.0, 227.0), dark=Colour(21.0, 23.0, 40.0), separate=True)
+
+
+def test_the_background_is_the_profiles_colour_rounded_to_hex():
+    assert sidebar.terminal_background(Profile(Colour(39.6, 42.4, 54.49)), ()) == "#282a36"
+    assert sidebar.terminal_background(Profile(Colour(0.0, 0.0, 0.0)), ()) == "#000000"
+    assert sidebar.terminal_background(Profile(Colour(255.0, 255.0, 255.0)), ()) == "#ffffff"
+
+
+def test_a_profile_with_light_and_dark_colours_paints_the_one_for_iterm2s_theme():
+    """Its plain colour is not what the terminal shows then."""
+    assert sidebar.terminal_background(SEPARATE, ["dark", "minimal"]) == "#151728"
+    assert sidebar.terminal_background(SEPARATE, ["light"]) == "#fdf6e3"
+
+
+def test_a_rebuild_pushes_the_background_of_the_session_in_front(monkeypatch):
+    b = facing(monkeypatch, ProfiledPane(Profile(DRACULA)))
+    asyncio.run(b.rebuild())
+    assert b.server.sent[-1]["terminal_background"] == "#282a36"
+
+
+def test_a_separate_colour_profile_takes_iterm2s_theme(monkeypatch):
+    b = facing(monkeypatch, ProfiledPane(SEPARATE))
+    themed(b.app, ["light"])
+    asyncio.run(b.rebuild())
+    assert b.server.sent[-1]["terminal_background"] == "#fdf6e3"
+
+
+def test_with_no_session_in_front_the_last_background_read_stands(monkeypatch):
+    pane = ProfiledPane(Profile(DRACULA))
+    b = facing(monkeypatch, pane)
+    asyncio.run(b.rebuild())
+    b.app.current_terminal_window = None
+    pane.profile = Profile(Colour(255.0, 255.0, 255.0))
+    asyncio.run(b.rebuild())
+    assert (pane.reads, b.server.sent[-1]["terminal_background"]) == (1, "#282a36")
+
+
+def test_a_background_that_could_not_be_read_is_none_and_said_once(monkeypatch, tmp_path, capsys):
+    """Fail loud: the colour before it is not kept as a guess, the rebuild
+    still lands, and a failure that repeats every rebuild is logged once."""
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    pane = ProfiledPane(Profile(DRACULA))
+    b = facing(monkeypatch, pane)
+    asyncio.run(b.rebuild())
+    pane.error = ConnectionError("profile gone")
+    asyncio.run(b.rebuild())
+    asyncio.run(b.rebuild())
+    assert b.healthy() is True
+    assert b.server.sent[-1]["terminal_background"] is None
+    assert capsys.readouterr().out == "sidebar: terminal background not read: ConnectionError('profile gone')\n"
+
+
+def test_the_background_is_not_read_while_the_panel_does_not_follow_it(monkeypatch):
+    sidebar.SETTINGS_FILE.write_text(json.dumps({"follow_terminal": False}))
+    pane = ProfiledPane(Profile(DRACULA))
+    b = facing(monkeypatch, pane)
+    asyncio.run(b.rebuild())
+    assert (pane.reads, b.server.sent[-1]["terminal_background"]) == (0, None)
+
+
+class TwoPanes(NoWindows):
+    """iTerm2 with two sessions, which the tab status writes by id."""
+    def __init__(self, *sids):
+        self.panes = {sid: types.SimpleNamespace(session_id=sid) for sid in sids}
+        self.terminal_windows = [types.SimpleNamespace(tabs=[types.SimpleNamespace(sessions=list(self.panes.values()))])]
+
+    def get_session_by_id(self, session_id):
+        return self.panes.get(session_id)
+
+
+def test_the_rebuild_writes_owned_tabs_and_tells_the_page_while_iterm2s_hooks_hold_claude_tabs(monkeypatch):
+    Path(sidebar.CLAUDE_SETTINGS).write_text(json.dumps(
+        {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "/Users/someone/.config/iterm2/cc-status"}]}]}}))
+    frame = {"groups": [{"name": "AGENTS", "rows": [
+        {"session_id": "c", "state": "working", "depth": 0},
+        {"session_id": "x", "state": "working", "depth": 0, "provider": "openai", "doing": "Reading"}]}]}
+    monkeypatch.setattr(sidebar, "snapshot", lambda *_, **__: json.loads(json.dumps(frame)))
+    b = bridge(monkeypatch, [])
+    b.app = TwoPanes("c", "x")
+
+    async def read_sessions():
+        return []
+    b.read_sessions = read_sessions
+    calls = []
+
+    async def invoke(name, args):
+        calls.append((name, args))
+        return {"status": None, "dot_color": None}
+    b.status = sidebar.tabstatus.Writer(invoke=invoke)
+    asyncio.run(b._rebuild_once())
+    assert [call for call in calls if call[0] == "iterm2.set_session_status"] == [
+        ("iterm2.set_session_status", {"session_id": "x", "status": "working", "detail": "Reading",
+                                       "dot_color": "#ff9501", "text_color": "#ff9501", "background_tasks": 0})]
+    assert b.latest["tab_status"] == "contested"
+
+
+def test_stopping_takes_the_words_back_then_exits(monkeypatch):
+    b = bridge(monkeypatch, [])
+    taken = []
+
+    async def clear_all(log):
+        taken.append("all")
+    b.status.clear_all = clear_all
+    with pytest.raises(SystemExit) as stopped:
+        asyncio.run(b.stop())
+    assert (taken, stopped.value.code) == (["all"], 0)
+
+
+def test_a_stop_that_iterm2_never_answers_still_exits_in_its_bound(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(sidebar, "STOP_SECONDS", 0.05)
+    b = bridge(monkeypatch, [])
+
+    async def clear_all(log):
+        await asyncio.sleep(60)
+    b.status.clear_all = clear_all
+    began = time.monotonic()
+    with pytest.raises(SystemExit):
+        asyncio.run(b.stop())
+    assert time.monotonic() - began < 1
+    assert capsys.readouterr().out == "sidebar: stopping: tab statuses not taken back within 0.05 s\n"

@@ -8,6 +8,7 @@
 | Details has no commit calendar for a project | git refused the repository (a broken one, or one owned by another user) or did not answer in 10 s; `daemon.log` says `commits of <path> not read: ...` | Fix the repository; the panel asks git again within a minute |
 | Codex cards stop appearing | Another tool's update rewrote `~/.codex/hooks.json` | `./install.sh --codex` |
 | Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | Install in the panel's foot, or `./install.sh`. After **Not now** the foot offers nothing until Settings > Offer the statusline bridge brings it back |
+| A Claude tab's status flips between iTerm2's words and the panel's | The session started before **Remove iTerm2 hooks** and still runs iTerm2's `cc-status` hook | Restart that Claude session |
 | No context percentage, and no offer in the foot | `~/.claude/settings.json` is not valid JSON, so the panel offers nothing | Fix the file; the offer then shows |
 | Install in the foot shows red text | `~/.claude/settings.json` stopped being valid JSON after the offer showed, so the panel wrote nothing | Fix the file, then press Install again |
 | Update refused, red text in the bar | One of the checks in [Updating](usage.md#updating) failed, or `install.sh` did; the whole message is in the script console | Read the reason. `local changes to tracked files`: `git -C <checkout> status`. `git … is too old`: update git (`xcode-select --install`). `not signed with a release key` or `carries no SSH signature`: take nothing and tell the maintainer |
@@ -24,6 +25,8 @@ Some failures show only in `~/.claude/agents-sidebar-status/daemon.log`:
 | `answer refused <session> <text>` | A click on a card's answer came after the question changed or was already answered | Answer in the pane |
 | `auto-switch: nowhere to go, <why>` | The panel should leave the account, but no other account fits | Wait for a reset, or add an account |
 | `auto-switch refused: <why>` | An automatic switch failed, and the login did not change | Act on the reason it gives |
+| `tab status off: <reason>` | iTerm2 is older than 3.7.6, or the panel could read no session's status when it started, so no tab gets a status | Update iTerm2, then restart the panel |
+| `status <session>: <error>` | iTerm2 refused one tab's status; said once until a call on that session works, and tried again each reading | Nothing, unless it repeats for a session that is open |
 | `page error <message> \| <stack>` | The panel could not draw a frame and shows `STALE` until one draws | Report the line; reopening the panel does not fix the frame that breaks it |
 
 ## The white panel

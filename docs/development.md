@@ -24,7 +24,9 @@ again by itself, so launch it:
 osascript -e 'tell application "iTerm2" to launch API script named "agents_sidebar"'
 ```
 
-Check that `ps` shows exactly one daemon, then reopen the panel.
+Check that `ps` shows exactly one daemon, then reopen the panel. The kill
+(`SIGTERM`) first takes the daemon's words off the tabs, waiting at most two
+seconds for iTerm2.
 
 The hook runs from a copy, not from the checkout. `install.sh` copies
 `plugin/` to `~/.claude/skills/agents-sidebar`, and that copy is what Claude
@@ -51,7 +53,7 @@ with no agent pid, such as a Codex that has published nothing yet, the daemon
 asks only whether it waits or has exited.
 
 The server also takes `POST /accounts` (switch, add, rename, read), `/update`,
-`/statusline`, `/context`, `/link`, `/untie`, `/github` (opens the repository
+`/statusline`, `/tab-status` (takes iTerm2's `cc-status` hook out of Claude Code's settings), `/context`, `/link`, `/untie`, `/github` (opens the repository
 or releases page the daemon builds) and `/page-error`. No endpoint runs arbitrary code.
 
 Once a reading of iTerm2 has worked, the first or a later one, the daemon writes its port, token and
@@ -136,12 +138,14 @@ read against the source.
   Codex session's reply, read from its rollout.
 - `omp.py`: what an omp session says about itself, read from its own files.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
-- `statusline.py`: puts the statusline bridge into Claude Code's settings.
+- `statusline.py`: puts the statusline bridge into Claude Code's settings, and takes iTerm2's `cc-status` hook out.
+- `tabstatus.py`: the status under each agent's tab title, written through iTerm2's `set_session_status` and
+  taken back when the session rests, the setting goes off or the daemon stops.
 - `update.py`: checks the mirror for a newer release and takes it.
 - `links.py`: links between two cards, the one-shot hand-off, through each session's links folder.
 - `partners.py`: partner sessions: the record, each end's `partner.json`, and the tasks between them.
 - `remote.py`: Remote Control on each Claude card, from its state file, and turned back on after a panel switch.
-- `marks.py`: the word Done as iTerm2's badge in the pane of a session that finished unseen, and the tab colour, written through the session's own profile and restored when the pane is seen.
+- `marks.py`: the word Done as iTerm2's badge in the pane of a session that finished unseen, written through the session's own profile and restored when the pane is seen.
 - `agents-sidebar`: the command scripts use to list agents and wait on one;
   standard library only, and it runs on the Python 3.9 macOS ships.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and
@@ -449,6 +453,12 @@ on since, so read the source for what runs now.
   cards for agents on another machine, reached through an ssh or Eternal Terminal pane.
 - [superpowers/specs/2026-10-18-finished-marks-design.md](superpowers/specs/2026-10-18-finished-marks-design.md):
   a session that finished unseen lifted and washed in the panel, and the word Done as iTerm2's badge in its pane.
+- [superpowers/specs/2026-10-25-terminal-background-design.md](superpowers/specs/2026-10-25-terminal-background-design.md):
+  the panel in the colour of the terminal in front, every surface derived from it.
+- [superpowers/specs/2026-10-25-tab-status-design.md](superpowers/specs/2026-10-25-tab-status-design.md):
+  the status under each agent's tab title, written by the panel, and taking it over from iTerm2's own hooks.
+- [superpowers/specs/2026-10-25-card-styles-design.md](superpowers/specs/2026-10-25-card-styles-design.md):
+  four ways of drawing session rows without the card, beside the card itself.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.
 - [superpowers/plans/2026-10-07-drag-order.md](superpowers/plans/2026-10-07-drag-order.md): the step-by-step

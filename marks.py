@@ -1,5 +1,5 @@
 # ABOUTME: Puts the word Done into the iTerm2 pane of a session whose turn ended while nobody
-# ABOUTME: looked, as the pane's badge or a green tab, and takes it back the moment the pane is seen.
+# ABOUTME: looked, as the pane's badge, and takes it back the moment the pane is seen.
 """Every mark is a view of `alerts.Unseen.sids`: a rebuild says which sessions
 want a mark on each channel, the marker diffs that against what it has
 marked, writes the new ones and restores the gone ones. What it writes goes
@@ -11,11 +11,9 @@ that session's mark and is logged; the rebuild never fails for a mark.
 #: The word, exactly: the startup sweep recognises a mark by it.
 WORD = "Done"
 
-#: The panel's calm green, the dark theme's --sev-ok, as a tab colour.
-TAB_RGB = (48, 209, 88)
-#: The same green at about a third, as the badge's ink: the badge is large
-#: and sits over the pane's output, and the profile's own colour (often a
-#: red) reads as an error. Written to all three colour fields: a profile
+#: The panel's calm green, the dark theme's --sev-ok, at about a third, as
+#: the badge's ink: the badge is large and sits over the pane's output, and
+#: the profile's own colour (often a red) reads as an error. Written to all three colour fields: a profile
 #: with separate light and dark colours shows those two and ignores the
 #: plain one. Size, font and margins cannot be set per session: iTerm2
 #: takes them and ignores them, so the saved profile's badge settings
@@ -26,7 +24,6 @@ BADGE_COLOURS = ("badge_color", "badge_color_light", "badge_color_dark")
 #: Channel -> the setting that turns it on and the profile fields it touches.
 CHANNELS = {
     "badge": ("mark_badge", ("badge_text",) + BADGE_COLOURS),
-    "tab": ("mark_tab", ("use_tab_color", "tab_color")),
 }
 
 
@@ -117,27 +114,17 @@ class Marker:
         try:
             profile = await session.async_get_profile()
             local = self.api.LocalWriteOnlyProfile()
-            if channel == "badge":
-                if profile.badge_text:
-                    if (sid, channel) not in self.busy:
-                        self.busy.add((sid, channel))
-                        log(f"badge busy {sid[:8]}")
-                    return None
-                # A profile without the key reads None; what goes back is the empty badge.
-                kept = {"badge_text": profile.badge_text or ""}
-                kept.update({field: getattr(profile, field) for field in BADGE_COLOURS})
-                local.set_badge_text(WORD)
-                for field in BADGE_COLOURS:
-                    getattr(local, "set_" + field)(self.api.Color(*BADGE_RGBA))
-            else:
-                if profile.use_tab_color:
-                    if (sid, channel) not in self.busy:
-                        self.busy.add((sid, channel))
-                        log(f"tab busy {sid[:8]}")
-                    return None
-                kept = {"use_tab_color": bool(profile.use_tab_color), "tab_color": profile.tab_color}
-                local.set_use_tab_color(True)
-                local.set_tab_color(self.api.Color(*TAB_RGB))
+            if profile.badge_text:
+                if (sid, channel) not in self.busy:
+                    self.busy.add((sid, channel))
+                    log(f"badge busy {sid[:8]}")
+                return None
+            # A profile without the key reads None; what goes back is the empty badge.
+            kept = {"badge_text": profile.badge_text or ""}
+            kept.update({field: getattr(profile, field) for field in BADGE_COLOURS})
+            local.set_badge_text(WORD)
+            for field in BADGE_COLOURS:
+                getattr(local, "set_" + field)(self.api.Color(*BADGE_RGBA))
             await session.async_set_profile_properties(local)
         except Exception as error:  # noqa: BLE001 -- an iTerm2 call; the rebuild goes on
             log(f"mark {channel} {sid[:8]}: {error!r}")
@@ -149,13 +136,9 @@ class Marker:
         """Write back what the mark replaced on one channel."""
         try:
             local = self.api.LocalWriteOnlyProfile()
-            if channel == "badge":
-                local.set_badge_text(kept["badge_text"])
-                for field in BADGE_COLOURS:
-                    getattr(local, "set_" + field)(kept[field])
-            else:
-                local.set_use_tab_color(kept["use_tab_color"])
-                local.set_tab_color(kept["tab_color"])
+            local.set_badge_text(kept["badge_text"])
+            for field in BADGE_COLOURS:
+                getattr(local, "set_" + field)(kept[field])
             await session.async_set_profile_properties(local)
         except Exception as error:  # noqa: BLE001 -- an iTerm2 call; the rebuild goes on
             log(f"clear {channel} {session.session_id[:8]}: {error!r}")

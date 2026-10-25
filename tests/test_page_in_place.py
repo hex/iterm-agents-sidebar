@@ -22,7 +22,7 @@ PAGE = Path(__file__).resolve().parent.parent / "page.html"
 
 STYLE_WRITERS = {
     # written on an event, never on a frame that kept the node
-    "syncShimmer", "syncBreathe", "glide", "showOpenShell", "applyShellFont", "applyScale",
+    "syncShimmer", "syncBreathe", "glide", "showOpenShell", "applyShellFont", "applyTerminalBackground", "applyScale",
     # a worktree stem's measured lengths, written only when one changed
     "paintStems",
     # the floating menu, the details card and its context breakdown
@@ -39,7 +39,7 @@ LISTENER_OWNERS = {
     "listen",
     # nodes made once, or on an event: the details card, the floating menu, the settings sheet, the offers
     "paintBreakdown", "ctxOpener", "ctxDeferred", "menuFor", "settingSwitch", "settingRow", "settingsBody", "githubRow",
-    "paintVersion", "paintStatuslineOffer",
+    "paintVersion", "paintOffer",
 }
 
 

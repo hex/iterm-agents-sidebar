@@ -67,7 +67,8 @@ def theme_block(which):
     css = source()
     if which == "light":
         return re.search(r":root\s*\{(.*?)\}", css, re.S).group(1)
-    return re.search(r"@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{(.*?)\}", css, re.S).group(1)
+    return re.search(r'@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-term-theme="light"\]\)\s*\{(.*?)\}',
+                     css, re.S).group(1)
 
 
 def test_an_unseen_finished_card_wears_the_finished_class_when_the_wash_is_on():

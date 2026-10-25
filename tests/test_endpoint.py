@@ -70,7 +70,7 @@ def daemon(monkeypatch, tmp_path):
 def read_of_nothing(sidebar):
     """The snapshot a whole rebuild makes over no windows, on a machine whose
     Claude settings lack the statusline bridge."""
-    return {"groups": [], "hand_order": [], "version": sidebar.version(), "terminal_font": None,
+    return {"groups": [], "hand_order": [], "version": sidebar.version(), "terminal_font": None, "terminal_background": None,
             "statusline": "missing", "codex": {}, "links": [], "partners": []}
 
 
