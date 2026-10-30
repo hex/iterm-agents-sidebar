@@ -619,6 +619,21 @@ def test_a_worktree_session_waits_for_the_main_session_teammates():
         ("fignity", 0), ("review-351", 1), ("worktree", 0), ("beacon", 0)]
 
 
+def test_a_worktree_session_moves_together_with_its_own_teammates():
+    """A delegate of the worktree session stays indented under the worktree
+    card, not under the main session it is placed after."""
+    linked = dict(LINKED, claude_session="6a4d1211-632c-4c8e-9c0a-000000000002")
+    delegate = {"session_id": "delegate", "window_id": WINDOW, "tab_id": "61",
+                "window_index": 1, "tab_index": 5, "pane_index": 2,
+                "path": "/Users/x/.claude-sessions/atlas@worktree/scratch/wt-impl",
+                "auto_name": "✳ impl", "job_name": None, "branch": "delegate/impl",
+                "team": "session-0da70177", "agent_name": "impl",
+                "parent_session": linked["claude_session"]}
+    rows = snapshot([MAIN, linked, delegate, OTHER])["groups"][0]["rows"]
+    assert [(r["label"], r["depth"]) for r in rows] == [
+        ("atlas", 0), ("worktree", 0), ("impl", 1), ("beacon", 0)]
+
+
 def test_a_worktree_session_in_a_plain_directory_is_named_by_its_branch():
     """No `@` to read a feature from: the branch is the next best name."""
     plain = dict(LINKED, path="/Users/x/src/atlas-wt", auto_name="✳ atlas-wt")

@@ -95,8 +95,8 @@
   :root[data-term-theme="dark"] { color-scheme: dark; }
   /* Following a terminal colour, every surface is derived from it in oklch
      lightness. The canvas sits .03 darker than the terminal, so the panel
-     reads as its own plane beside it. In the dark theme a card sinks .06
-     below the canvas; in the light one it lifts .015 above the terminal's own
+     reads as its own plane beside it. In the dark theme a card lifts .03
+     above the canvas; in the light one it lifts .015 above the terminal's own
      colour with 60% of its chroma. A card at rest takes a smaller step,
      the rule a further one, and each wash mixes into the card. A wash mixes in
      oklab, not oklch: oklch travels the hue circle between the two, so on a
@@ -105,10 +105,10 @@
      specificity. */
   :root[data-term-theme] { --bg: oklch(from var(--term-bg) calc(l - .03) c h); }
   :root[data-term-theme="dark"] {
-    --card: oklch(from var(--bg) calc(l - .06) c h);
-    --card-hover: oklch(from var(--bg) calc(l - .06 + .025) c h);
-    --rested-bg: oklch(from var(--bg) calc(l - .06 * .6) c h);
-    --neglected-bg: oklch(from var(--bg) calc(l - .06 * .3) c h);
+    --card: oklch(from var(--bg) calc(l + .03) c h);
+    --card-hover: oklch(from var(--bg) calc(l + .03 + .02) c h);
+    --rested-bg: oklch(from var(--bg) calc(l + .03 * .6) c h);
+    --neglected-bg: oklch(from var(--bg) calc(l + .03 * .3) c h);
     --rule: oklch(from var(--bg) calc(l + .11) c h); --card-border: var(--rule);
     --finished-bg: color-mix(in oklab, var(--card) 86%, var(--sev-ok));
     --blocked-bg: color-mix(in oklab, var(--card) 72%, var(--blocked-border));

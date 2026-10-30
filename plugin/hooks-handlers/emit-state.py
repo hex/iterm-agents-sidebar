@@ -1217,13 +1217,20 @@ def published(doc, pid, payload, codex, now, tasks=True, front=None):
              "host": short_host(), "front": front,
              # Where the session works. Codex's filed state is paired to a pane by it.
              "cwd": payload.get("cwd")}
+    # The hook's own count of what the session waits on that no process
+    # listing ties to it: a Codex command runs under Codex's shared app-server
+    # daemon, and a background teammate or subagent in a pane of its own. The
+    # count is what keeps a long wait from reading as a session gone quiet.
+    # Left out at zero: the variable has a ceiling, and a blocked state with
+    # its question sits near it.
+    waited_on = sum(1 for t in doc.get("background") or [] if t.get("type") not in WAITERS)
+    if codex:
+        waited_on += len(doc.get("running") or {})
+    if waited_on:
+        value["tools_running"] = waited_on
     if codex:
         value["model"] = payload.get("model")
         value["transcript_path"] = payload.get("transcript_path")
-        # Codex's commands run under its shared app-server daemon, where no
-        # process listing ties them to a pane, so the hook's own count is
-        # what keeps a long one from reading as a session gone quiet.
-        value["tools_running"] = len(doc.get("running") or {})
         # Its plan, kept from the last update_plan call; none until there is one.
         if doc.get("plan"):
             value["tasks"] = doc["plan"]

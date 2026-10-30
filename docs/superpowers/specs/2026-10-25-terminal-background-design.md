@@ -25,6 +25,10 @@ beside it and build every surface from that colour.
   dark colour the card now sinks .06 below the canvas (lighter cards were
   rejected: dark cards should be darker), on a light one it lifts .03 and
   keeps a quarter of the colour's chroma. The table below is the revised one.
+- **Dark tone, revised 2026-10-30.** On the live panel the sunk cards read
+  as too black against the terminal. Dark cards return to .03 above the
+  canvas; the rest and the neglected wash scale with it. The light side is
+  unchanged. The table below is the revised one.
 - **Canvas, revised 2026-10-25.** With the canvas equal to the terminal
   colour, the panel and the terminal read as one surface with a hairline
   between them. Shown beside a terminal in both themes, the canvas moved .03
@@ -69,13 +73,13 @@ settings line under the switch reads `Terminal background #282a36`, or
 
 ### Derivation
 
-| Token | Dark (sunk .06) | Light (lift .015, chroma x .6) |
+| Token | Dark (lift .03) | Light (lift .015, chroma x .6) |
 | --- | --- | --- |
 | `--bg` | the terminal's `l - .03` | the terminal's `l - .03` |
-| `--card` | `l - .06` | `min(1, l + .015)`, `c * .6` |
-| `--card-hover` | `l - .035` | the card's `l - .015` |
-| `--rested-bg` | `l - .036` | `min(1, l + .0075)`, `c * .6` |
-| `--neglected-bg` | `l - .018` | `l - .02` |
+| `--card` | `l + .03` | `min(1, l + .015)`, `c * .6` |
+| `--card-hover` | `l + .05` | the card's `l - .015` |
+| `--rested-bg` | `l + .018` | `min(1, l + .0075)`, `c * .6` |
+| `--neglected-bg` | `l + .009` | `l - .02` |
 | `--rule`, `--card-border` | `l + .11` | the terminal's `l - .075` |
 | `--finished-bg` | card 86%, `--sev-ok` 14% | card 88%, `--sev-ok` 12% |
 | `--blocked-bg` | card 72%, `--blocked-border` 28% | card 80%, `--blocked-border` 20% |

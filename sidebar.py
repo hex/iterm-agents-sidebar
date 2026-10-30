@@ -55,7 +55,9 @@ AGENT_TITLE_MARKER = "\u2733"
 #: this long under one means the writer stopped reporting rather than that it
 #: is still going. Generous, because a turn can think for a while without
 #: touching a tool. Only `working` ages: idle is a resting state that nothing
-#: refreshes and nothing needs to.
+#: refreshes and nothing needs to. A claim with a command running under its
+#: pid, or with tools or background tasks the hook itself counts as open,
+#: never ages: nothing fires while a session waits on those.
 WORKING_GOES_STALE_AFTER = 300
 
 #: How long a resume typed into a pane holds its button down while nothing
@@ -1375,7 +1377,13 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
         main = by_path.get(main_path)
         if main is None or main is row or row not in rows["agent"]:
             continue
-        rows["agent"].remove(row)
+        # The row moves with its own nested rows, which follow it directly.
+        start = rows["agent"].index(row)
+        end = start + 1
+        while end < len(rows["agent"]) and rows["agent"][end]["depth"]:
+            end += 1
+        family = rows["agent"][start:end]
+        del rows["agent"][start:end]
         row["worktree_of"] = main["session_id"]
         feature = Path(path).name.partition("@")[2]
         if feature or row.get("branch"):
@@ -1384,7 +1392,7 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
         while at < len(rows["agent"]) and (rows["agent"][at]["depth"]
                                            or rows["agent"][at].get("worktree_of") == main["session_id"]):
             at += 1
-        rows["agent"].insert(at, row)
+        rows["agent"][at:at] = family
 
     dock_partners(rows["agent"], pairs)
     if order == "name":
@@ -1484,8 +1492,9 @@ def parse_state(raw, command_running=False, remote=False):
             pass                     # alive, just not ours to signal
 
     if state == "working":
-        # The hook's own count of tools started and not finished: a Codex
-        # command runs under a daemon no process listing ties to the pane.
+        # The hook's own count of tools started and not finished and of
+        # background tasks the turn waits on: a Codex command runs under a
+        # daemon, a teammate in its own pane, and neither shows under the pid.
         command_running = command_running or bool(payload.get("tools_running"))
         try:
             age = time.time() - float(payload.get("ts") or 0)

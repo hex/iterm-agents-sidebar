@@ -408,7 +408,7 @@ colours for light and dark mode gives the one for iTerm2's current theme.
 
 Every surface comes from that colour. The panel's canvas sits .03 darker than
 the terminal in oklch lightness, so the panel reads as its own plane beside
-it. On a dark colour the cards sit .06 darker than the canvas; on a light one
+it. On a dark colour the cards sit .03 lighter than the canvas; on a light one
 they sit .015 lighter than the terminal with 60% of its tint. A card at rest takes a smaller step and the lines a
 larger one, and the waiting, warning and finished
 washes mix into the card's colour. A colour whose relative luminance, as the

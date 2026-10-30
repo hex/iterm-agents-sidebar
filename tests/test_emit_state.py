@@ -764,10 +764,10 @@ def test_the_state_counts_the_tools_started_and_not_finished():
         doc = emit_state.apply_event(doc, event, {"tool_use_id": tool}, "working", codex=True)
     assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 1
     doc = emit_state.apply_event(doc, "PostToolUse", {"tool_use_id": "t1"}, "working", codex=True)
-    assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 0
+    assert "tools_running" not in emit_state.published(doc, 1, {}, codex=True, now=1)
     doc = emit_state.apply_event(doc, "PreToolUse", {"tool_use_id": "t3"}, "working", codex=True)
     doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": False}, "idle", codex=True)
-    assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 0
+    assert "tools_running" not in emit_state.published(doc, 1, {}, codex=True, now=1)
 
 
 def test_the_card_asks_what_the_gates_still_open_ask():
@@ -806,6 +806,21 @@ def test_tools_still_running_survive_the_state_file(tmp_path, monkeypatch):
     emit_state.update("s1", "PreToolUse", {"tool_use_id": "t1"}, "working", codex=True)
     doc = emit_state.update("s1", "PreToolUse", {"tool_use_id": "t2"}, "working", codex=True)
     assert emit_state.published(doc, 1, {}, codex=True, now=1)["tools_running"] == 2
+
+
+def test_a_background_task_counts_as_a_tool_still_running():
+    """A Claude session waiting on a teammate it put in the background has
+    no tool of its own in flight and no shell under its pid, so nothing else
+    vouches for its working claim once it has sat quiet. The task itself
+    does; a monitor does not, since the session waits at its prompt."""
+    doc = emit_state.blank_state()
+    doc = emit_state.apply_event(doc, "UserPromptSubmit", {"prompt": "go"}, "working", codex=False)
+    doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": True, "background_tasks": [
+        {"type": "teammate", "description": "Write the config"}]}, "idle", codex=False)
+    assert emit_state.published(doc, 1, {}, codex=False, now=1)["tools_running"] == 1
+    doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": True, "background_tasks": [
+        {"type": "monitor", "description": "tail the log"}]}, "idle", codex=False)
+    assert "tools_running" not in emit_state.published(doc, 1, {}, codex=False, now=1)
 
 
 def test_the_state_variable_says_when_the_session_last_went_idle():
