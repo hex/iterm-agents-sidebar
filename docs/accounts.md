@@ -166,7 +166,10 @@ CLI: a bar for each window Codex reports, 5-hour and weekly, or weekly alone,
 depending on the plan. The panel reads them from the end of Codex's newest
 session log in `~/.codex/sessions`, which Codex updates on every turn, so it
 makes no request and never touches Codex's login. A window whose reset time has
-passed reads 0% until Codex reports again.
+passed reads 0% until Codex reports again. Under the Codex name stands the
+model a new Codex session starts on and its reasoning effort, as
+`~/.codex/config.toml` sets them (the selected profile's first, then the top
+level's), named as Codex's own model list names the slug.
 
 When the plan's usage is used up and Codex moves the account onto a fallback
 allowance (Luna Reserve, on selected plans), it switches the session to the

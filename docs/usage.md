@@ -429,6 +429,13 @@ stays still when Reduce motion is on in macOS accessibility settings.
 In the narrowest panel it shows its end after an ellipsis instead ([A narrow
 panel](#a-narrow-panel)).
 
+Every other line a card cuts at its edge, the task, the last report, the
+branch line, a shell's command, a teammate's line, moves the same way while
+the pointer rests on that line: after a short pause it slides to its end at
+the same pace, rests, slides back, and goes round until the pointer leaves
+it, when it slides home from wherever it was. Its fade lifts while it moves,
+so the end reads whole. Off under Reduce motion too.
+
 ## Teammates and worktrees
 
 A teammate sits under the lead that spawned it, wherever it runs, and takes the
@@ -820,6 +827,22 @@ before its first reply has nothing to resume), and it is not open in another pan
 a click it stays away until the agent reports again, or for a minute if the
 pane comes back to its prompt without one. An agent
 that ends with `/exit` leaves no card behind, and omp sessions have no Resume.
+
+## Past sessions
+
+Above the limits, **Past sessions** folds open a list of the conversations written to
+in the last week that have no card now: a cs session as one row, named after
+itself, at its newest conversation; any other directory as one row per
+conversation, with the first prompt as its title and its age. The daemon reads
+Claude Code's transcripts under `~/.claude/projects` when the fold opens, not
+with every frame, and leaves out what is open now, what ran in a directory
+that is gone, and what ran inside Claude Code's subagent worktrees or a
+session's own `.cs` folder. The list holds the newest thirty.
+
+Resume opens a new tab in the row's directory and, once its shell is up, types
+`cs .` for a cs session or `claude --resume <conversation id>` for anything
+else. A shell that takes more than ten seconds to appear gets nothing typed,
+and the daemon's log says so. Codex and omp conversations are not listed.
 
 ## From a script
 

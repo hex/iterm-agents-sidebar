@@ -32,6 +32,16 @@ def partners_record_of_the_test(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(partners, "PARTNERS_FILE", tmp_path_factory.mktemp("partners") / "partners.json")
 
 
+@pytest.fixture(autouse=True)
+def codex_config_of_the_test(monkeypatch, tmp_path_factory):
+    """A daemon built in a test reads Codex's default model from the test's own folder, where no
+    config is, never from this machine's ~/.codex."""
+    import codex
+    folder = tmp_path_factory.mktemp("codex")
+    monkeypatch.setattr(codex, "CONFIG", str(folder / "config.toml"))
+    monkeypatch.setattr(codex, "MODELS_CACHE", str(folder / "models_cache.json"))
+
+
 SIDEBAR_PY = str(Path(__file__).resolve().parent.parent / "sidebar.py")
 
 

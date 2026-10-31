@@ -33,6 +33,7 @@ import context_usage  # noqa: E402
 import links  # noqa: E402
 import omp  # noqa: E402
 import partners  # noqa: E402
+import past  # noqa: E402
 import remote  # noqa: E402
 from sidebar_rules import prompt_refusal, remote_key_refusal, typing_refusal  # noqa: E402
 import sound  # noqa: E402
@@ -68,6 +69,11 @@ RESUME_HOLD = 60
 #: A terminal whose foreground job is one of these is sitting at its prompt:
 #: the shell itself is not a command anyone ran. A login shell reports "-zsh".
 SHELLS = frozenset({"zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "nu"})
+#: How long a new tab gets to show a shell before a reopen gives up on it,
+#: and how often it is asked: a login shell with mise and a prompt takes a
+#: few seconds here.
+SHELL_WAIT = 10.0
+SHELL_POLL = 0.25
 
 #: What a row shows for anything iTerm2 could not tell us.
 UNKNOWN = "?"
@@ -1300,7 +1306,13 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
             if session.get("blocked_since") is not None:
                 row["blocked_since"] = session["blocked_since"]
             if session.get("question"):
-                row["question"] = session["question"]
+                # The page, screenshots and notices all read the row: a
+                # secret in the command leaves here as ***. The matcher that
+                # pairs a Codex prompt with its running command reads the
+                # session, not the row.
+                question = session["question"]
+                row["question"] = dict(question, summary=masked(question["summary"])) \
+                    if question.get("summary") else question
             if session.get("working_since") is not None:
                 row["working_since"] = session["working_since"]
             if session.get("idle_since") is not None:
@@ -1308,7 +1320,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
             if session.get("turn_started") is not None:
                 row["turn_started"] = session["turn_started"]
             if session.get("shells"):
-                row["shells"] = session["shells"]
+                row["shells"] = [dict(shell, label=masked(shell["label"]), command=masked(shell["command"]))
+                                 for shell in session["shells"]]
             if session.get("started_at") is not None:
                 row["started_at"] = session["started_at"]
             if session.get("details"):
@@ -1646,6 +1659,26 @@ _SETUP = re.compile(
     r"""^(?:cd\s+(?:"[^"]*"|'[^']*'|[^\s;&]+)\s*(?:;|&&)
          |[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|[^\s;&]*)(?:\s*(?:;|&&))?
         )\s*""", re.VERBOSE)
+
+
+#: What a secret looks like inside a command: a bearer token, a value handed
+#: to a name that ends in key, token, secret or password (GITHUB_TOKEN=,
+#: Authorization:, --with-token), curl's user:password, or the password in
+#: a URL. The name stays and the value goes, so the row still says what the
+#: command was for. The name must end in the word: AUTHOR= and --author=
+#: are not secrets.
+SECRET = re.compile(
+    r"(?i)(\bbearer\s+)[^\s\"']+"
+    r"|(\b[a-z0-9_.-]*(?:api[_-]?key|token|secret|password|passwd|pwd|auth|authorization)\s*[=:]\s*)"
+    r"(?!bearer\b)[^\s\"']+"
+    r"|(--(?:with-)?(?:token|password|passwd|secret|api-key|key)\s+)[^\s\"']+"
+    r"|((?:^|\s)(?:-u|--user)\s+[^\s:]+:)[^\s\"']+"
+    r"|(://[^\s/:@]+:)[^\s@/]+(?=@)")
+
+
+def masked(text):
+    """A command with every secret value it carries replaced by ***."""
+    return SECRET.sub(lambda m: next(g for g in m.groups() if g is not None) + "***", text)
 
 
 def shell_label(command):
@@ -3158,12 +3191,17 @@ class Sidebar:
     def __init__(self, token, page_path, snapshot_fn, action_fn,
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
                  context_fn=None, link_fn=None, github_fn=None, untie_fn=None, hand_over_fn=None,
+                 past_fn=None, reopen_fn=None,
                  log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
         self.snapshot_fn = snapshot_fn
         self.action_fn = action_fn
         self.settings_path = settings_path
+        #: () -> the Past sessions fold's rows; (kind, path, conversation) -> opens one
+        #: again, raising ValueError with the reason when it will not.
+        self.past_fn = past_fn
+        self.reopen_fn = reopen_fn
         self.accounts_fn = accounts_fn
         #: () -> (ok, text): takes the release the panel was offered.
         self.update_fn = update_fn
@@ -3239,6 +3277,10 @@ class Sidebar:
 
         if method == "POST" and path == "/context":
             return self._context(body)
+        if method == "GET" and path == "/past":
+            return self._json(200, {"rows": self.past_fn() if self.past_fn else []})
+        if method == "POST" and path == "/reopen":
+            return self._reopen(body)
 
         if method == "POST" and path == "/link":
             return self._link(body)
@@ -3309,6 +3351,24 @@ class Sidebar:
         except context_usage.Refused as refusal:
             return self._json(409, {"error": str(refusal)})
         return self._json(200, {"ok": True, "context": breakdown})
+
+    def _reopen(self, body):
+        """Open a past row again. Its parts are checked for shape here and
+        against the daemon's last reading in reopen_fn: a path or an id
+        the page sends reaches a shell only as the list gave it."""
+        request = self._body(body) or {}
+        kind, path, conversation = request.get("kind"), request.get("path"), request.get("conversation")
+        if (kind not in ("cs", "claude") or not isinstance(path, str) or not path
+                or (kind == "cs") != (conversation is None)
+                or (conversation is not None and not (isinstance(conversation, str)
+                                                      and past.CONVERSATION.fullmatch(conversation)))
+                or self.reopen_fn is None):
+            return self._json(400, {"error": "unknown row"})
+        try:
+            self.reopen_fn(kind, path, conversation)
+        except ValueError as refusal:
+            return self._json(409, {"error": str(refusal)})
+        return self._json(200, {"ok": True})
 
     def _github(self, body):
         page = (self._body(body) or {}).get("page")
@@ -3461,7 +3521,7 @@ class Server:
             return
 
         path = urlsplit(target).path
-        if path in ("/accounts", "/update", "/context", "/github"):
+        if path in ("/accounts", "/update", "/context", "/github", "/past"):
             # Account ops wait on the Keychain, Claude Code's locks and the
             # network, for seconds, an update on a pull and install.sh, a
             # context read on a fork of claude, and a GitHub page on `open`;
@@ -3541,6 +3601,8 @@ class Bridge:
         self._tmux_unread = {}
         #: The hook session ids that have a card, which the state sweep spares.
         self.live_sessions = set()
+        #: The Past sessions fold's rows as last read; a reopen is checked against them.
+        self.past = []
         self.trips = ReturnTrips()
         #: The rows of the last rebuild, which a resume and a context read
         #: re-check against.
@@ -3929,6 +3991,10 @@ class Bridge:
             self.latest["accounts"] = self.meters.snapshot()
         # A few file reads; kept off the loop like every other disk or Keychain read.
         self.latest["codex"] = await asyncio.to_thread(codex.read_limits, codex.SESSIONS_DIR, time.time())
+        if self.latest["codex"] is not None:
+            model = await asyncio.to_thread(codex.default_model)
+            if model:
+                self.latest["codex"]["model"] = model
         conversations = {row["session_id"]: row.get("conversation") for row in self.rows}
         self.alert(self.watch.step(self.latest, settings, conversations), settings)
         self.step_partners(settings["links"])
@@ -4054,6 +4120,65 @@ class Bridge:
         await session.async_activate(select_tab=True, order_window_front=True)
         self.log("resume", session_id[:8], command)
         await self.rebuild()
+
+    def read_past(self):
+        """The Past sessions fold's rows: conversations written to lately that have no
+        card now. Read on request, off the loop: it lists every project
+        folder Claude Code keeps."""
+        live_paths = {row["path"] for row in self.rows if row.get("path")}
+        self.past = past.rows(past.PROJECTS_DIR, time.time(), live_paths, set(self.live_sessions))
+        return self.past
+
+    def reopen(self, kind, path, conversation):
+        """Open a past row again in a new tab: a cs session through cs, a
+        conversation through claude. Refused with the reason, as ValueError,
+        unless the row is in the last reading as the page got it."""
+        row = next((r for r in self.past if r["kind"] == kind and r["path"] == path
+                    and r["conversation"] == conversation), None)
+        if row is None:
+            raise ValueError("not in the last reading; open the fold again")
+        if not os.path.isdir(path):
+            raise ValueError("its directory is gone")
+        command = "cs ." if kind == "cs" else resume_command(path, "claude", conversation)
+        if command is None:
+            raise ValueError("nothing to resume")
+        asyncio.ensure_future(self.open_tab_and_type(path, command))
+
+    async def open_tab_and_type(self, path, command):
+        """A new tab in `path`, and the command typed once its shell is up.
+
+        The profile sets the directory, so the path never crosses a shell.
+        iTerm2 has no setting for text to type at start, so the daemon waits
+        for the pane's job to be a shell, bounded: a shell that takes longer
+        than SHELL_WAIT to appear gets nothing typed, and the log says so.
+        """
+        import iterm2
+        profile = iterm2.LocalWriteOnlyProfile()
+        profile.set_initial_directory_mode(iterm2.profile.InitialWorkingDirectory.INITIAL_WORKING_DIRECTORY_CUSTOM)
+        profile.set_custom_directory(path)
+        window = self.app.current_terminal_window
+        if window is None:
+            window = await iterm2.Window.async_create(self.connection, profile_customizations=profile)
+            tab = window.current_tab if window else None
+        else:
+            tab = await window.async_create_tab(profile_customizations=profile)
+        session = tab.current_session if tab else None
+        if session is None:
+            self.log("reopen failed: no tab", path)
+            return
+        waited = 0.0
+        while waited < SHELL_WAIT:
+            job = await session.async_get_variable("jobName")
+            if isinstance(job, str) and os.path.basename(job).lstrip("-") in SHELLS:
+                # Through the one place the daemon types; a fresh tab has no
+                # row yet, so no rule refuses it.
+                if await self.type_keys(session, session.session_id, [command + "\n"]):
+                    await session.async_activate(select_tab=True, order_window_front=True)
+                    self.log("reopen", path, command)
+                return
+            await asyncio.sleep(SHELL_POLL)
+            waited += SHELL_POLL
+        self.log("reopen: no shell prompt after", f"{SHELL_WAIT:.0f}s in", path)
 
     def read_context(self, session_id):
         """What fills the session's context, by /context on a fork. Blocks for
@@ -4622,6 +4747,8 @@ async def main(connection):
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
         hand_over_fn=lambda: statusline.drop_cc_status(CLAUDE_SETTINGS),
         context_fn=lambda session_id: bridge.read_context(session_id),
+        past_fn=lambda: bridge.read_past(),
+        reopen_fn=lambda kind, path, conversation: bridge.reopen(kind, path, conversation),
         link_fn=lambda source, target: bridge.link(source, target),
         untie_fn=lambda pane: bridge.untie(pane),
         github_fn=lambda page: update.open_github(update.origin(here), page),
@@ -4666,6 +4793,29 @@ def restart():
     os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
+def run_daemon(run_forever):
+    """Run the daemon's loop, and write why it ended to daemon.log on the
+    way out. iTerm2 starts the daemon and starts it again only with
+    itself, so a death between is silent otherwise; the log is what says
+    whether one ever happens and what it looked like."""
+    try:
+        run_forever(main)
+    except BaseException as error:
+        _log_exit(repr(error))
+        raise
+    _log_exit("loop returned")
+
+
+def _log_exit(reason):
+    line = "daemon exit: " + reason
+    print("sidebar: " + line, flush=True)
+    try:
+        with open(os.path.join(STATUS_DIR, "daemon.log"), "a", encoding="utf-8") as fh:
+            fh.write(time.strftime("%Y-%m-%d %H:%M:%S ") + line + "\n")
+    except OSError:
+        pass
+
+
 if __name__ == "__main__":
     import iterm2
-    iterm2.run_forever(main)
+    run_daemon(iterm2.run_forever)

@@ -113,7 +113,8 @@ git signs through the agent; a private key file works too. The key is not
 this project's own: other projects can list the same one. It signs the public
 commit and checks it against the previous release's lists before pushing. It always fails the release if the public tree
 carries an email address. `RELEASE_SCRUB="word word"` adds words that fail it
-too.
+too, and so does `.cs/local/release-scrub`, one word per line, which stays
+out of git and so out of every release.
 
 Before each release, check the docs against what changed since the last tag:
 
@@ -459,6 +460,9 @@ on since, so read the source for what runs now.
   the status under each agent's tab title, written by the panel, and taking it over from iTerm2's own hooks.
 - [superpowers/specs/2026-10-25-card-styles-design.md](superpowers/specs/2026-10-25-card-styles-design.md):
   four ways of drawing session rows without the card, beside the card itself.
+- [superpowers/specs/2026-10-30-resume-and-snapshots-plan.md](superpowers/specs/2026-10-30-resume-and-snapshots-plan.md):
+  a list of past conversations with Resume, and window snapshots; a plan with
+  its questions open, nothing built.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.
 - [superpowers/plans/2026-10-07-drag-order.md](superpowers/plans/2026-10-07-drag-order.md): the step-by-step

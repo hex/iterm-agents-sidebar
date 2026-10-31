@@ -15,6 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import sidebar
 from sidebar import write_endpoint
 
 
@@ -119,3 +120,25 @@ async def test_a_first_reading_that_fails_says_nothing_until_one_succeeds(monkey
 
     assert bridge.latest == read_of_nothing(sidebar)
     assert json.loads(path.read_text()) == {"port": port, "token": "a-token", "pid": os.getpid()}
+
+
+# The daemon runs from iTerm2's AutoLaunch and nothing starts it again when
+# it goes. Whether it ever goes on its own was unknown (2026-10-30: the log
+# showed no death across a week of sleeps), so the exit path says why it
+# ended, and the next death is in daemon.log with its time.
+def test_a_daemon_that_loses_its_connection_logs_why_it_ended(tmp_path, monkeypatch):
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+
+    def run_forever(main):
+        raise ConnectionError("no close frame received or sent")
+
+    with pytest.raises(ConnectionError):
+        sidebar.run_daemon(run_forever)
+    assert (tmp_path / "daemon.log").read_text().split(" ", 2)[2] == \
+        "daemon exit: ConnectionError('no close frame received or sent')\n"
+
+
+def test_a_daemon_whose_loop_returns_logs_that_too(tmp_path, monkeypatch):
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    sidebar.run_daemon(lambda main: None)
+    assert (tmp_path / "daemon.log").read_text().split(" ", 2)[2] == "daemon exit: loop returned\n"

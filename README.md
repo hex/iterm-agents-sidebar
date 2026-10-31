@@ -86,12 +86,14 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 
 | State | How it looks |
 | --- | --- |
-| Waiting on you | The whole card amber, with a Waiting badge and what it asks: the question with a button per answer (a question that takes more than one answer gets a box per option and a Submit button), or the reason it gave, the tool and the command it wants to run, with Yes and No |
+| Waiting on you | The whole card amber, with a Waiting badge and what it asks: the question with a button per answer (a question that takes more than one answer gets a box per option and a Submit button), or the reason it gave, the tool and the command it wants to run, with Yes and No. A token, key or password in a command shows as `***`, on the card and in its notice |
 | Working | Dark name, working dots |
 | Idle | Grey name, Idle outline |
 | Finished while you looked elsewhere | The whole card washed green with a Done badge in place of Idle, lifted under any waiting card, and the word Done as iTerm2's badge in its pane, until you look at that session |
 | Working 20 minutes or more | A warm `Long 25m` outline, in case it has stalled |
 | Exited | Faded, with an Exited outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
+
+A conversation that is over and gone from the list is under **Past sessions** above the limits: the last week's, with Resume in a new tab ([usage](docs/usage.md#past-sessions)).
 | Unknown | A hollow square: a turn silent for five minutes with no command or tool running under it |
 
 <img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each of its parts joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">

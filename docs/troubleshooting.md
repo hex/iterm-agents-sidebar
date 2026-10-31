@@ -28,6 +28,8 @@ Some failures show only in `~/.claude/agents-sidebar-status/daemon.log`:
 | `tab status off: <reason>` | iTerm2 is older than 3.7.6, or the panel could read no session's status when it started, so no tab gets a status | Update iTerm2, then restart the panel |
 | `status <session>: <error>` | iTerm2 refused one tab's status; said once until a call on that session works, and tried again each reading | Nothing, unless it repeats for a session that is open |
 | `page error <message> \| <stack>` | The panel could not draw a frame and shows `STALE` until one draws | Report the line; reopening the panel does not fix the frame that breaks it |
+| `daemon exit: <reason>` | The daemon ended: `SystemExit(0)` after a stop, else the error that ended it | Start it from the Scripts menu; report the reason if it was not a stop |
+| `reopen: no shell prompt after 10s in <path>` | A Past sessions Resume opened a tab whose shell did not appear in time, so nothing was typed | Type the resume command in that tab, or try again |
 
 ## The white panel
 

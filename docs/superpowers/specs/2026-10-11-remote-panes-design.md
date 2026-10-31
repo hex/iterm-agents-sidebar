@@ -385,7 +385,7 @@ on the remote prompt setting a title. The card anatomy figure stays as it is: it
 - The relay: an outbound ssh the daemon runs to read the other machine's
   state files. It brings Reply, tasks, subagents, model and context, Codex,
   and sessions with no pane here (an et session whose pane was closed is
-  one). Its own spec.
+  one). Its own spec: [the remote relay](2026-10-30-remote-relay-design.md).
 - A daemon on the other machine, or a panel that lists machines.
 - Account switching, Remote Control keeping, links and partners across
   machines.

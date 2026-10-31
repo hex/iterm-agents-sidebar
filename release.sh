@@ -15,7 +15,9 @@
 # checked for personal words as the public tree is, before anything is pushed.
 #
 # RELEASE_SCRUB, when set, is a space-separated list of words the public tree
-# must not contain (names, hostnames); the release stops on a hit.
+# must not contain (names, hostnames); the release stops on a hit. The file
+# .cs/local/release-scrub, when present, holds more of them, one per line, so
+# a release never depends on remembering the list: .cs/ is never committed.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -111,8 +113,10 @@ in_notes() { grep -Hn -I "$@" "$notes_file"; }
 personal() {
   "$1" -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.(com|org|net|io|dev|me|ro|eu|co|ai)\b' \
     | grep -v -E 'users\.noreply\.github\.com|example\.com' || true
-  for word in ${RELEASE_SCRUB:-}; do "$1" -i -w "$word" || true; done
+  for word in ${RELEASE_SCRUB:-} $scrub_words; do "$1" -i -w "$word" || true; done
 }
+scrub_words=""
+[ ! -f .cs/local/release-scrub ] || scrub_words="$(grep -v '^#' .cs/local/release-scrub | tr '\n' ' ')"
 leaks="$(personal in_tree)"
 [ -z "$notes_file" ] || leaks="$leaks"$'\n'"$(personal in_notes)"
 leaks="$(printf '%s\n' "$leaks" | sed '/^$/d')"

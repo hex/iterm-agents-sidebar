@@ -4,12 +4,17 @@
 """Codex records its limits in every `token_count` event of a rollout log."""
 import json
 import os
+import re
 import sqlite3
 import stat
 
 from accounts import DAY_SECONDS, _epoch, pace
 
 SESSIONS_DIR = os.path.expanduser("~/.codex/sessions")
+#: Where Codex reads its default model from, and the copy it keeps of the
+#: server's model list (each slug's display name and default effort).
+CONFIG = os.path.expanduser("~/.codex/config.toml")
+MODELS_CACHE = os.path.expanduser("~/.codex/models_cache.json")
 #: Codex's own database, where it titles each conversation.
 STATE_DB = os.path.expanduser("~/.codex/state_5.sqlite")
 #: How much of a rollout's end to read; readings repeat every turn, so the last one is near the end.
@@ -127,6 +132,58 @@ def limits_from_lines(lines, now):
             label = limits.get("limit_name") or LIMIT_NAMES.get(limit_id) or limit_id
             reserve = {**windows[-1], "label": label}
     return {"windows": [], "reserve": reserve} if reserve else None
+
+
+#: A `key = "string"` line; every key the default model needs is one of these.
+STRING_KEY = re.compile(r'^\s*([A-Za-z_]+)\s*=\s*"([^"]*)"\s*(#.*)?$')
+
+
+def _tables(text):
+    """A config's tables -> {table name: {key: string value}}, the top level under ""."""
+    tables, name = {"": {}}, ""
+    for line in text.splitlines():
+        head = line.strip()
+        if head.startswith("["):
+            name = head.strip("[]").strip()
+            tables.setdefault(name, {})
+            continue
+        m = STRING_KEY.match(line)
+        if m:
+            tables[name][m.group(1)] = m.group(2)
+    return tables
+
+
+def default_model(config_path=None, cache_path=None):
+    """The model Codex starts a session on, as {name, effort}, or None when
+    the config names none. Codex takes `model` and `model_reasoning_effort`
+    from the selected profile first, then the top level; the name is the
+    display name the models cache gives the slug, else the slug, and an
+    effort the config leaves out is the cached model's own default."""
+    config_path = CONFIG if config_path is None else config_path
+    cache_path = MODELS_CACHE if cache_path is None else cache_path
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            tables = _tables(f.read())
+    except OSError:
+        return None
+    top = tables[""]
+    profile = tables.get(f"profiles.{top['profile']}", {}) if "profile" in top else {}
+    slug = profile.get("model") or top.get("model")
+    if not slug:
+        return None
+    effort = profile.get("model_reasoning_effort") or top.get("model_reasoning_effort")
+    name, default_effort = slug, None
+    try:
+        with open(cache_path, encoding="utf-8") as f:
+            models = json.load(f).get("models") or []
+    except (OSError, ValueError, AttributeError):
+        models = []
+    for m in models:
+        if isinstance(m, dict) and m.get("slug") == slug:
+            name = m.get("display_name") or slug
+            default_effort = m.get("default_reasoning_level")
+            break
+    return {"name": name, "effort": effort or default_effort}
 
 
 #: Day folders to look in; a session started days ago can still be the one writing.

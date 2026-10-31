@@ -212,6 +212,10 @@
      two-line card does not. */
   li.line.card:has(.task) > button.row { padding-block: 8px; }
   li.line.card:has(> button.row:hover) { background: var(--card-hover); }
+  /* While a clipped line scrolls under the pointer, no ellipsis stands at
+     the edge it scrolls past, and no fade hides the end it scrolls to. */
+  li.line.card .peeking, li.line.card .peeking * { text-overflow: clip; }
+  li.line.card .peeking { --fade: 0px; }
   li.line.card > button.row { border-radius: 7px; }
   /* A card easing to a new height (animateRows) is clipped, so a growing one
      never shows what has not arrived yet. */
@@ -841,11 +845,15 @@
   /* A badge or corner mark sits over the row's top right, so the name stops
      short of it: by max-width, since a clip edge is the padding box and text
      would run on under padding. */
+  /* The fade's width is a registered length, so it can ease to nothing
+     while a line goes round under the pointer, and ease back after. */
+  @property --fade { syntax: "<length>"; inherits: false; initial-value: 26px; }
   .label {
     max-width: calc(100% - var(--badge-room, 0px)); line-height: 1.2;
     overflow: hidden; white-space: nowrap;
-    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
-            mask-image: linear-gradient(90deg, #000 calc(100% - 26px), transparent);
+    --fade: 26px; transition: --fade .3s ease-out;
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - var(--fade)), transparent);
+            mask-image: linear-gradient(90deg, #000 calc(100% - var(--fade)), transparent);
   }
   /* The mask costs nothing when the text fits, but it would still fade the
      last word of a short name, so it only applies to a label that overflows. */
@@ -1797,6 +1805,26 @@
   #budget .provider { flex: none; width: 12px; height: 12px; }
   #budget .provider.claude { fill: #d97757; }
   #budget .provider.openai { fill: var(--fg); }
+  /* The model beside the Codex name, dimmer than the line's own grey. */
+  #budget .acct-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--dim); opacity: .6; }
+  /* The Past sessions fold above the limits: one line folded, a list of rows open.
+     A row is the name, a conversation's first prompt, its age and Resume. */
+  #budget .past { margin-bottom: 8px; padding-bottom: 6px;
+    border-bottom: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
+  #budget .past-list { margin-top: 4px; }
+  #budget .past-row { display: flex; align-items: center; gap: 6px; height: 19px; min-width: 0; }
+  #budget .past-name { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--fg); font-weight: 600; opacity: .85; }
+  #budget .past-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--dim); }
+  #budget .past-age { flex: none; margin-left: auto; color: var(--dim); }
+  #budget .past-go { flex: none; padding: 1px 6px; border-radius: 4px;
+    border: .5px solid color-mix(in srgb, var(--fg) 22%, transparent);
+    background: none; font: inherit; color: var(--fg); cursor: default; }
+  #budget .past-go:hover:not(:disabled) { background: var(--tint-ctl); }
+  #budget .past-go:disabled { opacity: .5; }
+  #budget .past-error { color: var(--warn); }
   #budget .acct-item-head { display: flex; align-items: center; gap: 6px; min-width: 0; height: 19px; }
   #budget .codex { margin-top: 10px; padding-top: 8px;
     border-top: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
@@ -5393,6 +5421,12 @@ function paintCodex(strip, limits) {
   block.append(Object.assign(document.createElement("div"), {className: "acct-line"}));
   block.firstChild.append(providerIcon("openai", "OpenAI"),
     Object.assign(document.createElement("span"), {className: "acct-name", textContent: "Codex"}));
+  // The model a new Codex session starts on, with its reasoning effort, as
+  // Codex's own status line words it: what a prompt sent there will cost.
+  if (limits.model) {
+    block.firstChild.append(Object.assign(document.createElement("span"), {className: "acct-model",
+      textContent: [limits.model.name, limits.model.effort].filter(Boolean).join(" ")}));
+  }
   for (const w of limits.windows) {
     block.append(meterRow(w.label, w.used, w.resets_at,
       {tick: w.pace?.expected ?? null, ahead: !!w.pace?.ahead}));
@@ -5487,7 +5521,84 @@ function buildBudget(snapshot) {
   if (tiles && !tiles.childElementCount) tiles.remove();
 
   if (strip.childElementCount) strip.prepend(limitsHead(store));
+  // Above the limits: the cards are sessions, these are more sessions, and
+  // the account's figures are the foot.
+  strip.prepend(pastFold());
   return strip;
+}
+
+// The Past sessions fold: conversations written to lately that have no card now, a
+// cs session as one row and any other directory as one row per
+// conversation, each with Resume. Read from the daemon when the fold opens,
+// not with every frame: it lists every project folder Claude Code keeps.
+let pastOpen = false;
+let pastRows = null;
+let pastError = null;
+let pastReading = false;
+const pastOpening = new Map();
+function readPast() {
+  pastReading = true;
+  fetch(`/past?token=${encodeURIComponent(TOKEN)}`)
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      if (r.ok) { pastRows = body.rows || []; pastError = null; }
+      else pastError = body.error || `read failed (${r.status})`;
+    })
+    .catch(err => { pastError = String(err); })
+    .then(() => { pastReading = false; paintBudget(lastSnapshot); });
+}
+function reopenPast(row) {
+  const key = row.path + "\n" + (row.conversation || "");
+  pastOpening.set(key, {at: Date.now(), error: null});
+  paintBudget(lastSnapshot);
+  fetch(`/reopen?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify(
+    {kind: row.kind, path: row.path, conversation: row.conversation})})
+    .then(async r => {
+      if (r.ok) return;
+      const body = await r.json().catch(() => ({}));
+      pastOpening.set(key, {at: Date.now(), error: body.error || `refused (${r.status})`});
+    })
+    .catch(err => { pastOpening.set(key, {at: Date.now(), error: String(err)}); })
+    .then(() => paintBudget(lastSnapshot));
+}
+function pastFold() {
+  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
+  const box = el("div", "past");
+  const toggle = el("button", "lim-toggle");
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", String(pastOpen));
+  toggle.title = "Past sessions: the last week's with no card, and Resume";
+  toggle.append(el("span", "chev", "\u203a"), el("span", "", "Past sessions"));
+  on(toggle, "click", () => { pastOpen = !pastOpen; if (pastOpen) readPast(); paintBudget(lastSnapshot); });
+  box.append(toggle);
+  if (!pastOpen) return box;
+  const list = el("div", "past-list");
+  list.setAttribute("role", "list");
+  if (pastError) list.append(el("div", "acct-status", pastError));
+  else if (pastRows === null) list.append(el("div", "acct-status", pastReading ? "reading\u2026" : ""));
+  else if (!pastRows.length) list.append(el("div", "acct-status", "nothing from the last week without a card"));
+  const now = Date.now() / 1000;
+  for (const row of pastRows || []) {
+    const key = row.path + "\n" + (row.conversation || "");
+    const opening = pastOpening.get(key);
+    const line = el("div", "past-row");
+    line.setAttribute("role", "listitem");
+    line.title = row.path + (row.title ? "\n" + row.title : "");
+    line.append(el("span", "past-name", row.name));
+    // A cs session carries its name; a conversation carries its first prompt.
+    if (row.kind === "claude") line.append(el("span", "past-title", row.title || "(no prompt)"));
+    line.append(el("span", "past-age", forHumans(now - row.at)));
+    const go = el("button", "past-go", opening && !opening.error ? "opening\u2026" : "Resume");
+    go.type = "button";
+    go.disabled = !!(opening && !opening.error && Date.now() - opening.at < 15000);
+    go.setAttribute("aria-label", `resume ${row.kind === "cs" ? "session" : "conversation in"} ${row.name}`);
+    on(go, "click", () => reopenPast(row));
+    line.append(go);
+    list.append(line);
+    if (opening?.error) list.append(el("div", "acct-status past-error", opening.error));
+  }
+  box.append(list);
+  return box;
 }
 
 // A line that cannot fit even with its branch at two characters drops the
@@ -5626,6 +5737,98 @@ function glide(run, width) {
   steerScripted([motion]);
 }
 window.addEventListener("resize", () => { syncCompact(); fitMeta(); paintStems(); });
+
+// A clipped line moves under the pointer the way a long name moves: after
+// a pause it slides to its end at the name's reading pace, rests there,
+// slides back, and goes round again until the pointer leaves it. The line
+// the pointer is on, not the whole card: the task, the last report, the
+// branch line, a shell's command, a teammate's line, whichever box is cut
+// at its edge under the pointer. Scrolled, not transformed: a box cut by
+// overflow scrolls like any other, and the frame that repaints the card
+// finds the same box where it was. The name keeps its own glide. Off under
+// reduced motion, like the glide.
+const PEEK_DELAY_MS = 350;
+const PEEK_REST_MS = 1200;
+let peek = null;
+// The clipped box the pointer is on: the nearest ancestor within a card
+// that cuts its content. The name's label glides on its own; a child row's
+// label has no run and moves here like any other line.
+function clippedLineAt(target) {
+  if (!target?.closest) return null;
+  for (let line = target; line && !line.matches("li.line.card"); line = line.parentElement) {
+    if (line.closest(".label:has(> .run), .menu, .shimmer, .sweep")) return null;
+    if (line.scrollWidth > line.clientWidth + 1 && getComputedStyle(line).overflowX !== "visible") {
+      return line.closest("li.line.card") ? line : null;
+    }
+  }
+  return null;
+}
+// Lines on their way back to their start after the pointer left them.
+const returning = [];
+let peekTicking = false;
+function tickPeek() {
+  if (peekTicking) return;
+  peekTicking = true;
+  requestAnimationFrame(peekFrame);
+}
+function startPeek(line) {
+  const back = returning.findIndex(r => r.line === line);
+  if (back >= 0) returning.splice(back, 1);
+  peek = {line, since: performance.now()};
+  line.classList.add("peeking");
+  tickPeek();
+}
+// Where along its run a line is at `t` ms after the pause: out to the end,
+// a rest, back to the start, a rest, round again. Eased at both ends.
+function peekAt(t, room) {
+  const slide = room / GLIDE_PX_PER_S * 1000;
+  const cycle = 2 * (slide + PEEK_REST_MS);
+  const at = t % cycle;
+  const p = at < slide ? at / slide
+          : at < slide + PEEK_REST_MS ? 1
+          : at < 2 * slide + PEEK_REST_MS ? 1 - (at - slide - PEEK_REST_MS) / slide
+          : 0;
+  return room * (p < .5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2);
+}
+function peekFrame(now) {
+  peekTicking = false;
+  if (peek) {
+    const {line, since} = peek;
+    if (!line.isConnected) endPeek();
+    else {
+      const t = now - since - PEEK_DELAY_MS;
+      if (t >= 0) line.scrollLeft = peekAt(t, line.scrollWidth - line.clientWidth);
+    }
+  }
+  // A line the pointer left slides back at the same pace from wherever it
+  // was, and keeps its no-fade look until it is home.
+  for (const r of [...returning]) {
+    const p = Math.min(1, (now - r.since) / Math.max(1, r.from / GLIDE_PX_PER_S * 1000));
+    r.line.scrollLeft = r.line.isConnected ? r.from * (1 - (p < .5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2)) : 0;
+    if (p >= 1 || !r.line.isConnected) {
+      r.line.classList.remove("peeking");
+      returning.splice(returning.indexOf(r), 1);
+    }
+  }
+  if (peek || returning.length) tickPeek();
+}
+function endPeek() {
+  if (!peek) return;
+  const {line} = peek;
+  peek = null;
+  if (line.scrollLeft > 0 && line.isConnected) returning.push({line, from: line.scrollLeft, since: performance.now()});
+  else { line.scrollLeft = 0; line.classList.remove("peeking"); }
+  tickPeek();
+}
+document.addEventListener("mouseover", event => {
+  const line = clippedLineAt(event.target);
+  if (line === peek?.line) return;
+  endPeek();
+  if (line && MOTION.matches) startPeek(line);
+});
+document.addEventListener("mouseout", event => {
+  if (peek && !peek.line.contains(event.relatedTarget)) endPeek();
+});
 
 // The indented block inside a card that holds its teammates, subagents and
 // shells, made on first use.
@@ -5892,9 +6095,11 @@ const OWNER = "owner";
 // Classes a pass sets on a live node after the paint, so morph keeps them:
 // the view watch speaks when a badge scrolls out of or into the list, a card
 // clips while it eases to a new height, and a label is clipped as the layout
-// measures it. A report's stale class is not kept: every builder decides it afresh
-// from the frame, and the second timer only moves it forward between paints.
-const KEPT_CLASSES = ["out-of-view", "resizing", "clipped"];
+// measures it, and a line goes round under the pointer across the frames
+// that repaint its card. A report's stale class is not kept: every builder
+// decides it afresh from the frame, and the second timer only moves it
+// forward between paints.
+const KEPT_CLASSES = ["out-of-view", "resizing", "clipped", "peeking"];
 // Expando properties a built node carries to the live node that stands for it.
 const CARRIED = ["_row", "_on"];
 

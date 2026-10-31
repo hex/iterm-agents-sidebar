@@ -1162,3 +1162,42 @@ def test_a_docked_worktree_that_finished_unseen_lifts_its_block():
     out = sidebar.band(rows, unseen={"w"}, by_provider=False)
     assert [r["session_id"] for r in out] == ["b", "w", "a"]
     assert [r.get("band") for r in out] == ["finished", None, None]
+
+
+# Secrets in the text a card shows: a prompt's command and a background
+# shell's. The panel is a web view that screenshots, screen-shares and
+# notices all read, so the value goes out as *** before it reaches a row.
+# The matcher that pairs a Codex prompt with its running command reads the
+# raw session, never the row.
+def test_a_bearer_token_in_a_prompts_command_is_masked():
+    asked = {"tool": "Bash", "summary": 'curl -H "Authorization: Bearer sk-ant-abc123XYZ" https://api.example.com', "id": "g1"}
+    row = snapshot([_agent(agent_state="blocked", question=asked)])["groups"][0]["rows"][0]
+    assert row["question"]["summary"] == 'curl -H "Authorization: Bearer ***" https://api.example.com'
+
+
+def test_a_password_in_a_url_is_masked_and_the_host_kept():
+    shells = [{"label": "pg_dump postgres://bob:hunter2@db.example.com/app",
+               "command": "cd ~/repo && pg_dump postgres://bob:hunter2@db.example.com/app"}]
+    row = snapshot([_agent(shells=shells)])["groups"][0]["rows"][0]
+    assert row["shells"] == [{"label": "pg_dump postgres://bob:***@db.example.com/app",
+                              "command": "cd ~/repo && pg_dump postgres://bob:***@db.example.com/app"}]
+
+
+def test_a_key_assignment_and_a_token_flag_are_masked():
+    asked = {"tool": "Bash", "summary": "OPENAI_API_KEY=sk-proj-9f8e7d6c gh auth login --with-token ghp_abcdef123456", "id": "g1"}
+    row = snapshot([_agent(agent_state="blocked", question=asked)])["groups"][0]["rows"][0]
+    assert row["question"]["summary"] == "OPENAI_API_KEY=*** gh auth login --with-token ***"
+
+
+def test_an_ordinary_command_is_shown_as_it_is():
+    asked = {"tool": "Bash", "summary": "npm test -- --grep token", "id": "g1"}
+    row = snapshot([_agent(agent_state="blocked", question=asked)])["groups"][0]["rows"][0]
+    assert row["question"]["summary"] == "npm test -- --grep token"
+
+
+def test_an_author_is_no_secret_and_curls_user_password_is():
+    shells = [{"label": 'git log --author=alice', "command": 'AUTHOR=alice git log --author=alice'},
+              {"label": "curl -u bob:hunter2 https://x.example.com", "command": "curl -u bob:hunter2 https://x.example.com"}]
+    row = snapshot([_agent(shells=shells)])["groups"][0]["rows"][0]
+    assert row["shells"] == [{"label": 'git log --author=alice', "command": 'AUTHOR=alice git log --author=alice'},
+                             {"label": "curl -u bob:*** https://x.example.com", "command": "curl -u bob:*** https://x.example.com"}]

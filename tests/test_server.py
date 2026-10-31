@@ -591,3 +591,61 @@ def test_an_untie_of_a_card_not_linked_is_409(tmp_path):
 def test_an_untie_without_the_token_is_forbidden(tmp_path):
     status, _, _ = untie_server(tmp_path, lambda p: None).handle("POST", "/untie?token=wrong", b'{"pane": "p1"}')
     assert status == 403
+
+
+# The Past sessions fold: GET /past lists what the daemon read, POST /reopen asks it
+# to open one row again in a new tab. The row is named by what the list
+# said, and the daemon checks it against its own last reading, never the
+# page's copy.
+def _past(tmp_path, reopened, refusal=None):
+    page = tmp_path / "page.html"
+    page.write_text("<h1>sidebar</h1>")
+
+    def reopen(kind, path, conversation):
+        if refusal:
+            raise ValueError(refusal)
+        reopened.append((kind, path, conversation))
+
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda session_id, verb, text: None,
+                   past_fn=lambda: [{"kind": "cs", "name": "demo", "path": "/Users/x/s/demo", "conversation": None,
+                                     "title": None, "at": 1}],
+                   reopen_fn=reopen)
+
+
+def test_past_lists_what_the_daemon_read(tmp_path):
+    status, _, body = _past(tmp_path, []).handle("GET", f"/past?token={TOKEN}", b"")
+    assert status == 200
+    assert json.loads(body) == {"rows": [{"kind": "cs", "name": "demo", "path": "/Users/x/s/demo",
+                                          "conversation": None, "title": None, "at": 1}]}
+
+
+def test_reopen_dispatches_a_cs_session_and_a_claude_conversation(tmp_path):
+    reopened = []
+    sidebar = _past(tmp_path, reopened)
+    assert sidebar.handle("POST", f"/reopen?token={TOKEN}", json.dumps(
+        {"kind": "cs", "path": "/Users/x/s/demo"}).encode())[0] == 200
+    assert sidebar.handle("POST", f"/reopen?token={TOKEN}", json.dumps(
+        {"kind": "claude", "path": "/Users/x/w/repo",
+         "conversation": "11111111-1111-4111-8111-111111111111"}).encode())[0] == 200
+    assert reopened == [("cs", "/Users/x/s/demo", None),
+                        ("claude", "/Users/x/w/repo", "11111111-1111-4111-8111-111111111111")]
+
+
+@pytest.mark.parametrize("body", [
+    {"kind": "omp", "path": "/Users/x"},
+    {"kind": "claude", "path": "/Users/x", "conversation": "not-a-uuid; rm -rf ~"},
+    {"kind": "claude", "path": 7},
+    {"kind": "cs"},
+])
+def test_a_reopen_whose_parts_are_not_what_the_list_gives_is_refused(tmp_path, body):
+    reopened = []
+    status, _, payload = _past(tmp_path, reopened).handle("POST", f"/reopen?token={TOKEN}", json.dumps(body).encode())
+    assert status == 400 and json.loads(payload) == {"error": "unknown row"}
+    assert reopened == []
+
+
+def test_a_reopen_the_daemon_refuses_says_why(tmp_path):
+    status, _, payload = _past(tmp_path, [], refusal="not in the last reading").handle(
+        "POST", f"/reopen?token={TOKEN}", json.dumps({"kind": "cs", "path": "/Users/x/s/demo"}).encode())
+    assert status == 409 and json.loads(payload) == {"error": "not in the last reading"}

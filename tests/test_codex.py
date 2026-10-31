@@ -291,3 +291,50 @@ def test_an_interrupted_asked_turn_is_an_empty_reply_for_the_book_to_refuse(tmp_
                                   {"type": "event_msg", "payload": {"type": "turn_aborted", "turn_id": "t2",
                                                                     "reason": "interrupted"}}))
     assert codex.asked_reply(str(path), "00aa11bb22cc33dd") == ""
+
+
+# The default model, as Codex's own config names it, asked for 2026-10-30 to
+# see it beside the Codex limits; `model` and `model_reasoning_effort` are the
+# keys Codex reads from ~/.codex/config.toml, and the cache Codex keeps of the
+# server's model list carries each slug's display name and default effort.
+MODELS_CACHE = {"models": [{"slug": "gpt-6-astra", "display_name": "GPT-6-Astra", "default_reasoning_level": "medium"}]}
+
+
+def _config(tmp_path, text, cache=MODELS_CACHE):
+    config = tmp_path / "config.toml"
+    config.write_text(text)
+    cache_path = tmp_path / "models_cache.json"
+    if cache is not None:
+        cache_path.write_text(json.dumps(cache))
+    return codex.default_model(str(config), str(cache_path))
+
+
+def test_no_config_means_no_default_model(tmp_path):
+    assert codex.default_model(str(tmp_path / "config.toml"), str(tmp_path / "models_cache.json")) is None
+
+
+def test_a_config_without_a_model_key_names_none(tmp_path):
+    assert _config(tmp_path, 'approval_policy = "never"\n') is None
+
+
+def test_a_model_only_under_an_unselected_profile_is_not_the_default(tmp_path):
+    assert _config(tmp_path, '[profiles.fast]\nmodel = "gpt-6.1-terra"\n') is None
+
+
+def test_the_model_and_its_effort_read_by_their_display_name(tmp_path):
+    assert _config(tmp_path, 'model = "gpt-6-astra"\nmodel_reasoning_effort = "high"\n'
+                             '[mcp_servers.x]\ncommand = "y"\n') == {"name": "GPT-6-Astra", "effort": "high"}
+
+
+def test_a_selected_profile_overrides_the_top_level_model(tmp_path):
+    assert _config(tmp_path, 'model = "gpt-6-astra"\nprofile = "fast"\n[profiles.fast]\nmodel = "gpt-6.1-terra"\n'
+                             'model_reasoning_effort = "low"\n[profiles.slow]\nmodel = "gpt-6-sol"\n'
+                   ) == {"name": "gpt-6.1-terra", "effort": "low"}
+
+
+def test_an_effort_the_config_leaves_out_is_the_models_own_default(tmp_path):
+    assert _config(tmp_path, 'model = "gpt-6-astra"\n') == {"name": "GPT-6-Astra", "effort": "medium"}
+
+
+def test_without_the_models_cache_the_slug_stands_and_the_effort_is_unknown(tmp_path):
+    assert _config(tmp_path, 'model = "gpt-6-astra"\n', cache=None) == {"name": "gpt-6-astra", "effort": None}
