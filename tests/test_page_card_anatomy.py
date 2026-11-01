@@ -112,3 +112,12 @@ def test_task_card_keeps_a_long_badge_and_shows_no_pill_without_a_state():
 def test_task_card_wears_the_fork_on_the_folder_line_of_a_worktree():
     body = function(PAGE, "taskCard")
     assert 'metaIcon(fork ? "fork" : "folder")' in body
+
+
+def test_a_child_row_says_its_long_turn_on_the_facts_line_not_in_the_corner():
+    """A teammate's row has no corner for a badge: the warning rides its
+    facts line as a warm chip, and only a card keeps the Long pill."""
+    assert 'if (longTurn && row.depth) {' in PAGE
+    assert '{className: "mchip long"' in PAGE
+    assert '} else if (longTurn && !row.depth) {' in PAGE
+    assert re.search(r"\.mchip\.long \{[^}]*color: var\(--warn\)", PAGE)

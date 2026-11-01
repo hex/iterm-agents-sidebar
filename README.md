@@ -120,8 +120,8 @@ chip shows, the details card adds a `CPU` or `Memory` row with the figure and th
 name of the program using the most of it. Details in a Claude card's right-click
 menu opens a card with the session's colour, name, state and model, its
 gauges, chips for effort, thinking, fast mode and `past 200k`, and one row of
-counts: Up, Agents, Cost and Lines (hover Lines for the exact counts past
-1,000). It also offers Context breakdown, `/context` for that session
+counts: Up, Agents, Cost and Lines. Every row says on hover what its figure
+means (Lines gives the exact counts past 1,000). It also offers Context breakdown, `/context` for that session
 drawn as a bar ([usage](docs/usage.md#what-fills-the-context)). A Codex
 card wears the OpenAI mark instead of the Claude one, and has no teammates and
 no background-shell line. Codex opens its session at your first prompt, so
@@ -194,7 +194,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 
 | On the banner | What it does |
 | --- | --- |
-| A click | Brings that session forward, tab and all |
+| A click | Brings that session forward, tab and all. A hidden hotkey window gets its profile's hotkey first |
 | A question's option button | Sends that option's number into the prompt. A question that takes more than one answer gets no buttons and no Other |
 | A permission prompt's Yes or No | Yes types `y` on Codex and `1` on Claude Code; No presses Esc. Other choices stay in the terminal |
 | Other | Picks that option, then types your text |

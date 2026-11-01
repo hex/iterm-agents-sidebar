@@ -186,9 +186,10 @@ Remote Control keeping, for the reasons in slice 1.
 ## 5. The other machine
 
 Nothing new is installed there. The hooks arrive through the dotfiles
-manager (slice 1, section 5); `tmux` and `tar` are what the relay needs,
-both present on macOS. A session not under tmux shows and fills in but
-takes no reply.
+manager (slice 1, section 5); `tmux` and `tar` are what the relay needs.
+`tar` ships with macOS; `tmux` does not, so it lives wherever its installer
+put it, and a command run over ssh may not find it on PATH. A session not
+under tmux shows and fills in but takes no reply.
 
 ## 6. Failure modes, written before the code
 

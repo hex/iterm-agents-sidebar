@@ -1090,7 +1090,9 @@
   .mchip > .mtext.split { display: flex; min-width: 0; }
   .mtext.split > .mpre { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mtext.split > .mleaf { flex: 0 1 auto; min-width: calc(var(--floor, 6) * 1ch); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mchip.model-name, .mchip.ctx, .mchip.heavy { flex-shrink: 0; }
+  .mchip.model-name, .mchip.ctx, .mchip.heavy, .mchip.long { flex-shrink: 0; }
+  /* A teammate's long turn, in the warning's ink: the one warm item on a facts line. */
+  .mchip.long { color: var(--warn); font-weight: 600; }
   /* The machine a remote session runs on. It gives way like the branch, and
      never down to a bare glyph, which would name no machine. */
   .mchip.host-mark { flex-shrink: 1; min-width: calc(var(--meta-icon) + 3px + 4ch); }
@@ -2895,27 +2897,36 @@ function fieldsFor(row) {
     // What the number is for: whether to wait for it or work around it.
     note: at ? "in " + until(at) : null,
   };
-  add("gauge", "Context", gauge(row.context));
-  add("clock", "5-hour", gauge(d.five_hour, d.five_hour_at));
-  add("gauge", "Weekly", gauge(d.seven_day, d.seven_day_at));
+  // Every row says in words what its figure means: the hover is where the
+  // short label gets its sentence.
+  const resets = at => at ? `, resets in ${until(at)}` : "";
+  const hog = top => top ? `, most of it ${top}` : "";
+  add("gauge", "Context", gauge(row.context),
+      `Context used: ${row.context}% of the window, as Claude Code measures it each turn`);
+  add("clock", "5-hour", gauge(d.five_hour, d.five_hour_at),
+      `The 5-hour window: ${d.five_hour}% used${resets(d.five_hour_at)}`);
+  add("gauge", "Weekly", gauge(d.seven_day, d.seven_day_at),
+      `The weekly window: ${d.seven_day}% used${resets(d.seven_day_at)}`);
   // Only a session that reads heavy carries these: the figure, and the
   // program in its tree that uses the most of it.
   const u = row.usage || {};
-  if (u.cpu) add("cpu", "CPU", {percent: 100, text: u.cpu.percent + "%", note: u.cpu.top, alarm: true});
-  if (u.memory) add("memory", "Memory", {percent: 100, text: u.memory.gb.toFixed(1) + " GB", note: u.memory.top, alarm: true});
-  add("uptime", "Up", row.started_at == null ? null : forHumans(Date.now() / 1000 - row.started_at));
-  add("model", "Agents", row.agents);
-  add("cost", "Cost", d.cost != null ? "$" + d.cost.toFixed(2) : null);
+  if (u.cpu) add("cpu", "CPU", {percent: 100, text: u.cpu.percent + "%", note: u.cpu.top, alarm: true},
+                 `Its processes are using ${u.cpu.percent}% CPU${hog(u.cpu.top)}`);
+  if (u.memory) add("memory", "Memory", {percent: 100, text: u.memory.gb.toFixed(1) + " GB", note: u.memory.top, alarm: true},
+                    `Its processes hold ${u.memory.gb.toFixed(1)} GB of memory${hog(u.memory.top)}`);
+  add("uptime", "Up", row.started_at == null ? null : forHumans(Date.now() / 1000 - row.started_at),
+      `Its process started ${forHumans(Date.now() / 1000 - row.started_at)} ago`);
+  add("model", "Agents", row.agents, `${row.agents} subagent${row.agents === 1 ? "" : "s"} running now`);
+  add("cost", "Cost", d.cost != null ? "$" + d.cost.toFixed(2) : null,
+      "Spent this session, as Claude Code reports it");
   // A warm cache is unremarkable. One about to expire, with a six-figure
   // rebuild behind it, is the most actionable number on the card.
   if (d.cache_hit != null) {
     const cold = d.cache_cold_at != null && d.cache_cold_at * 1000 < Date.now();
-    add("cache", "Cache", {
-      percent: d.cache_hit, text: d.cache_hit + "%", invert: true,
-      note: cold ? (d.recache ? "cold, " + tokens(d.recache) + " to rebuild" : "cold")
-                 : d.cache_cold_at ? "warm for " + until(d.cache_cold_at) : null,
-      alarm: cold,
-    });
+    const note = cold ? (d.recache ? "cold, " + tokens(d.recache) + " to rebuild" : "cold")
+                      : d.cache_cold_at ? "warm for " + until(d.cache_cold_at) : null;
+    add("cache", "Cache", {percent: d.cache_hit, text: d.cache_hit + "%", invert: true, note, alarm: cold},
+        `${d.cache_hit}% of the prompt came from cache` + (cold ? ", cold now" + note.slice(4) : note ? ", " + note : ""));
   }
   if (d.lines_added || d.lines_removed) {
     // Past a thousand the figure rounds; the hover keeps the exact count.
@@ -2955,6 +2966,7 @@ function showCard(row) {
     if (state) sub.append(Object.assign(document.createElement("span"), {className: "dot " + row.state}), state);
     if (state && d.model) sub.append(" \u00b7 ");
     if (d.model) sub.append(d.model);
+    sub.title = [state && STATE_TITLES[row.state], d.model && `Model ${d.model}`].filter(Boolean).join(" \u00b7 ");
     card.append(sub);
   }
 
@@ -2963,7 +2975,7 @@ function showCard(row) {
   const counts = pairs.filter(({value}) => !(value && typeof value === "object"));
   if (gauges.length) {
     const grid = Object.assign(document.createElement("dl"), {className: "grid"});
-    for (const {icon, label, value} of gauges) {
+    for (const {icon, label, value, title} of gauges) {
       const dt = document.createElement("dt");
       if (icon) dt.append(metaIcon(icon));
       dt.append(document.createTextNode(label));
@@ -2992,24 +3004,26 @@ function showCard(row) {
       } else {
         dd.textContent = value;
       }
+      if (title) dt.title = dd.title = title;
       grid.append(dt, dd);
     }
     card.append(grid);
   }
 
   const flags = [];
-  if (d.effort) flags.push([(d.effort === "xhigh" ? "extra high" : d.effort) + " effort", "effort " + d.effort]);
-  if (d.thinking) flags.push(["thinking", ""]);
+  if (d.effort) flags.push([(d.effort === "xhigh" ? "extra high" : d.effort) + " effort", "effort " + d.effort, `${d.effort} reasoning effort`]);
+  if (d.thinking) flags.push(["thinking", "", "Extended thinking on"]);
 
-  if (d.fast_mode) flags.push(["fast", "hot"]);
+  if (d.fast_mode) flags.push(["fast", "hot", "Fast mode on"]);
   // Says the conversation has passed 200k, not that the model has a big
   // window -- the subtitle already carries the model's size.
-  if (d.beyond_200k) flags.push(["past 200k", "warn"]);
+  if (d.beyond_200k) flags.push(["past 200k", "warn", "The conversation has passed 200k tokens"]);
   if (flags.length) {
     const bar = Object.assign(document.createElement("div"), {className: "flags"});
-    for (const [text, tone] of flags) {
+    for (const [text, tone, title] of flags) {
       const f = Object.assign(document.createElement("span"),
                               {className: "flag" + (tone ? " " + tone : "")});
+      f.title = title;
       const said = text[0].toUpperCase() + text.slice(1);
       if (tone === "effort max") {
         const [first, rest] = said.split(" ");
@@ -6649,6 +6663,9 @@ function buildGroups(snapshot) {
 
 
       const hot = IS_EXCEPTION(row.state);
+      const longTurn = row.state === "working" && row.working_since
+        && Date.now() / 1000 - row.working_since >= LONG_TURN_SECONDS;
+      const longFigure = longTurn ? duration(Date.now() / 1000 - row.working_since) : null;
       if (!hot && row.state !== "working" && !row.running) b.classList.add("quiet");
       if (hot) {
         b.classList.add("hot");
@@ -6853,6 +6870,14 @@ function buildGroups(snapshot) {
         chip.append(metaIcon(kind), document.createTextNode(kind === "cpu" ? "CPU" : "Mem"));
         meta.append(chip);
       }
+      // A teammate's row has no corner for a badge: its long turn is a warm
+      // chip at the end of the facts line, as a subagent's row shows its age.
+      if (longTurn && row.depth) {
+        const chip = Object.assign(document.createElement("span"), {className: "mchip long"});
+        chip.append(Object.assign(document.createElement("span"), {className: "mtext", textContent: `Long ${longFigure}`}));
+        chip.title = `Working for ${longFigure}, may be stuck`;
+        meta.append(chip);
+      }
       // At compact width the facts stay in Details, and in what the row says aloud.
       if (meta.childElementCount && !shortCards) stack.append(meta);
       b.append(stack);
@@ -6869,12 +6894,10 @@ function buildGroups(snapshot) {
         word.className = "word blocked";
         word.textContent = "Waiting";
         b.append(word);
-      } else if (row.state === "working" && row.working_since
-                 && Date.now() / 1000 - row.working_since >= LONG_TURN_SECONDS) {
-        const running = Date.now() / 1000 - row.working_since;
+      } else if (longTurn && !row.depth) {
         const word = document.createElement("span");
         word.className = "word long";
-        word.textContent = `Long ${duration(running)}`;
+        word.textContent = `Long ${longFigure}`;
         b.append(word);
         b.classList.add("long-turn");
       } else if (row.state === "working" && !row.depth && !compact && !tiny) {
@@ -6915,7 +6938,7 @@ function buildGroups(snapshot) {
       if (shortCards) b.querySelector(":scope > .word")?.remove();
       const pill = b.querySelector(":scope > .word");
       if (pill) pill.title = pill.classList.contains("long")
-        ? `Working for ${duration(Date.now() / 1000 - row.working_since)}, may be stuck` : pillTitle(row);
+        ? `Working for ${longFigure}, may be stuck` : pillTitle(row);
 
       if (group.name === "AGENTS" && !row.depth && !compact && !tiny
           && (SETTINGS?.card_anatomy ?? "task") === "task") taskCard(b, row);
@@ -6930,8 +6953,7 @@ function buildGroups(snapshot) {
       // never read, so the task and the facts line are spoken from here.
       b.setAttribute("aria-label",
                      [row.label, group.name === "AGENTS" ? agentKind(row).name : null, row.position, said,
-                      b.classList.contains("long-turn")
-                        ? `running for ${duration(Date.now() / 1000 - row.working_since)}, may be stuck` : null,
+                      longTurn ? `running for ${longFigure}, may be stuck` : null,
                       typeof row.context === "number" ? row.context + "% context" : null,
                       ...[...b.querySelectorAll("[data-spoken]"), ...(shortCards ? meta.querySelectorAll("[data-spoken]") : [])]
                         .map(el => el.dataset.spoken)]

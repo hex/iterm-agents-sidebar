@@ -489,7 +489,9 @@ so the end reads whole. Off under Reduce motion too.
 ## Teammates and worktrees
 
 A teammate sits under the lead that spawned it, wherever it runs, and takes the
-name and badge colour Claude Code gave it.
+name and badge colour Claude Code gave it. Its line has no corner for a pill:
+a turn past 20 minutes puts a warm `Long 25m` at the end of its facts line
+instead, and the row says so aloud.
 
 A session in a linked git worktree of another open session's repo (a cs feature
 session in `<repo>@worktree`, for example) keeps its own card, right after that
@@ -626,7 +628,10 @@ wider.
 ## What fills the context
 
 Pick Details from a Claude card's right-click menu: its details card opens
-and stays until Escape or a click elsewhere. Context breakdown then runs Claude Code's own
+and stays until Escape or a click elsewhere. Every row on it explains itself
+on hover: a gauge says what its figure measures and when the window resets,
+CPU and Memory name the program using the most, and each flag says what it
+stands for. Context breakdown then runs Claude Code's own
 `/context` on a throwaway fork of that conversation: hooks off, nothing saved,
 no model call. It takes a few seconds, and the result stays in the card until
 you read it again. It needs Claude Code 2.1.299 or newer: an older one prints
@@ -677,7 +682,11 @@ while iTerm2 is the frontmost app. A session in another tab of the same window
 still gets one, since that is exactly when you can't see it.
 
 A session has one banner at most, and going back to work takes it down, as
-does closing the session. Banners need the app that `install.sh` builds. A
+does closing the session. A click brings the session forward; when it sits in
+a hotkey window that has rolled away, the panel presses that window's hotkey
+first, read from the profile that owns it (System Events needs leave to send
+keys). A hotkey that is a double-tapped modifier alone has no key to press,
+and the log says so. Banners need the app that `install.sh` builds. A
 banner plays no sound of its own; the sound switches are separate. A session
 waiting on something other than a question or a tool it wants to run says it
 "needs you".

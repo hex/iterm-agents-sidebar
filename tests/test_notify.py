@@ -325,3 +325,24 @@ def test_a_remote_question_the_daemon_would_not_answer_offers_no_buttons():
                                 {"tool": "Bash", "summary": "git push"}, remote=True, refusal=refusal)
     assert (args(asked, "--button"), "--reply" in asked, arg(asked, "--body")) == ([], False, "Which one?")
     assert (args(gated, "--button"), arg(gated, "--body")) == ([], "wants to run: git push")
+
+
+def test_a_hidden_hotkey_window_is_summoned_with_the_profile_hotkey():
+    """The keystroke iTerm2 itself answers to, read from the profile that owns
+    the hotkey window: key code and modifier flags, in System Events' words."""
+    hotkey = {"Name": "Hotkey", "Has Hotkey": 1, "HotKey Key Code": 53, "HotKey Modifier Flags": 262144}
+    plain = {"Name": "Default", "Has Hotkey": 0, "HotKey Key Code": 0, "HotKey Modifier Flags": 0}
+    assert sidebar.hotkey_summon([plain, hotkey]) == [
+        "osascript", "-e", 'tell application "System Events" to key code 53 using {control down}']
+    every = {**hotkey, "HotKey Key Code": 49, "HotKey Modifier Flags": (1 << 17) | (1 << 18) | (1 << 19) | (1 << 20)}
+    assert sidebar.hotkey_summon([every]) == [
+        "osascript", "-e",
+        'tell application "System Events" to key code 49 using {shift down, control down, option down, command down}']
+
+
+def test_no_hotkey_profile_or_a_modifier_only_hotkey_summons_nothing():
+    assert sidebar.hotkey_summon([]) is None
+    assert sidebar.hotkey_summon([{"Name": "Default", "Has Hotkey": 0}]) is None
+    # Activated by a double-tapped modifier alone: no key code to send.
+    assert sidebar.hotkey_summon([{"Name": "Hotkey", "Has Hotkey": 1, "HotKey Key Code": 0,
+                                   "HotKey Modifier Flags": 0, "HotKey Activated By Modifier": 1}]) is None

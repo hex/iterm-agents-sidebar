@@ -791,6 +791,33 @@ def notify_wanted(kind, session_id, active, app_active):
     return not (session_id == active and app_active is True)
 
 
+#: The profile fields that define a hotkey window's hotkey.
+HOTKEY_FIELDS = ["Name", "Has Hotkey", "HotKey Key Code", "HotKey Modifier Flags"]
+
+#: NSEvent modifier flag bits, in the order System Events lists them.
+HOTKEY_MODIFIERS = [(1 << 17, "shift down"), (1 << 18, "control down"),
+                    (1 << 19, "option down"), (1 << 20, "command down")]
+
+
+def hotkey_summon(profiles):
+    """The osascript argv that presses the hotkey of the first profile that
+    has one, or None when no profile does.
+
+    A hidden hotkey window answers to nothing the API offers -- activating the
+    app, the window or the session leaves it hidden, and AppleScript does not
+    list it -- so the panel presses the key iTerm2 itself listens for. A
+    hotkey that is a double-tapped modifier alone has no key code to press.
+    """
+    for profile in profiles:
+        if not profile.get("Has Hotkey") or not profile.get("HotKey Key Code"):
+            continue
+        flags = profile.get("HotKey Modifier Flags") or 0
+        held = ", ".join(word for bit, word in HOTKEY_MODIFIERS if flags & bit)
+        return ["osascript", "-e",
+                f'tell application "System Events" to key code {profile["HotKey Key Code"]} using {{{held}}}']
+    return None
+
+
 def classify(path, auto_name, agent_state=None, agent_job=False):
     """One session's cwd, title, reported state and foreground job -> (kind, label).
 
@@ -4149,6 +4176,8 @@ class Bridge:
         if verb in ("focus", "bring"):
             # Off with the click, not at the next poll two seconds on.
             self.unseen.seen(session_id)
+            if verb == "bring":
+                await self.reveal_hotkey_window(session)
             await session.async_activate(select_tab=True, order_window_front=True)
             await self.rebuild()
         elif verb == "return":
@@ -4166,6 +4195,34 @@ class Bridge:
             # time, behind the panel, for every agent pane.
             await session.async_close(force=True)
         print(f"sidebar: {verb} on {session_id}: ok", flush=True)
+
+    async def reveal_hotkey_window(self, session):
+        """Press the hotkey when the session sits in a hotkey window and
+        iTerm2 is not in front: that is a hotkey window hidden, and a click
+        on a banner means come back to it.
+
+        A click from the panel itself never gets here: the panel is inside
+        iTerm2, so the app is already in front.
+        """
+        import iterm2
+        if self.app.app_active is not False:
+            return
+        window = session.tab.window if session.tab else None
+        if window is None or not await window.async_get_variable("isHotkeyWindow"):
+            return
+        profiles = await iterm2.PartialProfile.async_query(self.connection, properties=HOTKEY_FIELDS)
+        argv = hotkey_summon([profile.all_properties for profile in profiles])
+        if argv is None:
+            self.log("hotkey window hidden and no profile hotkey to press")
+            return
+        presser = await asyncio.create_subprocess_exec(*argv, stdout=asyncio.subprocess.DEVNULL,
+                                                       stderr=asyncio.subprocess.PIPE)
+        _, err = await presser.communicate()
+        if presser.returncode:
+            self.log("hotkey press refused", err.decode(errors="replace").strip()[:200])
+            return
+        # The window rolls in before the session can take the focus.
+        await asyncio.sleep(0.3)
 
     async def resume(self, session, session_id):
         """Type the resume command at the prompt of the pane the agent died in.
