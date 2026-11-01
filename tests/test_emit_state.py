@@ -1,7 +1,7 @@
 """Tests for the hook's event-to-state mapping.
 
-Every case here comes from the hook trace captured 2026-09-07 in
-~/.claude/agents-sidebar-events.jsonl across five real sessions.
+Every case here comes from a per-event trace of the hook captured 2026-09-07
+across five real sessions.
 """
 import base64
 import importlib.util
@@ -647,16 +647,38 @@ def test_open_tasks_are_the_pending_and_running_items_in_id_order(tmp_path):
     _task(tmp_path, 3, "in_progress", "Registry flags", doing="Building the registry")
     (tmp_path / "13.json").write_text("{not json")
     (tmp_path / ".highwatermark").write_text("13")
-    assert emit_state.open_tasks(str(tmp_path)) == [
+    items, done = emit_state.read_tasks(str(tmp_path))
+    assert items == [
         {"id": "3", "status": "in_progress", "subject": "Registry flags", "doing": "Building the registry"},
         {"id": "12", "status": "pending", "subject": "Region editor: smoke test", "doing": ""},
     ]
-    assert emit_state.open_tasks(str(tmp_path / "missing")) == []
+    assert done == 1
+    assert emit_state.read_tasks(str(tmp_path / "missing")) == ([], None)
 
 
 def test_a_task_subject_is_clipped(tmp_path):
     _task(tmp_path, 1, "pending", "x" * 1034)
-    assert emit_state.open_tasks(str(tmp_path))[0]["subject"] == "x" * 239 + "…"
+    items, done = emit_state.read_tasks(str(tmp_path))
+    assert items[0]["subject"] == "x" * 239 + "…"
+    assert done == 0
+
+
+def test_published_tasks_count_completed_files_without_adding_completed_rows(tmp_path, monkeypatch):
+    listed = tmp_path / "sample-list"
+    listed.mkdir()
+    _task(listed, 1, "pending", "Check layout")
+    _task(listed, 2, "in_progress", "Check focus", "Checking focus")
+    _task(listed, 3, "completed", "Read settings")
+    (listed / "4.json").write_text("{not json")
+    (listed / "5.json").mkdir()
+    monkeypatch.setattr(emit_state, "TASKS_DIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_CODE_TASK_LIST_ID", "sample-list")
+    value = emit_state.published({}, 701, {"session_id": "sample-session"}, codex=False, now=1789000000)
+    assert value["tasks"] == [
+        {"id": "1", "status": "pending", "subject": "Check layout", "doing": ""},
+        {"id": "2", "status": "in_progress", "subject": "Check focus", "doing": "Checking focus"},
+    ]
+    assert value.get("tasks_done") == 1
 
 
 def test_the_published_state_carries_the_open_tasks_and_files_them_past_the_ceiling(tmp_path, monkeypatch):
@@ -665,6 +687,7 @@ def test_the_published_state_carries_the_open_tasks_and_files_them_past_the_ceil
     lists = tmp_path / "tasks"; (lists / "session-abc12345").mkdir(parents=True)
     for n in range(1, 7):
         _task(lists / "session-abc12345", n, "pending", f"Item number {n} with a subject of some length")
+    _task(lists / "session-abc12345", 7, "completed", "Read settings")
     monkeypatch.setattr(emit_state, "TASKS_DIR", str(lists))
     monkeypatch.delenv("CLAUDE_CODE_TASK_LIST_ID", raising=False)
     value = emit_state.published({}, 701, {"session_id": "abc12345-0000-4000-8000-000000000000"},
@@ -672,8 +695,10 @@ def test_the_published_state_carries_the_open_tasks_and_files_them_past_the_ceil
     assert [t["id"] for t in value["tasks"]] == ["1", "2", "3", "4", "5", "6"]
     envelope = json.loads(emit_state.carried(value, "abc12345-0000-4000-8000-000000000000", str(tmp_path / "state")))
     assert envelope["detail"] is True and "tasks" not in envelope
+    assert "tasks_done" not in envelope
     whole = json.loads((tmp_path / "state" / "abc12345-0000-4000-8000-000000000000.published").read_text())
     assert whole["tasks"] == value["tasks"]
+    assert whole["tasks_done"] == 1
 
 
 def test_a_codex_session_publishes_no_tasks():
@@ -718,6 +743,7 @@ def test_a_codex_plan_publishes_its_open_steps_until_the_next_one():
         assert emit_state.published(doc, 1, {}, codex=True, now=1)["tasks"] == [
             {"id": "2", "status": "in_progress", "subject": "Beta step", "doing": ""},
             {"id": "3", "status": "pending", "subject": "Gamma step", "doing": ""}], event
+        assert "tasks_done" not in emit_state.published(doc, 1, {}, codex=True, now=1)
 
 
 def test_a_new_codex_plan_replaces_the_last_and_a_finished_one_leaves_no_tasks():
@@ -1252,3 +1278,11 @@ def test_a_standing_question_reaches_the_terminal_once_across_events(tmp_path, m
         writes.append([json.loads(value)["since"] for name, value in written if name == "claudeQuestion"])
         time.sleep(1.1)
     assert len(writes[0]) == 1 and writes[1] == []
+
+
+def test_the_hook_writes_no_event_trace(tmp_path):
+    """The hook's state lives under agents-sidebar-subagents; nothing per
+    event is kept, so a long-running install does not grow a log."""
+    code, _, _ = run_handler(tmp_path, ["UserPromptSubmit", "--agent", "omp"], {"session_id": OMP_SESSION, "pid": 4242})
+    assert code == 0
+    assert sorted(p.name for p in (tmp_path / ".claude").iterdir()) == ["agents-sidebar-subagents"]

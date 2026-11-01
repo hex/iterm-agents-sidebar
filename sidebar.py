@@ -35,7 +35,7 @@ import omp  # noqa: E402
 import partners  # noqa: E402
 import past  # noqa: E402
 import remote  # noqa: E402
-from sidebar_rules import prompt_refusal, remote_key_refusal, typing_refusal  # noqa: E402
+from sidebar_rules import connection_refusal, prompt_refusal, remote_key_refusal, typing_refusal  # noqa: E402
 import sound  # noqa: E402
 import marks  # noqa: E402
 import statusline  # noqa: E402
@@ -192,6 +192,8 @@ DEFAULT_SETTINGS = {
     # The accounts and limits at the foot, folded to the active account and
     # Codex by a click on their head.
     "limits_folded": False,
+    # Settings cards whose bodies stay closed across panel restarts.
+    "sheet_folds": ["on_card"],
     # A multiplier on the stylesheet's own sizes, so 1.0 means "as designed".
     "ui_scale": 1.0,
     # How a card says which agent runs in it, beyond the glyph on its facts line.
@@ -203,6 +205,7 @@ DEFAULT_SETTINGS = {
     # rows, air between them, a rule inset to the text column, or the card's
     # outline alone.
     "card_style": "cards",
+    "card_anatomy": "task",
     # The panel's canvas takes the background of the terminal in front, and
     # every surface on it is derived from that colour.
     "follow_terminal": True,
@@ -237,7 +240,8 @@ LINKS_TURNED_OFF = "linking was turned off"
 SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off"),
                    "order": ("terminal", "name", "attention", "hand"),
                    "shell_font": ("system", "mono", "terminal"),
-                   "card_style": ("cards", "hairlines", "air", "inset", "outlines")}
+                   "card_style": ("cards", "hairlines", "air", "inset", "outlines"),
+                   "card_anatomy": ("task", "name")}
 
 
 def _clean(settings):
@@ -280,6 +284,9 @@ def load_settings(path=None):
         return dict(DEFAULT_SETTINGS)
     if not isinstance(stored, dict):
         return dict(DEFAULT_SETTINGS)
+    # A saved sheet keeps its existing layout until its owner chooses another.
+    if "card_anatomy" not in stored:
+        stored["card_anatomy"] = "name"
     return _clean(stored)
 
 
@@ -1136,7 +1143,7 @@ def band(rows, unseen, by_provider):
     return [row for _, blocks in runs for block in lift(blocks) for row in block]
 
 
-def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand_order=(), pairs=()):
+def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand_order=(), pairs=(), here=None):
     """Raw session dicts -> the payload the page renders.
 
     Agents first, then everything else. Order within a group is the order
@@ -1147,8 +1154,10 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
     puts the agent cards in the order of the names in `hand_order`, which
     the payload carries back so the page can tell a frame sorted before a
     drop from one sorted after it. `pairs` lists (upper pane, lower pane)
-    partnerships, each drawn as one block in every order. Each input dict
-    needs session_id, window_id, tab_id, path, auto_name and job_name.
+    partnerships, each drawn as one block in every order. `here` is this
+    machine's name, which the payload's `hosts` needs once a session is on
+    another (see machines). Each input dict needs session_id, window_id,
+    tab_id, path, auto_name and job_name.
     """
     # A tab is only worth numbering by pane when it actually has more than one,
     # and a window prefix is noise until a second window exists.
@@ -1303,6 +1312,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
                 row["subagents"] = session["subagents"]
             if session.get("tasks"):
                 row["tasks"] = session["tasks"]
+            if session.get("tasks_done") is not None:
+                row["tasks_done"] = session["tasks_done"]
             if session.get("blocked_since") is not None:
                 row["blocked_since"] = session["blocked_since"]
             if session.get("question"):
@@ -1424,8 +1435,46 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
         {"name": "SESSIONS", "rows": rows["shell"]},
     ]
     # A header over nothing reads as breakage, and costs a row of a narrow panel.
-    return {"groups": [group for group in groups if group["rows"]],
-            "hand_order": list(hand_order) if order == "hand" else []}
+    payload = {"groups": [group for group in groups if group["rows"]],
+               "hand_order": list(hand_order) if order == "hand" else []}
+    hosts = machines(sessions, here)
+    if hosts:
+        payload["hosts"] = hosts
+    return payload
+
+
+def machines(sessions, here):
+    """The machines the sessions' panes reach, this one (`here`) first -> [{host, agents, ...}].
+
+    [] when every pane is on this machine: a list naming this machine alone
+    states a resting fact. Another machine follows in the order its first
+    pane is enumerated, so the list never re-sorts. `agents` counts the rows
+    with a provider. Another machine answers while any pane to it has its
+    transport in front; otherwise `reason` gives the words its cards refuse a
+    key with. `reported` is the freshest event its states carry, stamped by
+    that machine's clock.
+    """
+    if not any(session.get("host") for session in sessions):
+        return []
+    if not here:
+        raise ValueError(f"no name for this machine beside {sorted({s['host'] for s in sessions if s.get('host')})}")
+    found = {None: {"host": here, "local": True, "agents": 0}}
+    answering = set()
+    for session in sessions:
+        host = session.get("host")
+        machine = found.setdefault(host, {"host": host, "agents": 0})
+        machine["agents"] += bool(session.get("provider"))
+        if host is None:
+            continue
+        if session.get("job_name") in TRANSPORTS:
+            answering.add(host)
+        reported = session.get("reported_at")
+        if reported is not None:
+            machine["reported"] = max(reported, machine.get("reported", reported))
+    for host, machine in found.items():
+        if host is not None and host not in answering:
+            machine["reason"] = connection_refusal(host)
+    return list(found.values())
 
 
 def mark_busy_teammates(rows):
@@ -2278,7 +2327,10 @@ def with_detail(raw, directory=None):
     stamp = lambda doc: doc.get("ts") if isinstance(doc.get("ts"), (int, float)) else 0
     if stamp(whole) >= stamp(envelope):
         return json.dumps(whole)
-    return json.dumps(dict(envelope, subagents=whole.get("subagents"), tasks=whole.get("tasks")))
+    merged = dict(envelope, subagents=whole.get("subagents"), tasks=whole.get("tasks"))
+    if "tasks_done" in whole:
+        merged["tasks_done"] = whole["tasks_done"]
+    return json.dumps(merged)
 
 
 #: The foreground job that names each provider's agent.
@@ -2532,6 +2584,15 @@ def parse_tasks(raw):
     except (ValueError, TypeError, AttributeError):
         return []
     return listed if isinstance(listed, list) else []
+
+
+def parse_tasks_done(raw):
+    """The claudeState payload -> its completed-task count, or None."""
+    try:
+        done = json.loads(raw).get("tasks_done")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return done if type(done) is int and done >= 0 else None
 
 
 def parse_idle_since(raw):
@@ -3854,9 +3915,13 @@ class Bridge:
                                 codex_jobs, parse_session(raw), parse_turn_started(raw), resources)
                             if provider == "claude" and not host else []),
                         "blocked_since": parse_blocked_since(raw),
+                        # The agent's last event, by the other machine's clock:
+                        # the one sign of life a remote row has.
+                        "reported_at": _reported_at(raw) if host else None,
                         "question": remote_question(raw, values[QUESTION_VARIABLE]) if host
                                     else parse_question(raw),
                         "tasks": parse_tasks(raw),
+                        "tasks_done": parse_tasks_done(raw),
                         "working_since": parse_working_since(raw),
                         "idle_since": parse_idle_since(raw),
                         "turn_started": parse_turn_started(raw),
@@ -3972,7 +4037,8 @@ class Bridge:
         settings = load_settings()
         self.latest = snapshot(await self.read_sessions(), settings["order"],
                                settings["provider_mark"] == "groups",
-                               hand_order=settings["hand_order"], pairs=self.partners.pairs())
+                               hand_order=settings["hand_order"], pairs=self.partners.pairs(),
+                               here=local_host())
         self.latest["version"] = version()
         self.latest["terminal_font"] = self.terminal_font
         if settings["follow_terminal"]:

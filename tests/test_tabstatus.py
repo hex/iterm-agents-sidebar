@@ -57,13 +57,18 @@ def test_a_blocked_card_with_no_question_falls_back_to_what_it_was_doing_then_to
 
 def test_only_a_card_that_finished_unseen_says_done_and_with_no_detail():
     assert tabstatus.status_of(card("a", "idle", agents=1), {"a"}) == Status("done", "", 1)
-    assert tabstatus.status_of(card("a", "idle"), set()) is None
+    assert tabstatus.status_of(card("a", "idle"), set()) == Status("idle", "", 0)
     teammate = dict(card("t", "idle"), depth=1)
     assert tabstatus.status_of(teammate, {"t"}) is None
 
 
-def test_a_session_at_rest_or_unread_shows_nothing():
-    for state in ("idle", "unknown"):
+def test_an_idle_card_says_idle_with_no_detail_and_a_teammate_at_rest_nothing():
+    assert tabstatus.status_of(card("a", "idle", agents=2, shells=["x"]), set()) == Status("idle", "", 3)
+    assert tabstatus.status_of(dict(card("t", "idle"), depth=1), set()) is None
+
+
+def test_a_session_exited_unread_or_unknown_shows_nothing():
+    for state in ("unknown", "exited"):
         assert tabstatus.status_of(card("a", state), set()) is None
     assert tabstatus.status_of({"session_id": "a", "depth": 0}, {"a"}) is None
 
@@ -94,7 +99,8 @@ def test_the_faces_are_the_panels_dark_colours_and_none_is_cc_statuss():
 
     def token(name):
         return re.search(rf"--{name}:\s*(#[0-9a-f]{{6}})", dark).group(1)
-    assert (tabstatus.FACES["needs you"], tabstatus.FACES["done"]) == (token("blocked-border"), token("sev-ok"))
+    assert (tabstatus.FACES["needs you"], tabstatus.FACES["done"], tabstatus.FACES["idle"]) == (
+        token("blocked-border"), token("sev-ok"), token("dim"))
     assert tabstatus.SIGNATURE.isdisjoint(tabstatus.CC_PALETTE)
 
 
@@ -154,6 +160,8 @@ def test_the_page_hears_unavailable_first_and_contested_only_while_it_would_offe
 GET, SET = "iterm2.get_session_status", "iterm2.set_session_status"
 #: A session's status as get_session_status answers it after a clear.
 BLANK = {"status": None, "turn_open": None, "detail": None, "text_color": None, "dot_color": None, "background_tasks": 0}
+#: The grey word an owned idle tab wears.
+IDLE_WORD = dict(BLANK, status="idle", dot_color="#98989d", text_color="#98989d")
 #: cc-status's own working word, as it paints it.
 CC_WORKING = {"status": "working", "dot_color": "#ff9500", "text_color": "#ff9500"}
 CC_IDLE = {"status": "idle", "dot_color": "#888888", "text_color": "#888888"}
@@ -206,7 +214,7 @@ def needs_you(detail, background=0, colour="#ff9f0a"):
     return {"status": "needs you", "detail": detail, "dot_color": colour, "text_color": colour, "background_tasks": background}
 
 
-def test_a_card_that_needs_you_shows_its_question_and_idle_takes_it_back():
+def test_a_card_that_needs_you_shows_its_question_and_idle_replaces_it_with_the_grey_word():
     term, logged = ITerm(a={}), []
     w, app = tabstatus.Writer(invoke=term.invoke), term.app()
     row = card("a", "blocked", question={"question": "Ship it?", "options": ["Yes", "No"]})
@@ -216,10 +224,11 @@ def test_a_card_that_needs_you_shows_its_question_and_idle_takes_it_back():
         (GET, {"session_id": "a"}),
         (SET, {"session_id": "a", "status": "needs you", "detail": "Ship it?",
                "dot_color": "#ff9f0a", "text_color": "#ff9f0a", "background_tasks": 0}),
-        (SET, {"session_id": "a", "status": "", "detail": "", "dot_color": "", "text_color": "", "background_tasks": 0}),
+        (SET, {"session_id": "a", "status": "idle", "detail": "",
+               "dot_color": "#98989d", "text_color": "#98989d", "background_tasks": 0}),
     ]
-    assert term.tabs["a"] == BLANK
-    assert w.have == {} and logged == []
+    assert term.tabs["a"]["status"] == "idle"
+    assert w.have == {"a": Status("idle", "", 0)} and logged == []
 
 
 def test_a_steady_panel_sends_nothing():
@@ -264,10 +273,10 @@ def test_a_word_a_dead_daemon_left_is_corrected_on_an_owned_tab_and_cleared_on_a
             card("yielded", "idle"), card("theirs", "working")]
     run(w, app, rows, set(), ON, "present", logged.append)
     assert term.tabs["owned"]["detail"] == "New"
-    assert term.tabs["idle"] == BLANK and term.tabs["yielded"] == BLANK
+    assert term.tabs["idle"] == IDLE_WORD and term.tabs["yielded"] == BLANK
     assert term.tabs["theirs"] == dict(BLANK, **CC_WORKING)
     assert term.tabs["user"] == dict(BLANK, status="deploying", dot_color="#123456")
-    assert w.have == {"owned": Status("working", "New", 0)} and logged == []
+    assert w.have == {"owned": Status("working", "New", 0), "idle": Status("idle", "", 0)} and logged == []
 
 
 def test_an_unchanged_word_a_dead_daemon_left_is_adopted_without_a_write():
@@ -286,7 +295,7 @@ def test_a_cc_status_word_on_a_claude_tab_is_taken_once_its_hooks_are_gone():
     w, app = tabstatus.Writer(invoke=term.invoke), term.app()
     rows = [card("idle", "idle"), card("busy", "blocked")]
     run(w, app, rows, set(), ON, "absent", logged.append)
-    assert term.tabs["idle"] == BLANK
+    assert term.tabs["idle"] == IDLE_WORD
     assert term.tabs["busy"] == dict(BLANK, **needs_you(None))
 
     term, logged = ITerm(idle=CC_IDLE, busy=CC_WORKING), []
@@ -294,9 +303,9 @@ def test_a_cc_status_word_on_a_claude_tab_is_taken_once_its_hooks_are_gone():
     run(w, app, rows, set(), ON, "present", logged.append)
     assert [name for name, _ in term.calls] == [GET, GET]
     run(w, app, rows, set(), ON, "absent", logged.append)
-    assert term.tabs["idle"] == BLANK
+    assert term.tabs["idle"] == IDLE_WORD
     assert term.tabs["busy"] == dict(BLANK, **needs_you(None))
-    assert w.have == {"busy": Status("needs you", "", 0)} and logged == []
+    assert w.have == {"busy": Status("needs you", "", 0), "idle": Status("idle", "", 0)} and logged == []
 
 
 def test_with_the_setting_off_cc_status_words_are_left_alone_and_ours_are_taken_back():

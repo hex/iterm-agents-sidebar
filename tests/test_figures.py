@@ -38,9 +38,10 @@ def test_the_settings_figure_lists_every_setting_the_sheet_has():
     sys.path.insert(0, str(ASSETS))
     from panel_draw import setting_rows
     svg = (ASSETS / "settings.svg").read_text()
-    labels = [row["label"] for row in setting_rows() if "label" in row]
-    assert len(labels) == 37
-    for label in labels:
+    rows = setting_rows()
+    labels = [row["label"] for row in rows if "k" in row]
+    assert len(labels) == 36
+    for label in [row["label"] for row in rows if "label" in row]:
         assert f">{label}<" in svg, label
 
 

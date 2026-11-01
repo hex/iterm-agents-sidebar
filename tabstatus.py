@@ -1,5 +1,5 @@
 # ABOUTME: Writes iTerm2's status line under each agent's tab from the panel's own reading:
-# ABOUTME: working, needs you or done in the panel's colours, nothing at rest, taken back when it stops.
+# ABOUTME: working, needs you, done or idle in the panel's colours, taken back when it stops.
 """The status indicator is a view of the agent rows, as the marks are a view
 of Unseen. A rebuild says what every owned session should show; the writer
 diffs that against what it last wrote and sends only the changes. A session
@@ -9,13 +9,14 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
-Word = Literal["working", "needs you", "done"]
+Word = Literal["working", "needs you", "done", "idle"]
 
 #: The one table of words and colours, dark-theme values as the tab bar
 #: cannot follow the panel's theme. Working is iTerm2's own working orange,
 #: one unit off cc-status's #ff9500 so the signature still tells the two
-#: dots apart; needs you is the panel's --blocked-border; done its --sev-ok.
-FACES: dict = {"working": "#ff9501", "needs you": "#ff9f0a", "done": "#30d158"}
+#: dots apart; needs you is the panel's --blocked-border; done its --sev-ok;
+#: idle its --dim, a grey a shade off cc-status's.
+FACES: dict = {"working": "#ff9501", "needs you": "#ff9f0a", "done": "#30d158", "idle": "#98989d"}
 #: The longest detail written: one line under a tab title.
 DETAIL_MOST = 60
 
@@ -68,8 +69,9 @@ def status_of(row, unseen):
 
     working -> "working" with what the agent says it is doing; blocked ->
     "needs you" with what it waits on; idle, finished unseen and a card ->
-    "done" with no detail, as only a card shows Done on the panel. Anything
-    else rests and shows nothing. The count beside the word is running
+    "done" with no detail, as only a card shows Done on the panel; any other
+    idle card -> "idle" in grey. A teammate at rest, an exited session and one
+    with no report show nothing. The count beside the word is running
     subagents and background shells."""
     background = row.get("agents", 0) + len(row.get("shells", []))
     state = row.get("state")
@@ -77,14 +79,14 @@ def status_of(row, unseen):
         return Status("working", one_line(row.get("doing", "")), background)
     if state == "blocked":
         return Status("needs you", one_line(_question(row)), background)
-    if state == "idle" and not row["depth"] and row["session_id"] in unseen:
-        return Status("done", "", background)
+    if state == "idle" and not row["depth"]:
+        return Status("done" if row["session_id"] in unseen else "idle", "", background)
     return None
 
 
 #: Two rows on one session (agents in panes of a plain tmux) show the word
 #: that most needs the reader, first in this order.
-URGENCY = ("needs you", "working", "done")
+URGENCY = ("needs you", "working", "done", "idle")
 
 
 def local_claude(row):

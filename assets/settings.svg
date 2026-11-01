@@ -1,212 +1,217 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1177" width="880" role="img" aria-label="The settings drawer: a card each for sounds, notifications, focus, finished sessions, the style of the rows, the terminal, the rows and experiments, every setting with its default, and the repository the install comes from">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1398" width="880" role="img" aria-label="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental and Repository. Every setting with its default, On a card expanded, and the button to show the foot's offers again">
   <title>Settings</title>
   <defs>
     <pattern id="tickmask" width="6" height="4" patternUnits="userSpaceOnUse">
       <rect width="3" height="4" fill="#ffffff"/>
     </pattern>
-    <mask id="tick"><rect width="880" height="1177" fill="url(#tickmask)"/></mask>
+    <mask id="tick"><rect width="880" height="1398" fill="url(#tickmask)"/></mask>
   </defs>
-  <rect width="880" height="1177" rx="16" fill="#242426"/>
+  <rect width="880" height="1398" rx="16" fill="#242426"/>
   <text x="26" y="30" fill="#f2f2f7" font-size="11.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Settings</text>
   <rect x="24" y="44" width="404" height="122" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Play sounds</text>
-  <rect x="390" y="52.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="60.5" r="6.5" fill="#ffffff"/>
-  <line x1="36" y1="77" x2="36" y2="104" stroke="#3e3e41"/>
-  <line x1="36" y1="90.5" x2="42" y2="90.5" stroke="#3e3e41"/>
-  <text x="46" y="94.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When a session is blocked</text>
-  <rect x="390" y="82.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="90.5" r="6.5" fill="#ffffff"/>
-  <line x1="36" y1="104" x2="36" y2="131" stroke="#3e3e41"/>
-  <line x1="36" y1="117.5" x2="42" y2="117.5" stroke="#3e3e41"/>
-  <text x="46" y="121.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When one finishes</text>
-  <rect x="390" y="109.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="117.5" r="6.5" fill="#ffffff"/>
-  <line x1="36" y1="131" x2="36" y2="144.5" stroke="#3e3e41"/>
-  <line x1="36" y1="144.5" x2="42" y2="144.5" stroke="#3e3e41"/>
-  <text x="46" y="148.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Volume</text>
-  <text x="418" y="148.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">40%</text>
-  <g mask="url(#tick)"><rect x="276" y="142.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="142.5" width="43.2" height="4" fill="#8ec07c"/></g>
-  <rect x="24" y="175" width="404" height="95" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="196" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Show macOS notifications</text>
-  <rect x="390" y="183.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="191.5" r="6.5" fill="#ffffff"/>
+  <text x="34" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Alerts</text>
+  <line x1="24" y1="77" x2="428" y2="77" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="96.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Play sounds</text>
+  <rect x="390" y="84.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="92.5" r="6.5" fill="#ffffff"/>
+  <line x1="36" y1="108" x2="36" y2="121.5" stroke="#3e3e41"/>
+  <line x1="36" y1="121.5" x2="42" y2="121.5" stroke="#3e3e41"/>
+  <text x="46" y="125.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Volume</text>
+  <text x="418" y="125.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">40%</text>
+  <g mask="url(#tick)"><rect x="276" y="119.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="119.5" width="43.2" height="4" fill="#8ec07c"/></g>
+  <line x1="24" y1="135" x2="428" y2="135" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="154.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Show macOS notifications</text>
+  <rect x="390" y="142.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="150.5" r="6.5" fill="#ffffff"/>
+  <rect x="24" y="175" width="404" height="153" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="196" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When a session waits for you</text>
   <line x1="36" y1="208" x2="36" y2="235" stroke="#3e3e41"/>
   <line x1="36" y1="221.5" x2="42" y2="221.5" stroke="#3e3e41"/>
-  <text x="46" y="225.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When a session asks a question</text>
+  <text x="46" y="225.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Sound</text>
   <rect x="390" y="213.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
   <circle cx="409.5" cy="221.5" r="6.5" fill="#ffffff"/>
   <line x1="36" y1="235" x2="36" y2="248.5" stroke="#3e3e41"/>
   <line x1="36" y1="248.5" x2="42" y2="248.5" stroke="#3e3e41"/>
-  <text x="46" y="252.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When one finishes</text>
+  <text x="46" y="252.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Notification</text>
   <rect x="390" y="240.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
   <circle cx="409.5" cy="248.5" r="6.5" fill="#ffffff"/>
-  <rect x="24" y="279" width="404" height="68" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="300" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Bring a blocked session forward</text>
-  <rect x="390" y="287.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
-  <circle cx="398.5" cy="295.5" r="6.5" fill="#ffffff"/>
-  <line x1="36" y1="312" x2="36" y2="325.5" stroke="#3e3e41"/>
-  <line x1="36" y1="325.5" x2="42" y2="325.5" stroke="#3e3e41"/>
+  <line x1="24" y1="262" x2="428" y2="262" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="281.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Bring it forward</text>
+  <rect x="390" y="269.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
+  <circle cx="398.5" cy="277.5" r="6.5" fill="#ffffff"/>
+  <line x1="36" y1="293" x2="36" y2="306.5" stroke="#3e3e41"/>
+  <line x1="36" y1="306.5" x2="42" y2="306.5" stroke="#3e3e41"/>
   <g opacity="0.4">
-  <text x="46" y="329.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Go back once it resumes</text>
-  <rect x="390" y="317.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="325.5" r="6.5" fill="#ffffff"/>
+  <text x="46" y="310.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Go back once it resumes</text>
+  <rect x="390" y="298.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="306.5" r="6.5" fill="#ffffff"/>
   </g>
-  <rect x="24" y="356" width="404" height="95" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="377" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Finished</text>
-  <line x1="24" y1="389" x2="428" y2="389" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="408.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Finished first</text>
-  <rect x="390" y="396.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="404.5" r="6.5" fill="#ffffff"/>
-  <line x1="24" y1="420" x2="428" y2="420" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="439.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Badge in the pane</text>
-  <rect x="390" y="427.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="435.5" r="6.5" fill="#ffffff"/>
-  <rect x="24" y="460" width="404" height="64" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="481" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Terminal</text>
-  <line x1="24" y1="493" x2="428" y2="493" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="512.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Status under the tab title</text>
-  <rect x="390" y="500.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="508.5" r="6.5" fill="#ffffff"/>
-  <rect x="24" y="533" width="404" height="219" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="554" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Rows</text>
-  <line x1="24" y1="566" x2="428" y2="566" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="585.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Warn above</text>
-  <text x="418" y="585.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">40%</text>
-  <g mask="url(#tick)"><rect x="276" y="579.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="579.5" width="43.2" height="4" fill="#8ec07c"/></g>
-  <line x1="24" y1="597" x2="428" y2="597" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="616.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">CPU heavy at</text>
-  <text x="418" y="616.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">100%</text>
-  <g mask="url(#tick)"><rect x="276" y="610.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="610.5" width="21.6" height="4" fill="#8ec07c"/></g>
-  <line x1="24" y1="628" x2="428" y2="628" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="647.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Memory heavy at</text>
-  <text x="418" y="647.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">2 GB</text>
-  <g mask="url(#tick)"><rect x="276" y="641.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="641.5" width="21.6" height="4" fill="#8ec07c"/></g>
-  <line x1="24" y1="659" x2="428" y2="659" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="678.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Order</text>
-  <rect x="264.58" y="662.5" width="153.4" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
-  <rect x="264.58" y="662.5" width="153.4" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
-  <text x="272.58" y="678.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Follow the terminals</text>
-  <path d="M404 671.5 l3 3 l3 -3 M404 675.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
-  <line x1="24" y1="690" x2="428" y2="690" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="709.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Offer the statusline bridge</text>
-  <rect x="390" y="697.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="705.5" r="6.5" fill="#ffffff"/>
-  <line x1="24" y1="721" x2="428" y2="721" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="740.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Offer to take the tab status from iTerm2</text>
-  <rect x="390" y="728.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="409.5" cy="736.5" r="6.5" fill="#ffffff"/>
-  <rect x="24" y="761" width="404" height="273" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="782" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Experimental</text>
-  <line x1="24" y1="794" x2="428" y2="794" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="813.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Link cards</text>
-  <rect x="390" y="801.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
-  <circle cx="398.5" cy="809.5" r="6.5" fill="#ffffff"/>
-  <text x="34" y="832" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Hold a dragged card over another to link them. Two Claude Code</text>
-  <text x="34" y="847" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">sessions become partners that hand each other tasks; with Codex</text>
-  <text x="34" y="862" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">or omp, one hands the other its latest result.</text>
-  <line x1="24" y1="874" x2="428" y2="874" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="893.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Keep remote control after a switch</text>
-  <rect x="390" y="881.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
-  <circle cx="398.5" cy="889.5" r="6.5" fill="#ffffff"/>
-  <text x="34" y="912" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When the panel switches accounts, sessions that had remote</text>
-  <text x="34" y="927" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">control on get it back once they are idle, under the account</text>
-  <text x="34" y="942" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">switched to.</text>
-  <line x1="24" y1="954" x2="428" y2="954" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="973.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Commit heatmap</text>
-  <rect x="390" y="961.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
-  <circle cx="398.5" cy="969.5" r="6.5" fill="#ffffff"/>
-  <text x="34" y="992" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">An agent card's Details shows its project's commits per day for</text>
-  <text x="34" y="1007" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">the last twelve weeks, every branch and author, as GitHub draws</text>
-  <text x="34" y="1022" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">them.</text>
-  <rect x="24" y="1043" width="404" height="95" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="1064" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Repository</text>
-  <line x1="24" y1="1076" x2="428" y2="1076" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="1095.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">github.com/hex/iterm-agents-sidebar</text>
-  <path transform="translate(406 1085.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
-  <line x1="24" y1="1107" x2="428" y2="1107" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="1126.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Release notes</text>
-  <path transform="translate(406 1116.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
-  <rect x="452" y="44" width="404" height="517" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="462" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Style</text>
+  <rect x="24" y="337" width="404" height="211" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="358" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When one finishes</text>
+  <line x1="36" y1="370" x2="36" y2="397" stroke="#3e3e41"/>
+  <line x1="36" y1="383.5" x2="42" y2="383.5" stroke="#3e3e41"/>
+  <text x="46" y="387.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Sound</text>
+  <rect x="390" y="375.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="383.5" r="6.5" fill="#ffffff"/>
+  <line x1="36" y1="397" x2="36" y2="410.5" stroke="#3e3e41"/>
+  <line x1="36" y1="410.5" x2="42" y2="410.5" stroke="#3e3e41"/>
+  <text x="46" y="414.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Notification</text>
+  <rect x="390" y="402.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="410.5" r="6.5" fill="#ffffff"/>
+  <line x1="24" y1="424" x2="428" y2="424" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="443.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Lift its card first</text>
+  <rect x="390" y="431.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="439.5" r="6.5" fill="#ffffff"/>
+  <line x1="24" y1="455" x2="428" y2="455" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="474.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Green wash</text>
+  <rect x="390" y="462.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="470.5" r="6.5" fill="#ffffff"/>
+  <line x1="24" y1="486" x2="428" y2="486" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="505.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Done as the pane's badge</text>
+  <rect x="390" y="493.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="501.5" r="6.5" fill="#ffffff"/>
+  <line x1="24" y1="517" x2="428" y2="517" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="536.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Status under the tab title</text>
+  <rect x="390" y="524.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="532.5" r="6.5" fill="#ffffff"/>
+  <rect x="24" y="557" width="404" height="219" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="578" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Look</text>
+  <line x1="24" y1="590" x2="428" y2="590" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="609.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Card style</text>
+  <rect x="357.145" y="593.5" width="60.9" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
+  <rect x="357.145" y="593.5" width="60.9" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
+  <text x="365.145" y="609.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Cards</text>
+  <path d="M404 602.5 l3 3 l3 -3 M404 606.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
+  <line x1="24" y1="621" x2="428" y2="621" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="640.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Card anatomy</text>
+  <rect x="326.28999999999996" y="624.5" width="91.7" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
+  <rect x="326.28999999999996" y="624.5" width="91.7" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
+  <text x="334.28999999999996" y="640.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Task first</text>
+  <path d="M404 633.5 l3 3 l3 -3 M404 637.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
+  <line x1="24" y1="652" x2="428" y2="652" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="671.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Follow the terminal's background</text>
+  <rect x="390" y="659.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="409.5" cy="667.5" r="6.5" fill="#ffffff"/>
+  <line x1="24" y1="683" x2="428" y2="683" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="702.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Text size</text>
+  <rect x="336" y="686.5" width="82" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
+  <rect x="336" y="686.5" width="82" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
+  <line x1="360" y1="686.5" x2="360" y2="710.5" stroke="#f2f2f7" opacity="0.12" stroke-width="0.5"/>
+  <line x1="394" y1="686.5" x2="394" y2="710.5" stroke="#f2f2f7" opacity="0.12" stroke-width="0.5"/>
+  <text x="348" y="703.0" fill="#f2f2f7" font-size="13" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">−</text>
+  <text x="377" y="702.0" fill="#f2f2f7" font-size="11" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="middle">1.0×</text>
+  <text x="406" y="703.0" fill="#f2f2f7" font-size="13" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">+</text>
+  <line x1="24" y1="714" x2="428" y2="714" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="733.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Shell names</text>
+  <rect x="350.974" y="717.5" width="67.0" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
+  <rect x="350.974" y="717.5" width="67.0" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
+  <text x="358.974" y="733.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">System</text>
+  <path d="M404 726.5 l3 3 l3 -3 M404 730.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
+  <line x1="24" y1="745" x2="428" y2="745" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="764.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Provider badge</text>
+  <rect x="283.09299999999996" y="748.5" width="134.9" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
+  <rect x="283.09299999999996" y="748.5" width="134.9" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
+  <text x="291.09299999999996" y="764.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Group by provider</text>
+  <path d="M404 757.5 l3 3 l3 -3 M404 761.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
+  <rect x="24" y="785" width="404" height="188" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="806" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Rows</text>
+  <line x1="24" y1="818" x2="428" y2="818" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="837.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Warn above</text>
+  <text x="418" y="837.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">40%</text>
+  <g mask="url(#tick)"><rect x="276" y="831.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="831.5" width="43.2" height="4" fill="#8ec07c"/></g>
+  <line x1="24" y1="849" x2="428" y2="849" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="868.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">CPU heavy at</text>
+  <text x="418" y="868.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">100%</text>
+  <g mask="url(#tick)"><rect x="276" y="862.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="862.5" width="21.6" height="4" fill="#8ec07c"/></g>
+  <line x1="24" y1="880" x2="428" y2="880" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="899.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Memory heavy at</text>
+  <text x="418" y="899.0" fill="#98989d" font-size="10" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="end">2 GB</text>
+  <g mask="url(#tick)"><rect x="276" y="893.5" width="108" height="4" fill="#f2f2f7" opacity="0.16"/><rect x="276" y="893.5" width="21.6" height="4" fill="#8ec07c"/></g>
+  <line x1="24" y1="911" x2="428" y2="911" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="930.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Order</text>
+  <rect x="264.58" y="914.5" width="153.4" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
+  <rect x="264.58" y="914.5" width="153.4" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
+  <text x="272.58" y="930.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Follow the terminals</text>
+  <path d="M404 923.5 l3 3 l3 -3 M404 927.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
+  <line x1="24" y1="942" x2="428" y2="942" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="961.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Show the foot's offers again</text>
+  <rect x="24" y="982" width="404" height="273" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="1003" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Experimental</text>
+  <line x1="24" y1="1015" x2="428" y2="1015" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="1034.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Link cards</text>
+  <rect x="390" y="1022.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
+  <circle cx="398.5" cy="1030.5" r="6.5" fill="#ffffff"/>
+  <text x="34" y="1053" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Hold a dragged card over another to link them. Two Claude Code</text>
+  <text x="34" y="1068" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">sessions become partners that hand each other tasks; with Codex</text>
+  <text x="34" y="1083" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">or omp, one hands the other its latest result.</text>
+  <line x1="24" y1="1095" x2="428" y2="1095" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="1114.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Keep remote control after a switch</text>
+  <rect x="390" y="1102.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
+  <circle cx="398.5" cy="1110.5" r="6.5" fill="#ffffff"/>
+  <text x="34" y="1133" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When the panel switches accounts, sessions that had remote</text>
+  <text x="34" y="1148" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">control on get it back once they are idle, under the account</text>
+  <text x="34" y="1163" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">switched to.</text>
+  <line x1="24" y1="1175" x2="428" y2="1175" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="1194.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Commit heatmap</text>
+  <rect x="390" y="1182.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
+  <circle cx="398.5" cy="1190.5" r="6.5" fill="#ffffff"/>
+  <text x="34" y="1213" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">An agent card's Details shows its project's commits per day for</text>
+  <text x="34" y="1228" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">the last twelve weeks, every branch and author, as GitHub draws</text>
+  <text x="34" y="1243" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">them.</text>
+  <rect x="24" y="1264" width="404" height="95" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="1285" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Repository</text>
+  <line x1="24" y1="1297" x2="428" y2="1297" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="1316.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">github.com/hex/iterm-agents-sidebar</text>
+  <path transform="translate(406 1306.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
+  <line x1="24" y1="1328" x2="428" y2="1328" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="1347.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Release notes</text>
+  <path transform="translate(406 1337.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
+  <rect x="452" y="44" width="404" height="331" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="462" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">On a card</text>
+  <path d="M838 58 l4 4 l4 -4" fill="none" stroke="#f2f2f7" stroke-width="1.2"/>
   <line x1="452" y1="77" x2="856" y2="77" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="96.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Card style</text>
-  <rect x="785.145" y="80.5" width="60.9" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
-  <rect x="785.145" y="80.5" width="60.9" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
-  <text x="793.145" y="96.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Cards</text>
-  <path d="M832 89.5 l3 3 l3 -3 M832 93.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
+  <text x="462" y="96.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Branch</text>
+  <rect x="818" y="84.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="92.5" r="6.5" fill="#ffffff"/>
   <line x1="452" y1="108" x2="856" y2="108" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="127.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Follow the terminal's background</text>
+  <text x="462" y="127.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Task</text>
   <rect x="818" y="115.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
   <circle cx="837.5" cy="123.5" r="6.5" fill="#ffffff"/>
-  <line x1="452" y1="139" x2="856" y2="139" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="158.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Text size</text>
-  <rect x="764" y="142.5" width="82" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
-  <rect x="764" y="142.5" width="82" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
-  <line x1="788" y1="142.5" x2="788" y2="166.5" stroke="#f2f2f7" opacity="0.12" stroke-width="0.5"/>
-  <line x1="822" y1="142.5" x2="822" y2="166.5" stroke="#f2f2f7" opacity="0.12" stroke-width="0.5"/>
-  <text x="776" y="159.0" fill="#f2f2f7" font-size="13" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">−</text>
-  <text x="805" y="158.0" fill="#f2f2f7" font-size="11" font-weight="600" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" text-anchor="middle">1.0×</text>
-  <text x="834" y="159.0" fill="#f2f2f7" font-size="13" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">+</text>
-  <line x1="452" y1="170" x2="856" y2="170" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="189.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Shell names</text>
-  <rect x="778.9739999999999" y="173.5" width="67.0" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
-  <rect x="778.9739999999999" y="173.5" width="67.0" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
-  <text x="786.9739999999999" y="189.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">System</text>
-  <path d="M832 182.5 l3 3 l3 -3 M832 186.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
-  <line x1="452" y1="201" x2="856" y2="201" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="220.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Provider badge</text>
-  <rect x="711.093" y="204.5" width="134.9" height="24" rx="7" fill="#f2f2f7" opacity="0.05"/>
-  <rect x="711.093" y="204.5" width="134.9" height="24" rx="7" fill="none" stroke="#f2f2f7" opacity="0.16" stroke-width="0.5"/>
-  <text x="719.093" y="220.5" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Group by provider</text>
-  <path d="M832 213.5 l3 3 l3 -3 M832 217.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
-  <line x1="452" y1="232" x2="856" y2="232" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="251.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Green wash</text>
-  <rect x="818" y="239.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="247.5" r="6.5" fill="#ffffff"/>
-  <line x1="452" y1="263" x2="856" y2="263" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="282.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Branch</text>
-  <rect x="818" y="270.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="278.5" r="6.5" fill="#ffffff"/>
-  <line x1="452" y1="294" x2="856" y2="294" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="313.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Task</text>
-  <rect x="818" y="301.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="309.5" r="6.5" fill="#ffffff"/>
-  <line x1="464" y1="325" x2="464" y2="352" stroke="#3e3e41"/>
-  <line x1="464" y1="338.5" x2="470" y2="338.5" stroke="#3e3e41"/>
-  <text x="474" y="342.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">What it is doing</text>
-  <rect x="818" y="330.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="338.5" r="6.5" fill="#ffffff"/>
-  <line x1="464" y1="352" x2="464" y2="379" stroke="#3e3e41"/>
-  <line x1="464" y1="365.5" x2="470" y2="365.5" stroke="#3e3e41"/>
-  <text x="474" y="369.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">How old the report is</text>
-  <rect x="818" y="357.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="365.5" r="6.5" fill="#ffffff"/>
-  <line x1="464" y1="379" x2="464" y2="406" stroke="#3e3e41"/>
-  <line x1="464" y1="392.5" x2="470" y2="392.5" stroke="#3e3e41"/>
-  <text x="474" y="396.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Progress bar</text>
-  <rect x="818" y="384.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="392.5" r="6.5" fill="#ffffff"/>
-  <line x1="464" y1="406" x2="464" y2="419.5" stroke="#3e3e41"/>
-  <line x1="464" y1="419.5" x2="470" y2="419.5" stroke="#3e3e41"/>
-  <text x="474" y="423.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Task list</text>
-  <rect x="818" y="411.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="419.5" r="6.5" fill="#ffffff"/>
-  <line x1="452" y1="433" x2="856" y2="433" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="452.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Model</text>
-  <rect x="818" y="440.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="448.5" r="6.5" fill="#ffffff"/>
-  <line x1="452" y1="464" x2="856" y2="464" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="483.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Subagents</text>
-  <rect x="818" y="471.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="479.5" r="6.5" fill="#ffffff"/>
-  <line x1="452" y1="495" x2="856" y2="495" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="462" y="514.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Background shells</text>
-  <rect x="818" y="502.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
-  <circle cx="837.5" cy="510.5" r="6.5" fill="#ffffff"/>
-  <line x1="464" y1="526" x2="464" y2="539.5" stroke="#3e3e41"/>
-  <line x1="464" y1="539.5" x2="470" y2="539.5" stroke="#3e3e41"/>
-  <text x="474" y="543.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Start expanded</text>
-  <rect x="818" y="531.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
-  <circle cx="826.5" cy="539.5" r="6.5" fill="#ffffff"/>
+  <line x1="464" y1="139" x2="464" y2="166" stroke="#3e3e41"/>
+  <line x1="464" y1="152.5" x2="470" y2="152.5" stroke="#3e3e41"/>
+  <text x="474" y="156.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">What it is doing</text>
+  <rect x="818" y="144.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="152.5" r="6.5" fill="#ffffff"/>
+  <line x1="464" y1="166" x2="464" y2="193" stroke="#3e3e41"/>
+  <line x1="464" y1="179.5" x2="470" y2="179.5" stroke="#3e3e41"/>
+  <text x="474" y="183.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">How old the report is</text>
+  <rect x="818" y="171.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="179.5" r="6.5" fill="#ffffff"/>
+  <line x1="464" y1="193" x2="464" y2="220" stroke="#3e3e41"/>
+  <line x1="464" y1="206.5" x2="470" y2="206.5" stroke="#3e3e41"/>
+  <text x="474" y="210.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Progress bar</text>
+  <rect x="818" y="198.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="206.5" r="6.5" fill="#ffffff"/>
+  <line x1="464" y1="220" x2="464" y2="233.5" stroke="#3e3e41"/>
+  <line x1="464" y1="233.5" x2="470" y2="233.5" stroke="#3e3e41"/>
+  <text x="474" y="237.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Task list</text>
+  <rect x="818" y="225.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="233.5" r="6.5" fill="#ffffff"/>
+  <line x1="452" y1="247" x2="856" y2="247" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="462" y="266.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Model</text>
+  <rect x="818" y="254.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="262.5" r="6.5" fill="#ffffff"/>
+  <line x1="452" y1="278" x2="856" y2="278" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="462" y="297.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Subagents</text>
+  <rect x="818" y="285.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="293.5" r="6.5" fill="#ffffff"/>
+  <line x1="452" y1="309" x2="856" y2="309" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="462" y="328.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Background shells</text>
+  <rect x="818" y="316.0" width="28" height="17" rx="8.5" fill="#8ec07c" opacity="1"/>
+  <circle cx="837.5" cy="324.5" r="6.5" fill="#ffffff"/>
+  <line x1="464" y1="340" x2="464" y2="353.5" stroke="#3e3e41"/>
+  <line x1="464" y1="353.5" x2="470" y2="353.5" stroke="#3e3e41"/>
+  <text x="474" y="357.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Start expanded</text>
+  <rect x="818" y="345.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
+  <circle cx="826.5" cy="353.5" r="6.5" fill="#ffffff"/>
 </svg>

@@ -34,7 +34,7 @@ def marks():
     found = {}
     for name in ("branch", "clock", "computer", "cpu", "model", "gauge", "shells",
                  "switch", "warning", "check", "tasks", "memory", "reload", "gear", "cost",
-                 "question", "checked"):
+                 "question", "checked", "folder"):
         m = re.search(r"^  %s: '(.+)',?$" % name, page, re.M)
         if m:
             found[name] = (m.group(1), 256)
@@ -100,12 +100,30 @@ NAME_W.update({"cinder": 45.3, "delta": 36.1})
 DOT_W, DOT_GAP = 3.7, 7
 
 
-def width_of(s, size, family=SANS):
+#: Widths at the task-first face's other sizes, measured the same way:
+#: the folder name at 400 11px, the title at 600 17px, the small lines at
+#: 400 10px.
+MEASURED_AT = {
+    (11, 400): {"atlas": 25.0, "beacon": 38.6, "ember": 33.4, "cinder": 32.9, "harbor": 34.6,
+                "token-parser": 67.9, "auth": 23.2, "cache-layer": 61.9, "docs-site": 49.6},
+    (17, 600): {"Refactor the token parser": 202.5, "Redis or SQLite for the cache?": 239.5,
+                "ember": 51.4, "cinder": 50.3, "Migrate the auth tables": 184.1,
+                "Choose a cache store": 171.1, "atlas": 38.4},
+    (10, 400): {"Updated 10 s ago": 84.6, "Updated 2 m ago": 83.0, "Updated 25 m ago": 89.3,
+                "14% \u00b7 Checking focus order": 133.0, "100% \u00b7 Complete": 82.2,
+                "62% \u00b7 Running the suite": 115.0, "38% \u00b7 Writing tests": 92.5,
+                "Reading code": 65.7, "38% \u00b7 Reading code": 96.9},
+}
+
+
+def width_of(s, size, family=SANS, weight=400):
     if family == MONO:
         # The mono face is 0.602em a character, measured at 10 and 11px.
         return len(s) * size * 0.602
     if size == 12.5 and s in MEASURED:
         return MEASURED[s]
+    if s in MEASURED_AT.get((size, weight), {}):
+        return MEASURED_AT[(size, weight)][s]
     return len(s) * size * 0.55
 
 
@@ -166,10 +184,64 @@ def badge(right, top, word, ink=DIM, fill=None, animation=""):
       f'text-anchor="middle" font-family="{SANS}">{word}</text></g>')
 
 
+#: The solid badge's word at 600 10px, measured as MEASURED is.
+SOLID_W = {"Done": 26.0}
+
+
+def solid_badge(right, top, word, ink, fill):
+    """Done on a full-width card: a solid badge with the pill's height and
+    radius, the word in `ink` on `fill`, no dot, its right edge at `right`."""
+    w = SOLID_W[word] + 16
+    x = right - w
+    A(f'  <g><rect x="{x:.1f}" y="{top}" width="{w:.1f}" height="18" rx="9" fill="{fill}"/>'
+      f'<text x="{x + w/2:.1f}" y="{top+13}" fill="{ink}" font-size="10" font-weight="600" '
+      f'text-anchor="middle" font-family="{SANS}">{word}</text></g>')
+
+
+def mix(colour, over, share):
+    """What color-mix(in srgb, colour share%, transparent) paints over `over`."""
+    a = [int(colour[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(over[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x * share + y * (1 - share)):02x}" for x, y in zip(a, b))
+
+
+#: The pill words at 600 10px, measured as MEASURED is.
+PILL_W = {"Working": 41.5, "Waiting for you": 75.9, "Idle": 18.6, "No report": 48.0,
+          "Long 25m": 49.7, "Exited": 31.4}
+
+
+def pill(right, top, word, ink, tint):
+    """The state on a full-width card: a dot and the word in the state's ink
+    on a tint of it, no outline, its right edge at `right`. -> its left edge."""
+    w = 7 + 6 + 5 + PILL_W[word] + 8
+    x = right - w
+    A(f'  <g><rect x="{x:.1f}" y="{top}" width="{w:.1f}" height="18" rx="9" fill="{tint}"/>'
+      f'<circle cx="{x + 10:.1f}" cy="{top + 9}" r="3" fill="{ink}"/>'
+      f'<text x="{x + 18:.1f}" y="{top + 13}" fill="{ink}" font-size="10" font-weight="600" '
+      f'font-family="{SANS}">{word}</text></g>')
+    return x
+
+
+def folder_line(x, baseline, name, ink=DIM):
+    """The task-first face's first line: the folder glyph and the path's last
+    component. -> where the name ends."""
+    mark("folder", x, baseline - 10, 12, ink)
+    text(x + 17, baseline, name, fill=ink, size=11)
+    return x + 17 + width_of(name, 11)
+
+
+def bar(x, top, width, done, fill=LIT):
+    """The task bar: the session's own estimate of how far it has got, a
+    solid rounded line with the done share in the panel's green."""
+    A(f'  <rect x="{x}" y="{top}" width="{width}" height="4" rx="2" fill="{FG}" opacity="0.16"/>')
+    A(f'  <rect x="{x}" y="{top}" width="{done}" height="4" rx="2" fill="{fill}"/>')
+
+
 def setting_rows():
     """page.html's SETTING_ROWS, one dict a row, so a drawing of the sheet
-    lists what the sheet lists. A head is {"head": ...}; a row has k and
-    label, and any of master, needs, range, pct, unit, choices, steps, note."""
+    lists what the sheet lists. A head has head and an optional fold id;
+    a row has k or action and label, with any of master, needs, range, pct,
+    unit, choices, steps, note."""
     block = re.search(r"^const SETTING_ROWS = \[\n(.*?)^\];", PAGE.read_text(), re.S | re.M).group(1)
     rows = []
     for m in re.finditer(r"\{(.*?)\}(?=,\n|\n)", block, re.S):

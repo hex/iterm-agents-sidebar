@@ -386,6 +386,8 @@ on the remote prompt setting a title. The card anatomy figure stays as it is: it
   state files. It brings Reply, tasks, subagents, model and context, Codex,
   and sessions with no pane here (an et session whose pane was closed is
   one). Its own spec: [the remote relay](2026-10-30-remote-relay-design.md).
-- A daemon on the other machine, or a panel that lists machines.
+- A daemon on the other machine. A row under Limits names the machines the
+  panes reach, with their agent counts, since 2026-10-31. A panel of its own
+  for machines is not here.
 - Account switching, Remote Control keeping, links and partners across
   machines.

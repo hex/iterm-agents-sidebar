@@ -1361,6 +1361,14 @@ def test_a_remote_row_takes_nothing_from_the_local_process_of_its_pid(monkeypatc
     assert row["remote_refusal"] is None
 
 
+def test_a_rebuild_over_a_pane_to_another_machine_lists_both_machines(monkeypatch, tmp_path):
+    b = remote_bridge(monkeypatch, tmp_path)
+    b.app = one_session(remote_session())
+    asyncio.run(b._rebuild_once())
+    assert b.latest["hosts"] == [{"host": "desk", "local": True, "agents": 0},
+                                 {"host": "box", "agents": 1, "reported": 1791700000}]
+
+
 def test_a_remote_row_whose_transport_is_not_in_front_reads_unknown(monkeypatch, tmp_path):
     b = remote_bridge(monkeypatch, tmp_path)
     b.app = one_session(remote_session(job="zsh"))

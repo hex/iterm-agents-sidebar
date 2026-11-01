@@ -17,6 +17,31 @@ def test_missing_file_yields_the_defaults(tmp_path):
     assert load_settings(tmp_path / "nope.json") == DEFAULT_SETTINGS
 
 
+def test_the_sheet_remembers_closed_cards_and_keeps_only_named_folds(tmp_path):
+    store = tmp_path / "settings.json"
+    assert load_settings(store).get("sheet_folds") == ["on_card"]
+    save_settings({"sheet_folds": ["on_card", "alerts", 7, None, "", "alerts"]}, store)
+    assert load_settings(store)["sheet_folds"] == ["on_card", "alerts"]
+    save_settings({"sheet_folds": []}, store)
+    assert load_settings(store)["sheet_folds"] == []
+    assert sidebar._clean({"sheet_folds": "on_card"})["sheet_folds"] == ["on_card"]
+
+
+def test_card_anatomy_defaults_to_task_for_a_new_install(tmp_path):
+    assert load_settings(tmp_path / "settings.json").get("card_anatomy") == "task"
+
+
+def test_card_anatomy_keeps_a_saved_sheet_name_first_until_chosen(tmp_path):
+    store = tmp_path / "settings.json"
+    store.write_text('{"volume": 0.2}')
+    assert load_settings(store)["card_anatomy"] == "name"
+    save_settings({"volume": 0.4}, store)
+    assert load_settings(store)["card_anatomy"] == "name"
+    for value in ["task", "name"]:
+        save_settings({"card_anatomy": value}, store)
+        assert load_settings(store)["card_anatomy"] == value
+
+
 def test_a_saved_setting_survives_a_reload(tmp_path):
     store = tmp_path / "settings.json"
     save_settings({"volume": 0.9, "order": "name"}, store)

@@ -6,6 +6,8 @@ spike capture of the live iTerm2 instance.
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sidebar  # noqa: E402
@@ -784,6 +786,16 @@ def test_agent_rows_carry_their_open_tasks_only_when_there_are_some():
     assert "tasks" not in bare
 
 
+def test_agent_rows_carry_completed_task_counts_only_when_published():
+    for count in [40, 0]:
+        got = snapshot([dict(LIVE[1], agent_state="idle", tasks=[], tasks_done=count)])["groups"][0]["rows"][0]
+        assert got.get("tasks_done") == count
+        assert "tasks" not in got
+    for fields in [{}, {"tasks_done": None}]:
+        bare = snapshot([dict(LIVE[1], agent_state="idle", **fields)])["groups"][0]["rows"][0]
+        assert "tasks_done" not in bare
+
+
 def test_a_session_named_base_at_feature_follows_the_base_session_by_name_when_git_says_nothing():
     """Seen 2026-09-22 on another machine: `freya` and `freya@s3` side by side
     as strangers, because the worktree's `.git` did not resolve to the path
@@ -1094,7 +1106,8 @@ def test_an_upper_card_moves_with_its_teammates_to_the_lower_card():
 
 def test_a_remote_row_carries_its_host_and_offers_no_context_breakdown():
     frame = snapshot([_agent(host="box", remote_refusal="the agent's title has gone from the pane",
-                             provider="claude", conversation="524ba3e7-6207-4c5a-af51-85392a3f541f")])
+                             provider="claude", conversation="524ba3e7-6207-4c5a-af51-85392a3f541f")],
+                     here="studio")
     [row] = [r for g in frame["groups"] for r in g["rows"]]
     assert (row["host"], row["remote_refusal"]) == ("box", "the agent's title has gone from the pane")
     assert "context_readable" not in row
@@ -1103,6 +1116,49 @@ def test_a_remote_row_carries_its_host_and_offers_no_context_breakdown():
 def test_a_local_row_carries_no_host():
     [row] = [r for g in snapshot([_agent()])["groups"] for r in g["rows"]]
     assert "host" not in row and "remote_refusal" not in row
+
+
+def test_the_payload_lists_each_machine_the_panes_reach_this_one_first():
+    """Its agents are the rows with a provider; a shell is no agent. A remote
+    machine carries the freshest event its rows reported."""
+    frame = snapshot([_agent(session_id="a", provider="claude"),
+                      dict(LIVE[0], session_id="b"),
+                      _agent(session_id="c", host="box", provider="claude", job_name="ssh", reported_at=1791700100),
+                      _agent(session_id="d", host="box", provider="openai", job_name="et", reported_at=1791700200)],
+                     here="studio")
+    assert frame.get("hosts") == [{"host": "studio", "local": True, "agents": 1},
+                                  {"host": "box", "agents": 2, "reported": 1791700200}]
+
+
+def test_a_machine_whose_connection_is_in_front_of_no_pane_says_so_as_its_cards_do():
+    frame = snapshot([_agent(host="box", provider="claude", job_name="zsh", agent_state="unknown",
+                             remote_refusal="the connection to box is not in front here")], here="studio")
+    assert frame["hosts"] == [{"host": "studio", "local": True, "agents": 0},
+                              {"host": "box", "agents": 1, "reason": "the connection to box is not in front here"}]
+
+
+def test_machines_follow_this_one_in_the_order_their_first_panes_are_listed():
+    """One pane with its connection in front is enough for a machine to answer."""
+    frame = snapshot([_agent(session_id="a", host="mini", provider="claude", job_name="zsh"),
+                      _agent(session_id="b", host="box", provider="claude", job_name="ssh"),
+                      _agent(session_id="c", host="mini", provider="claude", job_name="et")], here="studio")
+    assert frame["hosts"] == [{"host": "studio", "local": True, "agents": 0},
+                              {"host": "mini", "agents": 2}, {"host": "box", "agents": 1}]
+
+
+def test_a_shell_of_a_tmux_server_elsewhere_names_its_machine_with_no_agent():
+    shell = dict(LIVE[0], host="box", job_name="ssh")
+    assert snapshot([shell], here="studio")["hosts"] == [{"host": "studio", "local": True, "agents": 0},
+                                                         {"host": "box", "agents": 0}]
+
+
+def test_a_panel_of_this_machine_alone_lists_no_machines():
+    assert "hosts" not in snapshot([_agent(provider="claude"), LIVE[0]], here="studio")
+
+
+def test_a_row_elsewhere_with_no_name_given_for_this_machine_is_refused():
+    with pytest.raises(ValueError, match=r"^no name for this machine beside \['box'\]$"):
+        snapshot([_agent(host="box")])
 
 
 # ---------------------------------------------------------------- the band

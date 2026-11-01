@@ -59,8 +59,8 @@ replaces the bridge. The statusline keeps working, but the context figure
 stops updating. Run `./install.sh` again to put it back.
 
 While `settings.json` lacks the bridge, the panel's foot offers it. **Install**
-puts it in, and **Not now** hides the offer. The Settings row **Offer the
-statusline bridge** brings the offer back. A `settings.json` that is not valid
+puts it in, and **Not now** hides the offer. Settings > Rows > **Show the
+foot's offers again** brings the offer back. A `settings.json` that is not valid
 JSON gets no offer; fix the file first.
 
 To undo, run `./uninstall.sh`. It puts back only the `statusLine` key and

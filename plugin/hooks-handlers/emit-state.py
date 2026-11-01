@@ -69,7 +69,6 @@ import sys
 import time
 import uuid
 
-LOG = os.path.expanduser("~/.claude/agents-sidebar-events.jsonl")
 
 #: One state document per session. Hooks are one-shot processes with no memory
 #: of each other, and a parent and its subagents all fire into the same
@@ -1140,9 +1139,9 @@ def task_list_of(environ, session_id):
     return f"session-{session_id[:8]}" if session_id else None
 
 
-def open_tasks(directory):
-    """The list's pending and running tasks, oldest first:
-    [{id, status, subject, doing}].
+def read_tasks(directory):
+    """The list's open items, oldest first, and its completed count:
+    ([{id, status, subject, doing}], count or None without a readable list).
 
     A file that cannot be read is skipped: Claude Code writes them beside a
     running hook, and a task list is never worth a session's state.
@@ -1150,8 +1149,9 @@ def open_tasks(directory):
     try:
         names = os.listdir(directory)
     except OSError:
-        return []
+        return [], None
     items = []
+    done = 0
     for name in names:
         stem, dot, ext = name.partition(".")
         if ext != "json" or not stem.isdigit():
@@ -1161,14 +1161,19 @@ def open_tasks(directory):
                 task = json.load(fh)
         except (OSError, ValueError):
             continue
-        if not isinstance(task, dict) or task.get("status") not in ("pending", "in_progress"):
+        if not isinstance(task, dict):
+            continue
+        if task.get("status") == "completed":
+            done += 1
+            continue
+        if task.get("status") not in ("pending", "in_progress"):
             continue
         subject = str(task.get("subject") or "")
         if len(subject) > SUBJECT_MAX:
             subject = subject[:SUBJECT_MAX - 1] + "…"
         items.append((int(stem), {"id": stem, "status": task["status"], "subject": subject,
                                   "doing": str(task.get("activeForm") or "")}))
-    return [item for _, item in sorted(items, key=lambda pair: pair[0])]
+    return [item for _, item in sorted(items, key=lambda pair: pair[0])], done
 
 
 def open_steps(tool_input):
@@ -1238,7 +1243,9 @@ def published(doc, pid, payload, codex, now, tasks=True, front=None):
         # A Claude session's list is read whole on every event, since the
         # tool calls that change it are the events.
         listed = task_list_of(os.environ, value["session"])
-        value["tasks"] = open_tasks(os.path.join(TASKS_DIR, listed)) if listed else []
+        value["tasks"], done = read_tasks(os.path.join(TASKS_DIR, listed)) if listed else ([], None)
+        if done is not None:
+            value["tasks_done"] = done
     return value
 
 
@@ -1251,7 +1258,7 @@ def published(doc, pid, payload, codex, now, tasks=True, front=None):
 #: a file beside the state document and the variable says only that.
 VARIABLE_CEILING = 512
 #: What the variable leaves behind when it is over the ceiling.
-DETAIL_FIELDS = ("subagents", "question", "tasks")
+DETAIL_FIELDS = ("subagents", "question", "tasks", "tasks_done")
 
 
 def _published_path(session_id, directory=None):
@@ -1468,7 +1475,6 @@ def main():
         doc = blank_state()
     else:
         doc = update(session_id, event, payload, state, codex)
-    agents = live_agents(doc)
 
     # What the session is doing, not what one event said about one participant.
     # Published on every event, including the ones state_for reads as "changes
@@ -1481,51 +1487,6 @@ def main():
     pid = pid_sent(payload) if agent == "omp" else agent_pid(tty, agent)
     variable = VARIABLES[agent]
 
-    # Keep tracing while the interrupt question is open: an Esc or Ctrl+C
-    # during ordinary use gets captured, and the fourth state can then be
-    # added with evidence rather than assumption.
-    try:
-        with open(LOG, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"_event_arg": event, "_ts": round(time.time(), 3),
-                                 "notification_type": payload.get("notification_type"),
-                                 "stop_hook_active": payload.get("stop_hook_active"),
-                                 "_source": payload.get("source"),
-                                 "_trigger": payload.get("trigger"),
-                                 "cwd": payload.get("cwd"),
-                                 "_state": state,
-                                 # Does a subagent's hook carry an agent id?
-                                 # Another tool's integration tests exactly this
-                                 # field to bail out of subagent events, which
-                                 # implies it exists. Verifying rather than assuming.
-                                 "_session": session_id,
-                                 "_agent_id": payload.get("agent_id"),
-                                 "_agent_name": payload.get("agent_name"),
-                                 "_agent_type": payload.get("agent_type"),
-                                 # A gate raised by one subagent is cleared by
-                                 # any sibling's PostToolUse, because the rule
-                                 # is "a tool ran, so the prompt is gone" with
-                                 # nothing tying the two to the same agent. The
-                                 # fix needs a shared identity on both events.
-                                 # Over 2745 logged events agent_id appeared on
-                                 # SubagentStart/Stop only, never on
-                                 # PermissionRequest or PostToolUse -- but the
-                                 # docs say agent_id is present only inside a
-                                 # subagent, so absence there may just mean the
-                                 # main agent raised every gate so far. Key
-                                 # names settle it: they say what the payload
-                                 # actually offers, not what we thought to ask
-                                 # for. Names only, never values.
-                                 "_tool_use_id": payload.get("tool_use_id"),
-                                 "_tool_name": payload.get("tool_name"),
-                                 "_keys": sorted(payload),
-                                 # Does a Codex escalation hand the hook the
-                                 # reason its prompt shows? Names only.
-                                 "_input_keys": sorted(payload.get("tool_input") or {})
-                                 if isinstance(payload.get("tool_input"), dict) else None,
-                                 "_background": len(payload.get("background_tasks") or []),
-                                 "_agents": agents}) + "\n")
-    except OSError:
-        pass
 
     if state is None:
         pass                     # nothing this event should change

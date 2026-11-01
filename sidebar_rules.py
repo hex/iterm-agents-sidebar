@@ -31,6 +31,11 @@ def prompt_refusal(row):
     return None
 
 
+def connection_refusal(host):
+    """Why nothing may be typed into a pane to `host` whose connection is not what runs in it here."""
+    return f"the connection to {host} is not in front here"
+
+
 def remote_key_refusal(host, transport, front, marked):
     """Why not even one key may be typed into a pane whose agent runs on `host`, or None.
 
@@ -40,7 +45,7 @@ def remote_key_refusal(host, transport, front, marked):
     the pane (a shell prompt repaints it once the agent is gone).
     """
     if not transport:
-        return f"the connection to {host} is not in front here"
+        return connection_refusal(host)
     if front is not True:
         return f"something is in front of the agent on {host}"
     if not marked:

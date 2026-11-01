@@ -7,7 +7,7 @@
 | The panel is white and nothing loads | Two tool identifiers named "Agents", and the menu opened the dead one | Rename the stale entry, below |
 | Details has no commit calendar for a project | git refused the repository (a broken one, or one owned by another user) or did not answer in 10 s; `daemon.log` says `commits of <path> not read: ...` | Fix the repository; the panel asks git again within a minute |
 | Codex cards stop appearing | Another tool's update rewrote `~/.codex/hooks.json` | `./install.sh --codex` |
-| Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | Install in the panel's foot, or `./install.sh`. After **Not now** the foot offers nothing until Settings > Offer the statusline bridge brings it back |
+| Rows show no context percentage | The statusline bridge is not installed, or `cs -statusline enable` replaced it | Install in the panel's foot, or `./install.sh`. After **Not now** the foot offers nothing until Settings > Rows > Show the foot's offers again brings it back |
 | A Claude tab's status flips between iTerm2's words and the panel's | The session started before **Remove iTerm2 hooks** and still runs iTerm2's `cc-status` hook | Restart that Claude session |
 | No context percentage, and no offer in the foot | `~/.claude/settings.json` is not valid JSON, so the panel offers nothing | Fix the file; the offer then shows |
 | Install in the foot shows red text | `~/.claude/settings.json` stopped being valid JSON after the offer showed, so the panel wrote nothing | Fix the file, then press Install again |

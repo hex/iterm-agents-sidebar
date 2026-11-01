@@ -90,6 +90,8 @@ def reading(row):
 
 
 def control(row, right, mid, kind):
+    if "action" in row:
+        return
     p, words = reading(row)
     if "range" in row:
         ticks(right, mid, p, words)
@@ -101,12 +103,18 @@ def control(row, right, mid, kind):
         switch(right, mid, words)
 
 
-def sheet_card(x, y, title, master, kids):
+def card_height(kids):
+    return TITLE_H + sum(row_height(r) for r in kids) + (8 if kids and kids[-1].get("needs") else 0)
+
+
+def sheet_card(x, y, head, master, kids):
     """One topic as a card: the title with its switch, then its rows."""
-    h = TITLE_H + sum(row_height(r) for r in kids) + (8 if kids and kids[-1].get("needs") else 0)
+    h = card_height(kids)
     A(f'  <rect x="{x}" y="{y}" width="{COL_W}" height="{h}" rx="8" fill="{CARD}" stroke="{CARD_BORDER}"/>')
-    text(x + 10, y + 21, title, fill=FG, size=12.5, weight=600)
+    text(x + 10, y + 21, master["label"] if master else head["head"], fill=FG, size=12.5, weight=600)
     right = x + COL_W - 10
+    if head.get("fold"):
+        A(f'  <path d="M{right-8} {y+14} l4 4 l4 -4" fill="none" stroke="{FG}" stroke-width="1.2"/>')
     if master:
         switch(right, y + 16.5, bool(DEFAULT_SETTINGS[master["k"]]))
     ry = y + TITLE_H
@@ -122,7 +130,8 @@ def sheet_card(x, y, title, master, kids):
             last = i + 1 == len(kids) or not kids[i + 1].get("needs")
             A(f'  <line x1="{x+12}" y1="{ry}" x2="{x+12}" y2="{mid if last else ry + rh}" stroke="{GUIDE}"/>')
             A(f'  <line x1="{x+12}" y1="{mid}" x2="{x+18}" y2="{mid}" stroke="{GUIDE}"/>')
-        # An option whose governing switch is off is greyed, as the sheet greys it.
+        # An option whose governing switch is off is greyed: the sheet hides it,
+        # and the figure shows every setting.
         dimmed = child and not DEFAULT_SETTINGS[row["needs"]]
         if dimmed:
             A('  <g opacity="0.4">')
@@ -169,20 +178,20 @@ while i < len(rows):
         master = rows[i] if i < len(rows) and rows[i].get("master") else None
         if master:
             i += 1
-        cards.append([master["label"] if master else row["head"], master, []])
+        cards.append([row, master, []])
     else:
         cards[-1][2].append(row)
 
-# Style, the tall one, on the right; every other card and Repository on the left.
-left, right = [card for card in cards if card[0] != "Style"], [card for card in cards if card[0] == "Style"]
-H = 24 + 20 + max(sum(TITLE_H + sum(row_height(r) for r in kids)
-                      + (8 if kids and kids[-1].get("needs") else 0) + 9 for _, _, kids in col)
+# The tallest card on the right; every other card and Repository on the left.
+tallest = max(cards, key=lambda card: card_height(card[2]))
+left, right = [card for card in cards if card is not tallest], [tallest]
+H = 24 + 20 + max(sum(card_height(kids) + 9 for _, _, kids in col)
                   + (REPOSITORY_H + 9 if col is left else 0)
                   for col in (left, right)) + 30
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The settings drawer: a card each for sounds, notifications, focus, finished sessions, the style of the rows, the terminal, the rows and experiments, '
-  f'every setting with its default, and the repository the install comes from">')
+  f'aria-label="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental and Repository. '
+  f'Every setting with its default, On a card expanded, and the button to show the foot\'s offers again">')
 A('  <title>Settings</title>')
 A(f'''  <defs>
     <pattern id="tickmask" width="6" height="4" patternUnits="userSpaceOnUse">

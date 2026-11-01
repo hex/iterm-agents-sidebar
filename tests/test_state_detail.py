@@ -20,7 +20,7 @@ SUBAGENTS = [{"id": "a1", "type": "workflow-subagent", "name": "map:app-ui-layer
               "since": 1789732485, "ended": None, "model": "claude-opus-5"}]
 TASKS = [{"id": "3", "status": "in_progress", "subject": "Registry flags", "doing": "Building"}]
 WHOLE = dict({k: v for k, v in ENVELOPE.items() if k != "detail"},
-             subagents=SUBAGENTS, question=None, tasks=TASKS)
+             subagents=SUBAGENTS, question=None, tasks=TASKS, tasks_done=40)
 
 
 def test_a_state_that_travelled_whole_is_left_alone(tmp_path):
@@ -43,6 +43,7 @@ def test_a_detail_older_than_the_variable_keeps_its_subagents_and_tasks_and_lose
     got = json.loads(sidebar.with_detail(json.dumps(ENVELOPE), str(tmp_path)))
     assert got["subagents"] == SUBAGENTS
     assert got["tasks"] == TASKS
+    assert got.get("tasks_done") == 40
     assert got["state"] == "working" and got["ts"] == 1789733000
     assert got.get("question") is None
 
@@ -67,3 +68,11 @@ def test_a_session_id_that_is_a_path_reads_no_file(tmp_path):
 def test_what_is_not_a_state_passes_through(tmp_path):
     for raw in ("", None, "working", "[1, 2]"):
         assert sidebar.with_detail(raw, str(tmp_path)) == raw
+
+
+def test_completed_task_count_accepts_only_nonnegative_integers():
+    for value, expected in [(40, 40), (0, 0), (-1, None), (True, None),
+                            (False, None), (1.5, None), ("40", None), (None, None)]:
+        assert sidebar.parse_tasks_done(json.dumps({"tasks_done": value})) == expected
+    for raw in [None, "", "{broken", "[]", "{}", "null"]:
+        assert sidebar.parse_tasks_done(raw) is None

@@ -26,7 +26,7 @@ happen, and the watcher Claude Code arms when a session publishes an Artifact
 stays open for as long as the session does.
 
 The hook stamps the time your prompt started the turn, which is what the
-`Long 25m` outline counts from.
+`Long 25m` pill counts from.
 
 ## Order
 
@@ -35,7 +35,7 @@ agent's group while cards are grouped by provider (the default):
 
 | Choice | What you get |
 |---|---|
-| Follow the terminals | iTerm2's own order of windows, tabs and panes. A card sits where its tab does and nothing a session does moves it, with one exception: while Finished first is on (see [A finish you have not seen](#a-finish-you-have-not-seen)) a card that waits on you or finished unseen is lifted to the top of its group until you answer or look. The default |
+| Follow the terminals | iTerm2's own order of windows, tabs and panes. A card sits where its tab does and nothing a session does moves it, with one exception: while Lift its card first is on (see [A finish you have not seen](#a-finish-you-have-not-seen)) a card that waits on you or finished unseen is lifted to the top of its group until you answer or look. The default |
 | By name | Alphabetical |
 | By attention | The working cards first, the longest turn at the top, under a `Working` head; then every other card (at rest, exited, or not yet heard from), the longest rest at the top and the ones without a time last, under `Idle`. A card at rest for ten minutes is washed toward the background, and more after thirty: the sessions that slipped your mind. The heads appear only while a group holds both kinds |
 | By hand | The order you dragged the cards into. A new session goes to the bottom of its group, and a closed one keeps its place for when it comes back |
@@ -345,12 +345,32 @@ state goes unknown and it takes no answer. Under Eternal Terminal a pane
 closed here can leave the session running on the other machine, where the
 panel no longer sees it.
 
+While a pane reaches another machine, a row under the **Limits** head names
+each machine: this Mac first, then the others in the order the panel lists
+their first pane. A chip shows the machine's name and how many agents run
+there. A dot on another machine's chip means at
+least one pane here runs `ssh` or `et` to it in the foreground. A ring means
+no pane does, and the tooltip then gives the card's reason, `the connection
+to <host> is not in front here`. The tooltip also gives the age of the
+machine's last event, by that machine's clock. The row shows only in the
+open foot of a full-width panel: folded Limits and the compact panel leave
+it out.
+
+A machine gets a chip only from what a pane already carries: an agent's
+state published there, or a `tmux -CC` connection to it. A pane at a shell
+over a plain `ssh host`, with no agent state and no `tmux -CC`, adds no chip.
+
 ## Card style
 
-The Style card in settings holds how the rows look: Card style, Follow the
-terminal's background, Text size, Shell names, Provider badge, Green wash,
-and the switches for each line a card can show. Card style picks how a
-session stands on the panel's background:
+The settings sheet has cards for Alerts, When a session waits for you,
+When one finishes, Look, On a card, Rows, Experimental and Repository.
+On a card starts folded and remembers whether you open it. Settings > Rows >
+Show the foot's offers again restores both dismissed offers; the button
+appears only while at least one offer stays dismissed.
+
+The Look card holds Card style, Card anatomy, Follow the terminal's background,
+Text size, Shell names and Provider badge. Card style picks how a session
+stands on the panel's background:
 
 | Choice | What you get |
 |---|---|
@@ -370,14 +390,44 @@ a card in every style. Below 120 px a session is a row in every style ([A
 narrow panel](#a-narrow-panel)). Details and the settings drawer keep their
 own card.
 
+Card anatomy chooses which title leads a full-width agent card:
+
+| Choice | What you get |
+|---|---|
+| Task first | The active task title under the folder and state pill. The default for a new install |
+| Name first | The session name above its task report. Saved settings keep this choice until you change it |
+
+Task first shows the folder, the state pill, up to two lines of task title,
+the question when waiting, the facts, and the reported percent and activity,
+leaving the activity out when it repeats the pill's word.
+Working and waiting cards also show `Updated 10 s ago`, using the newer of
+the state change and task report. The folder tooltip holds the path and
+session name, and on a worktree card what the fork means first.
+An empty or finished task falls back to the name omp gave the conversation,
+then the session name, and a Codex card leads with the name Codex gave it;
+a finished task shows 100%. Done still means the session
+finished while you were elsewhere. Narrow cards keep their layout.
+
+In both anatomies a full-width agent card has no colour square or working
+dots, only a worktree's fork, and Name first wears the same tinted `Working`
+and `No report` pills as Task first.
+
+Hovering a mark on a card explains it. The state pill gives the state in
+words, with how long it has held while working, waiting or idle, and a `Long`
+pill how long the turn has run. The provider tag and the corner mark name the
+agent. The branch, model and tab title chips name what they show, as in `On
+branch main`, and the effort letter names the reasoning effort. The worktree
+fork says its repository's card sits above, and the tasks head repeats its
+counts. Under Name first the session name adds its path.
+
 ## Which agent a card runs
 
-Provider badge, under Style in settings, picks how a card says whether it runs
+Provider badge, under Look in settings, picks how a card says whether it runs
 Claude Code, Codex or omp:
 
 | Choice | What you get |
 |---|---|
-| Tag by the name | A small pill after the session name, tinted in the agent's colour, with its glyph and its name |
+| Tag by the name | A small pill after the session name (on the folder line under Task first, its glyph and name in grey), tinted in the agent's colour, with its glyph and its name |
 | Icon in the corner | The glyph alone in the card's top corner. The state badge moves over for it |
 | Group by provider | Cards gathered under a head for each agent, Claude first. The Order choice applies inside each group. With one agent running there are no heads. The default |
 | Off | The glyph stays before the model name, as the only sign of the agent |
@@ -387,7 +437,7 @@ once. The Order choice still applies inside each group.
 
 ## Shell names
 
-Shell names, under Style in settings, picks the face of a shell card's name
+Shell names, under Look in settings, picks the face of a shell card's name
 in the Sessions group, which is a path or a command:
 
 | Choice | What you get |
@@ -400,7 +450,7 @@ Agent names and the rows under a card keep their face whichever you pick.
 
 ## The terminal's background
 
-Follow the terminal's background, under Style in settings and on by default,
+Follow the terminal's background, under Look in settings and on by default,
 paints the panel in the background colour of the pane in front of iTerm2's
 key window. The daemon reads that pane's profile on every refresh, so the
 panel changes colour as you move between panes. A profile with separate
@@ -466,7 +516,7 @@ while it sits past the top or bottom edge of the list scrolls into view,
 whole, with its answer buttons. A card taller than the list shows from its top.
 One already fully in view stays put.
 
-A waiting card says what it waits on, under the name: the first question of an
+A waiting card says what it waits on, under the title: the first question of an
 AskUserQuestion (three lines at most, with "+1 more" when it asked several), or
 the tool a permission prompt is for and the first line of what it would run,
 under the reason the agent gave for it when it gave one (Codex's escalation
@@ -509,9 +559,9 @@ the ticked numbers into the prompt and submits them, once, while that same
 question still stands. Inside a set the button reads Next, and the set ends
 with its own Submit answers step. The card can't see boxes you tick in the
 terminal, and its numbers would flip them, so tick in one place. A Codex card
-shows these options without boxes; answer it in the terminal. While a card asks, it
-drops its task line, model line and folds, so its height barely moves; they
-come back once you answer.
+shows these options without boxes; answer it in the terminal. Under Name first, a
+card that asks drops its task line, model line and folds, so its height barely
+moves; under Task first only the folds go. They come back once you answer.
 
 A card that asks holds still under the pointer. An update that would move it,
 a card above it growing or the order changing, waits until the pointer leaves
@@ -604,6 +654,10 @@ fresh read, and a card grown taller than the panel scrolls inside.
 
 ## Sounds
 
+Settings > Alerts holds Play sounds and Volume. The Sound switches under
+When a session waits for you and When one finishes choose which events play
+a sound. They hide while Play sounds is off.
+
 The daemon notices each change as it reads the sessions and plays the sound
 itself, so sounds, banners and the focus move come whether or not the panel is
 open in any window, and each moment plays once, even for a session shown in
@@ -614,7 +668,11 @@ and any problem playing one, is written to `daemon.log` in
 
 ## Banners
 
-The banner uses the session's name as the card shows it. The panel posts nothing for the session you are looking at, meaning the session in front of its window
+Settings > Alerts > Show macOS notifications enables banners. Each event card,
+When a session waits for you and When one finishes, has a Notification switch.
+Those switches hide while Show macOS notifications is off.
+
+The banner carries the question or the permission as the agent wrote it, as does the line under the tab; only a token, key or password in a command is masked. The banner uses the session's name as the card shows it. The panel posts nothing for the session you are looking at, meaning the session in front of its window
 while iTerm2 is the frontmost app. A session in another tab of the same window
 still gets one, since that is exactly when you can't see it.
 
@@ -639,15 +697,15 @@ Looking means the same as for banners: the session is in front of its window
 while iTerm2 is the frontmost app. The sound and banner switches don't change
 it, and omp cards get it too.
 
-The Finished card in settings, with Green wash under Style, adds three marks
-to that badge, each its own switch, and the tab says `done` under its title
+The When one finishes card in settings adds three marks to that badge,
+each its own switch, and the tab says `done` under its title
 ([The status under a tab](#the-status-under-a-tab)):
 
 | Setting | What you get | Default |
 |---|---|---|
-| Finished first | In every order, the cards that wait on you come first, then the ones that finished unseen, then the rest, each run in the order it had. A card moves only when its state changes, and a lead brings its teammates and worktrees with it; a docked worktree or a linked partner that finished lifts the block it sits in | On |
+| Lift its card first | In every order, the cards that wait on you come first, then the ones that finished unseen, then the rest, each run in the order it had. A card moves only when its state changes, and a lead brings its teammates and worktrees with it; a docked worktree or a linked partner that finished lifts the block it sits in | On |
 | Green wash | The whole card in the panel's green, its name in the full ink, under the amber of a question in weight | On |
-| Badge in the pane | The word Done as iTerm2's badge in that session's pane, in the panel's green at about a third, large and faded. Its size, font and position are your profile's Badge settings: iTerm2 lets a session change only the text and colour. A pane whose badge already says something keeps it, and the daemon log says `badge busy` once | On |
+| Done as the pane's badge | The word Done as iTerm2's badge in that session's pane, in the panel's green at about a third, large and faded. Its size, font and position are your profile's Badge settings: iTerm2 lets a session change only the text and colour. A pane whose badge already says something keeps it, and the daemon log says `badge busy` once | On |
 
 The badge goes through the session's own profile, so your saved profile
 never changes; what it replaced comes back when it clears. Inside
@@ -676,15 +734,16 @@ panel's words:
 | Working | `working` | iTerm2's own working orange | What the agent says it is doing, when it says |
 | Waiting on you | `needs you` | The panel's amber | The question, or the tool asking for permission and what it wants, else what it was doing |
 | Done (finished while you looked elsewhere) | `done` | The panel's done green | Nothing |
-| Idle, exited, no report | Nothing | Nothing | Nothing |
+| Idle | `idle` | The panel's grey | Nothing |
+| Exited, no report | Nothing | Nothing | Nothing |
 
 The number beside the word counts running subagents and background shells. A
-teammate's pane shows working and needs you but never done, as on the panel.
+teammate's pane shows working and needs you but never done or idle, as on the panel.
 The panel writes remote sessions' tabs as it writes local ones. When one pane
 holds more than one agent, as inside plain tmux, its tab shows the one that
 most needs you.
 
-Settings > Terminal > **Status under the tab title** turns this on and off
+Settings > When one finishes > **Status under the tab title** turns this on and off
 (default on). With it off, or when the panel stops, the words come off the
 tabs. A daemon that died without taking them back finds its own words at its
 next start, by their colours, and corrects them.
@@ -695,7 +754,7 @@ panel leaves Claude tabs to them and writes only Codex, omp and remote tabs,
 and the foot offers **Remove iTerm2 hooks**, which deletes only the
 `cc-status` entries from the file (it keeps a copy beside it as
 `settings.json.before-tab-status`), or **Not now**. The button's tooltip names
-the file, the copy and the restart. Settings > Rows > **Offer to take the tab status from iTerm2**
+the file, the copy and the restart. Settings > Rows > **Show the foot's offers again**
 brings the offer back. Once the hooks leave the file, the panel takes over the words
 iTerm2 left on Claude tabs. A Claude session already open when the hooks go
 keeps running them until it restarts, so its tab can flip between iTerm2's
@@ -707,8 +766,11 @@ The line needs iTerm2 3.7.6 or later. On an older iTerm2 the setting says
 
 ## Focus
 
-Bring a blocked session forward only goes back if you are still on the session
-it brought you to. If you moved somewhere yourself, you stay there. Blocks in a row unwind in order.
+Settings > When a session waits for you > Bring it forward enables the focus
+move. Go back once it resumes sits under it and hides while Bring it forward
+is off.
+It only goes back if you are still on the session it brought you to. If you
+moved somewhere yourself, you stay there. Blocks in a row unwind in order.
 
 ## Plain terminals
 
@@ -716,19 +778,21 @@ A plain terminal takes its path as its name, as its prompt writes it. Its tab's
 title sits on the line below, before the branch, and the panel leaves out a
 default title: the shell's name or `user@host:path`.
 
-At its prompt it shows a shell mark in its session colour where an agent shows
+At its prompt it shows a shell mark in its session colour where a narrow agent card shows
 its square. While it runs a command it shows the working dots and the command's
 name, and it goes quiet when it's back at its prompt.
 
 ## The task line
 
-The session writes its own report: a task title, what it's doing now, and a rough percentage. A report older than five minutes fades, puts `Last:`
-before what it said, and reads `stale`. A hundred percent shows `Complete` with a green tick and stays until a new
+The session writes its own report: a task title, what it's doing now, and a rough percentage. Under Name first, a report older than five minutes fades and puts `Last:`
+before what it said, with its age beside it. A hundred percent shows `Complete` with a green tick and stays until a new
 request starts a new task.
 
 The ticks show the estimate as a count you can glance at. They are not the
 solid bars of the limit meters in the foot, on purpose: those go green, amber
-and red, and that would make being nearly done look like a warning.
+and red, and that would make being nearly done look like a warning. Task
+first's bar is solid, and a finished task reads `100% · Complete`, with no
+tick.
 
 A Claude session reports through two tools the plugin registers,
 `task_begin` and `task_report`; a Codex session runs the plugin's `task.py`.
@@ -740,14 +804,20 @@ Claude Code keeps a session's task list under `~/.claude/tasks/<list>/`, one
 file per task, named by `CLAUDE_CODE_TASK_LIST_ID` or `session-` plus the
 first eight characters of the session id. The hook reads the list on every
 event, since the tool calls that change it are the events, and hands the
-panel the pending and running items; a list is never pruned, so completed
-ones never show. A subject is clipped to 240 characters and the whole of
+panel the pending and started items plus a count of completed tasks.
+The fold's head can read "27 open · 11 started · 40 done"; zero counts stay
+out, and without both a started and a done count it reads "5 tasks · 3 done". Opening it shows the open items only, started ones first, then
+pending, each run in the list's own order. A started task wears a
+half-filled circle in the dim ink and a pending one an empty ring of the
+same size; neither moves, since a status is what the session set, not
+proof of work on that item. A subject is clipped to 240 characters and the whole of
 what the panel got sits in the row's tooltip.
 
 Codex keeps its plan in its `update_plan` tool instead. Each call carries the
 whole plan, so the hook keeps the pending and running steps of the latest one
 and shows them in the same fold until the next call replaces them; a plan
-with every step completed leaves no fold. Codex 0.160 ships the tool off, so
+with every step completed leaves no fold. Codex publishes no done count:
+its head can read "3 tasks · 2 started". Codex 0.160 ships the tool off, so
 its sessions make no plan until `~/.codex/config.toml` has:
 
 ```toml
@@ -755,7 +825,7 @@ its sessions make no plan until `~/.codex/config.toml` has:
 enabled = true
 ```
 
-Settings > Style > Task > Task list turns the fold off; that switch hides while
+Settings > On a card > Task > Task list turns the fold off; that switch hides while
 Task is off.
 
 ## Background shells
@@ -811,7 +881,7 @@ The whole message is in the daemon's log under Scripts > Manage > Console.
 ## Resuming an exited agent
 
 When an agent's process dies (killed, or crashed) and its pane drops back to a
-shell prompt, the card stays, faded, with an Exited outline. Resume types the
+shell prompt, the card stays, faded, with an Exited pill. Resume types the
 command that reopens the same conversation at that prompt and brings the pane
 forward:
 

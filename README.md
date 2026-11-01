@@ -28,8 +28,8 @@ the statusline you had, so your line stays. The install backs the file up first.
 Without it, cards show no context %, model or effort, and the details card no cost,
 limits or cache. Whenever `settings.json` lacks the bridge (installed with
 `--no-statusline`, or replaced by another tool), the foot of the panel says so
-and offers Install, which does the same step, or Not now; Settings > Offer the
-statusline bridge brings a dismissed offer back.
+and offers Install, which does the same step, or Not now; Settings > Rows >
+Show the foot's offers again brings dismissed offers back.
 
 If Codex CLI is on the machine, the install also adds the state hook to
 `~/.codex/hooks.json`, keeping whatever other tools put there, and names a
@@ -82,26 +82,30 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 
 ### What a card says
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Five cards: one amber with a Waiting badge, its question and a button per answer, one at work with a report and ticks, one grey with an Idle outline, one washed green with a Done badge, and one at work for 25 minutes with a warm Long outline">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-states.svg" width="100%" alt="Five cards, each with its folder on the first line: one amber with a Waiting for you pill, its question and a button per answer, one at work with a Working pill, its task as the title, how long since it reported and a bar with the percent, one grey with an Idle pill, one washed green with a Done badge and a full bar, and one at work for 25 minutes with a warm Long pill">
 
 | State | How it looks |
 | --- | --- |
-| Waiting on you | The whole card amber, with a Waiting badge and what it asks: the question with a button per answer (a question that takes more than one answer gets a box per option and a Submit button), or the reason it gave, the tool and the command it wants to run, with Yes and No. A token, key or password in a command shows as `***`, on the card and in its notice |
-| Working | Dark name, working dots |
-| Idle | Grey name, Idle outline |
+| Waiting on you | The whole card amber, with a `Waiting for you` pill (`Waiting` under Name first) and what it asks: the question with a button per answer (a question that takes more than one answer gets a box per option and a Submit button), or the reason it gave, the tool and the command it wants to run, with Yes and No. A token, key or password in a command shows as `***`, on the card and in its notice |
+| Working | A green `Working` pill, the task as the title, and how long since it reported |
+| Idle | A grey `Idle` pill, the title in grey |
 | Finished while you looked elsewhere | The whole card washed green with a Done badge in place of Idle, lifted under any waiting card, and the word Done as iTerm2's badge in its pane, until you look at that session |
-| Working 20 minutes or more | A warm `Long 25m` outline, in case it has stalled |
-| Exited | Faded, with an Exited outline and a Resume button: the agent's process died and the pane is back at its shell prompt |
+| Working 20 minutes or more | A warm `Long 25m` pill, in case it has stalled |
+| Exited | Faded, with an `Exited` pill and a Resume button: the agent's process died and the pane is back at its shell prompt |
+| Unknown | A grey `No report` pill: a turn silent for five minutes with no command or tool running under it |
 
 A conversation that is over and gone from the list is under **Past sessions** above the limits: the last week's, with Resume in a new tab ([usage](docs/usage.md#past-sessions)).
-| Unknown | A hollow square: a turn silent for five minutes with no command or tool running under it |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each of its parts joined by a line to what it means: the name and the agent, the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, running and finished subagents, a Codex job, the open tasks and the background shells">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each of its parts joined by a line to what it means: the folder and the agent, the state pill, the task as the title, how long since it reported, the branch, model, context and CPU, the bar with the percent and what it is doing now, then a teammate, running and finished subagents, a Codex job, the task list with its counts and the background shells">
 
-Under the name, an agent reports its own task: a title, then
+Card anatomy in Settings > Look offers Task first, with the folder, state
+pill, active task title and update age, or Name first; new installs use Task
+first, while saved settings keep Name first until changed.
+
+With Name first, an agent reports its own task under the name: a title, then
 `Reading code · 40s`, then ticks for how far it says it has got. The
 percentage is the model's estimate, not a measurement, so a report older than
-five minutes puts `Last:` before what it said and reads `stale`, and a finished
+five minutes puts `Last:` before what it said with its age, and a finished
 one reads `Complete`. The ticks show only while the session works on a fresh
 report. A session at rest whose last words were `Waiting for you` says so in
 the warning colour: no prompt is open, so the card stays Idle, but the next
@@ -131,7 +135,7 @@ and its state, and the foot is one line ([usage](docs/usage.md#a-narrow-panel)).
 The panel takes the background colour of the pane in front and draws its cards
 in shades of it, light or dark as that colour is ([usage](docs/usage.md#the-terminals-background)).
 Each agent's tab says the same under its title: `working`, `needs you` with
-the question, or `done`, in the panel's colours ([usage](docs/usage.md#the-status-under-a-tab)).
+the question, `done`, or `idle`, in the panel's colours ([usage](docs/usage.md#the-status-under-a-tab)).
 
 An omp session reports its state through the extension the install writes:
 when a turn starts and ends, when an approval or a question waits on you, and
@@ -164,8 +168,11 @@ running in the background stays through it. Past three of them,
 they fold into one line ("30 finished") that opens on a click, and the ones
 still running stay in sight.
 A session's open tasks, the checklist it keeps
-with TaskCreate or the open steps of a Codex plan, fold into one line ("6 tasks · 1 in progress") that opens
-to a row per task, the running ones with the dots and what is being done.
+with TaskCreate or the open steps of a Codex plan, fold into one line
+("27 open · 11 started · 40 done") that opens to the open items only.
+Started tasks come first, each with a half-filled circle and what the session is doing on it; pending ones
+follow with an empty ring. Codex plans have
+no done count, so their head reads "6 tasks · 1 started".
 Background shells fold into
 one line ("2 commands running") that opens on a click; a row shows a long
 path by its last part, and clicking a shell shows the whole command with a
@@ -175,8 +182,10 @@ Copy button.
 
 A pane that runs `ssh` or `et` (Eternal Terminal) to a machine with the hooks
 installed gets a card for the Claude Code session there: its state, the host
-it runs on, its folder, and a question you can answer from the card. Model,
-context, tasks and replies wait for a later release. See
+it runs on, its folder, and a question you can answer from the card. A row
+under the Limits head then names each machine the panes reach, with its
+agent count and whether a pane here holds its connection. Model, context,
+tasks and replies wait for a later release. See
 [docs/usage.md](docs/usage.md#sessions-on-another-machine).
 
 ### Answering from a banner
@@ -194,20 +203,23 @@ The banner can answer for you, so a session in another tab doesn't wait.
 
 ### Settings
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: a card each for sounds, notifications, focus, finished sessions, the style of the rows, the terminal, the rows and experiments, every setting with its default, and the repository the install comes from">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental and Repository. Every setting with its default, On a card expanded, and the button to show the foot's offers again">
 
-The gear opens the drawer; every setting is there with its default, as above.
-A setting indented under another works only while that one is on.
+The gear opens the drawer. On a card starts folded and remembers whether you
+open it; the figure shows it expanded. Sound and notification options hide
+while their switches in Alerts are off. Other indented settings hide while
+the switch above them is off. The figure also draws the options the defaults
+hide, greyed, and Show the foot's offers again, which shows only while an
+offer stays dismissed.
 
 | Card | Settings |
 | --- | --- |
-| Sound | Play sounds; under it When a session is blocked, When one finishes, Volume |
-| Notifications | Show macOS notifications; under it When a session asks a question, When one finishes |
-| Focus | Bring a blocked session forward; under it Go back once it resumes |
-| Finished | Finished first, Badge in the pane |
-| Style | Card style, Follow the terminal's background, Text size, Shell names, Provider badge, Green wash, Branch, Task (under it What it is doing, How old the report is, Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded): see [Card style](docs/usage.md#card-style) |
-| Terminal | Status under the tab title: see [The status under a tab](docs/usage.md#the-status-under-a-tab) |
-| Rows | Warn above, CPU heavy at, Memory heavy at, Order, Offer the statusline bridge, Offer to take the tab status from iTerm2 |
+| Alerts | Play sounds, Volume, Show macOS notifications |
+| When a session waits for you | Sound, Notification, Bring it forward; under it Go back once it resumes |
+| When one finishes | Sound, Notification, Lift its card first, Green wash, Done as the pane's badge, Status under the tab title: see [The status under a tab](docs/usage.md#the-status-under-a-tab) |
+| Look | Card style, Card anatomy, Follow the terminal's background, Text size, Shell names, Provider badge: see [Card style](docs/usage.md#card-style) |
+| On a card | Branch, Task (under it What it is doing, How old the report is (Name first), Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded) |
+| Rows | Warn above, CPU heavy at, Memory heavy at, Order, Show the foot's offers again (while an offer stays dismissed) |
 | Experimental | Link cards, Keep remote control after a switch and Commit heatmap, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control) and [Commit heatmap](docs/usage.md#commit-heatmap) |
 | Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |
 
@@ -291,6 +303,34 @@ agents-sidebar wait current --until done --timeout 600
 `wait` exits 0 with the session's row as JSON once it reaches a state you
 named, and 1 on a timeout, a closed session or no panel. See
 [docs/usage.md](docs/usage.md#from-a-script) for the states and targets.
+
+## What it reads, and where it goes
+
+Everything stays on your Mac unless you store an account. The daemon reads:
+
+- iTerm2, through its API: every session's title, working directory and
+  foreground job, and the pane in front.
+- What the hooks publish from Claude Code, Codex and omp: the state, the
+  working directory, the tool names, the task line, and the question or the
+  permission a session waits on. That text goes to the card, the macOS banner
+  and the line under the tab. A token, key or password in a command shows as
+  `***`; free text in a question reads as the agent wrote it.
+- The statusline payload: context, model, effort, cost and limits.
+- The first 64 KB of each transcript under `~/.claude/projects`, for
+  **Past sessions**: the directory and the first prompt, nothing after.
+- `ps`, for each session's process tree, and `git` in each session's
+  directory, for its branch.
+
+It writes under `~/.claude/agents-sidebar-*`, `~/.config/agents-sidebar` and
+`~/.local/share/agents-sidebar`, readable by your user alone; the list is in
+[docs/development.md](docs/development.md#what-the-panel-keeps-on-disk).
+The daemon serves the panel on `127.0.0.1` behind a random token minted at
+every start. It sends nothing anywhere, with three exceptions: the update
+check fetches this repository from GitHub; `ssh` reaches the hosts your panes
+already reach; and once you store an account, the panel keeps that login's
+refresh token in its own Keychain item and calls Anthropic's token and usage
+endpoints with it, which [docs/accounts.md](docs/accounts.md#before-you-store-anything)
+explains before you do. The panel sends no telemetry.
 
 ## More
 

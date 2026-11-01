@@ -273,8 +273,12 @@ takes no reply.
 
 ## Not in this design
 
-- A daemon on the other machine, or a panel that lists machines.
+- A daemon on the other machine. A row under Limits names the machines the
+  panes reach, with their agent counts, since 2026-10-31. A panel of its own
+  for machines is not here.
 - Focusing a paneless row: it would open a connection on the user's behalf.
 - Account switching, Remote Control keeping, links and partners across
   machines.
 - Hosts named in settings; a host with no pane here is not polled.
+- Moving a session to another machine from its card. Its own spec, which
+  builds on this one: [teleport](2026-10-31-teleport-design.md).

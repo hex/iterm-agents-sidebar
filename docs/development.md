@@ -141,7 +141,7 @@ read against the source.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
 - `statusline.py`: puts the statusline bridge into Claude Code's settings, and takes iTerm2's `cc-status` hook out.
 - `tabstatus.py`: the status under each agent's tab title, written through iTerm2's `set_session_status` and
-  taken back when the session rests, the setting goes off or the daemon stops.
+  taken back when the session exits or goes unreported, the setting goes off or the daemon stops.
 - `update.py`: checks the mirror for a newer release and takes it.
 - `links.py`: links between two cards, the one-shot hand-off, through each session's links folder.
 - `partners.py`: partner sessions: the record, each end's `partner.json`, and the tasks between them.
@@ -278,7 +278,6 @@ of a guess.
 
 ## What the panel keeps on disk
 
-- `~/.claude/agents-sidebar-events.jsonl`: the hook's event log.
 - `~/.claude/agents-sidebar-subagents/<session id>`: the hook's record for
   each session, with its `.lock` and, for a large state, its `.published` file.
 - `~/.claude/agents-sidebar-tasks/`: each session's task note.
@@ -409,7 +408,7 @@ A new label on a middot line needs its width measured in Chrome
 (`canvas.measureText`, 12.5px in the system face) and added to `MEASURED` in
 `panel_draw.py`, because that table places the middots. A new session name
 needs its width in `NAME_W` (600 15px), and a new agent tag word in
-`TAG_TEXT` (600 11px), measured the same way. The mono face needs no table. GitHub plays the banner's animation only from the raw file URL.
+`TAG_TEXT` (600 11px), measured the same way. So does a word in the other tables: `MEASURED_AT` for Task first's folder name (400 11px), title (600 17px) and small lines (400 10px), `PILL_W` for the state pills and `SOLID_W` for the solid Done badge (both 600 10px), and `BADGE_W` for the corner badges (600 11px). A word missing from `MEASURED` or `MEASURED_AT` falls back to an estimate; the other tables have no fallback, so a missing word stops the script. The mono face needs no table. GitHub plays the banner's animation only from the raw file URL.
 
 To see a figure as GitHub will, render it with headless Chrome rather than
 `qlmanage`, which scales the viewBox wrong:
@@ -463,6 +462,10 @@ on since, so read the source for what runs now.
 - [superpowers/specs/2026-10-30-resume-and-snapshots-plan.md](superpowers/specs/2026-10-30-resume-and-snapshots-plan.md):
   a list of past conversations with Resume, and window snapshots; a plan with
   its questions open, nothing built.
+- [superpowers/specs/2026-10-31-teleport-design.md](superpowers/specs/2026-10-31-teleport-design.md):
+  moving a cs session to another machine from its card, after the remote relay; nothing built.
+- [superpowers/specs/2026-10-31-refined-cards-design.md](superpowers/specs/2026-10-31-refined-cards-design.md):
+  the task-first card with a folder line, a state pill and a recency line, picked from real-page renders, with its decisions; built behind Card anatomy.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.
 - [superpowers/plans/2026-10-07-drag-order.md](superpowers/plans/2026-10-07-drag-order.md): the step-by-step

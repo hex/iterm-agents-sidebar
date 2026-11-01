@@ -426,14 +426,15 @@
   .shell-sum[aria-expanded="true"] .chev { transform: rotate(90deg); }
   li.line.card.blocked .shell-sum { border-top-color: color-mix(in srgb, var(--blocked-border) 40%, transparent); }
   .shell-sum[aria-expanded="true"] { margin-bottom: 2px; }
-  /* A card's open tasks: the checklist the session keeps with TaskCreate,
-     folded into one line like the shells. A pending task wears a hollow ring
-     where a running one has the dots. */
-  .todo-mark {
+  /* A card's open tasks: the checklist the session keeps, folded into one
+     line like the shells. A pending task wears a hollow ring and a started
+     one a half fill; neither moves, since a status is a label, not work. */
+  .todo-mark, .started-mark {
     display: block; width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box;
     border: 1.5px solid var(--dim); opacity: .7; flex-shrink: 0;
   }
-  .children button.row > .todo-mark:first-child { margin-left: 7px; margin-top: 3px; }
+  .started-mark { background: linear-gradient(90deg, var(--dim) 50%, transparent 50%); }
+  .children button.row > :is(.todo-mark, .started-mark):first-child { margin-left: 7px; margin-top: 3px; }
   .children button.row.todo .label { color: var(--dim); font-weight: 400; }
   .tasks-sum .n { color: var(--fg); font-weight: 500; }
   /* Shell rows hang off the summary line, so their elbow drops from its
@@ -965,10 +966,11 @@
   .task .task-title, .task .task-activity {
     flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .task .task-age, .task .task-stale, .task .task-done { flex: none; }
+  .task .task-age, .task .task-done { flex: none; }
   /* The name leads; the task is what the name is busy with, so it reads a
-     step back from it rather than as a second heading. */
-  .task .task-title { color: var(--dim); font-weight: 500; }
+     step back from it: the name's ink at a lighter weight, while the activity
+     under it stays in the dim ink. */
+  .task .task-title { color: var(--fg); opacity: .8; font-weight: 500; }
   .task .task-status > * + *::before { content: "\00b7"; margin-right: 5px; }
   /* The estimate as a hairline under the report, in the session's own colour:
      a figure to glance at rather than read. Not the meters' green-amber-red,
@@ -1500,6 +1502,14 @@
     letter-spacing: -.02em;
   }
   .set-title > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  button.set-title {
+    width: 100%; border: 0; margin: 0; background: none; text-align: left;
+    font-family: inherit; cursor: default;
+  }
+  button.set-title:hover { background: var(--tint-row); }
+  button.set-title:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
+  .set-title > .chev { flex: none; width: 8px; overflow: visible; }
+  .set-title[aria-expanded="true"] > .chev { transform: rotate(90deg); }
   .set-kids {
     display: grid; grid-template-rows: 1fr;
     transition: grid-template-rows 220ms var(--ease-out), opacity var(--enter) ease-out;
@@ -1546,6 +1556,7 @@
   button.set.out:hover { background: var(--tint-row); }
   button.set.out:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
   button.set.out > svg { width: 12px; height: 12px; fill: var(--dim); }
+  button.set.out > span:only-child { grid-column: 1 / -1; justify-self: stretch; }
   .set.child > span:first-child { color: var(--fg); }
   /* The guide: a line down from the title, an elbow into each option, in
      the weight the subagent rows use. */
@@ -1808,6 +1819,17 @@
   /* The model beside the Codex name, dimmer than the line's own grey. */
   #budget .acct-model { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; color: var(--dim); opacity: .6; }
+  /* The machines the panes reach, under the head: a chip each in the state
+     badge's outline, its glyph and figures in the line's grey. A dot says a
+     pane here holds the connection to that machine, a ring that none does. */
+  #budget .devices { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 0 0 8px; }
+  #budget .device { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 1; min-width: 0;
+    max-width: 100%; box-sizing: border-box; color: var(--dim); cursor: default; }
+  #budget .device:hover { background: var(--tint-ctl); }
+  #budget .device-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--fg); opacity: .85; }
+  #budget .device-link { flex: none; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  #budget .device-link.off { background: none; box-shadow: inset 0 0 0 1px currentColor; }
   /* The Past sessions fold above the limits: one line folded, a list of rows open.
      A row is the name, a conversation's first prompt, its age and Resume. */
   #budget .past { margin-bottom: 8px; padding-bottom: 6px;
@@ -2196,6 +2218,104 @@
     background: color-mix(in srgb, var(--fg) 4%, transparent);
   }
   :root:not(.tiny)[data-card-style="outlines"] #groups li.line.card:is(.rested, .neglected):not(.placeholder) { background: transparent; opacity: .72; }
+  /* Task first only at full width; name-first and both narrow tiers retain
+     their own geometry. The existing Done badge and finished wash stay native. */
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent {
+    display: block; padding: 14px;
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent > :is(.swatch, .busy) { display: none; }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent > .stack {
+    gap: 9px; width: 100%;
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .card-identity {
+    display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%;
+    padding-right: var(--corner, 0px);
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .card-identity.has-done { padding-right: calc(41px + var(--corner, 0px)); }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .card-folder {
+    display: inline-flex; align-items: center; gap: 5px; flex: 1; min-width: 0;
+    font: 400 11px/1.3 -apple-system, sans-serif; color: var(--dim);
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .card-folder .mi {
+    flex: none; width: 12px; height: 12px;
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .card-folder.fork .mi {
+    color: var(--family, var(--dim));
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .card-folder-name {
+    min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .label {
+    max-width: 100%; width: 100%; max-height: 2.48em; white-space: normal;
+    font-size: 17px; line-height: 1.24; font-weight: 600; letter-spacing: -.025em;
+    overflow: hidden; -webkit-mask-image: none; mask-image: none; transition: none;
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .label > .run {
+    display: block; overflow-wrap: anywhere;
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .card-recency {
+    font: 400 10px/1.4 -apple-system, sans-serif; color: var(--dim);
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent > .stack > .model {
+    display: flex; margin-top: 0; max-width: 100%; font-size: 10px;
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent > .stack > .task { display: flex; }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .task-bar {
+    height: 4px; margin-top: 0; border-radius: 2px; -webkit-mask-image: none; mask-image: none;
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .task-status {
+    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px;
+  }
+  /* The state as a soft pill on every full-width card, whichever anatomy: a
+     dot and the word in the state's ink on a tint of it, no outline. Done keeps
+     its filled green badge. The dot and its gap widen the badge by 11px, so
+     the name stops that much shorter of it. */
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .word {
+    animation: none; display: inline-flex; align-items: center; gap: 5px;
+    height: 18px; padding: 0 8px 0 7px; border: 0; border-radius: 9px;
+    font: 600 10px/18px -apple-system, sans-serif;
+  }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .word:not(.unseen)::before {
+    content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .word.blocked {
+    color: var(--warn); background: color-mix(in srgb, var(--sev-warn) 20%, transparent);
+  }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .word.working {
+    color: var(--lit-ink); background: color-mix(in srgb, var(--lit) 14%, transparent);
+  }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent :is(.word.idle, .word.exited, .word.unknown) {
+    color: var(--dim); background: color-mix(in srgb, var(--fg) 8%, transparent);
+  }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .word.unseen { padding: 0 8px; }
+  /* The sweep's copy of the word starts where the word's letters do, past the dot and its gap. */
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .word.idle > .sweep > span { padding-left: 18px; }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent.hot { --badge-room: calc(63px + var(--corner, 0px)); }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent.resting { --badge-room: calc(45px + var(--corner, 0px)); }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent.at-work { --badge-room: calc(82px + var(--corner, 0px)); }
+  html:not(.compact):not(.tiny) #groups li.line.card.exited > button.row.agent.resting { --badge-room: calc(57px + var(--corner, 0px)); }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent.long-turn { --badge-room: calc(75px + var(--corner, 0px)); }
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .word.long { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  /* The corner mark sits on the folder line, centred on the pill's height,
+     inside the face's wider padding. */
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent > .pcorner {
+    top: 15.5px; right: 14px;
+  }
+  /* A full-width face has no swatch, so a child's elbow drops from the
+     facts line's own icon, which starts at the face's padding; a worktree
+     keeps its fork, and the elbow drops from that as before. */
+  html:not(.compact):not(.tiny) #groups li.line.card:not(.worktree) > .children {
+    --child-drop: calc(var(--row-pad) + var(--meta-icon) / 2); --child-indent: calc(var(--child-drop) + var(--elbow));
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card:not(.worktree) > .children {
+    --child-drop: calc(14px + var(--meta-icon) / 2); --child-indent: calc(var(--child-drop) + var(--elbow));
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > .children.shell-rows {
+    --child-drop: 19px; --child-indent: calc(var(--child-drop) + var(--elbow));
+  }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent :is(.mi, .provider, .remote-mark, .ptag) { color: var(--dim); }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .provider { fill: currentColor; }
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .asks { margin: 0; }
 </style>
 
 <div id="banner" role="status" aria-live="polite">
@@ -2262,6 +2382,7 @@ const META_ICONS = {
   cost: '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm12-88.84V152a8,8,0,0,1-16,0v-.29a24,24,0,0,1-8.65-11.06,8,8,0,1,1,15.3-4.72c.53,1.6,2.2,4.07,5.35,4.07,3.86,0,7-2.24,7-5s-3.14-5-7-5c-12.68,0-23-9.42-23-21s10.32-21,23-21V80a8,8,0,0,1,16,0v.29a24,24,0,0,1,8.65,11.06,8,8,0,0,1-15.3,4.72c-.53-1.6-2.2-4.07-5.35-4.07-3.86,0-7,2.24-7,5s3.14,5,7,5c12.68,0,23,9.42,23,21S140,127.16,140,127.16Z"/>',
   lines: '<path d="M112,152a8,8,0,0,0-8,8v28.69L66.34,151A8,8,0,0,1,64,145.37V95a32,32,0,1,0-16,0v50.38a23.85,23.85,0,0,0,7,17L92.69,200H64a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,112,152ZM40,64A16,16,0,1,1,56,80,16,16,0,0,1,40,64Zm168,97V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/>',
   shells: '<path d="M117.31,134.63,72,168a8,8,0,0,1-9.6-12.8L100.83,128,62.4,100.8a8,8,0,1,1,9.6-12.8l45.31,33.37a8,8,0,0,1,0,13.26ZM216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,160H40V56H216V200Zm-80-24h48a8,8,0,0,0,0-16H136a8,8,0,0,0,0,16Z"/>',
+  folder: '<path d="M216,72H130.67L102.93,51.2a16.12,16.12,0,0,0-9.6-3.2H40A16,16,0,0,0,24,64V200a16,16,0,0,0,16,16H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,64H93.33l21.34,16L93.33,96H40ZM216,200H40V112H93.33a16.12,16.12,0,0,0,9.6-3.2L130.67,88H216Z"/>',
   computer: '<path d="M208,40H48A24,24,0,0,0,24,64V176a24,24,0,0,0,24,24h72v16H96a8,8,0,0,0,0,16h64a8,8,0,0,0,0-16H136V200h72a24,24,0,0,0,24-24V64A24,24,0,0,0,208,40Zm8,136a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V64a8,8,0,0,1,8-8H208a8,8,0,0,1,8,8Z"/>',
   model: '<path d="M197.58,129.06,146,110l-19-51.62a15.92,15.92,0,0,0-29.88,0L78,110l-51.62,19a15.92,15.92,0,0,0,0,29.88L78,178l19,51.62a15.92,15.92,0,0,0,29.88,0L146,178l51.62-19a15.92,15.92,0,0,0,0-29.88ZM137,164.22a8,8,0,0,0-4.74,4.74L112,223.85,91.78,169A8,8,0,0,0,87,164.22L32.15,144,87,123.78A8,8,0,0,0,91.78,119L112,64.15,132.22,119a8,8,0,0,0,4.74,4.74L191.85,144ZM144,40a8,8,0,0,1,8-8h16V16a8,8,0,0,1,16,0V32h16a8,8,0,0,1,0,16H184V64a8,8,0,0,1-16,0V48H152A8,8,0,0,1,144,40ZM248,88a8,8,0,0,1-8,8h-8v8a8,8,0,0,1-16,0V96h-8a8,8,0,0,1,0-16h8V72a8,8,0,0,1,16,0v8h8A8,8,0,0,1,248,88Z"/>',
   cpu: '<path d="M152,96H104a8,8,0,0,0-8,8v48a8,8,0,0,0,8,8h48a8,8,0,0,0,8-8V104A8,8,0,0,0,152,96Zm-8,48H112V112h32Zm88,0H216V112h16a8,8,0,0,0,0-16H216V56a16,16,0,0,0-16-16H160V24a8,8,0,0,0-16,0V40H112V24a8,8,0,0,0-16,0V40H56A16,16,0,0,0,40,56V96H24a8,8,0,0,0,0,16H40v32H24a8,8,0,0,0,0,16H40v40a16,16,0,0,0,16,16H96v16a8,8,0,0,0,16,0V216h32v16a8,8,0,0,0,16,0V216h40a16,16,0,0,0,16-16V160h16a8,8,0,0,0,0-16Zm-32,56H56V56H200v95.87s0,.09,0,.13,0,.09,0,.13V200Z"/>',
@@ -2465,6 +2586,121 @@ function applyShellFont(snapshot) {
 // but the card's own off this attribute.
 function applyCardStyle() {
   document.documentElement.dataset.cardStyle = SETTINGS?.card_style ?? "cards";
+}
+
+function applyCardAnatomy() {
+  document.documentElement.dataset.cardAnatomy = SETTINGS?.card_anatomy ?? "task";
+}
+
+// The title: Codex's own topic first, then an unfinished task's title, then
+// the topic an agent gave the conversation, then the session's name.
+function taskCardTitle(row) {
+  const topic = row.topic?.trim();
+  if (row.provider === "openai" && topic) return topic;
+  return !row.task?.done && row.task?.title?.trim() ? row.task.title : topic || row.label;
+}
+
+// The state is the hook's word; a quiet task report is the task line's
+// business, so the pill stays green while the session says it is working.
+// What a state pill says on hover: the state in words and how long it has held.
+function pillTitle(row, now = Date.now() / 1000) {
+  const held = since => since != null ? ` for ${duration(now - since)}` : "";
+  if (row.state === "working") return `Working: mid-turn${held(row.working_since)}`;
+  if (row.state === "blocked") return `Waiting for you${held(row.blocked_since)}: the session asked something`;
+  if (row.state === "idle" && row.unseen) return "Done: its turn ended while you were elsewhere";
+  if (row.state === "idle") return `Idle${held(row.idle_since)}: free for a prompt`;
+  if (row.state === "exited") return "Exited: the agent's process is gone, the pane is at its prompt";
+  return "No report: nothing has reported for a while";
+}
+
+function taskCardPill(row) {
+  const badge = row.state === "idle" && row.unseen ? "unseen" : row.state || "unknown";
+  const word = {working: "Working", blocked: "Waiting for you", idle: "Idle",
+                unseen: "Done", exited: "Exited", unknown: "No report"}[badge];
+  return {word, badge};
+}
+
+function taskCardRecency(row, now = Date.now() / 1000) {
+  if (row.state !== "working" && row.state !== "blocked") return null;
+  const clocks = [row[`${row.state}_since`], row.task?.reported_at].filter(Number.isFinite);
+  if (!clocks.length) return null;
+  const seconds = Math.max(0, Math.floor(now - Math.max(...clocks)));
+  const age = seconds < 60 ? `${seconds} s` : seconds < 3600
+    ? `${Math.floor(seconds / 60)} m` : `${Math.floor(seconds / 3600)} h`;
+  return `Updated ${age} ago`;
+}
+
+// Built before reconciliation, so these nodes survive the next frame in the
+// same way as the name-first stack. Children and compact faces never enter here.
+function taskCard(button, row) {
+  button.querySelector(":scope > .swatch:not(.fork), :scope > .busy")?.remove();
+  const stack = button.querySelector(":scope > .stack");
+  const label = stack.querySelector(".label");
+  const run = label.querySelector(":scope > .run");
+  const name = label.parentElement.classList.contains("name") ? label.parentElement : label;
+  const facts = stack.querySelector(":scope > .model");
+  const question = stack.querySelector(":scope > .asks");
+  const el = (cls, text = "") => Object.assign(document.createElement("span"), {className: cls, textContent: text});
+  const identity = el("card-identity");
+  // A worktree card keeps its fork, on the folder line in the family's
+  // colour, and the stem hangs from it there.
+  const fork = button.querySelector(":scope > .swatch.fork");
+  const folder = el("card-folder");
+  folder.append(metaIcon(fork ? "fork" : "folder"), el("card-folder-name", row.path?.split("/").filter(Boolean).at(-1) || row.label));
+  folder.title = [row.path, row.label].filter(Boolean).join("\n");
+  if (fork) { folder.classList.add("fork"); folder.title = `${fork.title}\n${folder.title}`; }
+  identity.append(folder);
+  const tag = run.querySelector(".ptag");
+  if (tag) identity.append(tag);
+  const state = taskCardPill(row);
+  const badge = button.querySelector(":scope > .word") || el("word");
+  // A long turn's badge is the warning the name-first chain built: it stays.
+  if (badge.classList.contains("long")) {
+    identity.append(badge);
+  } else {
+    badge.className = `word ${state.badge}`;
+    badge.textContent = state.word;
+    badge.title = pillTitle(row);
+    if (state.badge === "idle") addSweep(badge);
+    if (!row.state) badge.remove();
+    else if (state.badge !== "unseen") identity.append(badge);
+    else identity.classList.add("has-done");
+  }
+  const title = SETTINGS?.show_task === false ? row.label : taskCardTitle(row);
+  run.textContent = title;
+  run.dataset.name = title;
+  label.title = title;
+  label.dataset.spoken = title === row.label ? "" : `task ${title}`;
+  stack.replaceChildren(identity, name);
+  if (question) stack.append(question);
+  const recency = taskCardRecency(row);
+  if (recency) stack.append(el("card-recency", recency));
+  if (facts) stack.append(facts);
+  if (row.task && SETTINGS?.show_task !== false) {
+    const task = row.task;
+    const line = el("task");
+    const pct = task.done ? 100 : Number.isFinite(task.percent) ? Math.max(0, Math.min(100, task.percent)) : null;
+    if (pct != null && SETTINGS?.show_task_bar !== false) {
+      const bar = el("task-bar");
+      const fill = el("task-bar-fill");
+      fill.dataset.pct = Math.round(pct);
+      bar.append(fill);
+      bar.title = `about ${pct}% done, the session's own estimate`;
+      line.append(bar);
+    }
+    const activity = SETTINGS?.show_task_activity !== false && task.activity?.trim();
+    const repeated = activity && [state.word.toLowerCase(), row.state].includes(activity.toLowerCase());
+    const words = [pct != null ? `${Math.round(pct)}%` : null, activity && !repeated ? activity : null].filter(Boolean).join(" · ");
+    if (words) line.append(el("task-status", words));
+    line.dataset.spoken = words;
+    if (line.childElementCount) stack.append(line);
+  }
+}
+
+function paintCardRecencies() {
+  for (const when of document.querySelectorAll("#groups .card-recency")) {
+    when.textContent = taskCardRecency(when.closest("button.row")._row);
+  }
 }
 
 // The theme a terminal colour wants: dark below a WCAG relative luminance of .4.
@@ -4404,8 +4640,10 @@ function render(snapshot, arrived = false, now = false) {
 }
 function paintAll(snapshot) {
   const before = measureRows();
+  const previousAnatomy = document.documentElement.dataset.cardAnatomy;
   applyShellFont(snapshot);
   applyCardStyle();
+  applyCardAnatomy();
   applyTerminalBackground(snapshot);
   paint(snapshot);
   paintQueue(snapshot);
@@ -4423,7 +4661,7 @@ function paintAll(snapshot) {
     const was = before.get(li.dataset.key);
     if (!was || Math.abs(was.top - li.offsetTop) >= 1) cardMovedAt.set(li.dataset.key, now);
   }
-  animateRows(before);
+  if (previousAnatomy === document.documentElement.dataset.cardAnatomy) animateRows(before);
 }
 
 // The stem of each docked worktree card, from where it starts to the top of
@@ -4436,10 +4674,11 @@ function paintStems() {
   const px = n => `${Math.round(n * 100) / 100}px`;
   const measured = [...document.querySelectorAll("#groups li.line.card.worktree")].map(li => {
     const stem = li.querySelector(":scope > .stem");
-    const glyph = li.querySelector(":scope > button.row > .swatch.fork > svg").getBoundingClientRect();
+    const folder = li.querySelector(":scope > button.row .card-folder");
+    const glyph = (folder || li.querySelector(":scope > button.row > .swatch.fork > svg")).getBoundingClientRect();
     const box = li.getBoundingClientRect();
     const scale = box.width / li.offsetWidth || 1;
-    return {stem, left: px((glyph.left + glyph.width / 2 - box.left) / scale - .5),
+    return {stem, left: px((glyph.left + (folder ? 4 : glyph.width / 2) - box.left) / scale - .5),
             height: px((glyph.top - box.top) / scale - stem.offsetTop)};
   });
   for (const {stem, left, height} of measured) {
@@ -4496,9 +4735,9 @@ function taskLine(task, resting) {
       status.append(when);
       spoken.push(age);
     }
-    // Staleness stays whatever else is hidden: it is the line's own warning
-    // that nobody has refreshed what it says.
-    if (stale) { status.append(el("task-stale", "stale")); spoken.push("stale"); }
+    // An old report fades and reads "Last:"; the age says how old, so no
+    // word is added. What is spoken says it plainly.
+    if (stale) spoken.push("no report since");
   }
   status.title = task.done ? "The session reported this task finished"
     : `The session's own estimate, reported ${age} ago`;
@@ -5449,9 +5688,44 @@ function paintCodex(strip, limits) {
   strip.append(block);
 }
 
+// The machines the panes reach, this one first: a chip each with its name,
+// its agents and, for another machine, whether a pane here holds the
+// connection to it. The daemon sends the list only beside another machine.
+// A name is that machine's own word, so it is set as text and nothing else.
+function devicesRow(hosts) {
+  const row = Object.assign(document.createElement("div"), {className: "devices"});
+  row.setAttribute("role", "list");
+  row.setAttribute("aria-label", "Machines");
+  for (const host of hosts) {
+    const chip = Object.assign(document.createElement("span"), {className: "word device"});
+    chip.setAttribute("role", "listitem");
+    chip.append(metaIcon("host"),
+                Object.assign(document.createElement("span"), {className: "device-name", textContent: host.host}),
+                Object.assign(document.createElement("span"), {className: "device-n", textContent: host.agents}));
+    if (!host.local) {
+      chip.append(Object.assign(document.createElement("i"), {className: host.reason ? "device-link off" : "device-link"}));
+    }
+    chip.title = deviceSaid(host);
+    chip.setAttribute("aria-label", chip.title);
+    row.append(chip);
+  }
+  return row;
+}
+
+// One machine's chip as a sentence: its agents, then for another machine
+// the card's own words on its connection and the age of its last event.
+function deviceSaid(host) {
+  const agents = `${host.agents} ${host.agents === 1 ? "agent" : "agents"}`;
+  if (host.local) return `${host.host}, this Mac: ${agents}`;
+  const link = host.reason ? host.reason[0].toUpperCase() + host.reason.slice(1)
+                           : `A pane here holds the connection to ${host.host}`;
+  const heard = host.reported == null ? "" : `. Last event ${reportAge(host.reported)} ago`;
+  return `${host.host}: ${agents}. ${link}${heard}`;
+}
+
 let lastSnapshot = {groups: []};
 // Countdowns move on their own; the daemon only pushes when its data changes.
-setInterval(() => paintBudget(lastSnapshot), 30000);
+setInterval(() => { paintBudget(lastSnapshot); paintCardRecencies(); }, 30000);
 // A stuck turn stops sending updates, so its badge has to appear on a clock.
 // The frame last received, not the last painted: after a failed paint the
 // older frame would paint cleanly and lift STALE off a list that is behind.
@@ -5519,6 +5793,7 @@ function buildBudget(snapshot) {
     if (tiles) tiles.append(foldedCodexTile(snapshot.codex)); else paintCodex(strip, snapshot.codex);
   }
   if (tiles && !tiles.childElementCount) tiles.remove();
+  if (!compact && !folded && snapshot.hosts?.length) strip.prepend(devicesRow(snapshot.hosts));
 
   if (strip.childElementCount) strip.prepend(limitsHead(store));
   // Above the limits: the cards are sessions, these are more sessions, and
@@ -5649,6 +5924,13 @@ function fitMeta() {
     // The run's own width, since a glide under way moves the run and would
     // change what scrollWidth reports. Going round, the run is two equal halves.
     const going = run?.querySelector(":scope > .copy");
+    if (run && label.closest(".stack")?.querySelector(":scope > .card-identity")) {
+      const height = going ? run.offsetHeight / 2 - GLIDE_GAP : run.offsetHeight;
+      const clipped = height > label.clientHeight + 1;
+      label.classList.toggle("clipped", clipped);
+      glide(run, clipped ? height : 0);
+      continue;
+    }
     const width = run ? (going ? run.offsetWidth / 2 - GLIDE_GAP : run.offsetWidth) : label.scrollWidth;
     const clipped = width > label.clientWidth + 1;
     label.classList.toggle("clipped", clipped);
@@ -5706,15 +5988,17 @@ const GLIDE_GAP = 32;
 // the name nor its room leaves it running.
 const gliding = new WeakMap();
 function glide(run, width) {
+  const vertical = !!run.closest(".stack")?.querySelector(":scope > .card-identity");
   const want = MOTION.matches ? width : 0;
   const text = [...run.childNodes].filter(n => !(n.nodeType === 1 && n.dataset[OWNER])).map(n => n.textContent).join("");
   const going = gliding.get(run);
   // Within a pixel: offsetWidth rounds, and a run measured with its copy
   // rounds differently from the same run measured without.
-  if (going ? Math.abs(going.width - want) < 1 && going.text === text : !want) return;
+  if (going ? Math.abs(going.width - want) < 1 && going.text === text && going.vertical === vertical : !want) return;
   for (const a of run.getAnimations()) a.cancel();
   run.querySelector(":scope > .copy")?.remove();
   run.style.paddingRight = "";
+  run.style.paddingBottom = "";
   gliding.delete(run);
   if (!want) return;
   // Name, gap, copy, gap: two equal halves, so moving the run by half of
@@ -5722,16 +6006,19 @@ function glide(run, width) {
   const copy = Object.assign(document.createElement("span"), {className: "copy"});
   copy.setAttribute("aria-hidden", "true");
   copy.dataset.owner = "glide";
-  copy.style.paddingLeft = `${GLIDE_GAP}px`;
+  if (vertical) {
+    copy.style.display = "block";
+    copy.style.paddingTop = `${GLIDE_GAP}px`;
+  } else copy.style.paddingLeft = `${GLIDE_GAP}px`;
   copy.append(...[...run.childNodes].map(n => n.cloneNode(true)));
   run.append(copy);
-  run.style.paddingRight = `${GLIDE_GAP}px`;
-  gliding.set(run, {width: want, text});
+  run.style[vertical ? "paddingBottom" : "paddingRight"] = `${GLIDE_GAP}px`;
+  gliding.set(run, {width: want, text, vertical});
   const total = GLIDE_REST_MS + (width + GLIDE_GAP) / GLIDE_PX_PER_S * 1000;
   const motion = run.animate([
-    {transform: "translateX(0)"},
-    {transform: "translateX(0)", offset: GLIDE_REST_MS / total, easing: "ease-in-out"},
-    {transform: "translateX(-50%)"},
+    {transform: `translate${vertical ? "Y" : "X"}(0)`},
+    {transform: `translate${vertical ? "Y" : "X"}(0)`, offset: GLIDE_REST_MS / total, easing: "ease-in-out"},
+    {transform: `translate${vertical ? "Y" : "X"}(-50%)`},
   ], {duration: total, iterations: Infinity, id: "glide"});
   motion.currentTime = Date.now() % total;
   steerScripted([motion]);
@@ -6248,6 +6535,25 @@ function paint(snapshot) {
   }
 }
 
+function tasksHead(open, started, done) {
+  const parts = [];
+  if (open > 0) parts.push(`${open} ${started > 0 && done > 0 ? "open" : open === 1 ? "task" : "tasks"}`);
+  if (started > 0) parts.push(`${started} started`);
+  if (done > 0) parts.push(`${done} done`);
+  return parts.join(" \u00b7 ");
+}
+
+// A started task is a label the session set, not proof of work on it, so
+// its mark never moves: a half fill for started, an empty ring for pending.
+function taskMark(running) {
+  return Object.assign(document.createElement("span"), {className: running ? "started-mark" : "todo-mark"});
+}
+
+// Started tasks first, then pending, each run in the list's own order.
+function tasksInOrder(tasks) {
+  return [...tasks.filter(t => t.status === "in_progress"), ...tasks.filter(t => t.status !== "in_progress")];
+}
+
 // The card list as the frame says it should read, detached.
 function buildGroups(snapshot) {
   const built = document.createElement("div");
@@ -6374,7 +6680,11 @@ function buildGroups(snapshot) {
         mark.className = "swatch" + (row.state === "unknown" || row.state === "exited" ? " hollow" : "");
       }
       if (SESSION_COLOURS[row.colour]) mark.dataset.colour = row.colour;
-      b.append(mark);
+      if (mark.classList.contains("fork")) mark.title = "A worktree: its repository's card sits above, on the same stem";
+      // A full-width agent card carries its state in the pill and its colour
+      // in Details and the queue, so only a worktree's fork sits before the name.
+      const faceMark = group.name === "AGENTS" && !row.depth && !compact && !tiny;
+      if (!faceMark || mark.classList.contains("fork")) b.append(mark);
 
       const stack = document.createElement("span");
       stack.className = "stack";
@@ -6384,6 +6694,7 @@ function buildGroups(snapshot) {
       const run = Object.assign(document.createElement("span"), {className: "run"});
       run.append(row.label);
       run.dataset.name = row.label;
+      label.title = row.path ? `${row.label}\n${row.path}` : row.label;
       label.append(run);
       const twin = twins.get(row.session_id);
       const remote = row.remote === "on" || row.remote === "reconnecting";
@@ -6415,9 +6726,11 @@ function buildGroups(snapshot) {
           const tag = Object.assign(document.createElement("span"), {className: "ptag"});
           tag.dataset.agent = agentKindOf(row);
           tag.append(glyph, agentKind(row).name);
+          tag.title = agentKind(row).name;
           run.append(tag);
         } else {
           glyph.classList.add("pcorner");
+          glyph.setAttribute("title", agentKind(row).name);
           b.classList.add("cornered");
           b.append(glyph);
         }
@@ -6477,13 +6790,14 @@ function buildGroups(snapshot) {
         }
         else chip.append(metaIcon(kind === "title" ? "computer" : kind));
         chip.append(text);
-        chip.title = value;
+        chip.title = kind === "branch" ? `On branch ${value}` : kind === "title" ? `Tab title ${value}` : `Model ${value}`;
         const effort = kind === "model" && EFFORT_LETTERS[row.effort]
           ? document.createElement("span") : null;
         if (effort) {
           effort.className = "effort " + row.effort;
           if (row.effort === "max") effort.innerHTML = "<i>m</i><i>x</i>";
           else effort.textContent = EFFORT_LETTERS[row.effort];
+          effort.title = `${row.effort} reasoning effort`;
         }
         chip.dataset.spoken = kind === "branch" ? `on branch ${value}`
           : kind === "title" ? `tab ${value}`
@@ -6563,6 +6877,12 @@ function buildGroups(snapshot) {
         word.textContent = `Long ${duration(running)}`;
         b.append(word);
         b.classList.add("long-turn");
+      } else if (row.state === "working" && !row.depth && !compact && !tiny) {
+        const word = document.createElement("span");
+        word.className = "word working";
+        word.textContent = "Working";
+        b.append(word);
+        b.classList.add("at-work");
       } else if (row.state === "idle" && !row.depth && row.unseen) {
         const word = document.createElement("span");
         word.className = "word unseen";
@@ -6576,6 +6896,12 @@ function buildGroups(snapshot) {
         addSweep(word);
         b.append(word);
         b.classList.add("resting");
+      } else if (row.state === "unknown" && !row.depth && !compact && !tiny) {
+        const word = document.createElement("span");
+        word.className = "word unknown";
+        word.textContent = "No report";
+        b.append(word);
+        b.classList.add("at-work");
       } else if (row.state === "exited" && !row.depth) {
         // Not "crashed": all the panel knows is that the process is gone.
         const word = document.createElement("span");
@@ -6587,6 +6913,12 @@ function buildGroups(snapshot) {
       }
       // The state row's pill says it; the classes stay, for what the row says aloud.
       if (shortCards) b.querySelector(":scope > .word")?.remove();
+      const pill = b.querySelector(":scope > .word");
+      if (pill) pill.title = pill.classList.contains("long")
+        ? `Working for ${duration(Date.now() / 1000 - row.working_since)}, may be stuck` : pillTitle(row);
+
+      if (group.name === "AGENTS" && !row.depth && !compact && !tiny
+          && (SETTINGS?.card_anatomy ?? "task") === "task") taskCard(b, row);
 
 
       // aria-label only, never title: the details card says the same thing,
@@ -6798,18 +7130,20 @@ function buildGroups(snapshot) {
       if (tasks.length) {
         const open = openTasks.has(row.session_id);
         const doing = tasks.filter(t => t.status === "in_progress").length;
+        const head = tasksHead(tasks.length, doing, row.tasks_done);
         const sum = document.createElement("button");
         sum.type = "button";
         sum.className = "shell-sum tasks-sum";
         sum.dataset.childKey = "tasks";
         const text = document.createElement("span");
         text.append(Object.assign(document.createElement("span"), {className: "n", textContent: String(tasks.length)}),
-                    ` task${tasks.length > 1 ? "s" : ""}${doing ? ` \u00b7 ${doing} in progress` : ""}`);
+                    head.slice(String(tasks.length).length));
         sum.append(metaIcon("tasks"), text,
                    Object.assign(document.createElement("span"), {className: "chev", textContent: "\u203a"}));
         sum.setAttribute("aria-expanded", String(open));
         sum.setAttribute("aria-controls", "tasks-" + row.session_id);
-        sum.setAttribute("aria-label", `${tasks.length} open tasks in ${row.label}, ${doing} in progress`);
+        sum.setAttribute("aria-label", `${head} in ${row.label}`);
+        sum.title = `${head}: the session's own task list; the open items open below`;
         on(sum, "click", () => {
           if (openTasks.has(row.session_id)) openTasks.delete(row.session_id);
           else openTasks.add(row.session_id);
@@ -6819,22 +7153,17 @@ function buildGroups(snapshot) {
         if (open) {
           const rows = Object.assign(document.createElement("div"),
                                      {className: "children shell-rows", id: "tasks-" + row.session_id});
-          for (const t of tasks) {
+          for (const t of tasksInOrder(tasks)) {
             const tb = childRow(row, "tail", `task\n${t.id}`);
             const running = t.status === "in_progress";
             tb.classList.add(running ? "doing" : "todo");
-            if (running) {
-              const dots = Object.assign(document.createElement("span"), {className: "busy down"});
-              dots.innerHTML = "<i></i><i></i><i></i>";
-              tb.append(dots);
-            } else {
-              tb.append(Object.assign(document.createElement("span"), {className: "todo-mark"}));
-            }
-            // A running task says what is being done with it; a pending one
+            tb.append(taskMark(running));
+            // A started task says what is being done with it; a pending one
             // says what it is. The whole subject sits in the hover.
             tb.append(stackOf(running && t.doing ? t.doing : t.subject));
             tb.title = t.subject;
-            tb.setAttribute("aria-label", `${running ? "running" : "pending"} task: ${t.subject}`);
+            const status = running ? "started" : "pending";
+            tb.setAttribute("aria-label", `${status} task: ${t.subject}`);
             on(tb, "click", () => act(row.session_id, "focus"));
             rows.append(tb);
           }
@@ -6944,24 +7273,27 @@ document.addEventListener("keydown", event => {
 // ---------------------------------------------------------------- settings
 let SETTINGS = null;
 const SETTING_ROWS = [
-  {head: "Sound"},
-  {k: "sound",        label: "Play sounds", master: true},
-  {k: "sound_blocked",label: "When a session is blocked", needs: "sound"},
-  {k: "sound_done",   label: "When one finishes", needs: "sound"},
+  {head: "Alerts"},
+  {k: "sound",        label: "Play sounds"},
   {k: "volume",       label: "Volume", range: [0, 1, .05], needs: "sound", pct: true},
-  {head: "Notifications"},
-  {k: "notify",       label: "Show macOS notifications", master: true},
-  {k: "notify_blocked", label: "When a session asks a question", needs: "notify"},
-  {k: "notify_done",  label: "When one finishes", needs: "notify"},
-  {head: "Focus"},
-  {k: "focus_blocked", label: "Bring a blocked session forward", master: true},
+  {k: "notify",       label: "Show macOS notifications"},
+  {head: "When a session waits for you"},
+  {k: "sound_blocked",label: "Sound", needs: "sound"},
+  {k: "notify_blocked", label: "Notification", needs: "notify"},
+  {k: "focus_blocked", label: "Bring it forward"},
   {k: "return_after_blocked", label: "Go back once it resumes", needs: "focus_blocked"},
-  {head: "Finished"},
-  {k: "finished_first", label: "Finished first"},
-  {k: "mark_badge",     label: "Badge in the pane"},
-  {head: "Style"},
+  {head: "When one finishes"},
+  {k: "sound_done",   label: "Sound", needs: "sound"},
+  {k: "notify_done",  label: "Notification", needs: "notify"},
+  {k: "finished_first", label: "Lift its card first"},
+  {k: "finished_wash",  label: "Green wash"},
+  {k: "mark_badge",     label: "Done as the pane's badge"},
+  {k: "tab_status",     label: "Status under the tab title"},
+  {head: "Look"},
   {k: "card_style", label: "Card style",
    choices: [["cards", "Cards"], ["hairlines", "Hairlines"], ["air", "Air"], ["inset", "Inset rules"], ["outlines", "Outlines"]]},
+  {k: "card_anatomy", label: "Card anatomy",
+   choices: [["task", "Task first"], ["name", "Name first"]]},
   {k: "follow_terminal", label: "Follow the terminal's background"},
   {k: "ui_scale",     label: "Text size",
    steps: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]},
@@ -6969,7 +7301,7 @@ const SETTING_ROWS = [
    choices: [["system", "System"], ["mono", "SF Mono"], ["terminal", "Terminal font"]]},
   {k: "provider_mark", label: "Provider badge",
    choices: [["tag", "Tag by the name"], ["corner", "Icon in the corner"], ["groups", "Group by provider"], ["off", "Off"]]},
-  {k: "finished_wash",  label: "Green wash"},
+  {head: "On a card", fold: "on_card"},
   {k: "show_branch",  label: "Branch"},
   {k: "show_task",    label: "Task"},
   {k: "show_task_activity", label: "What it is doing", needs: "show_task"},
@@ -6980,16 +7312,13 @@ const SETTING_ROWS = [
   {k: "show_agents",  label: "Subagents"},
   {k: "show_shells",  label: "Background shells"},
   {k: "expand_shells", label: "Start expanded", needs: "show_shells"},
-  {head: "Terminal"},
-  {k: "tab_status",     label: "Status under the tab title"},
   {head: "Rows"},
   {k: "context_threshold", label: "Warn above", range: [0, 100, 5], pct: true},
   {k: "cpu_threshold", label: "CPU heavy at", range: [25, 400, 25], pct: true},
   {k: "memory_threshold", label: "Memory heavy at", range: [0.5, 8, 0.5], unit: " GB"},
   {k: "order", label: "Order",
    choices: [["terminal", "Follow the terminals"], ["name", "By name"], ["attention", "By attention"], ["hand", "By hand"]]},
-  {k: "offer_statusline", label: "Offer the statusline bridge"},
-  {k: "offer_tab_status", label: "Offer to take the tab status from iTerm2"},
+  {action: "offers", label: "Show the foot's offers again"},
   {head: "Experimental"},
   {k: "links",        label: "Link cards",
    note: "Hold a dragged card over another to link them. Two Claude Code sessions become partners that hand each other tasks; with Codex or omp, one hands the other its latest result."},
@@ -7004,16 +7333,39 @@ const SETTING_ROWS = [
 // short and drop the focus the person was holding.
 let SETTING_SYNC = [];
 
-function settingCard(title, master) {
+// The closed folds, as the daemon keeps them; a daemon from before the key
+// (the page is read per request) folds the default.
+function sheetFolds() {
+  return SETTINGS?.sheet_folds ?? ["on_card"];
+}
+function settingFoldOpen(id) {
+  return !sheetFolds().includes(id);
+}
+
+function settingCard(title, master, fold) {
   const card = document.createElement("div");
   card.className = "set-card";
-  const head = document.createElement("div");
+  const head = document.createElement(fold ? "button" : "div");
   head.className = "set-title";
   const t = document.createElement("span");
   t.textContent = title;
   head.append(t);
   if (master) head.append(settingSwitch(master));
   card.append(head);
+  if (fold) {
+    head.type = "button";
+    const chev = Object.assign(document.createElement("span"), {className: "chev", textContent: "›"});
+    chev.setAttribute("aria-hidden", "true");
+    head.append(chev);
+    const body = Object.assign(document.createElement("div"), {id: `set-fold-${fold}`});
+    head.setAttribute("aria-controls", body.id);
+    SETTING_SYNC.push(() => {
+      const open = settingFoldOpen(fold);
+      head.setAttribute("aria-expanded", String(open));
+      body.hidden = !open;
+    });
+    card.append(body);
+  }
   return card;
 }
 
@@ -7043,11 +7395,18 @@ function settingSwitch(row) {
 }
 
 function settingRow(row, kind) {
-  const line = document.createElement("label");
+  const line = document.createElement(row.action ? "button" : "label");
   line.className = "set " + kind;
   const name = document.createElement("span");
   name.textContent = row.label;
   line.append(name);
+  if (row.action === "offers") {
+    line.type = "button";
+    line.className += " out";
+    line.addEventListener("click", () => push({offer_statusline: true, offer_tab_status: true}));
+    SETTING_SYNC.push(() => { line.hidden = SETTINGS.offer_statusline !== false && SETTINGS.offer_tab_status !== false; });
+    return line;
+  }
   const note = (row.note || row.k === "follow_terminal" || row.k === "tab_status") && Object.assign(document.createElement("span"),
                                          {className: "set-note", id: `set-note-${row.k}`, textContent: row.note || ""});
   if (note) line.append(note);
@@ -7171,30 +7530,33 @@ function settingsBody() {
   drawer.append(head, box);
   // A head opens a card. A master row sits in the card's title with its
   // options under it; any other row with options gets a fold of its own.
-  let card = null, kids = null, i = 0;
+  let card = null, body = null, kids = null, i = 0;
   while (i < SETTING_ROWS.length) {
     const row = SETTING_ROWS[i++];
     if (row.head) {
       const master = SETTING_ROWS[i] && SETTING_ROWS[i].master ? SETTING_ROWS[i++] : null;
-      card = settingCard(master ? master.label : row.head, master);
+      card = settingCard(master ? master.label : row.head, master, row.fold);
       box.append(card);
+      body = row.fold ? card.lastChild : card;
+      if (row.fold) card.firstChild.addEventListener("click", () => push({sheet_folds: settingFoldOpen(row.fold)
+        ? [...sheetFolds(), row.fold] : sheetFolds().filter(id => id !== row.fold)}));
       kids = master ? settingKids(master.k) : null;
-      if (kids) card.append(kids.kids);
+      if (kids) body.append(kids.kids);
       continue;
     }
     if (row.needs) {
       if (!kids || kids.of !== row.needs) {
         kids = settingKids(row.needs);
-        card.append(kids.kids);
+        body.append(kids.kids);
       }
       kids.inner.append(settingRow(row, "child"));
       continue;
     }
     kids = null;
-    card.append(settingRow(row, "plain"));
+    body.append(settingRow(row, "plain"));
     if (SETTING_ROWS[i] && SETTING_ROWS[i].needs === row.k) {
       kids = settingKids(row.k);
-      card.append(kids.kids);
+      body.append(kids.kids);
     }
   }
   box.append(repositoryCard());
@@ -7336,7 +7698,7 @@ const OFFERS = [
    offered: snapshot => snapshot.statusline === "missing",
    title: "No context figures", go: "Install", going: "Installing…",
    goTitle: "Point statusLine in ~/.claude/settings.json at the bridge; settings.json is backed up first",
-   laterTitle: "Stop offering it; Settings > Offer the statusline bridge brings it back",
+   laterTitle: "Stop offering it; Settings > Rows > Show the foot's offers again brings it back",
    why: "Cards miss their context %, model and effort, and the details card misses cost, limits and cache, "
       + "because the statusline bridge is not in ~/.claude/settings.json. Your own statusline keeps running inside it.",
    doneTitle: "Statusline bridge installed", done: "Sessions started from now on show their context figures."},
@@ -7347,7 +7709,7 @@ const OFFERS = [
    goTitle: "Deletes every cc-status hook entry from ~/.claude/settings.json and nothing else. "
           + "The file is copied first to ~/.claude/settings.json.before-tab-status. "
           + "Claude sessions already open keep the hooks until they restart.",
-   laterTitle: "Stop offering it; Settings > Offer to take the tab status from iTerm2 brings it back",
+   laterTitle: "Stop offering it; Settings > Rows > Show the foot's offers again brings it back",
    why: "iTerm2's Claude Code integration writes the status under Claude tabs from its cc-status hooks in "
       + "~/.claude/settings.json, so the panel leaves those tabs alone. Removing the hooks lets the panel write "
       + "every agent's tab, with the question and done-while-away. A copy of the file is kept first.",

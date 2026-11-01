@@ -3,9 +3,10 @@
 import pathlib, sys
 from panel_draw import *  # noqa: F401,F403
 
-W, H = 880, 462
+W, H = 880, 478
 CX, CW, CT = 24, 404, 22
-TX = CX + 44
+PAD = 16
+TX = CX + PAD
 LX = CX + CW + 40   # where the leaders' words start
 EFFORT_HIGH = "#929efa"
 
@@ -44,39 +45,27 @@ note = NOTES.add
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="One card, each of its parts joined by a line to what it means: the name and the agent, '
-  f'the task and what it is doing now, the ticks, the branch, model, context and CPU, then a teammate, '
-  f'running and finished subagents, a Codex job, the open tasks and the background shells">')
+  f'aria-label="One card, each of its parts joined by a line to what it means: the folder and the agent, '
+  f'the state pill, the task as the title, how long since it reported, the branch, model, context and CPU, '
+  f'the bar with the percent and what it is doing now, then a teammate, running and finished subagents, '
+  f'a Codex job, the task list with its counts and the background shells">')
 A('  <title>What a card carries</title>')
-A(f'''  <defs>
-    <pattern id="tickmask" width="9" height="5" patternUnits="userSpaceOnUse">
-      <rect width="5" height="5" fill="#ffffff"/>
-    </pattern>
-    <mask id="tick"><rect width="{W}" height="{H}" fill="url(#tickmask)"/></mask>
-  </defs>''')
 A(f'  <rect width="{W}" height="{H}" rx="16" fill="{BG}"/>')
 
 # The card and its own lines.
 card(CX, CW, CT, H - 2 * CT)
-working_dots(CX + 18, CT + 20, "#e8833a")
-text(TX, CT + 31, "atlas", fill=FG, size=15, weight=600)
-tag(TX + NAME_W["atlas"] + 9, CT + 31, "claude")
-note(TX + NAME_W["atlas"] + 9 + 74, CT + 26, "The session's name, and which agent runs in it")
+x = folder_line(TX, CT + 25, "token-parser")
+mark("claude", CX + CW - PAD - 14, CT + 15, 14, DIM)
+note(x + 14, CT + 21, "The folder it runs in; the agent's mark is a setting")
+pill(CX + CW - PAD - 22, CT + 13, "Working", LIT, mix(LIT, CARD, .14))
 
-text(TX, CT + 52, "Refactor the token parser", fill=DIM, size=12.5)
-note(TX + width_of("Refactor the token parser", 12.5) + 14, CT + 48, "The task it reports, in its own words")
+text(TX, CT + 52, "Refactor the token parser", fill=FG, size=17, weight=600, extra=' letter-spacing="-0.4"')
+note(TX + width_of("Refactor the token parser", 17, weight=600) + 14, CT + 47, "The task it reports, in its own words; its state sits in the pill")
 
-text(TX, CT + 72, "Reading code", fill=DIM, size=12.5)
-x = middot(TX + width_of("Reading code", 12.5), CT + 72)
-mark("clock", x, CT + 62, 12, DIM)
-text(x + 16, CT + 72, "40s", fill=DIM, size=12.5)
-note(x + 16 + width_of("40s", 12.5) + 14, CT + 68, "What it is doing now, and how old that report is")
-A(f'  <g mask="url(#tick)">'
-  f'<rect x="{TX}" y="{CT+80}" width="{CW - 60}" height="5" fill="{FG}" opacity="0.16"/>'
-  f'<rect x="{TX}" y="{CT+80}" width="140" height="5" fill="{LIT}"/></g>')
-note(TX + CW - 60 + 14, CT + 83, "Its own estimate of how far it has got")
+text(TX, CT + 70, "Updated 10 s ago", fill=DIM, size=10)
+note(TX + width_of("Updated 10 s ago", 10) + 14, CT + 66, "How long since it last reported")
 
-fy = CT + 102
+fy = CT + 90
 x = chips(TX, fy, [("branch", "main", None), ("model", "Fable 5.1", None)])
 text(x + 5, fy, "[", fill=DIM, size=12.5, family=MONO)
 text(x + 12, fy, "h", fill=EFFORT_HIGH, size=12.5, weight=600, family=MONO)
@@ -92,6 +81,11 @@ for i in range(3):
     A(f'  <circle cx="{x+2+i*5}" cy="{fy-4}" r="2" fill="{DIM}" opacity="0.75"/>')
 text(x + 18, fy, "1", fill=DIM, size=12.5)
 note(x + 18 + width_of("1", 12.5) + 14, fy - 4, "Branch, model and effort, then context and CPU once they matter")
+
+bar(TX, CT + 100, CW - 2 * PAD, 140)
+text(TX, CT + 118, "38% \u00b7 Reading code", fill=DIM, size=10)
+note(TX + width_of("38% \u00b7 Reading code", 10) + 14, CT + 114, "Its own estimate of how far it has got, and what it is doing now")
+fy = CT + 118
 
 # A teammate, with the elbow the panel draws.
 ry = fy + 12
@@ -139,10 +133,10 @@ ty = ry + 44
 A(f'  <line x1="{CX+10}" y1="{ty}" x2="{CX+CW-10}" y2="{ty}" stroke="{CARD_BORDER}" '
   f'stroke-dasharray="1 2"/>')
 mark("tasks", CX + 12, ty + 8, 10, DIM)
-text(CX + 28, ty + 17, "4", fill=FG, size=11, weight=500)
-text(CX + 28 + width_of("4 ", 11), ty + 17, "tasks · 1 in progress", fill=DIM, size=11)
+text(CX + 28, ty + 17, "3", fill=FG, size=11, weight=500)
+text(CX + 28 + 7.1 + 3, ty + 17, "open \u00b7 1 started \u00b7 5 done", fill=DIM, size=11)
 text(CX + CW - 18, ty + 18, "›", fill=DIM, size=13)
-note(CX + 28 + width_of("4 tasks · 1 in progress", 11) + 16, ty + 13, "Its open tasks, folded; a click lists them")
+note(CX + 28 + 7.1 + 130.7 + 16, ty + 13, "Its task list: open, started and done; a click lists the open ones")
 
 # Background shells, folded into one line and opened.
 sy = ty + 26
