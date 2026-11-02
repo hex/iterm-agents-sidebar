@@ -118,15 +118,14 @@ moves to another account when that one has at least 1.25 times the weekly
 runway: the room left in its tightest weekly window, divided by the days until
 that window resets. Quota that returns tomorrow is spent before quota that has
 to last a week, so less of it resets unused. A balance goes only to an account
-under 90% whose 5-hour window is under 70%, waits half an hour after any
+under 90% whose 5-hour window is under 70%, or whose plan has none, waits half an hour after any
 switch, uses readings up to 15 minutes old without asking for new ones, and
 happens only when two readings of the active account agree on the same target.
-It never goes to an account whose own readings show it filling, one whose
-5-hour window was not read, or one with a weekly limit that does not say when
-it resets. With no Claude session running, nothing switches.
+It never goes to an account whose own readings show it filling, or one with
+a weekly limit that does not say when it resets. With no Claude session running, nothing switches.
 
 **Choosing among accounts.** The panel takes an account under 90% with room in
-its 5-hour window (under 70%) first, then any account under 90%, then the rest. Among those, the most weekly
+its 5-hour window (under 70%, or a plan without one) first, then any account under 90%, then the rest. Among those, the most weekly
 runway wins. Runways within 10% of each other go to the one that resets
 sooner, then to the emptier 5-hour window.
 

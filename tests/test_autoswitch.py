@@ -330,6 +330,16 @@ def test_a_balance_only_goes_to_an_account_under_the_amber_band():
     assert decide(states, (A, B)) == STAY_ACT
 
 
+def test_a_plan_without_a_five_hour_window_still_balances():
+    """A plan that reports no 5-hour window has no near-term gate to wait on."""
+    def weekly_only(reading):
+        return dict(reading, five_hour=None)
+    states = {"acct-1": state(weekly_only(usage(0, 60, 60, week_reset=NOW + 3 * DAY))),
+              "acct-2": state(weekly_only(usage(0, 30, 30, week_reset=NOW + 3 * DAY)))}
+    assert decide(states, (A, B)) == {
+        "act": "balance", "account_id": "acct-2", "why": "weekly: 70% left for 3d there, 40% for 3d here"}
+
+
 def test_a_balance_waits_half_an_hour_after_any_switch():
     assert decide(CALM, (A, B), last_switch={"at": NOW - 20 * 60}) == STAY_ACT
     assert decide(CALM, (A, B), last_switch={"at": NOW - 31 * 60})["act"] == "balance"
@@ -403,10 +413,12 @@ def test_a_balance_never_goes_to_an_account_already_on_course_to_fill():
     assert decide(states, (A, B)) == STAY_ACT
 
 
-def test_an_account_whose_5_hour_window_is_unknown_is_no_balance_target():
-    blind = {"five_hour": None, "seven_day": {"used": 20, "resets_at": NOW + DAY}, "models": []}
-    states = {"acct-1": state(usage(20, 60, 60, week_reset=NOW + 3 * DAY)), "acct-2": state(blind)}
-    assert decide(states, (A, B)) == STAY_ACT
+def test_an_account_on_a_plan_without_a_5_hour_window_is_a_balance_target():
+    """Plans mix: one account gated by a 5-hour window, another not at all."""
+    ungated = {"five_hour": None, "seven_day": {"used": 20, "resets_at": NOW + DAY}, "models": []}
+    states = {"acct-1": state(usage(20, 60, 60, week_reset=NOW + 3 * DAY)), "acct-2": state(ungated)}
+    assert decide(states, (A, B)) == {
+        "act": "balance", "account_id": "acct-2", "why": "weekly: 80% left for 1d there, 40% for 3d here"}
 
 
 def test_a_weekly_limit_without_a_reset_time_leaves_the_runway_unknown():

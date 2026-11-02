@@ -442,6 +442,7 @@ def switch_decision(active_id, states, accounts, now, last_switch=None, models=N
 #: Where an account stands: room in its 5-hour window and under the line, only
 #: under the line, or above it. A switch goes to the lowest band there is. The
 #: 5-hour window is the near-term gate; the weekly ones are what runway weighs.
+#: A plan that reports no 5-hour window has no such gate, so it has room.
 AMBER = 70
 #: Targets whose runway is within this fraction of the best count as equal.
 RUNWAY_TIE = 0.10
@@ -451,12 +452,11 @@ def _band(candidate):
     _, held, _, five = candidate
     if held["figure"] >= SWITCH_THRESHOLD:
         return 2
-    return 0 if five is not None and five < AMBER else 1
+    return 0 if five is None or five < AMBER else 1
 
 
 def _five_hour(usage):
-    """The 5-hour window's use, or None when the reading has none: unknown,
-    never empty."""
+    """The 5-hour window's use, or None when the plan reports no such window."""
     five = (usage or {}).get("five_hour")
     return five["used"] if five else None
 
