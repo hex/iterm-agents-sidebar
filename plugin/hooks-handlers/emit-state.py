@@ -1233,6 +1233,12 @@ def published(doc, pid, payload, codex, now, tasks=True, front=None):
         waited_on += len(doc.get("running") or {})
     if waited_on:
         value["tools_running"] = waited_on
+    # How many of those are teammates. Claude Code lists a teammate until it
+    # is shut down, idle or not, so a count that is all teammates is a claim
+    # the teammates' own published states can settle; the daemon reads them.
+    teammates = sum(1 for t in doc.get("background") or [] if t.get("type") == "teammate")
+    if teammates:
+        value["teammates"] = teammates
     if codex:
         value["model"] = payload.get("model")
         value["transcript_path"] = payload.get("transcript_path")

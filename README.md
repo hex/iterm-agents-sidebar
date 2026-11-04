@@ -237,7 +237,9 @@ Some have limits the picture doesn't show:
 The foot lists the sessions waiting on you, oldest first, each with what it
 asks: the question's header and text, or the tool and its command. Under them are your
 Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
-until each resets. Store a login with **Add <your email>** and you can switch
+until each resets. The tick on a weekly bar marks where an even spend across
+the week would be right now; a percentage turns warm 15 points past it, and the
+row's hover says both figures. Store a login with **Add <your email>** and you can switch
 between accounts from there. Auto-switch, off by default, spends first the
 quota that resets soonest and leaves an account before a limit stops your
 sessions. Only the limits of the models your sessions run, or ran in the last

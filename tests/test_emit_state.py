@@ -849,6 +849,26 @@ def test_a_background_task_counts_as_a_tool_still_running():
     assert "tools_running" not in emit_state.published(doc, 1, {}, codex=False, now=1)
 
 
+def test_the_state_counts_the_teammates_among_what_it_waits_on():
+    """Claude Code keeps a teammate in the background list until it is shut
+    down, idle or not, so a lead's working claim can rest on teammates alone.
+    The count beside tools_running lets the daemon tell that case from a
+    subagent or shell still running, which only its own end can clear."""
+    doc = emit_state.blank_state()
+    doc = emit_state.apply_event(doc, "UserPromptSubmit", {"prompt": "go"}, "working", codex=False)
+    doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": True, "background_tasks": [
+        {"type": "teammate", "description": "explore-A"},
+        {"type": "teammate", "description": "explore-B"},
+        {"type": "subagent", "description": "review the diff"},
+        {"type": "monitor", "description": "tail the log"}]}, "idle", codex=False)
+    value = emit_state.published(doc, 1, {}, codex=False, now=1)
+    assert (value["tools_running"], value["teammates"]) == (3, 2)
+    doc = emit_state.apply_event(doc, "Stop", {"stop_hook_active": True, "background_tasks": [
+        {"type": "subagent", "description": "review the diff"}]}, "idle", codex=False)
+    value = emit_state.published(doc, 1, {}, codex=False, now=1)
+    assert value["tools_running"] == 1 and "teammates" not in value
+
+
 def test_the_state_variable_says_when_the_session_last_went_idle():
     """A turn that ends leaves the time it ended; a prompt that starts the
     next turn leaves it standing, since the panel orders a card that has

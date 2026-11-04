@@ -1285,6 +1285,13 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
         if kind == "shell" and job and job.lstrip("-") not in SHELLS:
             row["job"] = job
             row["running"] = True
+        # A lead whose working claim rests on its teammates alone is settled
+        # by their states once they sit under it, so the claim rides along
+        # until then, with how many teammates it counts.
+        if (kind == "agent" and session.get("agent_state") == "working"
+                and session.get("tools_running") is not None
+                and session["tools_running"] == session.get("teammates")):
+            row["_held_by_teammates"] = session["teammates"]
         if kind == "shell":
             title = shell_title(session.get("session_name"), session.get("auto_name"), session.get("path"))
             if title:
@@ -1418,6 +1425,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
             at += 1
         rows["agent"].insert(at, row)
 
+    settle_leads_held_by_teammates(rows["agent"])
+
     # A session in a linked worktree of another session's repo is its own
     # card, placed right after that session and everything nested in it, and
     # named by its feature: cs names the directory `<repo>@<feature>`, and
@@ -1517,6 +1526,41 @@ def mark_busy_teammates(rows):
             lead = row
         elif lead is not None and row.get("state") == "working":
             lead["busy_kids"] = lead.get("busy_kids", 0) + 1
+
+
+def settle_leads_held_by_teammates(rows):
+    """Put a lead that only its teammates hold at working to rest when none
+    of them works. -> None.
+
+    Claude Code lists a teammate among a lead's background tasks until it is
+    shut down, idle or not, so a lead whose turn ended keeps publishing
+    working for as long as the team exists. A teammate still working or
+    waiting on you is the lead's work, and the lead stays. So does one not
+    carded under it: a pane whose transcript cannot be read stays flat, and
+    a teammate without a pane has no row, and neither says what it is
+    doing. Only as many teammates as the lead counts, every one of them
+    seen at rest, put the lead to rest. The lead's turn clock goes with the
+    claim; its rest clock is the hook's to stamp, which it does only when
+    its own count lets the session come to rest.
+    """
+    held = []               # (lead, teammates it counts, teammates seen at rest)
+    lead = None
+    for row in rows:
+        counted = row.pop("_held_by_teammates", 0)
+        if not row.get("depth"):
+            lead = [row, counted, 0] if counted else None
+            if lead:
+                held.append(lead)
+        elif lead is not None:
+            if row.get("state") in ("working", "blocked"):
+                held.remove(lead)
+                lead = None
+            else:
+                lead[2] += 1
+    resting = [row for row, counted, seen in held if seen >= counted]
+    for row in resting:
+        row["state"] = "idle"
+        row.pop("working_since", None)
 
 
 #: States the hooks can actually establish. "unknown" and "exited" are
@@ -2620,6 +2664,24 @@ def parse_tasks_done(raw):
     except (ValueError, TypeError, AttributeError):
         return None
     return done if type(done) is int and done >= 0 else None
+
+
+def parse_tools_running(raw):
+    """The claudeState payload -> how many tasks the session waits on, or None."""
+    try:
+        waited_on = json.loads(raw).get("tools_running")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return waited_on if type(waited_on) is int and waited_on > 0 else None
+
+
+def parse_teammates(raw):
+    """The claudeState payload -> how many of those tasks are teammates, or None."""
+    try:
+        teammates = json.loads(raw).get("teammates")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return teammates if type(teammates) is int and teammates > 0 else None
 
 
 def parse_idle_since(raw):
@@ -3952,6 +4014,8 @@ class Bridge:
                         "working_since": parse_working_since(raw),
                         "idle_since": parse_idle_since(raw),
                         "turn_started": parse_turn_started(raw),
+                        "tools_running": parse_tools_running(raw),
+                        "teammates": parse_teammates(raw),
                         "context": status["context"],
                         "model": status["model"],
                         "effort": status["effort"],

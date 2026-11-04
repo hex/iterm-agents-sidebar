@@ -210,7 +210,11 @@
   li.line.card:has(> button.row.agent) { padding-block: 4px; }
   /* A card carrying a report is three or four lines tall; it needs the air a
      two-line card does not. */
-  li.line.card:has(.task) > button.row { padding-block: 8px; }
+  li.line.card:has(.task) > button.row { padding-block: 8px; --badge-top: 9px; }
+  /* And air between the name and the report under it: the state pill is a
+     bordered box as tall as the name's line, so on the stack's 1px gap its
+     foot would touch the title's ascenders. */
+  li.line.card:has(.task) > button.row > .stack { gap: 4px; }
   li.line.card:has(> button.row:hover) { background: var(--card-hover); }
   /* While a clipped line scrolls under the pointer, no ellipsis stands at
      the edge it scrolls past, and no fade hides the end it scrolls to. */
@@ -920,9 +924,12 @@
   /* A name carries the card: dark and semibold while the session is doing
      something, grey once it rests, so activity reads before any word does. */
   button.row .label {
-    color: var(--fg); font-weight: 600; font-size: 13.5px;
+    color: var(--fg); font-weight: 600; font-size: 14px;
     letter-spacing: -.02em;
   }
+  /* A card's name line is 18px whatever its size, so the state pill's
+     top, set per card above, stays centred on it. */
+  li.line.card > button.row .label { line-height: 18px; }
   button.row.quiet .label { color: var(--dim); font-weight: 500; }
   .children button.row .label { font-weight: 500; }
 
@@ -1238,7 +1245,8 @@
   }
   /* On a card, in the row's top corner, where every card has room for it;
      the name stops short of it by the room each badge needs, its own width
-     and 6px. */
+     and 6px. Centred on the name's 18px line: the row's top padding plus
+     1px, so 6px on a two-line card and 9px on one carrying a report. */
   button.row > .word { position: absolute; top: var(--badge-top, 6px); right: calc(10px + var(--corner, 0px)); }
   /* A solid amber badge, the one amber badge on the panel. It sits on the
      name's line only: as a flex column it took its width out of the details
@@ -5098,6 +5106,14 @@ function untilReset(at, now) {
   return at - now <= 0 ? "now" : duration(at - now);
 }
 
+// The pace tick in words: what it marks and how far the fill sits from it.
+function tickSaid(used, tick, ahead) {
+  const gap = Math.round(used) - Math.round(tick);
+  const where = gap < 0 ? `${-gap} points under it` : `${gap} points past it`;
+  return `Tick at ${Math.round(tick)}%: where an even spend over the window would be now; `
+    + where + (ahead ? ", ahead of pace" : "");
+}
+
 function meterRow(label, used, at, {tick = null, ahead = false} = {}) {
   used = Math.max(0, Math.min(100, used));
   const row = document.createElement("div");
@@ -5121,9 +5137,10 @@ function meterRow(label, used, at, {tick = null, ahead = false} = {}) {
   if (at) {
     const when = new Date(at * 1000);
     reset.textContent = untilReset(at, Date.now() / 1000);
-    row.title = `${label}: ${Math.round(used)}% used${ahead ? ", ahead of pace" : ""}, resets `
+    row.title = `${label}: ${Math.round(used)}% used, resets `
       + when.toLocaleString(undefined, {weekday: "short", month: "short",
-          day: "numeric", hour: "2-digit", minute: "2-digit"});
+          day: "numeric", hour: "2-digit", minute: "2-digit"})
+      + (tick == null ? "" : `. ${tickSaid(used, tick, ahead)}`);
   }
   row.append(name, track, pct, reset);
   return row;

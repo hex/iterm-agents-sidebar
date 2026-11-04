@@ -23,7 +23,10 @@ A session whose turn has ended stays working while a background shell,
 subagent or workflow it started is still running, because that task's end wakes it. A background command that never ends keeps it working until
 your next prompt. A monitor does not: it only waits for something outside to
 happen, and the watcher Claude Code arms when a session publishes an Artifact
-stays open for as long as the session does.
+stays open for as long as the session does. A teammate is listed until it is
+shut down, idle or not, so a lead that only its teammates hold reads idle on
+the panel once every teammate it counts is carded under it and idle; one
+still working, waiting on you, or not carded at all keeps the lead working.
 
 The hook stamps the time your prompt started the turn, which is what the
 `Long 25m` pill counts from.

@@ -718,6 +718,45 @@ def test_a_lead_counts_the_teammates_working_under_it():
     assert [r.get("busy_kids") for r in rows] == [1, None, None, 1, None, None]
 
 
+def held_team(lead_state="working", teammate_state="idle", tools_running=1, teammates=1, with_teammate=True):
+    lead = dict(TEAM[0], agent_state=lead_state, tools_running=tools_running, teammates=teammates,
+                working_since=1789462000, turn_started=1789462000)
+    team = [lead, dict(TEAM[1], agent_state=teammate_state)] if with_teammate else [lead]
+    return snapshot(team)["groups"][0]["rows"]
+
+
+def test_a_lead_held_working_by_idle_teammates_alone_reads_idle():
+    """Claude Code keeps a teammate in the lead's background list until it is
+    shut down, so a lead whose turn ended hours ago still publishes working
+    while every teammate sits at its prompt. The teammates' own states say
+    whether anything goes on; when nothing does the lead is at rest."""
+    rows = held_team()
+    assert [(r["label"], r["state"]) for r in rows] == [("fignity", "idle"), ("review-351", "idle")]
+    assert "working_since" not in rows[0]
+
+
+def test_a_lead_stays_working_while_a_teammate_works_or_waits():
+    for state in ("working", "blocked"):
+        rows = held_team(teammate_state=state)
+        assert [(r["label"], r["state"]) for r in rows] == [("fignity", "working"), ("review-351", state)]
+        assert rows[0]["working_since"] == 1789462000
+
+
+def test_a_lead_with_a_holder_that_is_not_a_teammate_stays_working():
+    rows = held_team(tools_running=2, teammates=1)
+    assert [(r["label"], r["state"]) for r in rows] == [("fignity", "working"), ("review-351", "idle")]
+
+
+def test_a_lead_whose_teammates_are_not_all_carded_keeps_its_claim():
+    """A teammate without a row is unobserved, not idle: its pane may be
+    one whose transcript cannot be read, or it may have no pane at all. The
+    lead's own word stands until every teammate it counts is seen at rest."""
+    rows = held_team(with_teammate=False)
+    assert [(r["label"], r["state"]) for r in rows] == [("fignity", "working")]
+    rows = held_team(teammates=2, tools_running=2)
+    assert [(r["label"], r["state"]) for r in rows] == [("fignity", "working"), ("review-351", "idle")]
+
+
 def omp_card(state):
     [row] = [r for g in snapshot([{
         "session_id": "0D3E6F55-0000-4000-8000-000000000002",

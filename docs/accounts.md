@@ -38,7 +38,7 @@ the time left until each resets (`2h`, `3d`, `14m`).
 | Green bar | Under 70% of the window used |
 | Amber bar | 70% or more used |
 | Red bar and red percentage | 90% or more used |
-| A tick on a weekly line | Where an even spend across the week would be. None in the first day after a reset |
+| A tick on a weekly line | Where an even spend across the week would be right now: fill short of it means you could spend more before the reset, past it means you run out first. None in the first day after a reset. The row's hover names the tick's figure and the gap |
 | A warm percentage | 15 points or more past that tick |
 | `as of 14:02` | The last reading failed; these are the figures from then |
 | `log in to <name> again` | That account's login stopped working. It clears once Claude Code runs on a new login to it, or when you Add it again while logged in |
