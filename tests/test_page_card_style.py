@@ -106,9 +106,60 @@ def test_each_head_holds_its_settings_in_order(head, keys):
 
 
 def test_the_tab_colour_switch_is_named_as_the_docs_name_it():
-    """A plain switch: it needs no other setting and carries no note."""
+    """A plain switch: it needs no other setting, and its note comes from the frame."""
     assert next(r for r in setting_rows() if r.get("k") == "tab_colour") == \
         {"k": "tab_colour", "label": "Session colour on the tab"}
+
+
+HIDES = "Also hides iTerm2's line under the selected tab."
+
+
+@pytest.mark.parametrize("snapshot, words", [
+    ({}, HIDES),
+    ({"iterm_prefs_folder": None}, HIDES),
+    ({"iterm_prefs_folder": "~/Library/Mobile Documents/com~apple~CloudDocs/iTerm2"},
+     HIDES + " iTerm2 shares its settings from iCloud Drive/iTerm2, so every Mac that loads them gets this too."),
+    ({"iterm_prefs_folder": "~/Library/Mobile Documents/com~apple~CloudDocs"},
+     HIDES + " iTerm2 shares its settings from iCloud Drive, so every Mac that loads them gets this too."),
+    ({"iterm_prefs_folder": "~/Library/Mobile Documents/com~apple~CloudDocs Old/iTerm2"},
+     HIDES + " iTerm2 shares its settings from ~/Library/Mobile Documents/com~apple~CloudDocs Old/iTerm2, so every "
+             "Mac that loads them gets this too."),
+    ({"iterm_prefs_folder": "/Volumes/Shared/iterm"},
+     HIDES + " iTerm2 shares its settings from /Volumes/Shared/iterm, so every Mac that loads them gets this too."),
+], ids=["no frame field", "own settings", "icloud folder", "icloud itself", "a look-alike", "a volume"])
+def test_the_tab_colour_note_says_it_hides_the_underline_and_how_far_that_reaches(snapshot, words):
+    script = "\n".join([function(PAGE, "tabUnderlineNote"), f"""
+const note = {{}};
+tabUnderlineNote(note, {json.dumps(snapshot)});
+console.log(JSON.stringify([note.textContent, note.hidden ?? null]));
+"""])
+    assert run_node(script) == [words, None]
+
+
+def test_the_tab_colour_row_carries_its_note_from_the_latest_frame():
+    """Its switch is described by the note, and a sync reads the frame the page holds then."""
+    script = "\n".join([ELEMENTS, """
+let SETTINGS = {tab_colour: true}, LATEST = {groups: []};
+const SETTING_SYNC = [];
+function push() {}
+const make = document.createElement;
+document.createElement = tag => Object.assign(make(tag), {
+  querySelector(selector) { return this.children.find(child => child.tag === "button"); }});
+""", function(PAGE, "settingSwitch"), function(PAGE, "settingRow"), function(PAGE, "tabUnderlineNote"), """
+const line = settingRow({k: "tab_colour", label: "Session colour on the tab"}, "plain");
+const seen = [];
+SETTING_SYNC.forEach(fn => fn());
+const note = line.children.find(child => child.className === "set-note");
+seen.push(note.textContent);
+LATEST = {groups: [], iterm_prefs_folder: "/Volumes/Shared/iterm"};
+SETTING_SYNC.forEach(fn => fn());
+seen.push(note.textContent);
+console.log(JSON.stringify({seen, id: note.id, describedBy: line.children.at(-1).attrs["aria-describedby"]}));
+"""])
+    assert run_node(script) == {
+        "seen": [HIDES, HIDES + " iTerm2 shares its settings from /Volumes/Shared/iterm, so every Mac that loads them "
+                                "gets this too."],
+        "id": "set-note-tab_colour", "describedBy": "set-note-tab_colour"}
 
 
 def test_every_setting_sits_under_one_head_only():

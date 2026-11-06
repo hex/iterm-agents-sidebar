@@ -5104,6 +5104,8 @@ function paintAll(snapshot) {
   paintVersion();
   paintRepository();
   paintOffers(snapshot);
+  const underline = document.getElementById("set-note-tab_colour");
+  if (underline) tabUnderlineNote(underline, snapshot);
   // Work crossing a pair: a new landing starts, and one already playing draws onto the badge, which the paint left at rest, at once.
   for (const id of landingNow.keys()) stepLanding(id);
   playLandings(snapshot.partners);
@@ -7495,6 +7497,10 @@ function syncPhases(node) {
 // the live node every frame, so a kept node runs this frame's closure with
 // this frame's row. A built node that is dropped never gets a listener; the
 // trampoline, one per type, is installed when the node becomes live.
+// Only a morph makes a node live (update() for one it keeps, adopted() for
+// one it inserts), so on() on a node inserted any other way attaches
+// nothing; such a node uses addEventListener, which test_page_in_place
+// allows only in the functions it lists in LISTENER_OWNERS.
 function on(el, type, handler) {
   (el._on ||= {})[type] = handler;
 }
@@ -8437,11 +8443,12 @@ function settingRow(row, kind) {
     SETTING_SYNC.push(() => { line.hidden = SETTINGS.offer_statusline !== false && SETTINGS.offer_tab_status !== false; });
     return line;
   }
-  const note = (row.note || row.k === "follow_terminal" || row.k === "tab_status") && Object.assign(document.createElement("span"),
+  const note = (row.note || row.k === "follow_terminal" || row.k === "tab_status" || row.k === "tab_colour") && Object.assign(document.createElement("span"),
                                          {className: "set-note", id: `set-note-${row.k}`, textContent: row.note || ""});
   if (note) line.append(note);
   if (row.k === "follow_terminal") SETTING_SYNC.push(() => terminalBackgroundNote(note, LATEST));
   if (row.k === "tab_status") SETTING_SYNC.push(() => tabStatusNote(note, LATEST));
+  if (row.k === "tab_colour") SETTING_SYNC.push(() => tabUnderlineNote(note, LATEST));
   const off = () => !!(row.needs && !SETTINGS[row.needs]);
 
   if (row.choices) {
@@ -8931,6 +8938,14 @@ function takeOffer(offer) {
 function tabStatusNote(note, snapshot) {
   note.hidden = snapshot.tab_status !== "unavailable";
   note.textContent = "Needs iTerm2 3.7.6";
+}
+
+// The settings line under the tab tint: what else it changes in iTerm2, and,
+// when iTerm2 shares its settings from a folder, that the change goes with them.
+function tabUnderlineNote(note, snapshot) {
+  const folder = snapshot.iterm_prefs_folder?.replace(/^~\/Library\/Mobile Documents\/com~apple~CloudDocs(?=\/|$)/, "iCloud Drive");
+  note.textContent = "Also hides iTerm2's line under the selected tab."
+    + (folder ? ` iTerm2 shares its settings from ${folder}, so every Mac that loads them gets this too.` : "");
 }
 
 function push(change) {

@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 import accounts
-from conftest import LOGIN_KEYCHAIN
+from conftest import LOGIN_KEYCHAIN, iterm_prefs
 
 REPO = Path(__file__).resolve().parent.parent
 SERVICE = "agents-sidebar-accounts"
@@ -305,3 +305,90 @@ def test_a_quoted_script_path_can_contain_a_literal_dollar_sign(tmp_path):
     result = run("uninstall.sh", home, STATUS_TOOL="different-directory")
     assert (result.returncode, result.stderr) == (0, "")
     assert json.loads(settings.read_text()) == {"statusLine": {"type": "command", "command": command}}
+
+
+UNDERLINE = "MinimalSelectedTabUnderlineProminence"
+
+
+def iterm_sets(*value):
+    subprocess.run(["/usr/bin/defaults", "write", os.environ["AGENTS_SIDEBAR_ITERM_PREFS"], UNDERLINE, *value],
+                   check=True)
+
+
+def underline_record(home, record):
+    status = home / ".claude" / "agents-sidebar-status"
+    status.mkdir(parents=True, exist_ok=True)
+    (status / "tab-underline.json").write_text(json.dumps(record))
+
+
+@pytest.mark.parametrize("kept, after", [
+    (None, {}),
+    ({"type": "float", "value": "0.4"}, {UNDERLINE: 0.4000000059604645}),
+    ({"type": "string", "value": "0.5"}, {UNDERLINE: "0.5"}),
+    ({"type": "boolean", "value": "1"}, {UNDERLINE: True}),
+], ids=["unset", "float", "string", "boolean"])
+def test_uninstall_puts_back_the_line_under_the_selected_tab_that_the_panel_held(tmp_path, kept, after):
+    home = tmp_path / "home"
+    underline_record(home, {"kept": kept})
+    iterm_sets("-float", "0")
+    result = run("uninstall.sh", home)
+    assert (result.returncode, result.stderr, iterm_prefs()) == (0, "", after)
+    assert "  ✓ underline   iTerm2's line under the selected tab is back\n" in result.stdout
+
+
+@pytest.mark.parametrize("change, after", [(["-float", "0.7"], {UNDERLINE: 0.699999988079071}), (None, {})],
+                         ids=["set again", "deleted"])
+def test_uninstall_leaves_a_line_under_the_selected_tab_the_user_changed_since(tmp_path, change, after):
+    """A key the user deleted makes `defaults read` exit 1, which must not end the uninstall under set -e."""
+    home = tmp_path / "home"
+    underline_record(home, {"kept": None})
+    if change:
+        iterm_sets(*change)
+    result = run("uninstall.sh", home)
+    assert (result.returncode, result.stderr, iterm_prefs()) == (0, "", after)
+    assert "  - underline   changed since the panel hid it; left as it is\n" in result.stdout
+    assert "  ✓ data        settings, state and the account store removed\n" in result.stdout
+
+
+@pytest.mark.parametrize("record, said", [
+    ({"aside": True}, "  - underline   yours while the tab tint was on; left as it is\n"),
+    (None, "  - underline   not hidden by the panel\n"),
+], ids=["the users", "no record"])
+def test_uninstall_leaves_a_line_the_panel_never_held(tmp_path, record, said):
+    home = tmp_path / "home"
+    if record:
+        underline_record(home, record)
+    iterm_sets("-float", "0")
+    result = run("uninstall.sh", home)
+    assert (result.returncode, result.stderr, iterm_prefs()) == (0, "", {UNDERLINE: 0.0})
+    assert said in result.stdout
+
+
+def test_an_underline_that_cannot_be_put_back_is_warned_about_and_the_uninstall_goes_on(tmp_path):
+    home = tmp_path / "home"
+    underline_record(home, {"kept": None})
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    domain = str(locked / "com.googlecode.iterm2")
+    subprocess.run(["/usr/bin/defaults", "write", domain, UNDERLINE, "-float", "0"], check=True)
+    locked.chmod(0o555)
+    result = run("uninstall.sh", home, AGENTS_SIDEBAR_ITERM_PREFS=domain)
+    assert (result.returncode, result.stderr) == (
+        0, f"  ! underline   still hidden; defaults delete said Domain ({domain}) not found. "
+           "Defaults have not been changed.\n")
+    assert not (home / ".claude" / "agents-sidebar-status").exists()
+
+
+@pytest.mark.parametrize("kept, why", [
+    ({"type": "dictionary", "value": "{}"}, "kept {'type': 'dictionary', 'value': '{}'}"),
+    ({"type": "float"}, "kept {'type': 'float'}"),
+    ("0.4", "'str' object has no attribute 'get'"),
+], ids=["a type defaults cannot write back", "no value", "not an object"])
+def test_an_underline_record_the_panel_did_not_write_is_warned_about_and_left(tmp_path, kept, why):
+    home = tmp_path / "home"
+    underline_record(home, {"kept": kept})
+    iterm_sets("-float", "0")
+    result = run("uninstall.sh", home)
+    record = home / ".claude" / "agents-sidebar-status" / "tab-underline.json"
+    assert (result.returncode, result.stderr, iterm_prefs()) == (
+        0, f"  ! underline   {record} unreadable: {why}; left as it is\n", {UNDERLINE: 0.0})

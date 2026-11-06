@@ -109,6 +109,60 @@ else
   skip statusline "no settings.json"
 fi
 
+# iTerm2's line under the selected tab, which the panel holds at 0 while the
+# tab tint is on: back to what was there, unless it changed since. `defaults`
+# ignores HOME, so AGENTS_SIDEBAR_ITERM_PREFS names another domain for tests.
+underline="$status_dir/tab-underline.json"
+iterm_prefs="${AGENTS_SIDEBAR_ITERM_PREFS:-com.googlecode.iterm2}"
+if [ -f "$underline" ]; then
+  said=$(python3 - "$underline" "$iterm_prefs" <<'PY'
+import json, re, subprocess, sys
+path, domain = sys.argv[1], sys.argv[2]
+key = "MinimalSelectedTabUnderlineProminence"
+flags = {"float": "-float", "string": "-string", "integer": "-int", "boolean": "-bool"}
+def leave(text, code):
+    print(text)
+    sys.exit(code)
+def defaults(*words):
+    done = subprocess.run(["/usr/bin/defaults", *words], capture_output=True, text=True)
+    text = " ".join(line.strip() for line in done.stderr.splitlines() if line.strip())
+    complaint = re.sub(r"^\S+ \S+ defaults\[[\d:]+\]\s*", "", text) or "nothing"
+    return done.returncode, done.stdout[:-1] if done.stdout.endswith("\n") else done.stdout, complaint
+try:
+    record = json.load(open(path))
+    kept = None if record == {"aside": True} else record["kept"]
+    if kept is not None and (kept.get("type") not in flags or not isinstance(kept.get("value"), str)):
+        raise ValueError(f"kept {kept!r}")
+except (ValueError, KeyError, TypeError, AttributeError) as error:
+    leave(f"{path} unreadable: {error}; left as it is", 1)
+if record == {"aside": True}:
+    leave("yours while the tab tint was on; left as it is", 3)
+code, now, _ = defaults("read", domain, key)
+try:
+    zero = code == 0 and float(now) == 0
+except ValueError:
+    zero = False
+if not zero:
+    leave("changed since the panel hid it; left as it is", 3)
+if kept is None:
+    verb, code, _, complaint = "delete", *defaults("delete", domain, key)
+else:
+    value = {"1": "true", "0": "false"}.get(kept["value"], kept["value"]) if kept["type"] == "boolean" else kept["value"]
+    verb, code, _, complaint = "write", *defaults("write", domain, key, flags[kept["type"]], value)
+if code:
+    leave(f"still hidden; defaults {verb} said {complaint}", 1)
+leave("iTerm2's line under the selected tab is back", 0)
+PY
+  ) && outcome=0 || outcome=$?
+  case "$outcome" in
+    0) ok underline "$said" ;;
+    3) skip underline "$said" ;;
+    *) warn underline "$said" ;;
+  esac
+else
+  skip underline "not hidden by the panel"
+fi
+
 # omp's extension, only while it is the file we wrote.
 if removed=$(bash "$repo/omp-extension.sh" --remove 2>&1); then
   if [ -n "$removed" ]; then ok omp "$(tilde "$removed") removed"; else skip omp "not installed"; fi

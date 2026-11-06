@@ -189,6 +189,9 @@ read against the source.
   taken back when the session exits or goes unreported, the setting goes off or the daemon stops.
 - `tabcolour.py`: each card's tab in its cs session colour, mixed over the pane's own backgrounds, written
   through the session's own profile, put back when it no longer applies, and known by its colours after a restart.
+- `tabunderline.py`: iTerm2's line under the selected tab, held at 0 through `defaults` while the tab tint is on
+  and put back when it goes off, with what goes back in `tab-underline.json`; and the folder iTerm2 shares its
+  settings from.
 - `update.py`: checks the mirror for a newer release and takes it.
 - `links.py`: links between two cards, the one-shot hand-off, through each session's links folder.
 - `partners.py`: partner sessions: the record, each end's `partner.json`, and the tasks between them.
@@ -356,7 +359,8 @@ of a guess.
   each session, with its `.lock` and, for a large state, its `.published` file.
 - `~/.claude/agents-sidebar-tasks/`: each session's task note.
 - `~/.claude/agents-sidebar-status/`: the statusline payloads and lines,
-  `daemon.log`, `partners.json` and `activity.json`.
+  `original-statusline`, `daemon.log`, `partners.json`, `activity.json`,
+  `tab-underline.json` and the `tones/` folder.
 - `~/.claude/agents-sidebar-links/<session id>/`: each session's link,
   partner and remote control files.
 - `~/.claude/agents-sidebar-settings.json`: the panel's settings.
@@ -378,6 +382,11 @@ of the suite, and skips only on a machine without bun.
 `tests/test_link_mod.py` runs the mod's kit tests with `claude plugin test`
 on `plugin/` as the install ships it, and skips only on a machine without
 `claude`.
+
+`defaults` ignores `HOME`, so a spare home still reaches this Mac's iTerm2
+settings. An autouse fixture in `tests/conftest.py` points
+`tabunderline.DOMAIN` at a plist in each test's own folder, and sets
+`AGENTS_SIDEBAR_ITERM_PREFS`, which `uninstall.sh` reads, to the same path.
 
 `Bridge` is the only part that talks to iTerm2, and its tests pin how it takes
 its readings (`tests/test_rebuild.py`: one process listing per rebuild, read in

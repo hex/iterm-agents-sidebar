@@ -51,6 +51,7 @@ import marks  # noqa: E402
 import statusline  # noqa: E402
 import tabcolour  # noqa: E402
 import tabstatus  # noqa: E402
+import tabunderline  # noqa: E402
 import update  # noqa: E402
 
 #: Where the `cs` tool keeps its managed sessions. A terminal sitting anywhere
@@ -4132,6 +4133,10 @@ class Bridge:
         #: The default profile's font, read once at start: a profile edited
         #: later shows after the daemon restarts.
         self.terminal_font = None
+        #: The folder iTerm2 shares its settings from, home as ~, read once at
+        #: start; None while iTerm2 keeps its own, reads them from a URL,
+        #: never saves to the folder, or was not asked.
+        self.iterm_prefs_folder = None
         #: The front session's background, read each rebuild while the panel
         #: follows it; None when the last read failed.
         self.terminal_background = None
@@ -4202,6 +4207,8 @@ class Bridge:
         self.status = tabstatus.Writer(invoke=self.invoke_function)
         #: Paints each card's tab in its session colour and puts back what it replaced.
         self.tab_colours = tabcolour.Painter()
+        #: Hides iTerm2's line under the selected tab while the tint is on, and puts back what was there.
+        self.tab_underline = tabunderline.Underline(os.path.join(STATUS_DIR, "tab-underline.json"))
         #: Plays the panel's sounds; main() makes it before the server takes
         #: its first request, since making it writes the tone files.
         self.player = None
@@ -4548,6 +4555,7 @@ class Bridge:
                                here=local_host())
         self.latest["version"] = version()
         self.latest["terminal_font"] = self.terminal_font
+        self.latest["iterm_prefs_folder"] = self.iterm_prefs_folder
         if settings["follow_terminal"]:
             await self.read_terminal_background()
         else:
@@ -4588,6 +4596,7 @@ class Bridge:
         hooks = statusline.cc_status(CLAUDE_SETTINGS)
         await self.status.step(self.app, agent_rows, self.unseen.sids, settings, hooks, self.log)
         await self.tab_colours.step(self.app, agent_rows, settings, self.log)
+        await self.tab_underline.step(settings["tab_colour"], self.log)
         note = tabstatus.notice(settings, hooks, self.status.available)
         if note:
             self.latest["tab_status"] = note
@@ -4976,6 +4985,16 @@ class Bridge:
             return
         if self.terminal_font is None:
             self.log("terminal font refused:", repr(profile.normal_font))
+
+    async def read_iterm_prefs_folder(self):
+        """Keep the folder iTerm2 shares its settings from, for the tab tint's
+        note. A failed read is logged and leaves None."""
+        try:
+            folder = await tabunderline.settings_folder()
+        except (tabunderline.Failed, OSError) as error:
+            self.log("iTerm2 settings folder not read:", error)
+            return
+        self.iterm_prefs_folder = tilde_path(Path(folder)) if folder else None
 
     async def read_terminal_background(self):
         """Keep the background of the session in front of the key window, for
@@ -5496,6 +5515,7 @@ async def main(connection):
     bridge.player = sound.Player.for_dir(os.path.join(STATUS_DIR, "tones"), bridge.log)
     bridge.app = await iterm2.async_get_app(connection)
     await bridge.read_terminal_font()
+    await bridge.read_iterm_prefs_folder()
     # The tab statuses come off before the daemon goes: a tab still saying
     # working after the panel has stopped is old news passed off as current.
     asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(bridge.stop()))

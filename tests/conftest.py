@@ -1,6 +1,7 @@
 # ABOUTME: Settings shared by the whole suite: every Keychain call the tests reach
 # ABOUTME: names the login keychain by path, so a spare HOME never raises a dialog.
 import os
+import plistlib
 import pwd
 import sys
 import time
@@ -65,6 +66,23 @@ def daemon_dirs_of_the_test(request, monkeypatch, tmp_path_factory):
     for module in sidebar_modules(request.module):
         monkeypatch.setattr(module, "STATUS_DIR", str(status))
         monkeypatch.setattr(module, "HOOK_STATE_DIR", str(hook_state))
+
+
+@pytest.fixture(autouse=True)
+def iterm_prefs_of_the_test(monkeypatch, tmp_path_factory):
+    """Every `defaults` call the tests reach, the daemon's and uninstall.sh's, names a plist in the test's own
+    folder: `defaults` ignores HOME, so a spare one would still write this machine's iTerm2 settings."""
+    import tabunderline
+    domain = str(tmp_path_factory.mktemp("iterm-prefs") / "com.googlecode.iterm2")
+    monkeypatch.setattr(tabunderline, "DOMAIN", domain)
+    monkeypatch.setenv("AGENTS_SIDEBAR_ITERM_PREFS", domain)
+
+
+def iterm_prefs():
+    """The test's own iTerm2 settings as their plist holds them; `defaults` adds .plist to a path domain."""
+    import tabunderline
+    path = Path(tabunderline.DOMAIN + ".plist")
+    return plistlib.loads(path.read_bytes()) if path.exists() else {}
 
 
 @pytest.fixture

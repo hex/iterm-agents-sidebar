@@ -575,6 +575,31 @@ tab, and what comes back later is still the profile's own. A stopped daemon
 leaves the tabs as they are; the next one finds its own tints by their
 colours and keeps them, repaints them or turns them off.
 
+While the setting is on, the panel also hides the white line iTerm2's Minimal
+theme draws under the selected tab. It sets iTerm2's advanced setting
+`MinimalSelectedTabUnderlineProminence` to 0, which iTerm2 applies at once.
+The note under the switch, on or off, says `Also hides
+iTerm2's line under the selected tab.` This is an iTerm2 setting, not a
+profile one. When iTerm2 loads its settings from a custom folder and saves
+changes to it, at once or when it quits, this change goes there too, so
+every Mac that loads them from that folder loses the line as well, and gets
+it back when the setting goes off or you uninstall the panel. The note
+under the switch then names the folder, with a folder in iCloud Drive shown
+as `iCloud Drive/...`. The daemon reads where iTerm2 saves its settings when
+it starts, so after you change that in iTerm2, the note catches up when the
+panel restarts.
+
+Turning the setting off puts back what was there: the value you had, in the
+type `defaults` kept it in, or no value at all. Uninstall does the same. A value
+you change while the panel holds the line at 0 is yours: the panel leaves it,
+even after the setting goes off, and the log says `tab underline taken back`
+once. A line you had already hidden yourself is yours: the log says
+`tab underline own` when the setting comes on, and the line stays hidden
+after it goes off. The panel acts only when the
+setting changes and when its daemon starts, and it keeps what it replaced in
+`~/.claude/agents-sidebar-status/tab-underline.json`, so a restarted daemon
+neither hides the line again nor loses what goes back.
+
 ## A long name
 
 A card name too long for its row fades out at the edge. Every few seconds it
@@ -1043,7 +1068,9 @@ It prints the checkout path and a quoted command to delete it. See
 [what uninstall removes and keeps](integrations.md#uninstall).
 
 Your saved statusline comes back unless its absolute script path is missing;
-then uninstall removes `statusLine` and warns with the path. With the bridge
+then uninstall removes `statusLine` and warns with the path. iTerm2's line
+under the selected tab comes back too, unless you hid it yourself or changed
+its setting after the panel hid it ([The session's colour on its tab](#the-sessions-colour-on-its-tab)). With the bridge
 installed, a command that exits 127 displays
 `status line: <command or script> not found`. Other failures keep its last line.
 

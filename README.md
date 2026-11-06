@@ -68,7 +68,8 @@ the other panel data still goes. It leaves the checkout, the `.before-agents-sid
 the writable directory line in `~/.codex/config.toml`. The command prints a
 quoted command to delete the checkout. Settings shows the uninstall log's path.
 Uninstall restores your saved statusline unless its absolute script path is
-missing; then it removes `statusLine` and warns with that path. You can also
+missing; then it removes `statusLine` and warns with that path. It also puts
+back iTerm2's line under the selected tab, unless you hid it yourself or changed it since. You can also
 run `./uninstall.sh` from the checkout, with `--keep-accounts` to keep logins.
 
 Notifications need `swiftc`, from the Xcode Command Line Tools
@@ -157,8 +158,10 @@ Each agent's tab says the same under its title: `working`, `needs you` with
 the question, `done`, or `idle`, in the panel's colours ([usage](docs/usage.md#the-status-under-a-tab)).
 A cs session's tab takes a tint of the session's colour, 35% of it over the
 pane's background, on by default. iTerm2 colours a tab from its active pane,
-and a pane with a tab colour of its own keeps it
-([usage](docs/usage.md#the-sessions-colour-on-its-tab)).
+and a pane with a tab colour of its own keeps it. While the tint is on, the
+panel hides the line iTerm2's Minimal theme draws under the selected tab.
+When iTerm2 saves its settings to a shared folder, every Mac that loads them
+from there loses the line too, and gets it back when the tint goes off ([usage](docs/usage.md#the-sessions-colour-on-its-tab)).
 
 An omp session reports its state through the extension the install writes:
 when a turn starts and ends, when an approval or a question waits on you, and

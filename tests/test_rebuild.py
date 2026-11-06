@@ -22,6 +22,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import iterm_fakes  # noqa: E402
 from iterm_fakes import Api, Colour  # noqa: E402
+from conftest import iterm_prefs  # noqa: E402
 
 spec = importlib.util.spec_from_file_location(
     "sidebar", Path(__file__).resolve().parent.parent / "sidebar.py")
@@ -1660,6 +1661,50 @@ def test_a_rebuild_paints_a_cards_tab_in_its_session_colour_over_the_panes_backg
     b.read_sessions = read_sessions
     asyncio.run(b._rebuild_once())
     assert pane.writes == [{"tab_color": Colour(240, 202, 178), "use_tab_color": True}]
+
+
+def test_a_rebuild_with_the_tab_tint_on_hides_the_line_under_the_selected_tab_and_names_no_folder_before_the_read(monkeypatch):
+    """On by default; the daemon reads where iTerm2 keeps its settings once at start, which no test bridge runs."""
+    b = bridge(monkeypatch, [])
+    b.server = Frames()
+    asyncio.run(b._rebuild_once())
+    assert iterm_prefs() == {"MinimalSelectedTabUnderlineProminence": 0.0}
+    assert json.loads(Path(sidebar.STATUS_DIR, "tab-underline.json").read_text()) == {"kept": None}
+    assert b.server.sent[-1]["iterm_prefs_folder"] is None
+
+
+def test_a_line_that_cannot_be_hidden_is_logged_and_the_rebuild_goes_on(monkeypatch, tmp_path, capsys):
+    locked = tmp_path / "locked"
+    locked.mkdir(mode=0o555)
+    monkeypatch.setattr(sidebar.tabunderline, "DOMAIN", str(locked / "com.googlecode.iterm2"))
+    b = bridge(monkeypatch, [])
+    b.server = Frames()
+    asyncio.run(b._rebuild_once())
+    assert capsys.readouterr().out == (
+        f"sidebar: tab underline: defaults write said Could not write domain {locked}/com.googlecode.iterm2; exiting\n")
+    assert (len(b.server.sent), b.healthy()) == (1, True)
+
+
+def test_the_folder_iterm2_shares_its_settings_from_reaches_the_page_with_home_as_a_tilde(monkeypatch):
+    for key, value in (("LoadPrefsFromCustomFolder", ["-bool", "true"]),
+                       ("NoSyncNeverRemindPrefsChangesLostForFile", ["-bool", "true"]),
+                       ("NoSyncNeverRemindPrefsChangesLostForFile_selection", ["-int", "2"]),
+                       ("PrefsCustomFolder", ["-string", str(Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/iTerm2")])):
+        subprocess.run(["/usr/bin/defaults", "write", sidebar.tabunderline.DOMAIN, key, *value], check=True)
+    b = bridge(monkeypatch, [])
+    b.server = Frames()
+    asyncio.run(b.read_iterm_prefs_folder())
+    asyncio.run(b._rebuild_once())
+    assert b.server.sent[-1]["iterm_prefs_folder"] == "~/Library/Mobile Documents/com~apple~CloudDocs/iTerm2"
+
+
+def test_a_folder_that_cannot_be_read_is_logged_and_the_page_told_nothing(monkeypatch, tmp_path, capsys):
+    missing = tmp_path / "no-defaults"
+    monkeypatch.setattr(sidebar.tabunderline, "DEFAULTS", str(missing))
+    b = bridge(monkeypatch, [])
+    asyncio.run(b.read_iterm_prefs_folder())
+    assert (b.iterm_prefs_folder, capsys.readouterr().out) == (
+        None, f"sidebar: iTerm2 settings folder not read: [Errno 2] No such file or directory: '{missing}'\n")
 
 
 class TwoPanes(NoWindows):

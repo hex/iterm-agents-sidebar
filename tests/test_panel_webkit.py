@@ -1,8 +1,8 @@
-# ABOUTME: Six native WKWebViews load the real panel from a real daemon, as six iTerm2 windows' Toolbelts do.
-# ABOUTME: The slow native test (about 5 s): it compiles a probe with clang and needs a window server.
+# ABOUTME: Native WKWebViews load the real panel from a real daemon, as iTerm2 windows' Toolbelts do.
+# ABOUTME: The slow native tests (about 5 s each): each compiles a probe with clang and needs a window server.
 """WebKit gives a host six HTTP connections. A panel that held one open for
 its live frames left a sixth window's Allow, Deny and answers waiting forever
-behind the streams, so this loads six panels and times a fetch from the last.
+behind the streams, so one test loads six panels and times a fetch from the last.
 """
 import asyncio
 import ctypes
@@ -117,28 +117,31 @@ def window_server():
     return bool(session)
 
 
-@pytest.mark.asyncio
-async def test_native_webkit_six_panels_leave_room_for_a_fetch(tmp_path):
+def built_probe(tmp_path):
+    """The probe compiled into tmp_path, or the test skipped where it cannot run."""
     if sys.platform != "darwin":
         pytest.skip("WKWebView is macOS only")
     if shutil.which("clang") is None:
         pytest.skip("no clang to build the probe")
     if not window_server():
         pytest.skip("no window server for the panels")
-
     source = tmp_path / "probe.m"
     source.write_text(PROBE)
     probe_path = tmp_path / "probe"
     built = subprocess.run(["clang", "-fobjc-arc", "-framework", "Cocoa", "-framework", "WebKit",
                             str(source), "-o", str(probe_path)], capture_output=True, text=True)
     assert built.returncode == 0, built.stderr
+    return probe_path
 
-    sidebar = Sidebar(token=TOKEN, page_path=ROOT / "page.html", snapshot_fn=lambda: PAYLOAD,
+
+async def probed(tmp_path, payload, panels, script):
+    """-> the lines the probe printed after `panels` panels loaded the page over `payload` and the last ran `script`."""
+    probe_path = built_probe(tmp_path)
+    sidebar = Sidebar(token=TOKEN, page_path=ROOT / "page.html", snapshot_fn=lambda: payload,
                       action_fn=lambda *a: None, settings_path=tmp_path / "settings.json")
     port = await Server(sidebar).start()
-
     probe = await asyncio.create_subprocess_exec(
-        str(probe_path), f"http://127.0.0.1:{port}/?token={TOKEN}", str(PANELS), MEASURE,
+        str(probe_path), f"http://127.0.0.1:{port}/?token={TOKEN}", str(panels), script,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         out, err = await asyncio.wait_for(probe.communicate(), timeout=30)
@@ -146,10 +149,33 @@ async def test_native_webkit_six_panels_leave_room_for_a_fetch(tmp_path):
         if probe.returncode is None:
             probe.kill()
             await probe.wait()
-
     lines = out.decode().splitlines()
     print("\n".join(lines))
     assert probe.returncode == 0, (lines, err.decode()[-2000:])
+    return lines
+
+
+@pytest.mark.asyncio
+async def test_native_webkit_six_panels_leave_room_for_a_fetch(tmp_path):
+    lines = await probed(tmp_path, PAYLOAD, PANELS, MEASURE)
     timings = [json.loads(line) for line in lines if line.startswith("{")]
     assert [timing["status"] for timing in timings] == [200, 200, 200]
     assert all(timing["ms"] < 1000 for timing in timings), timings
+
+
+TINT_NOTE = """(async () => {
+  const post = line => window.webkit.messageHandlers.result.postMessage(line);
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  post(JSON.stringify(document.getElementById("set-note-tab_colour")?.textContent ?? null));
+  post("DONE");
+})(); undefined;"""
+
+
+@pytest.mark.asyncio
+async def test_the_tab_tints_note_names_the_folder_iterm2_shares_its_settings_from(tmp_path):
+    """The sheet is built before the first frame lands, so only a note the frame repaints names the folder."""
+    payload = {"groups": [], "iterm_prefs_folder": "~/Library/Mobile Documents/com~apple~CloudDocs/iTerm2"}
+    lines = await probed(tmp_path, payload, 1, TINT_NOTE)
+    assert [json.loads(line) for line in lines if line != "DONE"] == [
+        "Also hides iTerm2's line under the selected tab. iTerm2 shares its settings from iCloud Drive/iTerm2, so "
+        "every Mac that loads them gets this too."]

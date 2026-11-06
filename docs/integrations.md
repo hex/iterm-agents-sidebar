@@ -308,6 +308,15 @@ Uninstall stops the daemon and removes:
 - the panel's settings, state and linked-cards folder
 - by default, the account store and the Keychain items of every stored login
 
+While the panel holds iTerm2's line under the selected tab at 0, uninstall
+puts back what `MinimalSelectedTabUnderlineProminence` held before: the same
+value in the same type, or no value. A value changed since then stays, and
+the command says so on its `underline` line. A line you hid yourself stays
+hidden, and the line says so too. If `defaults` refuses, or the record is
+unreadable, the `underline` line warns and the line stays hidden. The record
+still goes with the status folder, so bring the line back with
+`defaults delete com.googlecode.iterm2 MinimalSelectedTabUnderlineProminence`.
+
 With **Keep my account logins** or `--keep-accounts`, it leaves
 `~/.config/agents-sidebar/accounts.json` and its Keychain items. Other files
 in that directory, including account locks, still go. The command reports
