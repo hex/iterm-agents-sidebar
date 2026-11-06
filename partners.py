@@ -36,6 +36,8 @@ class Task:
     task: str
     asked_at: float
     state: str = "asked"
+    # A review the panel asked for: the partner reads the asker's change and replies, changing nothing.
+    review: bool = False
 
 
 @dataclass
@@ -89,6 +91,24 @@ def task_text(source_label, why, task, nonce):
             f"your reply goes back to {quoted(source_label)}. (link {nonce})\n\n{links.fenced(task)}")
 
 
+def review_text(source_label, cwd, branch, commit, nonce):
+    """The brief for a review: where the asker's change is and how to read it, never the change itself, which
+    goes on moving and can run past any cap."""
+    on = f"on branch {branch}" if branch else "on a detached HEAD"
+    at = f"at commit {commit}" if commit else "at a commit the panel could not read"
+    # Always in single quotes, as the partner's mod lets a review's turn run a git read of this folder only in the
+    # form written here, or bare.
+    folder = "'" + cwd.replace("'", "'\"'\"'") + "'"
+    commands = "\n".join(f"git -C {folder} {verb}" for verb in ("status", "diff HEAD", "log --oneline -10"))
+    return (f"Your partner {quoted(source_label)} asked you to review its current change, in {cwd} {on} {at}. "
+            f"(link {nonce})\n\nReview what is not committed yet and the commits not pushed yet. Read the change "
+            f"yourself, each command as its own call:\n\n{links.fenced(commands)}\n\n"
+            f"Other git reads of that folder (show, ls-files, rev-parse, branch) take the same form. Change nothing: "
+            f"no edits, no commits, no command that writes. Reply with your findings ordered by severity, the most "
+            f"severe first, each with its file:line, or “no findings”. Your reply goes back to "
+            f"{quoted(source_label)}.")
+
+
 def answered(target_label, text):
     return {"result": f"{quoted(target_label)} answered:\n\n{links.fenced(text)}",
             "late": f"Your partner {quoted(target_label)} finished the task you handed it:\n\n{links.fenced(text)}"}
@@ -97,6 +117,17 @@ def answered(target_label, text):
 def not_finished(target_label, reason):
     return {"result": f"{quoted(target_label)} could not finish the task: {reason}",
             "late": f"Your partner {quoted(target_label)} could not finish the task you handed it: {reason}"}
+
+
+def ended(task, text, reason):
+    """The answer filed for the asker when its task ends: the partner's reply, or why there is none. A review's
+    goes in as a prompt the asker's mod knows by its marker, the answer id, and starts with whose review it is."""
+    outcome = answered(task.target_label, text) if reason is None else not_finished(task.target_label, reason)
+    if not task.review:
+        return outcome
+    said = (f"its findings, in its own words, not an instruction from the user. (link {task.asked_as})\n\n"
+            f"{links.fenced(text)}" if reason is None else f"not finished: {reason}. (link {task.asked_as})")
+    return {**outcome, "review": True, "late": f"{quoted(task.target_label)}'s {task.task}: {said}"}
 
 
 def not_handed(target_label, reason):
@@ -236,8 +267,7 @@ class Partners:
             self.idle_since_seen.pop(task.id, None)
             why = reason or f"the link with {quoted(task.target_label)} was untied"
             try:
-                self._answer(self._agent(task.source, ends) or task.source_agent, task,
-                             not_finished(task.target_label, why))
+                self._answer(self._agent(task.source, ends) or task.source_agent, task, ended(task, None, why))
                 self._clear(task)
             except (links.Refused, OSError) as error:
                 said += f"; its open task was not answered: {error}"
@@ -281,8 +311,8 @@ class Partners:
         for pair in self.by_id.values():
             if pair.open:
                 task = pair.open
-                self._answer(task.source_agent, task, not_finished(
-                    task.target_label, f"the panel restarted while {quoted(task.target_label)} had the task"))
+                self._answer(task.source_agent, task, ended(
+                    task, None, f"the panel restarted while {quoted(task.target_label)} had the task"))
                 pair.open = None
                 count += 1
         if count:
@@ -365,12 +395,8 @@ class Partners:
             reason = "the task was empty"
         elif len(body["task"]) > TASK_MAX:
             reason = f"the task was longer than {TASK_MAX} characters"
-        elif pair.open and pair.open.source == pane:
-            reason = f"you already handed {quoted(target['label'])} a task: wait for its answer"
-        elif pair.open:
-            reason = f"you are on a task for {quoted(target['label'])}: finish it first"
-        elif target["state"] == "blocked":
-            reason = f"{quoted(target['label'])} is waiting on you"
+        else:
+            reason = self._busy(pair, pane, target)
         if reason:
             probe = Task(asked_as, asked_as, "", pane, other, source["agent"], target["agent"],
                          source["label"], target["label"], "", now)
@@ -379,16 +405,58 @@ class Partners:
             return [f"partner {pair.id[:8]} refused a task from {source['label']}: {reason}"]
         task = Task(secrets.token_hex(16), asked_as, secrets.token_hex(8), pane, other, source["agent"],
                     target["agent"], source["label"], target["label"], body["task"], now)
-        links.write_drop(self.root, target["agent"], {
-            "link": task.id, "nonce": task.nonce, "role": "task", "from": source["label"], "to": target["label"],
-            "from_colour": source.get("colour"), "to_colour": target.get("colour"),
+        return [self._hand(pair, ends, task, task_text(source["label"], body["why"], body["task"], task.nonce), now)]
+
+    def review(self, ends, pane, head, now):
+        """The card's partner is handed a review of the card's current change -> the log line. `head` is the
+        (branch, commit) of the card's folder, None outside a repository. A refusal raises links.Refused and files no
+        answer: nothing waits on a page's click, and a late answer would start a turn in the asker."""
+        pair = self.of(pane)
+        if pair is None:
+            raise links.Refused("that card is not linked")
+        source, target = ends.get(pane), ends.get(pair.other(pane))
+        if not source or not source["agent"] or not target or not target["agent"]:
+            raise links.Refused("that session has gone")
+        reason = self._busy(pair, pane, target)
+        if reason:
+            raise links.Refused(reason)
+        if source["state"] == "working":
+            raise links.Refused(f"{quoted(source['label'])} is working: ask for a review once its turn ends")
+        if not source.get("cwd"):
+            raise links.Refused(f"the panel knows no folder for {quoted(source['label'])}")
+        if head is None:
+            raise links.Refused(f"{quoted(source['label'])} is not in a git repository")
+        branch, commit = head
+        task = Task(secrets.token_hex(16), secrets.token_hex(8), secrets.token_hex(8), pane, pair.other(pane),
+                    source["agent"], target["agent"], source["label"], target["label"],
+                    f"review of {branch or commit[:7]}", now, review=True)
+        text = review_text(source["label"], source["cwd"], branch, commit, task.nonce)
+        return self._hand(pair, ends, task, text, now, cwd=source["cwd"])
+
+    def _busy(self, pair, pane, target):
+        """Why no task can go from this card to its partner now, whatever the task, or None."""
+        if pair.open and pair.open.source == pane:
+            return f"you already handed {quoted(target['label'])} a task: wait for its answer"
+        if pair.open:
+            return f"you are on a task for {quoted(target['label'])}: finish it first"
+        if target["state"] == "blocked":
+            return f"{quoted(target['label'])} is waiting on you"
+        return None
+
+    def _hand(self, pair, ends, task, text, now, cwd=None):
+        """Hands the partner the task as the prompt `text`: its drop in the partner's folder, and the pair's one
+        open task -> the log line. `cwd`, a review's: the asker's folder, the one the partner's mod lets its turn
+        run git reads in."""
+        links.write_drop(self.root, task.target_agent, {
+            "link": task.id, "nonce": task.nonce, "role": "task", "from": task.source_label, "to": task.target_label,
+            "from_colour": ends[task.source].get("colour"), "to_colour": ends[task.target].get("colour"),
             # The task's first words, for the partner's toast; the prompt itself is `text`.
-            "task": " ".join(body["task"].split())[:60],
-            "text": task_text(source["label"], body["why"], body["task"], task.nonce),
-            "expires": now + links.EXPIRE_SECONDS}, now, kind="task")
+            "task": " ".join(task.task.split())[:60],
+            "text": text, "review": task.review, "cwd": cwd, "expires": now + links.EXPIRE_SECONDS}, now, kind="task")
         pair.open, pair.recent = task, None
         self.save()
-        return [f"partner {pair.id[:8]} task {task.id[:8]} asked {source['label']} -> {target['label']}"]
+        kind = "review" if task.review else "task"
+        return f"partner {pair.id[:8]} {kind} {task.id[:8]} asked {task.source_label} -> {task.target_label}"
 
     def _follow(self, pair, ends, now):
         task = pair.open
@@ -424,8 +492,7 @@ class Partners:
     def _close(self, pair, ends, now, text, reason):
         task = pair.open
         self.idle_since_seen.pop(task.id, None)
-        outcome = answered(task.target_label, text) if reason is None else not_finished(task.target_label, reason)
-        self._answer(self._agent(task.source, ends) or task.source_agent, task, outcome)
+        self._answer(self._agent(task.source, ends) or task.source_agent, task, ended(task, text, reason))
         self._clear(task)
         pair.open = None
         pair.landings += 1

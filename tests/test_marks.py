@@ -5,9 +5,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import alerts  # noqa: E402
 import marks  # noqa: E402
+from iterm_fakes import Api, App, Colour, Session  # noqa: E402
 
 ALL_ON = {"mark_badge": True}
 OFF = {"mark_badge": False}
@@ -58,40 +60,6 @@ def test_a_profile_without_a_badge_is_kept_as_empty_not_none():
 
 # ------------------------------------------------------------- the writer
 
-class Colour:
-    def __init__(self, r, g, b, a=255):
-        self.rgb = (r, g, b, a)
-
-    def __eq__(self, other):
-        return isinstance(other, Colour) and other.rgb == self.rgb
-
-    def __repr__(self):
-        return f"Colour{self.rgb}"
-
-
-class LocalProfile:
-    """What iterm2.LocalWriteOnlyProfile does for the marker: takes the fields and remembers them."""
-    def __init__(self):
-        self.values = {}
-
-    def set_badge_text(self, value):
-        self.values["badge_text"] = value
-
-    def set_badge_color(self, value):
-        self.values["badge_color"] = value
-
-    def set_badge_color_light(self, value):
-        self.values["badge_color_light"] = value
-
-    def set_badge_color_dark(self, value):
-        self.values["badge_color_dark"] = value
-
-
-class Api:
-    LocalWriteOnlyProfile = LocalProfile
-    Color = Colour
-
-
 class Profile:
     def __init__(self, badge_text="", badge_color=Colour(234, 64, 37)):
         self.badge_text = badge_text
@@ -99,35 +67,11 @@ class Profile:
         self.badge_color, self.badge_color_light, self.badge_color_dark = badge_color, Colour(255, 38, 0), Colour(234, 64, 37)
 
 
-class Session:
-    def __init__(self, sid, profile=None):
-        self.session_id = sid
-        self.profile = profile or Profile()
-        self.writes = []
-
-    async def async_get_profile(self):
-        return self.profile
-
-    async def async_set_profile_properties(self, local):
-        self.writes.append(dict(local.values))
-        for field, value in local.values.items():
-            setattr(self.profile, field, value)
-
-
 class Gone:
     session_id = "gone"
 
     async def async_get_profile(self):
         raise RuntimeError("session closed")
-
-
-class App:
-    def __init__(self, *sessions):
-        self.sessions = {s.session_id: s for s in sessions}
-        self.terminal_windows = [type("W", (), {"tabs": [type("T", (), {"sessions": list(self.sessions.values())})()]})()]
-
-    def get_session_by_id(self, sid):
-        return self.sessions.get(sid)
 
 
 def run(marker, app, rows, unseen, settings, log):
@@ -169,7 +113,7 @@ def test_a_session_that_vanishes_is_dropped_without_a_have_entry():
 
 
 def test_turning_the_badge_off_puts_back_what_it_replaced():
-    s = Session("a")
+    s = Session("a", Profile())
     app, logged, m = App(s), [], marks.Marker(api=Api())
     run(m, app, [card("a", "idle")], {"a"}, ALL_ON, logged.append)
     run(m, app, [card("a", "idle")], {"a"}, OFF, logged.append)

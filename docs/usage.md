@@ -3,6 +3,11 @@
 The reference for what each part of a card means. The README covers the parts
 you need on day one.
 
+The install starts the panel when iTerm2 is running. If it already runs,
+the install prints a restart command and leaves it running. Open it through
+View > Toolbelt > Agents. With iTerm2 closed during install, start it from
+Scripts > AutoLaunch > `agents_sidebar` after opening iTerm2.
+
 ## Which group a session lands in
 
 A session running Claude Code, Codex or omp goes in `AGENTS`. The panel
@@ -220,6 +225,31 @@ colour lands on the receiver's side, two quiet rings leave it, and it turns
 home. Both sessions show a toast at each hand-off, and the band above the
 prompt shows `“alpha” 🔗 “bravo” · asked`, then `answered`.
 
+To have a partner look over your change, pick `Ask “bravo” to review` from
+the card's menu, beside Untie. The menu shows it only while no task is open
+between the two and the session is not working. The partner gets a task
+that names the session's folder, branch and commit, and the `git status`,
+`git diff HEAD` and `git log` commands that show what is not committed or not
+pushed yet. The change itself never goes with it, so the partner reads it as
+it stands. In that turn the partner's own session refuses every call that
+Claude Code does not mark as a read, every subagent and every task handed
+back, so the review changes nothing; only the panel's own tools for reading
+the partner and reporting the task line still run. Of the commands Claude
+Code does not mark as a read, the partner may run only a git read of the
+session's folder written as the task writes it, such as
+`git -C '/work/app' diff HEAD`. The card shows
+`Asked “bravo”: “review of main”` while it runs. The reply comes back to the
+session as a prompt that starts `“bravo”'s review of main:`, or says why the
+review did not finish, and the turn that prompt starts cannot hand the
+partner a task. A review the panel refuses shows `not asked:` and the reason
+on the card, for example when the partner waits on you or the folder is not
+in a git repository. An earlier release of the panel cannot read the
+partnership record while any task is open, and starts with no partners.
+
+The review's read-only guard and the answer turn's ban on handing back a task
+survive a plugin reload. An unknown turn keeps those restrictions in place.
+A failed read-only check denies the tool call.
+
 Untie from either card's menu (`Untie from “bravo”`), or drag one card out
 of the pair and drop it anywhere else; Escape, or letting go where it was,
 keeps the pair. A partnership survives `/clear`, a resume and a panel
@@ -287,6 +317,31 @@ all while the setting is off, which is how it starts. A card on another
 machine, a card whose folder is in no repository, and a teammate nested
 under its lead have no calendar.
 
+## Claude's memory index in Codex
+
+Hand Codex Claude's memory index, under Experimental in settings, gives a new
+Codex session the index of what Claude Code remembers about the same project:
+`MEMORY.md`, one line for each memory note. Codex gets it when a session starts
+and after `/clear`, under a first line that names the file, its last change and
+its size. A resumed session, a Codex subagent and Claude Code itself get
+nothing from it.
+
+The Codex hook looks for the file where Claude Code keeps the project's memory.
+The project is the main checkout, so a worktree reads the memory of the
+checkout it belongs to. The folder is the one `autoMemoryDirectory` names in the
+checkout's `.claude/settings.local.json`, then its `.claude/settings.json`, then
+`~/.claude/settings.json`. With none of them set, the folder is
+`~/.claude/projects/<project>/memory`, where Claude Code keeps memory by
+default. The hook sends nothing when the setting names a relative folder, or
+when the file is missing, is a link or is over 256 KB.
+
+Codex keeps a hook's text whole up to 10,000 bytes and cuts the middle out of
+anything longer. The hook sends the index's first lines up to that, and a last
+line that says how many it left out. The first line names the file, so Codex
+can read the rest of it, and the notes it lists, with its own tools. On Codex
+0.166 it ran `cat` on the file to quote a line the hook left out. What Codex
+reads goes to OpenAI with the rest of the session, so the setting starts off.
+
 ## Sessions on another machine
 
 A pane that runs `ssh host` or `et host` (Eternal Terminal) gets a card for
@@ -325,6 +380,8 @@ of this holds:
 3. The pane's title still carries Claude Code's mark. A shell prompt
    repaints the title once the agent is gone.
 4. The session is waiting on you.
+5. The question's options show no previews, since beside them a number only
+   moves the cursor and Enter is never typed.
 
 Otherwise the card shows no buttons and says `Answer in the pane:` with the
 reason, a banner posted then has none either, and nothing is typed: a
@@ -372,8 +429,9 @@ Show the foot's offers again restores both dismissed offers; the button
 appears only while at least one offer stays dismissed.
 
 The Look card holds Card style, Card anatomy, Follow the terminal's background,
-Text size, Shell names and Provider badge. Card style picks how a session
-stands on the panel's background:
+Session colour on the tab ([The session's colour on its
+tab](#the-sessions-colour-on-its-tab)), Text size, Shell names and Provider
+badge. Card style picks how a session stands on the panel's background:
 
 | Choice | What you get |
 |---|---|
@@ -382,11 +440,12 @@ stands on the panel's background:
 | Air | No card and no lines, and more room between sessions. A session that waits on you or finished unseen gets a rounded card of its own, with its ring |
 | Inset rules | No card. The line between two sessions starts where the names start, and a session that waits on you or finished unseen is a rounded wash with no ring |
 | Outlines | The card's outline only, a hairline, with the panel's background as its fill. A session that waits on you or finished unseen keeps its full card |
+| Serenity | No card, 10 px between sessions and a faint inset line between two of them. A session waiting for input or finished unseen keeps its full card. At full width, an agent card shows its name, state, task title and progress bar. Activity shows only when it asks for input. Its facts are a remote host, high CPU or memory, and context from 70%, or from Rows > Warn above if that is higher. A teammate on a long turn is one line on its card, and one waiting for input keeps its own line. The card leaves out the branch, model and effort, tab title, working-teammate count, provider badge, report age, `Complete`, `Updated` time, and the subagent, task, scheduled and shell lists, whatever On a card and Provider badge say. Details gives the model, effort, context, scheduled prompts and how many subagents run. At full width, Details also shows the provider and branch, report age, working-teammate count, and subagent, task and shell lists of up to four rows each. Compact Serenity uses the ordinary compact Details. A plain terminal under Sessions keeps its tab title, branch and host |
 
-Hovering a session tints it in every style. In Hairlines, Air, Inset rules
-and Outlines, a session at rest in the By attention order fades instead of
+Hovering a session tints it in every style. In Hairlines, Air, Inset rules,
+Outlines and Serenity, a session at rest in the By attention order fades instead of
 sinking toward the background. A worktree keeps its fork and its stem in every
-style. Cards and Outlines draw one outline round a worktree and its session;
+style. Cards, Outlines and Serenity draw one outline round a worktree and its session;
 in the other styles the hairline after the mark column is the only line
 between them. A card you drag lifts as
 a card in every style. Below 120 px a session is a row in every style ([A
@@ -468,11 +527,53 @@ washes mix into the card's colour. A colour whose relative luminance, as the
 Web Content Accessibility Guidelines define it, is under .4 gets the dark theme
 and any other the light one, whatever the macOS appearance is.
 
+On a dark colour the names soften too. A session's name and its report's
+title are a pale tint of the terminal colour's own hue, and on a finished
+card the title takes the green wash's hue instead. A grey or black
+terminal colour has no hue, so there they are a plain soft white. A subagent's
+or teammate's name is a warm paper white a step below. The inks never vary by
+session, a resting name stays grey, and a card waiting on you keeps its
+colours.
+
 With no pane in front, the panel keeps the last colour it read. The line under
 the switch names the colour, as `Terminal background #282a36`. When the daemon
 could not read it, the line reads `Terminal background (not read)` and the
 panel uses its own colours in the macOS theme. Turned off, the daemon does not
 read the profile and the panel uses its own colours.
+
+## The session's colour on its tab
+
+Session colour on the tab, under Look in settings and on by default, tints
+the iTerm2 tab of every card that wears a colour, as cs gives one to a
+session. The colour is Claude Code's own for that name, the one cs draws in
+its session pill, at 35% over the pane's background, so the tab stays a shade
+of the terminal: orange over a `#fdf6e3` background is `#f0cab2`. A profile
+with separate colours for light and dark mode gets a tint over each of its
+two backgrounds, and the tab shows the one for iTerm2's theme.
+
+iTerm2 colours a tab from its active pane alone, so a tab split into panes
+shows the colour of the pane you are in. A teammate nested under its lead's
+card, a card with no colour or with one outside Claude Code's eight, and a
+session on another machine leave their tabs alone. When one pane holds more
+than one card, as inside plain tmux, its tab takes their colour only when
+they all share it.
+
+The tint goes through the session's own profile, so your saved profile never
+changes. A pane whose profile already shows a tab colour of its own keeps it,
+and the daemon log says `tab colour own` once. A tab you recolour or clear
+after the panel tinted it, from the tab's menu or by switching its profile,
+stays as you left it while its card lasts: the panel neither paints over it
+nor puts anything back, and the log says `tab colour recoloured` once. A
+profile that keeps separate light and dark colours but has no background for
+one of them gets no tint, and the log says `tab colour no background`.
+
+Turning the setting off, or the card leaving the panel while its pane stays
+open, as after `/exit`, puts back what the tint replaced. An agent that is
+killed or crashes leaves an Exited card, and its tab keeps the tint while
+that card shows. A new colour for the session repaints the
+tab, and what comes back later is still the profile's own. A stopped daemon
+leaves the tabs as they are; the next one finds its own tints by their
+colours and keeps them, repaints them or turns them off.
 
 ## A long name
 
@@ -540,6 +641,8 @@ Under a question the card lists its options, a button each. The one the agent
 suggests, whose label ends in "(Recommended)", is tinted green. Clicking one types
 that option's number into the prompt, as if you had pressed it there. The
 daemon types it only while that same question still stands, and only once.
+Where the options show previews, the number only moves to that option, so
+the daemon presses Enter after it.
 
 When the agent asks more than one question at once, each click moves the card to
 the next question, and after the last it shows Submit answers; Cancel stays
@@ -603,12 +706,18 @@ subagent rows, the task list and the background shells stay off the card.
 Waiting on you goes from the foot, since each waiting card carries its own
 question. Limits is one line: the account your sessions run on, its fullest
 window as a bar and a figure, and the time to its reset once that window is
-tight, at 80% or within 30 minutes of the reset. Hover the line for every
-window. A switch Auto-switch would make soon gets a line of its own, and Codex
+tight, at 80% or within 30 minutes of the reset. Like a folded tile, it passes
+over a model limit full on every account for the next limit with room. Hover
+the line for every window, and for when a model passed over returns. A switch Auto-switch would make soon gets a line of its own, and Codex
 gets a line of the same shape only while its own fullest window is tight. The
-chevron opens the whole Limits. Clicking Limits folds it back to one line,
+chevron opens the whole Limits. Clicking Limits or the free space in the Limits head folds it back to one line,
 and so does the panel narrowing again after it has widened. Without an active
 account, or when the account store fails, the foot keeps its full layout.
+
+The Limits head takes the hover tint and keyboard focus ring across the row
+on the same 24 px band as the fold heads, 3 px above and below its 18 px head.
+Its switch and chip stay separate from the fold target. The tint drops over
+the switch, and clicking **Auto-switch** changes the switch too.
 
 Below 120 px, and back above 136 px, a session is a row, not a card, with a
 hairline between rows: its colour square and its name, the badge across the
@@ -618,7 +727,7 @@ a start differ at the end. Two sessions under one name show an ellipsis and
 the last four characters of their branches after it, or `·1` and `·2` when the branches
 don't tell them apart. The subagent count and the Remote Control glyph go. A
 row has no answers: a click brings its pane forward, and you answer there.
-The foot is the chevron and a hairline for the fullest window, with its
+The foot is the chevron and a hairline for the window the one-line foot shows, with its
 figure only once the window is tight. The bar drops the release number and
 keeps reload and the gear; an update on offer still shows, its Update button
 on a line of its own above them.
@@ -626,7 +735,7 @@ on a line of its own above them.
 Details, from the right-click menu, works at every width and still shows the
 model, the context and the CPU or memory figure. The branch, the subagent
 rows, the task list and the background shells come back once the panel is
-wider.
+wider. In Serenity, these return in Details rather than on the card.
 
 ## What fills the context
 
@@ -840,11 +949,31 @@ enabled = true
 Settings > On a card > Task > Task list turns the fold off; that switch hides while
 Task is off.
 
+## Scheduled prompts
+
+The prompts a Claude session has scheduled with `/loop`, CronCreate or
+ScheduleWakeup fold into one line under its tasks ("2 scheduled"). Each row
+has the prompt and when it runs, in local time: a recurring one reads
+"every 10 min", "every 2 h at :30", "daily at 09:00" or "next Mon 09:00", and
+a one-shot "once at 13:31" or "once Fri 13:31". Claude Code lists them only
+when the session's turn ends, so a one-shot that has fired reads "due" until
+the turn it started ends, and a resumed session can show its old list until
+its first turn ends. An expression the panel can't read shows as written,
+and a token, key or password in a prompt shows as `***`. Details has the
+same list in one Scheduled row.
+
 ## Background shells
 
 When the last shell ends, the line stays for a few seconds, dimmed, as
 "1 command finished", so a run of short commands doesn't grow and shrink the
 card each time. A shell whose command the panel can't parse shows `?`.
+
+## Rebuilding the panel
+
+Right-click reload and choose **Rebuild the panel** if the panel stops drawing
+or responding to the pointer. This opens a fresh view in every window.
+For a `STALE` banner or a blank panel after Update, see
+[Troubleshooting](troubleshooting.md).
 
 ## Updating
 
@@ -890,6 +1019,34 @@ and puts the checkout back on the release that runs, so the offer stays and
 the next press tries again.
 The whole message is in the daemon's log under Scripts > Manage > Console.
 
+## Uninstalling
+
+Choose **Uninstall the panel…** at the bottom of Settings. It names the
+panel, hooks, settings and state it removes; the checkout stays. It also
+counts the saved account logins it deletes, including those that need a new
+login. **Keep my account logins** starts off. Turn it on to keep
+`~/.config/agents-sidebar/accounts.json` and its Keychain items; the message
+changes to say the logins stay. The other panel data still goes.
+Choose **Uninstall** to confirm, or **Cancel** to return. Escape or a
+click outside the confirmation also cancels before you submit.
+
+After acceptance, the card reads **Uninstalling the panel**, says the panel
+stops once the uninstall finishes, and shows the uninstall log's path. A refused or failed request keeps the
+confirmation open, keeps your choice and shows the reason. Cancel and reopen
+to start with **Keep my account logins** off again.
+
+You can also run `agents-sidebar uninstall`. Running the command confirms
+the removal; it asks nothing else and works without a running daemon.
+It deletes saved logins by default. Run `agents-sidebar uninstall --keep-accounts`
+to keep them, or `./uninstall.sh --keep-accounts` from the checkout.
+It prints the checkout path and a quoted command to delete it. See
+[what uninstall removes and keeps](integrations.md#uninstall).
+
+Your saved statusline comes back unless its absolute script path is missing;
+then uninstall removes `statusLine` and warns with the path. With the bridge
+installed, a command that exits 127 displays
+`status line: <command or script> not found`. Other failures keep its last line.
+
 ## Resuming an exited agent
 
 When an agent's process dies (killed, or crashed) and its pane drops back to a
@@ -899,9 +1056,14 @@ forward:
 
 | Session | What Resume types |
 | --- | --- |
-| A cs session (the directory has `.cs/`) | `cs .`, which asks whether to continue; Enter resumes |
+| A cs session (the directory has `.cs/`) | `cs . --resume`, which reopens the recorded conversation without asking |
 | Claude Code | `claude --resume <conversation id>` |
 | Codex | `codex resume <conversation id>` |
+
+A cs session needs a cs with `--resume`, which `cs --help` lists. A cs
+without it prints `Unknown session command: --resume` and opens nothing.
+Type `cs .` at that prompt instead. It asks whether to continue, and Enter
+resumes.
 
 The button shows only while that is safe: the pane is at a shell prompt, its
 directory still exists, the conversation saved a transcript (an agent killed
@@ -912,24 +1074,165 @@ that ends with `/exit` leaves no card behind, and omp sessions have no Resume.
 
 ## Past sessions
 
-Above the limits, **Past sessions** folds open a list of the conversations written to
-in the last week that have no card now: a cs session as one row, named after
-itself, at its newest conversation; any other directory as one row per
-conversation, with the first prompt as its title and its age. The daemon reads
+The heads of **Past sessions**, **Ports**, and **Activity** take clicks on a
+24 px band across the whole row, 6 px into each gutter and 6 px above and
+below the head's line. The hover tint and keyboard focus ring cover that
+band; the compact foot keeps its smaller targets.
+
+Above the limits, **Past sessions** folds open a log of the conversations written to
+in the last week that have no card now: a cs session as one entry, named after
+itself, at its newest conversation; any other directory as one entry per
+conversation, its first prompt in dim text after the directory's name. Each
+day has a head that names it **Today**, **Yesterday** or by its weekday, and
+each entry starts with the local time, hours and minutes, that its
+conversation was last written to. The daemon reads
 Claude Code's transcripts under `~/.claude/projects` when the fold opens, not
 with every frame, and leaves out what is open now, what ran in a directory
 that is gone, and what ran inside Claude Code's subagent worktrees or a
 session's own `.cs` folder. The list holds the newest thirty.
 
-Resume opens a new tab in the row's directory and, once its shell is up, types
-`cs .` for a cs session or `claude --resume <conversation id>` for anything
-else. A shell that takes more than ten seconds to appear gets nothing typed,
+An empty reading says "Nothing to resume from the last 7 days; the ones open
+now are on their cards." A failed reading keeps its reason on a separate line.
+
+On the first read, space for a day head and six 24 px entries is present at
+once. The placeholder rows fade in after 180 ms and stay still. A hairline
+under the head fills from the left to 88% once over 1.6 seconds, then waits.
+The rows replace the placeholders when the reading arrives. Reopening reads
+again, with the cached rows under the gauge and no placeholders. With reduced
+motion, the placeholders appear after the same delay without a fade or gauge.
+
+The whole entry is the button that resumes it, and **Resume** shows over its
+right end while the pointer or the keyboard focus is on it. While the tab opens, the
+entry reads "opening…" and takes no click for fifteen seconds, or until the
+daemon refuses; a refusal shows on its own line under the entry.
+
+Resume opens a new tab in the entry's directory and, once its shell is up, types
+`cs . --resume` for a cs session or `claude --resume <conversation id>` for
+anything else. `cs . --resume` reopens the session's recorded conversation
+without asking, and needs a cs with the flag, as on a card (see [Resuming an
+exited agent](#resuming-an-exited-agent)).
+A shell that takes more than ten seconds to appear gets nothing typed,
 and the daemon's log says so. Codex and omp conversations are not listed.
+
+## Ports
+
+Under **Past sessions**, **Ports** folds open a list of the TCP ports
+listening on this Mac and what holds each one. The daemon reads them with
+`lsof` when the fold opens, never on a timer. Listeners under one of the
+panel's sessions come first, by port: each row is the port, the program, the
+card it runs under, how long it has run, and Stop, which shows while the
+pointer is on the row. Every other listener folds
+under one line, **N other listeners**, which opens them below it. When none
+belongs to an agent, that line reads **N listeners, none under an agent**,
+or **1 listener, none under an agent** for one. The whole line takes clicks,
+the hover tint, and the keyboard focus ring. Hover a row
+for its addresses, its pid and its command, with a token, key or password in
+the command shown as `***`.
+
+An empty reading says **No listener found at HH:MM**, using the local time
+the reading arrived, followed by **Look again**. That button reads the ports
+again. Its text uses the action ink and shows a ring on keyboard focus.
+
+The first read reserves three 19 px rows with port pills. The placeholders
+and head gauge use the same delay and motion as Past sessions. A reread keeps
+the cached rows until its answer arrives. A failed reread keeps those rows
+and shows the reason above them.
+
+A row's session is the card whose process tree holds the listener: its agent
+and everything below it, and any Codex job that card's Claude session started
+through the codex plugin, which runs outside that tree. A row names a program
+an interpreter runs by its script, so `python3 serve.py` reads `serve.py`.
+
+Some listeners never show. The fold leaves out the agents' own ports, since
+Claude Code and Codex each listen on a loopback port of their own and stopping
+one ends its session. It leaves out the panel's own server for the same
+reason. `lsof` run as you cannot see a process run as root or as another user,
+so their listeners never show either. A Claude Code or Codex with no card,
+such as one run outside iTerm2 or a Codex that has not taken its first prompt,
+has no agent to leave out, so its own port shows with the other listeners.
+
+Stop sends `SIGTERM` to the row's process after four checks that the process
+is the one the list showed: the row is in the last reading, its process has
+not become a card's agent since, it still listens on that port, and it started
+at the second the reading gave, since another program can take over a freed
+pid. The daemon refuses anything else, and the reason shows under the row.
+Stop sends `SIGTERM` alone, to that one process: it never follows with
+`SIGKILL` and never signals the process group. The fold reads the ports again
+a second after a Stop. A program that ignores `SIGTERM` stays listed, and its
+Stop comes back after 15 seconds. The daemon's log records each Stop it sends.
+
+## Activity
+
+Under **Ports**, **Activity** folds open what Claude Code and Codex did on
+this Mac over the last seven days, read from their own logs. The head line
+gives the days, the prompts and the tokens: a prompt is one typed into Claude
+Code or a Codex turn, and the tokens are both programs' together. When both
+worked in the span, one bar under the head splits the tokens between them, the
+larger part from the left, with each program's name and figure at its own end.
+A bar a day follows, oldest first, as tall as that day's tokens against the
+busiest day's, with the day's total and its weekday under it; today's bar is
+in the text colour. Then come the ten projects with the most tokens, each with
+its folder's own name and its total. Where two of the week's projects end in
+the same folder name, case aside, each name starts with the parent folders
+that tell them apart, in grey, as in `kiln/repo` and `moss/repo`, even when
+only one of them has a row. A cs session's `@variant` follows the name in
+grey. A name too long for the row loses its parent folders first, and never
+its variant. The whole path is in the row's label for assistive tech; the fold
+shows no tooltip. **+N more projects** counts the rest, with their tokens, and
+does not expand. A project in or under `/tmp`, `/private/tmp`, `/var/folders`
+or `/private/var/folders` is a scratch dir: it gets no row, and one grey line,
+**N scratch dirs**, counts them with their tokens; the head, the split and the
+day bars still count them. A project whose week was cache reads alone has no
+tokens here, so the fold leaves it out of the rows and both lines, as a picked
+day leaves out a project with none that day; the head still counts its
+prompts. Work in a worktree under `.claude/worktrees/` counts to the checkout
+it came from. Click a day's bar, figure or name and the fold shows that day
+alone: the head names the day with its prompts and tokens, its bar takes the
+ink and its name an underline, and the rows are the projects that worked that
+day, by that day's tokens, each named as in the week. Click it again for the
+week.
+
+If the whole week has no prompts or tokens, the fold says **No prompts or
+tokens in `~/.claude/projects` or `~/.codex/sessions` over the last 7 days.**
+A warning about logs it could not count in full stays below that note. Picking
+an empty day keeps the week's chart and shows **Nothing on Tuesday · Show the
+week** below it. The weekday is the one you picked. **Show the week** returns
+to the week's figures without reading the logs again and puts the keyboard
+focus on the Activity head.
+
+While the first read runs, the fold holds space for its head, split, seven
+weekday slots and three project rows. After 180 ms the still placeholders
+fade in, and a hairline under the head fills to 88% over seven seconds and
+stays there until the read ends. Later opens keep the previous report visible
+while the hairline runs. If a later read fails, its reason appears below the
+kept report. With reduced motion, the placeholders appear after the same
+delay, with no fade or hairline.
+
+The daemon reads the logs when the fold opens, never on a timer, and again
+each time it opens. The first open reads every log written in the week, which
+took about nine seconds of CPU on one machine; later opens read only the logs
+written since. The daemon keeps what it read of each log in a small file,
+`~/.claude/agents-sidebar-status/activity.json`, so the fold reads fast after
+a restart too. An update that changes how the daemon reads the logs, a move to
+another time zone or a damaged file makes the next open read every log again.
+The narrow panel's one-line foot leaves the fold out, as it does Past sessions
+and Ports.
+
+Claude's tokens are its input, output and cache-write counts, and Codex's are
+its total less its cached input. The fold leaves out cache reads, each
+program reading the conversation so far again: on one machine's week they
+were about 98% of all tokens. It shows no dollars. Claude Code's logs carry
+a conversation's cost as one running figure, on lines with no time, so they
+hold no cost for a day, and Codex's logs carry token counts and no cost at
+all. A log the report could not read in full shows as **N logs not counted in
+full**, in the warning colour; its label for assistive tech gives each file
+and the reason.
 
 ## From a script
 
-`install.sh` links the `agents-sidebar` command into `~/.local/bin`. It reads
-what the panel reads, from the running daemon, so the panel has to be running.
+`install.sh` links the `agents-sidebar` command into `~/.local/bin`. Its
+`status` and `wait` commands read from the daemon, so the panel has to be running.
+`uninstall` runs the removal script from the command's checkout without a daemon.
 
 ```sh
 agents-sidebar status                 # one line per agent

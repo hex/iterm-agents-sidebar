@@ -26,6 +26,20 @@ its tick and reaches 80%.
    next to the credential and never goes into that file.
 3. For a second account, `/login` as it in Claude Code and click Add again.
 
+## Keeping logins after uninstall
+
+Uninstall deletes the panel's saved account logins by default: both
+`~/.config/agents-sidebar/accounts.json` and the Keychain items it names.
+The Settings confirmation counts those logins, including ones that need a new
+login. Turn on **Keep my account logins** to keep them. It starts off;
+turning it on changes the message to say the logins stay.
+
+From a terminal, run `agents-sidebar uninstall --keep-accounts`, or
+`./uninstall.sh --keep-accounts` from the checkout. The flag keeps the same
+store and Keychain items, and the command reports where they remain. The
+panel's settings, state and other data still go, including account locks.
+A later install can read the saved logins again.
+
 ## Reading the meters
 
 With accounts stored, the foot lists every account behind the Claude mark. The
@@ -50,13 +64,19 @@ The foot shows an account's nickname, or its email if it has none, or
 `Account N` without either. Click a name to set a nickname: Enter saves, Esc
 cancels, and an empty name goes back to the email.
 
-Click **Limits**, the head over the accounts, to fold them. Folded, every
+Click **Limits**, or anywhere in its head outside Auto-switch and its chip,
+to fold the accounts. Folded, every
 account and Codex sit side by side, a tile each, the account your sessions run
 on first and marked with its check. A tile shows one bar, its fullest window,
 with the even-spend tick, then the percentage, the window's short name (`5h`,
 `wk`, `fab` for Fable) and the time to its reset; a reserve Codex draws on
-counts with its plan's windows. A reading that failed keeps its bar and says
-`as of 14:02` in place of the reset. Hover a tile for every window it has. A
+counts with its plan's windows. An account's bar passes over a model limit at
+100% on every account, which reads the same on every tile and which no switch
+frees, and shows the fullest of its other windows; with no other window, the
+full one shows. A reading that failed keeps its bar and says
+`as of 14:02` in place of the reset. Hover a tile for every window it has,
+and for when a model passed over returns, such as `Fable is at 100% on every
+account; back when home resets in 15h 10m`. A
 second click on the head opens the foot again, and you switch accounts from
 there. The fold survives reloads and daemon restarts. With no stored login,
 the Claude tile comes from your sessions' own readings. While the panel cannot
@@ -94,8 +114,8 @@ refused at a full Fable limit still moves the account, and for ten minutes
 after it the panel does not move back to an account whose Fable is full. A session whose model is not known yet counts
 for nothing until it reports one, a few seconds after it starts; only when no
 session has reported a model does every limit count. A model limit at 100% on every account decides nothing: no switch
-can help it, so the other limits decide until the first one returns, and the
-chip says `Fable full everywhere` with that account and time in its tooltip.
+can help it, so the other limits decide until the first one returns. The
+folded bars pass over it the same way, with Auto-switch on or off.
 If that model is the only one running, the panel stays put and says why once,
 in `daemon.log`.
 

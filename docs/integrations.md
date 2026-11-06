@@ -1,7 +1,7 @@
 # Integrations
 
 What `./install.sh` changes outside its own files, the statusline bridge, the
-Codex hooks and the omp extension, and how to undo them. `./uninstall.sh`
+Codex hooks and the omp extension, and how to undo them. `agents-sidebar uninstall`
 undoes most of it at once, the panel's own data included; below says what it
 leaves. The bridge, the hooks and the extension each have an opt-out,
 `--no-statusline`, `--no-codex` and `--no-omp`. The README has the short
@@ -23,6 +23,13 @@ version.
 `--statusline` also exists. The bridge goes in by default, so the flag only
 cancels an earlier `--no-statusline` on the same command line.
 
+At the end, the install starts the daemon if iTerm2 is running and no daemon
+is running. It excludes iTerm2's `it2_api_wrapper` process from that check.
+An existing daemon stays running; the install prints its process ID and a restart
+command. With iTerm2 closed, it prints the manual start instructions.
+If iTerm2 refuses the launch, its error appears as a warning and the install
+still succeeds.
+
 ## The statusline bridge
 
 Claude Code publishes the size of the context window in one place only: the
@@ -37,6 +44,10 @@ The install points `statusLine.command` in `~/.claude/settings.json` at
 statusline that was there before. It sets `CS_STATUSLINE_PARENT` to the claude
 pid, so a statusline that caches by its parent pid (cs's does) still finds its
 cache.
+
+When the saved command exits 127, the bridge replaces the cached line with
+`status line: <command or script> not found`. Other nonzero exits keep the
+last line. This lets a removed statusline tool say what is missing.
 
 It leaves `refreshInterval` alone, and the panel needs no timer. Without one
 Claude Code renders the statusline on events, so a session at rest leaves its
@@ -63,8 +74,11 @@ puts it in, and **Not now** hides the offer. Settings > Rows > **Show the
 foot's offers again** brings the offer back. A `settings.json` that is not valid
 JSON gets no offer; fix the file first.
 
-To undo, run `./uninstall.sh`. It puts back only the `statusLine` key and
-leaves the rest of `settings.json` alone, later edits included. Copying the
+To undo, run `agents-sidebar uninstall`. It puts back only the `statusLine`
+key, unless the saved command names an absolute script path that no longer
+exists. In that case it removes the key and warns with the path. Relative
+paths stay as saved because the uninstall cannot know Claude's working
+directory. It leaves the rest of `settings.json` alone, later edits included. Copying the
 backup over `settings.json` also works, but it throws away every edit made
 since the latest install.
 
@@ -86,6 +100,16 @@ so add the directory by hand then.
 Before its first prompt, a Codex session has published nothing. The panel
 still shows a Codex card for a pane whose foreground job is `codex`.
 
+With Hand Codex Claude's memory index on, the state hook answers a
+`SessionStart` from a new session or `/clear` with the project's Claude Code
+memory index as `additionalContext`
+([docs/usage.md](usage.md#claudes-memory-index-in-codex)). Codex 0.166 keeps a
+hook's `additionalContext` whole up to 2500 tokens, counted as four bytes each,
+and the hook stays within 10,000 bytes. `hooks.json` leaves
+`additionalContextLimit` unset, since a limit other than Codex's default
+changes the hash Codex trusts the hook by, and Codex would ask to trust it
+again.
+
 No Codex hook fires when you answer one of its permission prompts, so a card
 waiting on a command turns back to working as soon as that command shows up
 running under a Codex process, started after the prompt opened.
@@ -104,7 +128,7 @@ re-run keeps those first copies. A file that did not exist gets no copy.
 Another tool's update can rewrite the hooks file, so run `./install.sh` again if Codex
 cards stop showing up.
 
-To undo, run `./uninstall.sh`. It takes only our entries out of `hooks.json`
+To undo, run `agents-sidebar uninstall`. It takes only our entries out of `hooks.json`
 and leaves the rest. Copying the backups back would also drop what other
 tools added since the first install. To take our entries out and keep
 everything else installed, run this in the checkout:
@@ -184,15 +208,20 @@ Partnerships (see `docs/usage.md`) live in
 `~/.claude/agents-sidebar-status/partners.json`, `0600`, written whole:
 `[{id, upper, lower, made_at, open}]`, `upper` and `lower` being iTerm2 pane
 ids, so `/clear` and a resume keep them. `POST /untie {"pane": …}` ends the
-one that pane is in. Every other file sits in a session's own links folder:
+one that pane is in, and `POST /review {"pane": …}` hands that pane's partner
+a review of the change in the pane's folder, or answers 409 with why not.
+The plugin stores the review task and review-answer turn by session id.
+A reload restores the read-only and delegation guards, even when the running
+turn is unknown. A failed read-only check denies the tool call.
+Every other file sits in a session's own links folder:
 
 | File | Written by | What it holds |
 |---|---|---|
 | `partner.json` | panel | who the partner is: the partnership's id, this session's own label, the partner's label, transcript path, profile and the profile's key (the profile without durations), the introduction, and a note when it is busy |
 | `reply.json` | mod | your last reply in that session, from the first Stop of a turn you started |
 | `delegate-‹d›.json` | mod | a task for the partner: `{id, partnership, task, why}` |
-| `answer-‹d›.json` | panel | its outcome, answered, could not finish, or not handed over: `{id, result, late}`, `late` being the message used once the tool stopped waiting |
-| `task-‹t›.json` | panel | a task for this session; taken, started, answered or failed as a link's drop is, with `taken-`, `started-`, `result-` and `failed-‹t›.json` |
+| `answer-‹d›.json` | panel | its outcome, answered, could not finish, or not handed over: `{id, result, late}`, `late` being the message used once the tool stopped waiting; a review's answer adds `review: true`, and its `late` carries `(link ‹d›)` so the mod knows the turn it starts |
+| `task-‹t›.json` | panel | a task for this session, with `review: true` and the asker's folder as `cwd` on a review (`cwd` null on a task), whose turn changes nothing; taken, started, answered or failed as a link's drop is, with `taken-`, `started-`, `result-` and `failed-‹t›.json` |
 
 The panel takes a `delegate-` file only from a session that is an end of the
 partnership it names, deletes it once read, and deletes one whose name is not
@@ -250,7 +279,24 @@ they add its instructions to a prompt only where the daemon's
 
 ## Uninstall
 
-`./uninstall.sh` takes no flags. It stops the daemon and removes:
+Run `agents-sidebar uninstall`, or use **Uninstall the panel…** at the bottom
+of Settings. The command needs no running daemon and asks no further question.
+It resolves its own symlink to run `uninstall.sh` from the same checkout,
+streams its output and returns its exit status. Running `./uninstall.sh`
+from that checkout does the same removal. Both accept `--keep-accounts` to
+keep saved logins; without it, they delete them.
+
+Settings first names what it removes, counts the saved account logins it
+deletes, and offers **Uninstall** and **Cancel**. Turn on **Keep my account logins**
+to keep them; it starts off, and turning it on changes the message to say
+the logins stay.
+Escape or a click outside the confirmation cancels it. Once confirmed, the
+card reads **Uninstalling the panel**, says the panel stops once the uninstall finishes,
+and gives the path of a log in `$TMPDIR`. The uninstall runs in its own process session and outlives the
+daemon it stops. A refused request leaves the confirmation open with its
+reason and keeps your choice for another try.
+
+Uninstall stops the daemon and removes:
 
 - the AutoLaunch stub, the plugin copy and `Agents.app`
 - the `agents-sidebar` link, when it points at this checkout, and the
@@ -259,11 +305,17 @@ they add its instructions to a prompt only where the daemon's
 - our entries from `~/.codex/hooks.json`, through `codex-hooks.sh --remove`
 - the omp extension, through `omp-extension.sh --remove`, while its third line
   is still the panel's marker
-- the panel's settings, state and account store, the linked-cards folder, and
-  the Keychain items of every stored login
+- the panel's settings, state and linked-cards folder
+- by default, the account store and the Keychain items of every stored login
+
+With **Keep my account logins** or `--keep-accounts`, it leaves
+`~/.config/agents-sidebar/accounts.json` and its Keychain items. Other files
+in that directory, including account locks, still go. The command reports
+where it kept the logins.
 
 It leaves the `writable_roots` entry in `~/.codex/config.toml`, the
 `.before-agents-sidebar` backups, and the checkout itself.
+The command prints the checkout path and a quoted `rm` command to delete it.
 
 ## omp
 
@@ -323,7 +375,7 @@ session's end to reach the hook. The card
 shows a waiting question's text and an approval's command; you answer both in
 omp, so the card has no buttons for them.
 
-To undo, run `./uninstall.sh`, or to take out only the extension, run this in
+To undo, run `agents-sidebar uninstall`, or to take out only the extension, run this in
 the checkout:
 
 ```sh

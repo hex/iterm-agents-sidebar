@@ -4,15 +4,18 @@ Read from Claude Code's transcripts under ~/.claude/projects. A cs session is
 one row however many conversations it held; any other directory is one row
 per conversation. Live ones are left out, since their card is the row.
 """
+import asyncio
 import json
 import os
 import sys
 import time
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import past
+import sidebar
 
 NOW = 1793500000
 
@@ -102,3 +105,56 @@ def test_a_conversation_inside_a_sessions_own_folders_is_not_a_row(tmp_path):
     _transcript(tmp_path / "projects", str(session / ".claude" / "worktrees" / "agent-abc"),
                 "22222222-2222-4222-8222-222222222222", [_user("w")])
     assert _rows(tmp_path) == []
+
+
+class Shell:
+    """The pane a new tab opens at a login shell, recording what is typed there."""
+    session_id = "new-tab"
+
+    def __init__(self):
+        self.typed = []
+
+    async def async_get_variable(self, name):
+        return "-zsh" if name == "jobName" else None
+
+    async def async_send_text(self, text):
+        self.typed.append(text)
+
+    async def async_activate(self, select_tab, order_window_front):
+        pass
+
+
+class Window:
+    def __init__(self, shell):
+        self.shell = shell
+
+    async def async_create_tab(self, profile_customizations):
+        return types.SimpleNamespace(current_session=self.shell)
+
+
+def typed_on_resume(row):
+    """What Resume on a Past sessions row types at the shell of the tab it opens."""
+    shell = Shell()
+    bridge = sidebar.Bridge(None, None)
+    bridge.app = types.SimpleNamespace(current_terminal_window=Window(shell))
+    bridge.past = [row]
+
+    async def resume():
+        bridge.reopen(row["kind"], row["path"], row["conversation"])
+        await asyncio.gather(*(asyncio.all_tasks() - {asyncio.current_task()}))
+
+    asyncio.run(resume())
+    return shell.typed
+
+
+def test_resume_on_a_cs_session_reopens_its_recorded_conversation_without_asking(tmp_path):
+    (tmp_path / ".cs").mkdir()
+    row = {"kind": "cs", "name": tmp_path.name, "path": str(tmp_path), "conversation": None, "title": None, "at": NOW}
+    assert typed_on_resume(row) == ["cs . --resume\n"]
+
+
+def test_resume_on_any_other_conversation_reopens_it_by_id(tmp_path):
+    conversation = "11111111-1111-4111-8111-111111111111"
+    row = {"kind": "claude", "name": tmp_path.name, "path": str(tmp_path), "conversation": conversation,
+           "title": "p", "at": NOW}
+    assert typed_on_resume(row) == [f"claude --resume {conversation}\n"]

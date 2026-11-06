@@ -121,7 +121,19 @@ render_to_line() {
     # the move's, or the removal's, and a render that died reads as rc=0.
     local rc=0
     printf '%s' "$input" | sh -c "$command" > "$LINE.tmp" 2>/dev/null || rc=$?
-    if [ "$rc" -eq 0 ]; then
+    if [ "$rc" -eq 127 ]; then
+        python3 - "$command" > "$LINE.tmp" <<'PY'
+import os, re, shlex, shutil, sys
+words = shlex.split(sys.argv[1], comments=True)
+name = words[0]
+if (len(words) > 1 and shutil.which(name) and
+        re.fullmatch(r"(?:ba|z)?sh|python[0-9.]*|node|ruby|perl", os.path.basename(name))
+        and not words[1].startswith("-")):
+    name = words[1]
+print("status line: " + name.replace("\r", " ").replace("\n", " ") + " not found")
+PY
+    fi
+    if [ "$rc" -eq 0 ] || [ "$rc" -eq 127 ]; then
         mv -f "$LINE.tmp" "$LINE" 2>/dev/null || rm -f "$LINE.tmp" 2>/dev/null
     else
         rm -f "$LINE.tmp" 2>/dev/null

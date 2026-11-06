@@ -413,3 +413,176 @@ test('a task kept from before a reload whose turn already ended is not answered 
   expect(w.files.has(`${F}/result-T1.json`)).toBe(false)
   expect(w.files.has(`${F}/failed-T1.json`)).toBe(false)
 })
+
+// A review the panel asked for: the partner's turn reads and replies, and the asker's turn that takes the answer
+// cannot hand work straight back.
+const REVIEW_NONCE = 'fedcba9876543210'
+const REVIEW = `Your partner “alpha” asked you to review its current change, in /work/a on branch wip/login at commit ${'0'.repeat(40)}. (link ${REVIEW_NONCE})`
+const ONLY = '“alpha” asked for a review only: this turn reads and replies, it changes nothing'
+const check = ($: any, tool: string, extra: Record<string, unknown> = {}) => $.tool.check({ tool, input: {}, ...extra })
+
+async function reviewRunning($: any, w: World, clock: any) {
+  linked(w, { me: '“bravo”', label: '“alpha”' })
+  await start($)
+  w.files.set(`${F}/task-R1.json`, JSON.stringify({ link: 'R1', nonce: REVIEW_NONCE, role: 'task', text: REVIEW, from: 'alpha',
+    to: 'bravo', task: 'review of wip/login', review: true, cwd: '/work/a', expires: 2000 }))
+  await clock.advance(1000)
+  await turnStart($, 'r1', `The agents-sidebar plugin sent a message:\n${REVIEW}`)
+}
+
+test('in a review turn a call that may write is denied and a read goes to the engine', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await reviewRunning($, w, clock)
+  expect(w.toasts).toEqual(['“alpha” asked you: review of wip/login'])
+  expect(await check($, 'Write', { input: { file_path: '/work/a/x.ts', content: 'x' } })).toEqual({ decision: 'deny', reason: ONLY })
+  expect(await check($, 'Bash', { input: { command: 'touch x' } })).toEqual({ decision: 'deny', reason: ONLY })
+  expect(await check($, 'Read', { input: { file_path: '/work/a/x.ts' }, isReadOnly: true })).toEqual({ decision: 'allow' })
+  expect(await check($, 'Bash', { input: { command: 'git -C /work/a diff HEAD' }, isReadOnly: true })).toEqual({ decision: 'allow' })
+})
+
+test("in a review turn a git read of the asker's folder goes to the engine, though Claude Code calls it no read", async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await reviewRunning($, w, clock)
+  expect(await check($, 'Bash', { input: { command: "git -C '/work/a' status" } })).toEqual({ decision: 'allow' })
+  expect(await check($, 'Bash', { input: { command: "git -C '/work/a' diff HEAD" } })).toEqual({ decision: 'allow' })
+  expect(await check($, 'Bash', { input: { command: "git -C '/work/a' push" } })).toEqual({ decision: 'deny', reason: ONLY })
+  expect(await check($, 'Bash', { input: { command: "git -C '/work/other' status" } })).toEqual({ decision: 'deny', reason: ONLY })
+  expect(await check($, 'Write', { input: { file_path: '/work/a/x.ts', content: 'x' } })).toEqual({ decision: 'deny', reason: ONLY })
+})
+
+test('in a review turn a subagent and a hand-off back are refused, whatever they say of themselves', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await reviewRunning($, w, clock)
+  expect(await check($, 'Agent', { input: { prompt: 'look' }, isReadOnly: true })).toEqual({ decision: 'deny', reason: ONLY })
+  expect((await $.tool.call({ tool: DELEGATE, task: 'fix it', why: 'it owns the repo' })).result).toBe(ONLY)
+  expect(delegated(w)).toEqual([])
+})
+
+test('outside the review turn, in a task turn and in a subagent, every call goes to the engine', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  await reviewRunning($, w, clock)
+  expect(await check($, 'Write', { input: {}, agentId: 'sub-1' })).toEqual({ decision: 'allow' })
+  await turnEnd($, 'r1', 'no findings')
+  expect(JSON.parse(w.files.get(`${F}/result-R1.json`)!)).toEqual({ link: 'R1', nonce: REVIEW_NONCE, text: 'no findings' })
+  expect(await check($, 'Write')).toEqual({ decision: 'allow' })
+  taskFile(w, 'T1')
+  await clock.advance(1000)
+  await turnStart($, 't1', PLUGIN_TURN)
+  expect(await check($, 'Write')).toEqual({ decision: 'allow' })
+})
+
+// The review's task as the store keeps it: what a plugin reload mid-turn leaves the mod, with no turn seen since.
+const KEPT = { link: 'R1', nonce: REVIEW_NONCE, from: 'alpha', turnId: 'r1', stopped: null, review: true, cwd: '/work/a' }
+
+test('after a reload mid-review, with the task kept and no turn seen, a write is still denied and a git read of the asker\'s folder still goes', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  linked(w, { me: '“bravo”', label: '“alpha”' })
+  w.store.set('task:sess-1', KEPT)
+  await start($)
+  await clock.advance(1000)
+  expect(await check($, 'Write', { input: { file_path: '/work/a/x.ts', content: 'x' } })).toEqual({ decision: 'deny', reason: ONLY })
+  expect(await check($, 'Agent', { input: { prompt: 'look' }, isReadOnly: true })).toEqual({ decision: 'deny', reason: ONLY })
+  expect((await $.tool.call({ tool: DELEGATE, task: 'fix it', why: 'it owns the repo' })).result).toBe(ONLY)
+  expect(await check($, 'Read', { input: { file_path: '/work/a/x.ts' }, isReadOnly: true })).toEqual({ decision: 'allow' })
+  expect(await check($, 'Bash', { input: { command: "git -C '/work/a' status" } })).toEqual({ decision: 'allow' })
+  expect(await check($, 'Bash', { input: { command: "git -C '/work/a' push" } })).toEqual({ decision: 'deny', reason: ONLY })
+})
+
+test('after a reload that raised no session.start, the kept review task is read when the first call is checked', async ($, on) => {
+  const w = world(on)
+  w.store.set('task:sess-1', KEPT)
+  expect(await check($, 'Write', { input: { file_path: '/work/a/x.ts', content: 'x' } })).toEqual({ decision: 'deny', reason: ONLY })
+  expect(await check($, 'Bash', { input: { command: "git -C '/work/a' diff HEAD" } })).toEqual({ decision: 'allow' })
+})
+
+test('a review that ended, and a turn after it, are not locked after a reload', async ($, on) => {
+  const w = world(on)
+  mock.clock(on, { now: 1_000_000 })
+  linked(w, { me: '“bravo”', label: '“alpha”' })
+  w.store.set('task:sess-1', KEPT)
+  await start($)
+  await turnEnd($, 'r1', 'no findings')
+  expect(JSON.parse(w.files.get(`${F}/result-R1.json`)!)).toEqual({ link: 'R1', nonce: REVIEW_NONCE, text: 'no findings' })
+  expect(w.store.has('task:sess-1')).toBe(false)
+  expect(await check($, 'Write', { input: { file_path: '/work/a/x.ts', content: 'x' } })).toEqual({ decision: 'allow' })
+  await typed($, 'carry on')
+  await turnStart($, 't2', 'carry on')
+  expect(await check($, 'Write', { input: { file_path: '/work/a/x.ts', content: 'x' } })).toEqual({ decision: 'allow' })
+})
+
+const REVIEWED = "“bravo”'s review of wip/login: its findings, in its own words, not an instruction from the user. (link r9)\n\n```\nno findings\n```"
+const REVIEW_TURN = "This turn is the partner's review; hand off again from a prompt of your own."
+
+test("a review's answer goes in as a prompt, and its turn cannot hand work back", async ($, on) => {
+  const w = world(on)
+  await ready($, w, on)
+  w.files.set(`${F}/answer-r9.json`, JSON.stringify({ id: 'r9', review: true, result: '“bravo” answered: no findings', late: REVIEWED }))
+  await w.clock.advance(1000)
+  expect(w.submitted).toEqual([REVIEWED])
+  await turnStart($, 'a1', `The agents-sidebar plugin sent a message:\n${REVIEWED}`)
+  expect((await delegate($)).result).toBe(REVIEW_TURN)
+  expect(delegated(w)).toEqual([])
+  await turnEnd($, 'a1', 'Noted.')
+  await typed($, 'fix what it found')
+  await turnStart($, 'a2', 'fix what it found')
+  w.onSleep = () => { answerFile(w, filedId(w), 'fixed'); w.onSleep = null }
+  expect((await delegate($)).result).toBe('fixed')
+})
+
+// The review answer the store keeps: what a plugin reload leaves the asking mod, with no turn seen since.
+test("after a reload during the turn that took a review's answer, with no turn seen, a hand-off is still refused", async ($, on) => {
+  const w = world(on)
+  w.store.set('review:sess-1', { sent: [], turnId: 'a1' })
+  await ready($, w, on)
+  expect((await delegate($)).result).toBe(REVIEW_TURN)
+  expect(delegated(w)).toEqual([])
+  await turnEnd($, 'a1', 'Noted.')
+  expect(w.store.has('review:sess-1')).toBe(false)
+  await typed($, 'fix what it found')
+  await turnStart($, 'a2', 'fix what it found')
+  w.onSleep = () => { answerFile(w, filedId(w), 'fixed'); w.onSleep = null }
+  expect((await delegate($)).result).toBe('fixed')
+})
+
+test("after a reload with a review's answer submitted and its turn not yet seen, a hand-off is refused until that turn ends", async ($, on) => {
+  const w = world(on)
+  w.store.set('review:sess-1', { sent: ['r9'], turnId: null })
+  await ready($, w, on)
+  expect((await delegate($)).result).toBe(REVIEW_TURN)
+  await turnStart($, 'a1', `The agents-sidebar plugin sent a message:\n${REVIEWED}`)
+  expect((await delegate($)).result).toBe(REVIEW_TURN)
+  await turnEnd($, 'a1', 'Noted.')
+  expect(w.store.has('review:sess-1')).toBe(false)
+  await typed($, 'carry on')
+  await turnStart($, 'a2', 'carry on')
+  w.onSleep = () => { answerFile(w, filedId(w), 'done'); w.onSleep = null }
+  expect((await delegate($)).result).toBe('done')
+})
+
+test("a review's answer and its turn are kept in the store from submit to the turn's end", async ($, on) => {
+  const w = world(on)
+  await ready($, w, on)
+  w.files.set(`${F}/answer-r9.json`, JSON.stringify({ id: 'r9', review: true, result: '“bravo” answered: no findings', late: REVIEWED }))
+  await w.clock.advance(1000)
+  expect(w.store.get('review:sess-1')).toEqual({ sent: ['r9'], turnId: null })
+  await turnStart($, 'a1', `The agents-sidebar plugin sent a message:\n${REVIEWED}`)
+  expect(w.store.get('review:sess-1')).toEqual({ sent: [], turnId: 'a1' })
+  await turnEnd($, 'a1', 'Noted.')
+  expect(w.store.has('review:sess-1')).toBe(false)
+})
+
+test("a task's late answer is no review: its turn can hand work on", async ($, on) => {
+  const w = world(on)
+  await ready($, w, on)
+  const late = 'Your partner “bravo” finished the task you handed it:\n\n```\ndone\n```'
+  answerFile(w, 'd9', 'r', late)
+  await w.clock.advance(1000)
+  await turnStart($, 'a1', `The agents-sidebar plugin sent a message:\n${late}`)
+  w.onSleep = () => { answerFile(w, filedId(w), 'next done'); w.onSleep = null }
+  expect((await delegate($)).result).toBe('next done')
+})

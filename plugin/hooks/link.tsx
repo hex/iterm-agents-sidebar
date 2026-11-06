@@ -2,6 +2,7 @@
 // ABOUTME: from the session's own folder, the four tools, replies filed, and the band above the prompt. One module per plugin.
 import type { EngineInterface, PromptSubmitInput, Register, SessionAppendInput, Timer, TurnCompleteInput, TurnStartInput } from 'claude-code'
 import { TURNS_MAX, TAIL_BYTES, firstWords, readText } from './partner-text'
+import { isGitRead } from './review-reads'
 import { TASK_TOOLS, parseNote, summary, taskCall, taskIdAt, type TaskToolKind } from './task-line'
 
 const TICK_MS = 1000
@@ -265,6 +266,7 @@ async function failTakenAsks($: EngineInterface): Promise<void> {
 const NOT_LINKED = 'This session is not linked to another.'
 const LINKING_OFF = 'Linking is off in the agents sidebar: turn on Link cards under Experimental in its settings.'
 const FROM_SUBAGENT = 'Only the main conversation can use the partner tools, not a subagent.'
+const REVIEW_TURN = "This turn is the partner's review; hand off again from a prompt of your own."
 
 // The task line: the two tools a Claude session reports its work through, writing the note task.py writes for Codex.
 const FROM_SUBAGENT_TASK = 'Not recorded: only the main conversation reports the task line, not a subagent.'
@@ -384,14 +386,27 @@ const WAIT_MS = 10 * 60_000
 const waiting = new Set<string>()
 let counter = 0
 
-type Answer = { id: string; result: string; late: string }
+// `review`: the answer to a review the panel asked for, whose late prompt carries `(link <id>)`.
+type Answer = { id: string; result: string; late: string; review: boolean }
 
 async function readAnswer($: EngineInterface, id: string): Promise<Answer | null> {
   const path = `${folder}/answer-${id}.json`
   if (!(await $.fs.exists(path))) return null
   const value = await readJson($, path)
   const whole = value && value.id === id && typeof value.result === 'string' && typeof value.late === 'string'
-  return whole ? value : null
+  return whole ? { ...value, review: value.review === true } : null
+}
+
+// Review answers submitted, by answer id, until their turn starts; then that turn, which hands the partner no task:
+// its findings would go straight back to it as one, and the two could pass work back and forth unasked. Kept in the
+// store too, so a reload before or during that turn still refuses the hand-off.
+const reviewsSent = new Set<string>()
+let reviewTurn: string | null = null
+
+async function rememberReview($: EngineInterface): Promise<void> {
+  const key = `review:${await $.session.id()}`
+  if (reviewsSent.size || reviewTurn !== null) await $.store.set(key, { sent: [...reviewsSent], turnId: reviewTurn })
+  else await $.store.delete(key)
 }
 
 async function delegateTool($: EngineInterface, input: Record<string, unknown>, signal: AbortSignal): Promise<string> {
@@ -434,10 +449,20 @@ async function deliverLateAnswers($: EngineInterface, path: string): Promise<voi
     const answer = await readAnswer($, id)
     if (!answer) continue
     await succeeded($, ['rm', '-f', `${path}/${entry.name}`])
+    if (answer.review) {
+      reviewsSent.add(id)
+      await rememberReview($)
+    }
     try {
       const entered = await $.prompt.submit({ text: answer.late })
-      if (entered.drop !== undefined) $.ui.toast(`A late answer was not taken: ${entered.drop}`)
+      if (entered.drop !== undefined) {
+        reviewsSent.delete(id)
+        await rememberReview($)
+        $.ui.toast(`A late answer was not taken: ${entered.drop}`)
+      }
     } catch (error) {
+      reviewsSent.delete(id)
+      await rememberReview($)
       $.ui.toast(`A late answer was not taken: ${String(error)}`)
     }
     if (partner) await crossed($, partner.me, partner.label, 'answered')
@@ -447,11 +472,16 @@ async function deliverLateAnswers($: EngineInterface, path: string): Promise<voi
 // A task the partner hands this session: taken from its own folder, submitted, its turn's first-Stop reply filed as
 // the answer. And your last reply to you, filed for the partner's profile.
 
-type TaskDrop = { link: string; nonce: string; role: 'task'; text: string; from: string; task: string; expires: number }
-type Working = { link: string; nonce: string; from: string; turnId: string; stopped: string | null }
+// `review`: the panel asked for a review of the asker's change, so the task's turn reads and replies, changing nothing.
+// `cwd`: a review's asker's folder, where that turn may run git reads; null on a task, or a drop that named none.
+type TaskDrop = {
+  link: string; nonce: string; role: 'task'; text: string; from: string; task: string; expires: number; review: boolean
+  cwd: string | null
+}
+type Working = { link: string; nonce: string; from: string; turnId: string; stopped: string | null; review: boolean; cwd: string | null }
 
 // Tasks taken and submitted, by nonce, until their turn starts.
-const queued = new Map<string, { link: string; from: string; task: string }>()
+const queued = new Map<string, { link: string; from: string; task: string; review: boolean; cwd: string | null }>()
 // The task's turn; kept in the store too, so a reload mid-task still files its answer.
 let working: Working | null = null
 // A prompt you sent is waiting for its turn, and then that turn: its first Stop is your last reply.
@@ -464,11 +494,33 @@ async function remember($: EngineInterface): Promise<void> {
   else await $.store.delete(key)
 }
 
+// The task and the review answer kept in the store, taken back once per load of the module: at session.start, or at
+// the first guarded call when a plugin reload mid-task raised none. One read, shared by callers that overlap, so none
+// sees them missing.
+let recalled: Promise<void> | null = null
+const recall = ($: EngineInterface): Promise<void> => recalled ??= (async () => {
+  const id = await $.session.id()
+  const kept = await $.store.get(`task:${id}`)
+  // A task kept by a mod that filed no review flag was no review, and one that filed no folder names none.
+  if (kept && typeof kept === 'object') {
+    const was = kept as Partial<Working>
+    working = { ...(kept as Working), review: was.review === true, cwd: typeof was.cwd === 'string' ? was.cwd : null }
+  }
+  const review = await $.store.get(`review:${id}`) as { sent?: unknown; turnId?: unknown } | undefined
+  if (review && typeof review === 'object') {
+    if (Array.isArray(review.sent)) for (const sent of review.sent) if (typeof sent === 'string') reviewsSent.add(sent)
+    if (typeof review.turnId === 'string') reviewTurn = review.turnId
+  }
+})()
+
 async function readTask($: EngineInterface, path: string): Promise<TaskDrop | null> {
   const drop = await readJson($, path)
   const whole = drop && drop.role === 'task' && typeof drop.text === 'string' && typeof drop.link === 'string'
     && typeof drop.nonce === 'string' && typeof drop.from === 'string' && typeof drop.expires === 'number'
-  return whole ? { ...drop, task: typeof drop.task === 'string' ? drop.task : '' } : null
+  return whole ? {
+    ...drop, task: typeof drop.task === 'string' ? drop.task : '', review: drop.review === true,
+    cwd: typeof drop.cwd === 'string' ? drop.cwd : null,
+  } : null
 }
 
 async function takeTasks($: EngineInterface, path: string): Promise<void> {
@@ -478,7 +530,7 @@ async function takeTasks($: EngineInterface, path: string): Promise<void> {
     const drop = await readTask($, `${path}/${entry.name}`)
     if (!drop || !(drop.expires * 1000 >= now)) continue
     if (!(await succeeded($, ['mv', `${path}/${entry.name}`, `${path}/taken-${drop.link}.json`]))) continue
-    queued.set(drop.nonce, { link: drop.link, from: drop.from, task: drop.task })
+    queued.set(drop.nonce, { link: drop.link, from: drop.from, task: drop.task, review: drop.review, cwd: drop.cwd })
     let refused: string | null = null
     try {
       const entered = await $.prompt.submit({ text: drop.text })
@@ -499,10 +551,17 @@ async function partnerTurnStart($: EngineInterface, e: TurnStartInput): Promise<
     yourTurn = e.turnId
     yoursNext = false
   }
+  for (const id of reviewsSent) {
+    if (!e.text.includes(`(link ${id})`)) continue
+    reviewsSent.delete(id)
+    reviewTurn = e.turnId
+    await rememberReview($)
+    break
+  }
   for (const [nonce, task] of queued) {
     if (!e.text.includes(`(link ${nonce})`)) continue
     queued.delete(nonce)
-    working = { link: task.link, nonce, from: task.from, turnId: e.turnId, stopped: null }
+    working = { link: task.link, nonce, from: task.from, turnId: e.turnId, stopped: null, review: task.review, cwd: task.cwd }
     await remember($)
     await writeWhole($, `started-${task.link}.json`, {})
     $.ui.toast(`“${task.from}” asked you: ${task.task}`)
@@ -510,6 +569,20 @@ async function partnerTurnStart($: EngineInterface, e: TurnStartInput): Promise<
     break
   }
 }
+
+// Who asked for the review whose turn a call is in, on the main loop (a subagent's call carries its loop's id), or null.
+// A call whose turn is unknown, as after a plugin reload mid-turn, counts as the review's while its task is kept: the
+// lock fails closed.
+async function reviewAsker($: EngineInterface, agentId: unknown): Promise<string | null> {
+  if (agentId) return null
+  await recall($)
+  return working?.review && (running === null || running === working.turnId) ? working.from : null
+}
+const reviewOnly = (from: string): string => `“${from}” asked for a review only: this turn reads and replies, it changes nothing`
+// A Bash call that is one git read of the review's asker's folder, which Claude Code marks as no read.
+const readsAskersFolder = (tool: string, input: unknown): boolean =>
+  tool === 'Bash' && typeof input === 'object' && input !== null && 'command' in input && typeof input.command === 'string'
+  && isGitRead(input.command, working?.cwd ?? null)
 
 // The partner's part of the first Stop: the turn's reply before any Stop hook answers it.
 async function partnerStop($: EngineInterface, text: string): Promise<void> {
@@ -535,6 +608,10 @@ async function partnerTurnComplete($: EngineInterface, e: TurnCompleteInput): Pr
   if (e.turnId === yourTurn) {
     yourTurn = null
     if (e.reason === 'answer' && e.answer.trim()) await writeWhole($, 'reply.json', { text: e.answer, at: await $.clock.now() })
+  }
+  if (e.turnId === reviewTurn) {
+    reviewTurn = null
+    await rememberReview($)
   }
   if (!working || working.turnId !== e.turnId) return
   const { link, nonce, from, stopped } = working
@@ -597,8 +674,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await failTakenAsks($)
-    const kept = await $.store.get(`task:${await $.session.id()}`)
-    if (kept && typeof kept === 'object') working = kept as Working
+    await recall($)
     $.clock.every(TICK_MS, () => { void tick($) })
     await registerTaskTools($)
     await registerPartnerTools($)
@@ -616,8 +692,25 @@ export const register: Register = on => {
     if (input.agentId) return { result: FROM_SUBAGENT }
     if (!partner) return { result: (await linkingOn($)) ? NOT_LINKED : LINKING_OFF }
     if (e.tool === tools.read) return { result: await readTool($, input.turns) }
+    // A tool served here never reaches tool.check, so a review's turn refuses the hand-off here.
+    const asker = await reviewAsker($, input.agentId)
+    if (asker !== null) return { result: reviewOnly(asker) }
+    // A review answer submitted, or its turn open, refuses a call whose turn is unknown too: after a reload, closed.
+    if ((reviewsSent.size || reviewTurn !== null) && (running === null || running === reviewTurn)) return { result: REVIEW_TURN }
     return { result: await delegateTool($, input, next.signal) }
   })
+
+  // A review's turn reads and replies: a call the tool cannot say is a read is refused, but for a git read of the
+  // asker's folder, and so are a subagent, which can outlive the turn, and a hand-off back, whatever they say of
+  // themselves. A guard that fails is skipped and the call would run, so a failure denies it.
+  on('tool.check', async ($, e, next) => {
+    const asker = await reviewAsker($, e.agentId)
+    const read = e.isReadOnly === true || readsAskersFolder(e.tool, e.input)
+    if (asker !== null && (!read || e.tool === 'Agent' || e.tool === tools.delegate)) {
+      return { decision: 'deny', reason: reviewOnly(asker) }
+    }
+    return next(e)
+  }).catch(() => ({ decision: 'deny' }))
 
   on('turn.start', async ($, e, next) => {
     // A subagent's run raises no turn.start, so the running turn is always the main loop's.

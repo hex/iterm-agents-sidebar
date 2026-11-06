@@ -13,6 +13,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 spec = importlib.util.spec_from_file_location(
     "emit_state",
     Path(__file__).resolve().parent.parent / "plugin" / "hooks-handlers" / "emit-state.py")
@@ -516,6 +518,14 @@ def test_a_permission_notification_for_a_tool_that_already_ran_opens_no_gate():
     assert emit_state.aggregate(doc) == "working"
 
 
+def test_a_note_is_read_from_the_task_line_dir_and_lists_from_claudes_own():
+    """task.py and the task tools file a session's note under agents-sidebar-tasks;
+    Claude Code keeps its task lists under ~/.claude/tasks. The two names must
+    not collide, or every reminder reads 'Current task: none'."""
+    assert emit_state.TASKS_DIR == os.path.expanduser("~/.claude/agents-sidebar-tasks")
+    assert emit_state.TASK_LISTS_DIR == os.path.expanduser("~/.claude/tasks")
+
+
 def test_clearing_a_note_waits_for_a_report_in_progress(tmp_path, monkeypatch):
     import fcntl
     import threading
@@ -671,7 +681,7 @@ def test_published_tasks_count_completed_files_without_adding_completed_rows(tmp
     _task(listed, 3, "completed", "Read settings")
     (listed / "4.json").write_text("{not json")
     (listed / "5.json").mkdir()
-    monkeypatch.setattr(emit_state, "TASKS_DIR", str(tmp_path))
+    monkeypatch.setattr(emit_state, "TASK_LISTS_DIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_CODE_TASK_LIST_ID", "sample-list")
     value = emit_state.published({}, 701, {"session_id": "sample-session"}, codex=False, now=1789000000)
     assert value["tasks"] == [
@@ -688,7 +698,7 @@ def test_the_published_state_carries_the_open_tasks_and_files_them_past_the_ceil
     for n in range(1, 7):
         _task(lists / "session-abc12345", n, "pending", f"Item number {n} with a subject of some length")
     _task(lists / "session-abc12345", 7, "completed", "Read settings")
-    monkeypatch.setattr(emit_state, "TASKS_DIR", str(lists))
+    monkeypatch.setattr(emit_state, "TASK_LISTS_DIR", str(lists))
     monkeypatch.delenv("CLAUDE_CODE_TASK_LIST_ID", raising=False)
     value = emit_state.published({}, 701, {"session_id": "abc12345-0000-4000-8000-000000000000"},
                                  codex=False, now=1789000000)
@@ -1133,14 +1143,17 @@ def test_a_question_that_fits_travels_whole_with_when_it_was_raised():
     assert json.loads(emit_state.question_short(ASKED, 1791700000)) == dict(ASKED, since=1791700000)
 
 
-def test_a_long_question_keeps_every_option_and_fits():
-    asked = dict(ASKED, question="q" * 300, options=["a" * 60, "b" * 60, "c" * 60, "d" * 60])
+@pytest.mark.parametrize("drawn", [{}, {"preview": True}])
+def test_a_long_question_keeps_every_option_and_how_they_are_drawn_and_fits(drawn):
+    """A question whose options show previews still says so once cut: its pick takes Enter."""
+    asked = dict(ASKED, question="q" * 300, options=["a" * 60, "b" * 60, "c" * 60, "d" * 60], **drawn)
     text = emit_state.question_short(asked, 1791700000)
     carried = json.loads(text)
     assert len(base64.b64encode(text.encode())) <= 512
     assert [label[0] for label in carried["options"]] == ["a", "b", "c", "d"]
     assert len({len(label) for label in carried["options"]}) == 1
     assert carried["question"].startswith("q") and carried["since"] == 1791700000
+    assert carried.get("preview") is drawn.get("preview")
 
 
 def test_options_that_cannot_all_be_carried_send_no_question():
@@ -1306,3 +1319,420 @@ def test_the_hook_writes_no_event_trace(tmp_path):
     code, _, _ = run_handler(tmp_path, ["UserPromptSubmit", "--agent", "omp"], {"session_id": OMP_SESSION, "pid": 4242})
     assert code == 0
     assert sorted(p.name for p in (tmp_path / ".claude").iterdir()) == ["agents-sidebar-subagents"]
+
+
+#: A Stop as Claude Code sent it with a one-shot CronCreate and a ScheduleWakeup pending, both session-only.
+STOP_WITH_CRONS = {"session_id": "test-session", "cwd": "/tmp/example", "hook_event_name": "Stop",
+                   "stop_hook_active": False, "background_tasks": [],
+                   "session_crons": [
+                       {"id": "b63d99f2", "schedule": "26 13 5 11 *", "recurring": False, "prompt": "one shot"},
+                       {"id": "20c147b9", "schedule": "31 13 * * *", "recurring": False, "prompt": "wake me"}]}
+
+
+def published_by_handler(home, event, payload):
+    """Run one event through the handler -> the published state whole, as the
+    daemon reads it: the variable, or the file it says holds the rest. Which
+    one depends on the length of the machine's name."""
+    code, _, written = run_handler(home, [event], payload)
+    assert code == 0
+    [state] = [json.loads(value) for name, value in written if name == "claudeState"]
+    if state.get("detail"):
+        filed = home / ".claude" / "agents-sidebar-subagents" / f"{payload['session_id']}.published"
+        return json.loads(filed.read_text())
+    return state
+
+
+#: A PermissionRequest as Claude Code sends it for an AskUserQuestion set. Claude
+#: Code draws a question side by side when any option's preview has text, even
+#: if another option has none; an empty preview draws nothing, and a pick-any
+#: question is drawn as a list whatever its options carry.
+PREVIEWED = {"session_id": "test-session", "transcript_path": "/tmp/example/test-session.jsonl",
+             "cwd": "/tmp/example", "permission_mode": "default", "hook_event_name": "PermissionRequest",
+             "tool_name": "AskUserQuestion", "tool_use_id": "toolu_01",
+             "tool_input": {"questions": [
+                 {"question": "Which plan should we run?", "header": "Plan", "multiSelect": False,
+                  "options": [{"label": "Approve", "description": "Go ahead", "preview": "APPROVE\nrun it as written"},
+                              {"label": "Edit", "description": "Change it first", "preview": "EDIT\nopen the plan"},
+                              {"label": "Cancel", "description": "Drop it"}]},
+                 {"question": "Which colour?", "header": "Colour", "multiSelect": False,
+                  "options": [{"label": "Blue", "description": "", "preview": ""},
+                              {"label": "Red", "description": "", "preview": " \n "}]},
+                 {"question": "Which checks?", "header": "Checks", "multiSelect": True,
+                  "options": [{"label": "Lint", "description": "", "preview": "ruff check ."},
+                              {"label": "Tests", "description": "", "preview": "pytest -q"}]}]}}
+
+
+def test_a_question_whose_options_show_previews_says_so(tmp_path):
+    """Claude Code draws such a question side by side, and there a digit only
+    moves the cursor: the daemon has to know to press Enter after it. A
+    question drawn as a list says nothing, as it always has."""
+    assert published_by_handler(tmp_path, "PermissionRequest", PREVIEWED)["question"] == {
+        "header": "Plan", "question": "Which plan should we run?",
+        "options": ["Approve", "Edit", "Cancel"], "multi": False, "preview": True, "more": 2,
+        "set": [{"header": "Plan", "question": "Which plan should we run?",
+                 "options": ["Approve", "Edit", "Cancel"], "multi": False, "preview": True},
+                {"header": "Colour", "question": "Which colour?", "options": ["Blue", "Red"], "multi": False},
+                {"header": "Checks", "question": "Which checks?", "options": ["Lint", "Tests"], "multi": True}]}
+
+
+def test_a_stop_publishes_the_prompts_the_session_has_scheduled(tmp_path, monkeypatch):
+    """With the moment the Stop listed them, which a one-shot's run is timed from."""
+    assert published_by_handler(tmp_path, "Stop", STOP_WITH_CRONS)["crons"] == [
+        {"id": "b63d99f2", "schedule": "26 13 5 11 *", "recurring": False, "prompt": "one shot"},
+        {"id": "20c147b9", "schedule": "31 13 * * *", "recurring": False, "prompt": "wake me"}]
+    monkeypatch.setattr(emit_state.time, "time", lambda: 1789000000.125)
+    doc = emit_state.apply_event(emit_state.blank_state(), "Stop", STOP_WITH_CRONS, "idle")
+    assert emit_state.published(doc, 701, {}, codex=False, now=1789000060, tasks=False)["crons_at"] == 1789000000.125
+
+
+def test_scheduled_prompts_stand_until_a_stop_lists_others(tmp_path):
+    """Only Stop carries the list, so every other event, and a Stop from an
+    engine that sends none, keeps the last one. An empty list is a report;
+    a session no Stop has listed for has none to make."""
+    session = {"session_id": "test-session", "cwd": "/tmp/example"}
+    before = published_by_handler(tmp_path, "UserPromptSubmit", {**session, "prompt": "go"})
+    assert "crons" not in before and "crons_at" not in before
+    listed_at = published_by_handler(tmp_path, "Stop", STOP_WITH_CRONS)["crons_at"]
+    for event, payload in (("UserPromptSubmit", {**session, "prompt": "go on"}),
+                           ("PreToolUse", {**session, "tool_use_id": "toolu_1", "tool_name": "Bash"}),
+                           ("Stop", {**session, "stop_hook_active": False, "background_tasks": []})):
+        value = published_by_handler(tmp_path, event, payload)
+        assert [c["id"] for c in value["crons"]] == ["b63d99f2", "20c147b9"]
+        assert value["crons_at"] == listed_at
+    emptied = published_by_handler(tmp_path, "Stop", {**session, "stop_hook_active": False, "session_crons": []})
+    assert emptied["crons"] == []
+    assert emptied["crons_at"] > listed_at
+
+
+def test_a_scheduled_prompt_keeps_its_four_fields_and_one_that_cannot_be_read_is_left_out():
+    """The prompt is free text a /loop was given, cut to what a card could show."""
+    doc = emit_state.apply_event(emit_state.blank_state(), "Stop", {"stop_hook_active": False, "session_crons": [
+        {"id": "6ba43431", "schedule": "*/10 * * * *", "recurring": True, "prompt": "say hello", "durable": True},
+        {"id": 7, "schedule": "* * * * *", "recurring": True, "prompt": "p"},
+        {"id": "a1", "schedule": "* * * * *", "recurring": "yes", "prompt": "p"},
+        {"id": "a2", "schedule": "* * * * *", "recurring": 1, "prompt": "p"},
+        {"id": "a3", "schedule": "* * * * *", "recurring": False},
+        {"id": "a4", "schedule": None, "recurring": False, "prompt": "p"},
+        "6ba43431",
+        {"id": "c0ffee00", "schedule": "0 9 * * 1", "recurring": True, "prompt": "x" * 500}]}, "idle")
+    assert emit_state.published(doc, 701, {}, codex=False, now=1789000000, tasks=False)["crons"] == [
+        {"id": "6ba43431", "schedule": "*/10 * * * *", "recurring": True, "prompt": "say hello"},
+        {"id": "c0ffee00", "schedule": "0 9 * * 1", "recurring": True, "prompt": "x" * 199 + "…"}]
+
+
+def test_a_codex_session_publishes_no_scheduled_prompts():
+    """The list is Claude Code's; a Codex Stop shaped like one is not a report of it."""
+    doc = emit_state.apply_event(emit_state.blank_state(), "Stop", STOP_WITH_CRONS, "idle", codex=True)
+    value = emit_state.published(doc, 701, STOP_WITH_CRONS, codex=True, now=1789000000)
+    assert "crons" not in value and "crons_at" not in value
+
+
+def test_scheduled_prompts_past_the_ceiling_travel_in_the_detail_file(tmp_path):
+    """A /loop prompt is free text, and a blocked state with its question
+    already sits at the variable's ceiling."""
+    value = dict(_value(0), crons=[{"id": "6ba43431", "schedule": "*/10 * * * *", "recurring": True,
+                                    "prompt": "x" * 199 + "…"}], crons_at=1789732400.125)
+    envelope = json.loads(emit_state.carried(value, "s-1", directory=str(tmp_path)))
+    assert envelope == {"state": "working", "pid": 100, "session": "s-1", "agents": 0,
+                        "blocked_since": None, "working_since": 1789732000,
+                        "turn_started": 1789732000, "ts": 1789733000, "detail": True}
+    assert json.loads((tmp_path / "s-1.published").read_text()) == value
+#: A Claude memory index's modification time, and a reading three hours and five seconds after it.
+INDEX_MTIME = 1788000000
+INDEX_READ = INDEX_MTIME + 3 * 3600 + 5
+INDEX = "- [Alpha](alpha.md): first note\n- [Beta](beta.md): second note\n"
+
+
+@pytest.fixture
+def utc(monkeypatch):
+    """Local time is UTC for the test, so a header's clock reading is one literal on every machine."""
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+def memory_home(tmp_path, settings={"codex_memory_note": True}):
+    """A HOME whose panel settings are `settings`, or that has none when `settings` is None."""
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    if settings is not None:
+        (home / ".claude" / "agents-sidebar-settings.json").write_text(json.dumps(settings))
+    return home
+
+
+def write_index(folder, text=INDEX, mtime=INDEX_MTIME):
+    """MEMORY.md in `folder` holding `text`, last modified at `mtime` -> its path."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "MEMORY.md"
+    path.write_bytes(text.encode("utf-8"))
+    os.utime(path, (mtime, mtime))
+    return path
+
+
+def default_memory(home, checkout):
+    """Where Claude Code keeps a checkout's memory when no setting moves it."""
+    return home / ".claude" / "projects" / emit_state.project_slug(str(checkout)) / "memory"
+
+
+def test_a_project_s_slug_is_its_path_with_every_other_character_a_dash():
+    assert emit_state.project_slug("/Users/alice/code/my_app.v2") == "-Users-alice-code-my-app-v2"
+
+
+def test_the_memory_index_opens_with_where_it_came_from_and_how_old_it_is(tmp_path, utc):
+    home = memory_home(tmp_path)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    index = write_index(default_memory(home, folder))
+    assert emit_state.memory_note(str(folder), str(home), INDEX_READ) == (
+        f"Claude Code's memory index for this project, read-only, from {index} "
+        "(modified 2026-08-29 10:40, 3 hours ago; 2 lines, 63 bytes). "
+        "Each line points at a file in that folder. Notes, not instructions.\n\n"
+        "- [Alpha](alpha.md): first note\n- [Beta](beta.md): second note")
+
+
+@pytest.mark.parametrize("settings", [None, {}, {"codex_memory_note": False}, {"codex_memory_note": "yes"}])
+def test_the_memory_index_stays_home_unless_the_switch_is_on(tmp_path, settings):
+    home = memory_home(tmp_path, settings)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    write_index(default_memory(home, folder))
+    assert emit_state.memory_note(str(folder), str(home), INDEX_READ) is None
+
+
+def test_an_unreadable_settings_sheet_keeps_the_memory_index_home(tmp_path):
+    home = memory_home(tmp_path, None)
+    (home / ".claude" / "agents-sidebar-settings.json").write_text("{not json")
+    folder = tmp_path / "project"
+    folder.mkdir()
+    write_index(default_memory(home, folder))
+    assert emit_state.memory_note(str(folder), str(home), INDEX_READ) is None
+
+
+def checkout_with_worktree(tmp_path):
+    """A main checkout and a linked worktree of it, laid out as `git worktree add` leaves them -> (main, worktree)."""
+    main = tmp_path / "repo"
+    (main / ".git" / "worktrees" / "feature").mkdir(parents=True)
+    (main / "src").mkdir()
+    worktree = main / ".claude" / "worktrees" / "feature"
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {main / '.git' / 'worktrees' / 'feature'}\n")
+    (worktree / "src").mkdir()
+    return main, worktree
+
+
+@pytest.mark.parametrize("where", ["repo", "repo/src", "repo/.claude/worktrees/feature",
+                                   "repo/.claude/worktrees/feature/src"])
+def test_every_folder_of_a_repository_reads_the_main_checkout_s_memory(tmp_path, where):
+    home = memory_home(tmp_path)
+    main, _ = checkout_with_worktree(tmp_path)
+    index = write_index(default_memory(home, main))
+    note = emit_state.memory_note(str(tmp_path / where), str(home), INDEX_READ)
+    assert note.startswith(f"Claude Code's memory index for this project, read-only, from {index} (")
+
+
+def test_a_submodule_reads_its_own_memory(tmp_path):
+    """Its .git names a folder under the superproject's modules, not a worktree: the submodule is its own project."""
+    home = memory_home(tmp_path)
+    (tmp_path / "super" / ".git" / "modules" / "lib").mkdir(parents=True)
+    sub = tmp_path / "super" / "lib"
+    sub.mkdir()
+    (sub / ".git").write_text("gitdir: ../.git/modules/lib\n")
+    index = write_index(default_memory(home, sub))
+    write_index(default_memory(home, tmp_path / "super"), "- [Other](other.md): the superproject's\n")
+    assert emit_state.memory_note(str(sub), str(home), INDEX_READ).endswith(INDEX.rstrip("\n"))
+    assert str(index) in emit_state.memory_note(str(sub), str(home), INDEX_READ)
+
+
+def test_a_dot_git_file_that_names_no_folder_reads_no_memory(tmp_path):
+    home = memory_home(tmp_path)
+    folder = tmp_path / "odd"
+    folder.mkdir()
+    (folder / ".git").write_text("not a pointer\n")
+    write_index(default_memory(home, folder))
+    assert emit_state.memory_note(str(folder), str(home), INDEX_READ) is None
+
+
+def claude_settings(folder, **keys):
+    """A Claude Code settings file at `folder` holding `keys`."""
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    folder.write_text(json.dumps(keys))
+
+
+def test_the_main_checkout_s_local_settings_move_the_memory_for_every_worktree(tmp_path):
+    home = memory_home(tmp_path)
+    main, worktree = checkout_with_worktree(tmp_path)
+    moved = tmp_path / "kept" / "memory"
+    claude_settings(main / ".claude" / "settings.local.json", autoMemoryDirectory=str(moved))
+    claude_settings(main / ".claude" / "settings.json", autoMemoryDirectory=str(tmp_path / "shared"))
+    claude_settings(home / ".claude" / "settings.json", autoMemoryDirectory=str(tmp_path / "user"))
+    write_index(default_memory(home, main), "- [Other](other.md): the default folder's\n")
+    index = write_index(moved)
+    note = emit_state.memory_note(str(worktree), str(home), INDEX_READ)
+    assert str(index) in note and note.endswith(INDEX.rstrip("\n"))
+
+
+@pytest.mark.parametrize("local, shared, user, read", [
+    (None, "shared", "user", "shared"),
+    (None, None, "user", "user"),
+    (None, None, None, "default"),
+])
+def test_the_first_settings_file_that_names_a_memory_folder_decides(tmp_path, local, shared, user, read):
+    home = memory_home(tmp_path)
+    main, _ = checkout_with_worktree(tmp_path)
+    for path, name in ((main / ".claude" / "settings.local.json", local), (main / ".claude" / "settings.json", shared),
+                       (home / ".claude" / "settings.json", user)):
+        claude_settings(path, **({"autoMemoryDirectory": str(tmp_path / name)} if name else {"model": "opus"}))
+    folders = {"shared": tmp_path / "shared", "user": tmp_path / "user", "default": default_memory(home, main)}
+    for name, folder in folders.items():
+        write_index(folder, f"- [{name}]({name}.md): the {name} folder's\n")
+    assert emit_state.memory_note(str(main), str(home), INDEX_READ).endswith(
+        f"- [{read}]({read}.md): the {read} folder's")
+
+
+def test_a_memory_folder_under_home_is_named_from_it(tmp_path):
+    home = memory_home(tmp_path)
+    main, _ = checkout_with_worktree(tmp_path)
+    claude_settings(main / ".claude" / "settings.local.json", autoMemoryDirectory="~/notes/memory/")
+    index = write_index(home / "notes" / "memory")
+    assert str(index) in emit_state.memory_note(str(main), str(home), INDEX_READ)
+
+
+@pytest.mark.parametrize("value", ["notes/memory", 7, ""])
+def test_a_memory_folder_setting_that_names_no_absolute_folder_reads_nothing(tmp_path, value):
+    home = memory_home(tmp_path)
+    main, _ = checkout_with_worktree(tmp_path)
+    claude_settings(main / ".claude" / "settings.local.json", autoMemoryDirectory=value)
+    write_index(default_memory(home, main))
+    write_index(main / "notes" / "memory")
+    assert emit_state.memory_note(str(main), str(home), INDEX_READ) is None
+
+
+def test_a_missing_memory_index_reads_nothing(tmp_path):
+    home = memory_home(tmp_path)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    default_memory(home, folder).mkdir(parents=True)
+    assert emit_state.memory_note(str(folder), str(home), INDEX_READ) is None
+
+
+@pytest.mark.parametrize("shape", ["symlink", "folder", "fifo", "too long", "not utf-8", "empty", "blank"])
+def test_a_memory_index_that_is_not_a_short_text_file_reads_nothing(tmp_path, shape):
+    home = memory_home(tmp_path)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    memory = default_memory(home, folder)
+    memory.mkdir(parents=True)
+    index = memory / "MEMORY.md"
+    if shape == "symlink":
+        index.symlink_to(write_index(tmp_path / "elsewhere"))
+    elif shape == "folder":
+        index.mkdir()
+    elif shape == "fifo":
+        os.mkfifo(index)
+    elif shape == "too long":
+        write_index(memory, "- [Note](note.md): a pointer\n" * 10000)
+    elif shape == "not utf-8":
+        index.write_bytes(b"- [Caf\xe9](cafe.md): latin-1\n")
+    else:
+        write_index(memory, "" if shape == "empty" else "\n \n")
+    assert emit_state.memory_note(str(folder), str(home), INDEX_READ) is None
+
+
+@pytest.mark.parametrize("cwd", [None, 7, "", "project"])
+def test_a_session_with_no_absolute_folder_reads_no_memory(tmp_path, monkeypatch, cwd):
+    home = memory_home(tmp_path)
+    (tmp_path / "project").mkdir()
+    write_index(default_memory(home, tmp_path / "project"))
+    # Where a relative folder, or none, would lead if it were taken as a path.
+    write_index(home / ".claude" / "projects" / "project" / "memory")
+    write_index(home / ".claude" / "projects" / "memory")
+    monkeypatch.chdir(tmp_path)
+    assert emit_state.memory_note(cwd, str(home), INDEX_READ) is None
+
+
+LEFT_OUT = "left out to fit Codex's limit on hook context; the file holds them all."
+A, B, C = "a" * 100, "b" * 100, "c" * 100
+
+
+@pytest.mark.parametrize("limit, fitted", [
+    # Header, blank line and three 100-byte lines: 308 bytes.
+    (308, f"Head\n\n{A}\n{B}\n{C}"),
+    # Two lines and the count of one left out: 291 bytes.
+    (307, f"Head\n\n{A}\n{B}\n1 more line {LEFT_OUT}"),
+    # The count itself does not fit after two, so the second goes too: 191 bytes.
+    (250, f"Head\n\n{A}\n2 more lines {LEFT_OUT}"),
+    (150, f"Head\n\n3 more lines {LEFT_OUT}"),
+])
+def test_an_index_past_the_limit_keeps_the_whole_lines_that_fit_and_counts_the_rest(limit, fitted):
+    assert emit_state.fitted("Head", [A, B, C], limit) == fitted
+
+
+def test_the_memory_note_fits_codex_s_hook_context_in_bytes_not_characters(tmp_path):
+    """Codex 0.166 cuts the middle out of a hook's context past 10 000 bytes (probe, 2026-11-05).
+    A hundred lines of dashes are 6 100 characters and 14 300 bytes."""
+    home = memory_home(tmp_path)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    line = "- [Note](note.md): " + "\u2014" * 41
+    index = f"{line}\n" * 100
+    write_index(default_memory(home, folder), index)
+    note = emit_state.memory_note(str(folder), str(home), INDEX_READ)
+    kept = note.split("\n\n", 1)[1].split("\n")
+    assert (len(index), len(index.encode("utf-8"))) == (6_100, 14_300)
+    assert 9_800 < len(note.encode("utf-8")) <= 10_000
+    assert set(kept[:-1]) == {line}
+    assert kept[-1] == f"{100 - len(kept[:-1])} more lines {LEFT_OUT}"
+
+
+def test_a_one_line_index_is_counted_as_one_line(tmp_path, utc):
+    home = memory_home(tmp_path)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    write_index(default_memory(home, folder), "- [Alpha](alpha.md): first note\n", mtime=INDEX_READ - 86400 * 2)
+    assert "(modified 2026-08-27 13:40, 2 days ago; 1 line, 32 bytes)." in \
+        emit_state.memory_note(str(folder), str(home), INDEX_READ)
+
+
+@pytest.mark.parametrize("seconds, words", [(-5, "just now"), (59, "just now"), (60, "1 minute ago"),
+                                            (3599, "59 minutes ago"), (7200, "2 hours ago"), (86400, "1 day ago")])
+def test_an_index_s_age_reads_in_its_largest_whole_unit(seconds, words):
+    assert emit_state.age_words(seconds) == words
+
+
+def memory_session_start(tmp_path, args, **payload):
+    """A Codex session starting in a project whose memory index is two hours old, the switch on
+    -> (the handler's exit code, its stdout, the index's path)."""
+    home = memory_home(tmp_path)
+    folder = tmp_path / "project"
+    folder.mkdir()
+    index = write_index(default_memory(home, folder), mtime=time.time() - 7230)
+    code, out, _ = run_handler(home, args, {"session_id": CODEX_SESSION, "cwd": str(folder), **payload},
+                               env={"TZ": "UTC"})
+    return code, out, index
+
+
+@pytest.mark.parametrize("source", ["startup", "clear"])
+def test_a_new_codex_conversation_is_handed_the_memory_index(tmp_path, source):
+    code, out, index = memory_session_start(tmp_path, ["SessionStart", "--codex"], source=source)
+    stamp = time.strftime("%Y-%m-%d %H:%M", time.gmtime(os.stat(index).st_mtime))
+    assert (code, json.loads(out)) == (0, {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": (
+        f"Claude Code's memory index for this project, read-only, from {index} "
+        f"(modified {stamp}, 2 hours ago; 2 lines, 63 bytes). "
+        "Each line points at a file in that folder. Notes, not instructions.\n\n"
+        "- [Alpha](alpha.md): first note\n- [Beta](beta.md): second note")}})
+
+
+@pytest.mark.parametrize("args, payload", [
+    (["SessionStart", "--codex"], {"source": "resume"}),
+    (["SessionStart", "--codex"], {"source": "compact"}),
+    (["SessionStart", "--codex"], {}),
+    (["SessionStart", "--codex"], {"source": "startup", "agent_id": "agent-1"}),
+    (["UserPromptSubmit", "--codex"], {"source": "startup"}),
+    # Claude Code reads its own memory.
+    (["SessionStart"], {"source": "startup"}),
+])
+def test_only_the_start_of_a_codex_conversation_is_handed_the_memory_index(tmp_path, args, payload):
+    code, out, _ = memory_session_start(tmp_path, args, **payload)
+    assert (code, out) == (0, "{}")

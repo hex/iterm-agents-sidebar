@@ -93,3 +93,22 @@ def test_each_dark_block_says_the_same_under_macos_dark_and_under_a_dark_termina
     assert [sel for sel, _ in media] == ["", "", " #scrim"]
     assert [block for block in media if block not in term] == []
     assert "--bg: #1c1c1e;" in media[0][1] and "--effort-low: #bb9f6d;" in media[1][1]
+
+
+def test_on_a_dark_terminal_a_cards_name_and_report_take_the_hue_of_their_ground_and_a_subagents_name_a_warm_white():
+    """Softer than white, the same on every card: a session's name and its
+    report's title are a pale tint of the hue of the ground they sit on, the
+    card's own (the terminal's hue) or, for a finished card's report, its
+    green wash, and never more saturated than that ground, so a grey or black
+    terminal leaves them neutral instead of the red its powerless hue reads
+    as. A subagent's or teammate's name is a warm paper white a step below. A
+    resting name keeps its grey and a waiting card its own colours."""
+    rules = {sel.strip(): body.strip() for sel, body in re.findall(r"\n  (:root\[data-term-theme=\"dark\"\][^{]+)\{([^}]*)\}", PAGE)}
+    assert rules[':root[data-term-theme="dark"] li.line.card'] == "--ink-ground: var(--card);"
+    assert rules[':root[data-term-theme="dark"] li.line.card.finished'] == "--ink-ground: var(--finished-bg);"
+    assert rules[':root[data-term-theme="dark"] li.line.card:not(.blocked) > button.row:not(.quiet) :is(.label, .label .run)'] == \
+        "color: oklch(from var(--ink-ground) .86 min(.035, c) h);"
+    assert rules[':root[data-term-theme="dark"] li.line.card:not(.blocked) .task .task-title'] == \
+        "color: oklch(from var(--ink-ground) .72 min(.03, c) h); opacity: 1;"
+    assert rules[':root[data-term-theme="dark"] .children button.row:not(.quiet) :is(.label, .label .run)'] == \
+        "color: oklch(.74 .02 75);"

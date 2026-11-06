@@ -3,6 +3,7 @@
 The daemon takes an ephemeral port, so the page's origin changes on every
 restart and anything stored per-origin is lost with it.
 """
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -204,6 +205,22 @@ def test_linking_cards_starts_off_and_turning_it_on_survives_a_reload(tmp_path):
     assert load_settings(store)["links"] is True
 
 
+def test_codex_hears_the_memory_index_only_once_the_switch_the_panel_saved_is_on(tmp_path):
+    """The index goes to OpenAI, so a panel that never turned the switch on sends nothing. The Codex
+    hook reads the sheet the daemon writes, at the same place under HOME."""
+    spec = importlib.util.spec_from_file_location(
+        "emit_state", Path(__file__).resolve().parent.parent / "plugin" / "hooks-handlers" / "emit-state.py")
+    emit_state = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(emit_state)
+    assert sidebar.SETTINGS_FILE.relative_to(Path.home()) == Path(".claude/agents-sidebar-settings.json")
+    store = tmp_path / ".claude" / "agents-sidebar-settings.json"
+    store.parent.mkdir()
+    save_settings({}, store)
+    assert (load_settings(store)["codex_memory_note"], emit_state.memory_switch_on(str(tmp_path))) == (False, False)
+    save_settings({"codex_memory_note": True}, store)
+    assert emit_state.memory_switch_on(str(tmp_path)) is True
+
+
 # -------------------------------------------------------------------- version
 
 def test_the_version_is_the_file_s_first_line(tmp_path):
@@ -259,11 +276,12 @@ def test_a_face_for_shell_names_that_is_not_one_of_them_is_refused():
 
 
 def test_session_rows_are_cards_until_another_style_is_chosen(tmp_path):
-    """One of five: today's cards, hairlines between rows, air between them,
-    rules inset to the text column, or outlines with the canvas for a fill."""
+    """One of six: today's cards, hairlines between rows, air between them,
+    rules inset to the text column, outlines with the canvas for a fill, or
+    Serenity's quiet list."""
     store = tmp_path / "settings.json"
     assert DEFAULT_SETTINGS["card_style"] == "cards"
-    for choice in ("hairlines", "air", "inset", "outlines", "cards"):
+    for choice in ("hairlines", "air", "inset", "outlines", "serenity", "cards"):
         assert save_settings({"card_style": choice}, store)["card_style"] == choice
         assert load_settings(store)["card_style"] == choice
 
@@ -319,8 +337,9 @@ def test_the_finished_settings_and_the_tab_status_default_on(tmp_path):
 
 
 def test_a_new_setting_takes_its_default_on_an_install_that_saved_before_it(tmp_path):
-    """The tab status defaults on everywhere, not only where nothing was saved yet."""
+    """The tab status and the session colour on the tab default on everywhere,
+    not only where nothing was saved yet."""
     store = tmp_path / "settings.json"
     store.write_text('{"mark_badge": false, "offer_statusline": false}')
     s = load_settings(store)
-    assert (s["tab_status"], s["offer_tab_status"], s["mark_badge"]) == (True, True, False)
+    assert (s["tab_status"], s["offer_tab_status"], s["tab_colour"], s["mark_badge"]) == (True, True, True, False)

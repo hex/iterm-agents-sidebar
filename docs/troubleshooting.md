@@ -2,7 +2,8 @@
 
 | Symptom | What it means | What to do |
 | --- | --- | --- |
-| Every row dims, `STALE` banner | The daemon missed two heartbeats, a heartbeat says it can't read iTerm2, or the page failed to draw the latest frame (then `daemon.log` has a `page error` line, below) | Quit the running script first, in Scripts > Manage > Console or by killing the `venvs/3.10/bin/python` process that runs `agents_sidebar.py`. Then start it from the Scripts menu. Starting it while one runs makes a second daemon |
+| The panel stops drawing or responding to the pointer | The web view needs rebuilding | Right-click reload and choose **Rebuild the panel**. This opens a fresh view in every window. See [Rebuilding the panel](usage.md#rebuilding-the-panel) |
+| Every row dims, `STALE` banner | The live connection failed, the daemon missed two heartbeats, a heartbeat reports an iTerm2 read failure, or the page failed to draw the latest frame. A drawing failure adds a `page error` line to `daemon.log` | A closed connection retries after two seconds. If `STALE` persists, quit the running script in Scripts > Manage > Console or stop the `venvs/3.10/bin/python` process that runs `agents_sidebar.py`. Then start it from the Scripts menu. Starting it while one runs makes a second daemon |
 | A row shows `?` for its directory | iTerm2 can't report that one session's directory. The row leaves out a job it can't read | Nothing; one session costs its own row, not the list |
 | The panel is white and nothing loads | Two tool identifiers named "Agents", and the menu opened the dead one | Rename the stale entry, below |
 | Details has no commit calendar for a project | git refused the repository (a broken one, or one owned by another user) or did not answer in 10 s; `daemon.log` says `commits of <path> not read: ...` | Fix the repository; the panel asks git again within a minute |
@@ -27,9 +28,11 @@ Some failures show only in `~/.claude/agents-sidebar-status/daemon.log`:
 | `auto-switch refused: <why>` | An automatic switch failed, and the login did not change | Act on the reason it gives |
 | `tab status off: <reason>` | iTerm2 is older than 3.7.6, or the panel could read no session's status when it started, so no tab gets a status | Update iTerm2, then restart the panel |
 | `status <session>: <error>` | iTerm2 refused one tab's status; said once until a call on that session works, and tried again each reading | Nothing, unless it repeats for a session that is open |
+| `tab colour <session>: <error>` | iTerm2 refused to read or set one tab's colour, so that tab keeps the colour it had | Turn Settings > Look > Session colour on the tab off and on again to try again |
 | `page error <message> \| <stack>` | The panel could not draw a frame and shows `STALE` until one draws | Report the line; reopening the panel does not fix the frame that breaks it |
 | `daemon exit: <reason>` | The daemon ended: `SystemExit(0)` after a stop, else the error that ended it | Start it from the Scripts menu; report the reason if it was not a stop |
 | `reopen: no shell prompt after 10s in <path>` | A Past sessions Resume opened a tab whose shell did not appear in time, so nothing was typed | Type the resume command in that tab, or try again |
+| `stop-port <pid> :<port> <program>` | A Ports Stop sent `SIGTERM` to that process, after checking it still held the port | Nothing; if the port is still listed once the fold reads again, the program ignored `SIGTERM`, so stop it from its own terminal |
 
 ## The white panel
 
@@ -44,6 +47,9 @@ defaults write com.googlecode.iterm2 NoSyncDynamicTools -dict-add <old id> \
 ```
 
 ## Why STALE exists
+
+A live connection error marks the panel `STALE` at once. A closed connection
+retries after two seconds. A fresh heartbeat or a drawn frame clears `STALE`.
 
 A heartbeat only proves the daemon is answering, so it carries the result of
 its last read of iTerm2 as well. Without that, a stuck refresh would leave

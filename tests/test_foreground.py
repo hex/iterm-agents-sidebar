@@ -7,7 +7,6 @@ knows the command. Sample lines are the real shape of
 from a live tmux pane running the Codex CLI on 2026-09-15.
 """
 import importlib.util
-import time
 from pathlib import Path
 
 import pytest
@@ -17,17 +16,6 @@ spec = importlib.util.spec_from_file_location(
 sidebar = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sidebar)
 
-
-@pytest.fixture
-def utc(monkeypatch):
-    """Start stamps read as UTC for the test, and the process clock goes back
-    with the variable: tzset() reads TZ once, so restoring the variable alone
-    would leave every later test in the wrong zone."""
-    monkeypatch.setenv("TZ", "UTC")
-    time.tzset()
-    yield
-    monkeypatch.undo()
-    time.tzset()
 
 PS = """\
  2801     1  2801  4828 ttys000 Thu Sep 17 09:44:37 2026 0.0 0 -zsh
@@ -50,6 +38,9 @@ def test_the_foreground_group_leader_names_each_tty():
 def test_a_script_run_by_an_interpreter_is_named_by_the_script():
     assert sidebar.foreground_command("/usr/bin/node /usr/local/bin/codex --yolo") == "codex"
     assert sidebar.foreground_command("python3.12 /opt/tools/serve.py") == "serve.py"
+    # The python.org build runs as Python.app, its binary capitalised.
+    assert sidebar.foreground_command("/Library/Frameworks/Python.framework/Versions/3.14/Resources/Python.app"
+                                      "/Contents/MacOS/Python /opt/tools/serve.py") == "serve.py"
 
 
 def test_an_interpreter_given_only_flags_keeps_its_own_name():

@@ -9,6 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sidebar
+import sidebar_rules
 from sidebar_rules import remote_key_refusal
 
 STATE = {"state": "blocked", "pid": 31432, "session": "0f0e0d0c-0b0a-4a09-8807-060504030201",
@@ -64,6 +65,15 @@ def test_one_key_may_be_typed_only_under_every_check():
     assert remote_key_refusal("box", True, True, False) == "the agent's title has gone from the pane"
 
 
+def test_a_question_whose_options_show_previews_takes_no_key():
+    """There a number only moves the cursor and Enter picks, and a remote pane takes no Enter."""
+    listed = {"question": "Which one?", "options": ["This", "That"], "multi": False, "more": 0}
+    assert sidebar_rules.remote_question_refusal(dict(listed, preview=True)) == "a pick beside previews takes Enter"
+    assert sidebar_rules.remote_question_refusal(listed) is None
+    assert sidebar_rules.remote_question_refusal({"tool": "Bash", "summary": "git push", "id": "f" * 32}) is None
+    assert sidebar_rules.remote_question_refusal(None) is None
+
+
 @pytest.mark.parametrize("asked", [
     {"options": "ab"},                                             # a string is not a list of labels
     {"question": "Which one?", "options": ["This", 7]},
@@ -73,6 +83,8 @@ def test_one_key_may_be_typed_only_under_every_check():
     {"question": "Which one?", "options": ["This", "That"], "multi": True},
     {"question": "Which one?", "options": ["This", "That"], "set": "ab"},
     {"question": "Which one?", "options": ["This", "That"], "more": 2},
+    {"question": "Which one?", "options": ["This", "That"], "preview": "yes"},
+    {"question": "Which one?", "options": ["This", "That"], "preview": 1},
     {"tool": "Bash", "summary": "ls"},                              # a gate is answered by its id
     {"tool": 5, "id": "f" * 32},
     {"something": "else"},
@@ -84,8 +96,11 @@ def test_a_question_of_the_wrong_shape_is_no_question(asked):
 
 def test_a_question_keeps_only_what_a_card_reads_and_clips_it():
     asked = {"header": "h" * 400, "question": "q" * 900, "options": ["a" * 300, "That"], "multi": False, "more": 0,
-             "since": 1791700000, "extra": {"nested": True}}
+             "preview": True, "since": 1791700000, "extra": {"nested": True}}
     assert sidebar.remote_question(raw(), json.dumps(asked)) == {
+        "header": "h" * 40, "question": "q" * 300, "options": ["a" * 60, "That"], "multi": False, "more": 0,
+        "preview": True}
+    assert sidebar.remote_question(raw(), json.dumps(dict(asked, preview=False))) == {
         "header": "h" * 40, "question": "q" * 300, "options": ["a" * 60, "That"], "multi": False, "more": 0}
 
 

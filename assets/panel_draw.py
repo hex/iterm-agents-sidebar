@@ -206,7 +206,8 @@ def mix(colour, over, share):
 
 
 #: The pill words at 600 10px, measured as MEASURED is.
-PILL_W = {"Working": 41.5, "Waiting for you": 75.9, "Idle": 18.6, "No report": 48.0,
+PILL_W = {"Working": 41.5, "Waiting": BADGE_W["Waiting"] * 10 / 11,
+          "Waiting for you": 75.9, "Idle": 18.6, "No report": 48.0,
           "Long 25m": 49.7, "Exited": 31.4}
 
 

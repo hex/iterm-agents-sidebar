@@ -53,6 +53,15 @@ def remote_key_refusal(host, transport, front, marked):
     return None
 
 
+def remote_question_refusal(question):
+    """Why no key typed into a remote pane can answer its standing question, or None.
+
+    Beside their previews a number only moves the cursor and Enter picks
+    (option_keys), and Enter is never typed into a remote pane.
+    """
+    return "a pick beside previews takes Enter" if question and question.get("preview") else None
+
+
 def typing_refusal(row, strokes):
     """Why these writes may not be typed into the row's pane, or None. Only a remote row is judged here.
 

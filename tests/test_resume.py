@@ -10,8 +10,8 @@ Ways this can go wrong, and the test for each:
 - the agent died before it saved a word, so there is nothing to resume;
 - the same conversation is already live in another pane: launched twice;
 - a second click while the first resume is still starting: launched twice;
-- cs still waiting on its own question after the hold: the second resume is
-  typed into cs's prompt.
+- what the resume started still running in the pane after the hold: the
+  second resume is typed into it.
 """
 import sys
 from pathlib import Path
@@ -33,7 +33,7 @@ def test_codex_resumes_with_its_own_verb(tmp_path):
 
 def test_a_cs_session_goes_back_through_cs(tmp_path):
     (tmp_path / ".cs").mkdir()
-    assert resume_command(str(tmp_path), "claude", CONVERSATION) == "cs ."
+    assert resume_command(str(tmp_path), "claude", CONVERSATION) == "cs . --resume"
 
 
 def test_a_codex_pane_in_a_cs_directory_is_still_codex(tmp_path):
@@ -147,7 +147,8 @@ def test_a_resume_holds_while_its_hold_runs():
 
 
 def test_a_resume_holds_past_its_hold_while_what_it_started_still_runs():
-    """cs waits on its [Y/n] as long as nobody answers it."""
+    """The pane is what the resume started until its agent reports, however
+    long that takes."""
     rows = [{"session_id": "A", "agent_state": "exited", "job_name": "bash"}]
     assert still_resuming({"A": (100.0, "zsh")}, rows, 100.0 + 10 * RESUME_HOLD) == {"A": (100.0, "zsh")}
 

@@ -4,12 +4,14 @@ A notification wears its SENDER's icon and name, never anything the poster
 passes, so the panel posts through a bundle of its own. What is testable
 without one is the argv and the decision to post at all.
 """
+import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sidebar
+import sidebar_rules
 from sidebar import (notify_argv, notify_response, notify_wanted, response_target, Notices,
                      switch_log_line, switch_notice_argv)
 
@@ -55,6 +57,15 @@ def test_a_question_with_more_behind_it_says_so():
 def test_at_most_four_buttons_because_macos_shows_no_more():
     asked = dict(ASKED, options=["a", "b", "c", "d", "e", "f"])
     assert len(args(notify_argv(APP, "s", "n", "blocked", asked), "--button")) == 4
+
+
+def test_a_question_with_previews_gets_buttons_and_no_reply_field():
+    """Claude Code draws such a question without Other (measured on 2.1.318):
+    a reply's text would go nowhere and its Enter would pick the option
+    under the cursor."""
+    argv = notify_argv(APP, "sess-1", "fignity", "blocked", dict(ASKED, preview=True))
+    assert args(argv, "--button") == ["1=Dots", "2=Square", "3=Rows"]
+    assert "--reply" not in argv
 
 
 def test_a_multi_select_question_gets_no_buttons():
@@ -116,6 +127,20 @@ def test_a_button_sends_the_digit_that_picks_that_option():
     """Claude Code's prompt takes the option's number outright; no Enter, so
     a digit that somehow misses only moves the cursor and confirms nothing."""
     assert notify_response('{"action": "2"}', "blocked", ASKED) == ("send", "2")
+
+
+def test_a_button_on_a_question_with_previews_sends_the_digit_then_enter():
+    """There the digit only moves the cursor, and Enter, typed as a write of
+    its own, picks the option."""
+    from sidebar import keystrokes
+    verb, text = notify_response('{"action": "2"}', "blocked", dict(ASKED, preview=True))
+    assert (verb, keystrokes(text)) == ("send", ["2", "\r"])
+
+
+def test_a_reply_to_a_question_with_previews_sends_nothing():
+    """It has no Other to pick."""
+    assert notify_response('{"action": "reply", "text": "neither"}', "blocked", dict(ASKED, preview=True)) == \
+        (None, None)
 
 
 def test_a_reply_to_a_question_picks_other_and_types_the_text():
@@ -325,6 +350,17 @@ def test_a_remote_question_the_daemon_would_not_answer_offers_no_buttons():
                                 {"tool": "Bash", "summary": "git push"}, remote=True, refusal=refusal)
     assert (args(asked, "--button"), "--reply" in asked, arg(asked, "--body")) == ([], False, "Which one?")
     assert (args(gated, "--button"), arg(gated, "--body")) == ([], "wants to run: git push")
+
+
+def test_a_remote_question_whose_options_show_previews_offers_no_buttons_and_no_reply_field():
+    """Its pick takes Enter, which a remote pane is never sent: the banner shows the question and nothing to press."""
+    state = json.dumps({"state": "blocked", "blocked_since": 1791700000, "host": "box"})
+    published = json.dumps({"question": "Which one?", "options": ["This", "That"], "multi": False, "more": 0,
+                            "preview": True, "since": 1791700000})
+    question = sidebar.remote_question(state, published)
+    argv = notify_argv(APP, "s1", "atlas", "blocked", question, remote=True,
+                       refusal=sidebar_rules.remote_question_refusal(question))
+    assert argv == [EXE, "post", "--id", "s1", "--title", "atlas", "--body", "Which one?"]
 
 
 def test_a_hidden_hotkey_window_is_summoned_with_the_profile_hotkey():

@@ -13,16 +13,21 @@ from page_source import function  # noqa: E402
 PAGE = (ROOT / "page.html").read_text(encoding="utf-8")
 
 
-def fields(row, now=1_700_000_000):
+def evaluate(row, pick, now=1_700_000_000):
+    """`pick`, a JavaScript expression of `p`, for each pair fieldsFor makes of `row`."""
     consts = "\n".join(re.search(rf"\nconst {name} = .*?;\n", PAGE, re.S).group(0)
                        for name in ("until", "thousands", "tokens"))
     script = "\n".join([
         f"Date.now = () => {now * 1000};",
         function(PAGE, "forHumans"), consts, function(PAGE, "fieldsFor"),
-        f"console.log(JSON.stringify(fieldsFor({json.dumps(row)}).map(p => [p.label, p.title])));",
+        f"console.log(JSON.stringify(fieldsFor({json.dumps(row)}).map(p => {pick})));",
     ])
     result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True)
-    return dict(json.loads(result.stdout))
+    return json.loads(result.stdout)
+
+
+def fields(row, now=1_700_000_000):
+    return dict(evaluate(row, "[p.label, p.title]", now))
 
 
 def test_every_gauge_and_count_carries_a_title_that_says_what_the_figure_means():
@@ -57,6 +62,15 @@ def test_titles_without_a_reset_a_hog_or_a_single_agent():
     assert titles["CPU"] == "Its processes are using 100% CPU"
     assert titles["Agents"] == "1 subagent running now"
     assert titles["Cache"] == "10% of the prompt came from cache, cold now, 120k to rebuild"
+
+
+def test_the_scheduled_row_says_how_many_and_when_and_its_hover_has_each_whole_prompt():
+    crons = [{"id": "6ba43431", "schedule": "*/10 * * * *", "recurring": True, "prompt": "say hello",
+              "next": 1_700_000_400, "when": "every 10 min"},
+             {"id": "20c147b9", "schedule": "31 13 * * *", "recurring": False, "prompt": "wake me",
+              "next": 1_699_999_000, "due": True, "when": "due"}]
+    assert evaluate({"crons": crons}, "[p.icon, p.label, p.value, p.title]") == [
+        ["clock", "Scheduled", "2 \u00b7 every\u00a010\u00a0min \u00b7 due", "every 10 min: say hello\ndue: wake me"]]
 
 
 def test_the_card_puts_each_title_on_its_row_and_names_every_flag():

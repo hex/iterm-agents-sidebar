@@ -195,6 +195,16 @@ def test_git_branch_outside_a_repository():
     assert git_branch(None) is None
 
 
+def test_git_branch_follows_a_git_file_whose_path_is_relative_to_its_folder(tmp_path):
+    """A submodule's .git file names its git dir relative to the submodule, not to the daemon's own folder."""
+    from sidebar import git_branch
+    (tmp_path / "store").mkdir()
+    (tmp_path / "store" / "HEAD").write_text("ref: refs/heads/feature\n")
+    (tmp_path / "module").mkdir()
+    (tmp_path / "module" / ".git").write_text("gitdir: ../store\n")
+    assert git_branch(str(tmp_path / "module")) == "feature"
+
+
 def test_a_working_claim_goes_unknown_once_it_stops_being_refreshed():
     """Live: fable-validator's pane claimed working for four minutes after its
     turn ended. The process was alive, so the pid check trusted it.
@@ -480,6 +490,50 @@ def test_git_main_worktree_names_the_repo_a_linked_worktree_belongs_to(tmp_path)
     assert git_main_worktree(str(repo)) is None
     assert git_main_worktree("/tmp") is None
     assert git_main_worktree(None) is None
+
+
+def _git(cwd, *args):
+    import subprocess
+    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], cwd=cwd,
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
+def test_git_head_reads_the_branch_and_its_commit_wherever_git_keeps_them(tmp_path):
+    """A review names the commit the change sits on. git rev-parse is the answer key; the reader follows a linked
+    worktree's .git file, finds its branch's ref in the common dir, and finds both in packed-refs once packed."""
+    from sidebar import git_head
+    repo = tmp_path / "atlas"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    assert git_head(str(repo)) == ("main", None)
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "one")
+    assert git_head(str(repo / "sub")) == ("main", _git(repo, "rev-parse", "HEAD"))
+    linked = tmp_path / "atlas@worktree"
+    _git(repo, "worktree", "add", "-q", "-b", "cs/worktree", str(linked))
+    _git(linked, "commit", "-q", "--allow-empty", "-m", "two")
+    assert git_head(str(linked)) == ("cs/worktree", _git(linked, "rev-parse", "HEAD"))
+    _git(repo, "pack-refs", "--all")
+    assert not (repo / ".git" / "refs" / "heads" / "cs" / "worktree").exists()
+    assert git_head(str(linked)) == ("cs/worktree", _git(linked, "rev-parse", "HEAD"))
+    assert git_head(str(repo)) == ("main", _git(repo, "rev-parse", "HEAD"))
+    _git(linked, "checkout", "-q", "--detach")
+    assert git_head(str(linked)) == (None, _git(linked, "rev-parse", "HEAD"))
+    assert git_head("/tmp") is None
+    assert git_head(None) is None
+
+
+def test_git_head_reads_no_file_outside_the_refs_and_passes_off_no_text_as_a_commit(tmp_path):
+    from sidebar import git_head
+    (tmp_path / "outside").write_text("f" * 40)
+    gitdir = tmp_path / "repo" / ".git"
+    (gitdir / "refs" / "heads").mkdir(parents=True)
+    (gitdir / "refs" / "heads" / "odd").write_text("not a commit\n")
+    (gitdir / "HEAD").write_text("ref: refs/heads/odd\n")
+    assert git_head(str(tmp_path / "repo")) == ("odd", None)
+    (gitdir / "HEAD").write_text("ref: refs/../../../outside\n")
+    assert git_head(str(tmp_path / "repo")) == ("refs/../../../outside", None)
+    (gitdir / "HEAD").write_text("pasted text\n")
+    assert git_head(str(tmp_path / "repo")) is None
 
 
 def test_parse_tasks():

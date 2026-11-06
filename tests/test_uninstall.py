@@ -1,3 +1,5 @@
+# ABOUTME: Exercises install and removal under a spare HOME with logged process commands.
+# ABOUTME: Only this suite's scratch Keychain items may be created and deleted.
 """uninstall.sh reverses install.sh, under a spare HOME so nothing of the
 real install is touched. Failure modes written first: the statusline key
 must go back to what it was and only that key; another tool's Codex hook
@@ -20,13 +22,39 @@ REPO = Path(__file__).resolve().parent.parent
 SERVICE = "agents-sidebar-accounts"
 
 
-def run(script, home, *args):
+def run(script, home, *args, **extra_env):
     # These name omp's agent directory outside HOME; set in the shell running
     # the tests, the install would write into the real one.
     omp_dirs = {"OMP_PROFILE", "PI_PROFILE", "PI_CONFIG_DIR", "PI_CODING_AGENT_DIR"}
+    commands = home.parent / "commands"
+    commands.mkdir(exist_ok=True)
+    for name in ("osascript", "pgrep", "ps", "kill", "swiftc"):
+        command = commands / name
+        command.write_text('''#!/bin/bash
+printf '%s' "${0##*/}" >> "$TEST_COMMAND_LOG"
+printf '\\t%s' "$@" >> "$TEST_COMMAND_LOG"
+printf '\\n' >> "$TEST_COMMAND_LOG"
+case "${0##*/}" in
+  pgrep)
+    if [ "$1" = -x ]; then [ "${TEST_ITERM:-0}" = 1 ];
+    elif [ -n "${TEST_PIDS:-}" ]; then printf '%s\\n' "$TEST_PIDS";
+    else exit 1; fi ;;
+  ps)
+    if [ "$2" = comm= ]; then printf '%s\\n' "${TEST_COMM:-python3}";
+    else printf '%s\\n' "${TEST_ARGS:-python3 AutoLaunch/agents_sidebar.py}"; fi ;;
+  osascript)
+    if [ -n "${TEST_LAUNCH_ERROR:-}" ]; then printf '%s\\n' "$TEST_LAUNCH_ERROR" >&2; exit 1; fi ;;
+  kill) exit 0 ;;
+  swiftc) printf 'not compiled in script tests\\n' >&2; exit 1 ;;
+esac
+''')
+        command.chmod(0o755)
     env = {**{k: v for k, v in os.environ.items() if k not in omp_dirs},
-           "HOME": str(home), "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"}
-    return subprocess.run(["bash", str(REPO / script), *args], env=env, capture_output=True, text=True)
+           "HOME": str(home), "PATH": f"{commands}:/usr/bin:/bin:/usr/sbin:/sbin",
+           "TEST_COMMAND_LOG": str(home.parent / "commands.log"), **extra_env}
+    return subprocess.run(["bash", "-c", 'enable -n kill; script=$1; shift; source "$script" "$@"',
+                           "bash", str(REPO / script), *args],
+                          env=env, capture_output=True, text=True, timeout=60)
 
 
 def installed_home(tmp_path):
@@ -34,6 +62,7 @@ def installed_home(tmp_path):
     (home / ".claude").mkdir(parents=True)
     # `security` reads the login keychain under HOME, so the spare home
     # shares the real one; the test's own item is the only one it touches.
+    # Scratch items under SERVICE are authorized to use the login Keychain.
     (home / "Library").mkdir()
     (home / "Library" / "Keychains").symlink_to(Path.home() / "Library" / "Keychains")
     (home / ".claude" / "settings.json").write_text(json.dumps(
@@ -56,12 +85,18 @@ def account():
     accounts.delete_secret(SERVICE, account)
 
 
-def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, account):
+@pytest.mark.parametrize("keep_accounts", [False, True])
+def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, account, keep_accounts):
     home = installed_home(tmp_path)
     subprocess.run(["/usr/bin/security", "add-generic-password", "-a", account, "-s", SERVICE, "-w", "x",
                     LOGIN_KEYCHAIN], check=True)
-    (home / ".config" / "agents-sidebar").mkdir(parents=True)
-    (home / ".config" / "agents-sidebar" / "accounts.json").write_text(json.dumps({"accounts": [{"id": account}]}))
+    config = home / ".config" / "agents-sidebar"
+    (config / "locks").mkdir(parents=True)
+    (config / "locks" / "store.lock").write_text("")
+    (config / "state.json").write_text("{}")
+    store = config / "accounts.json"
+    stored = json.dumps({"accounts": [{"id": account}]})
+    store.write_text(stored)
     checkout = home / ".local" / "share" / "agents-sidebar" / "src"
     checkout.mkdir(parents=True)
     (checkout / "marker").write_text("")
@@ -73,7 +108,7 @@ def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, acc
     assert str(home / ".claude" / "skills" / "agents-sidebar" / "hooks-handlers" / "emit-state.py") in (
         extensions / "agents-sidebar.ts").read_text()
 
-    result = run("uninstall.sh", home)
+    result = run("uninstall.sh", home, *(["--keep-accounts"] if keep_accounts else []))
     assert result.returncode == 0, result.stderr
 
     assert not os.path.lexists(home / ".local" / "bin" / "agents-sidebar")
@@ -89,11 +124,17 @@ def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, acc
     hooks = json.loads((home / ".codex" / "hooks.json").read_text())
     assert hooks == {"hooks": {"SessionStart": [{"hooks": [
         {"command": "bash '/Users/jane/.codex/other-tool-state.sh' session", "timeout": 10, "type": "command"}]}]}}
-    assert not (home / ".config" / "agents-sidebar").exists()
     gone = subprocess.run(["/usr/bin/security", "find-generic-password", "-a", account, "-s", SERVICE,
                            LOGIN_KEYCHAIN], capture_output=True)
-    assert gone.returncode != 0, "the Keychain item is still there"
-    assert "1 Keychain items" in result.stdout
+    if keep_accounts:
+        assert store.read_text() == stored
+        assert sorted(p.name for p in config.iterdir()) == ["accounts.json"]
+        assert gone.returncode == 0, "the scratch Keychain item was removed"
+        assert "  ✓ accounts    logins kept in ~/.config/agents-sidebar/accounts.json and the Keychain\n" in result.stdout
+    else:
+        assert not config.exists()
+        assert gone.returncode != 0, "the Keychain item is still there"
+        assert "1 Keychain items" in result.stdout
 
 
 def test_install_puts_the_command_in_local_bin_and_says_when_that_is_off_path(tmp_path):
@@ -199,3 +240,68 @@ def test_install_makes_the_links_folder_private_and_uninstall_removes_it(tmp_pat
     (folder / "s1" / "ready").write_text("s1")
     assert run("uninstall.sh", home).returncode == 0
     assert not folder.exists()
+
+
+def saved_statusline(home, command, **settings):
+    status = home / ".claude" / "agents-sidebar-status"
+    status.mkdir(parents=True)
+    (status / "original-statusline").write_text(command)
+    path = home / ".claude" / "settings.json"
+    path.write_text(json.dumps({**settings, "statusLine": {
+        "type": "command", "command": str(REPO / "plugin" / "statusline-bridge.sh")}}))
+    return path
+
+
+@pytest.mark.parametrize("prefix", ["", "bash "])
+def test_a_missing_saved_script_is_removed_instead_of_restored(tmp_path, prefix):
+    home = tmp_path / "home"
+    missing = home / "gone status.sh"
+    settings = saved_statusline(home, f"{prefix}'{missing}' --quiet", theme="dark")
+    result = run("uninstall.sh", home)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(settings.read_text()) == {"theme": "dark"}
+    assert result.stderr == f"  ! statusline  statusLine removed; missing script: {missing}\n"
+
+
+def test_an_existing_saved_script_is_restored_without_running_it(tmp_path):
+    home = tmp_path / "home"
+    command = 'bash "$HOME/status.sh"'
+    settings = saved_statusline(home, command, theme="dark")
+    script = home / "status.sh"
+    script.write_text("exit 42\n")
+    result = run("uninstall.sh", home)
+    assert (result.returncode, result.stderr) == (0, "")
+    assert json.loads(settings.read_text()) == {
+        "theme": "dark", "statusLine": {"type": "command", "command": command}}
+
+
+def test_a_saved_script_name_can_be_resolved_on_path(tmp_path):
+    home = tmp_path / "home"
+    settings = saved_statusline(home, "bash status.sh")
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    (commands / "status.sh").write_text("exit 42\n")
+    result = run("uninstall.sh", home)
+    assert (result.returncode, result.stderr) == (0, "")
+    assert json.loads(settings.read_text()) == {"statusLine": {"type": "command", "command": "bash status.sh"}}
+
+
+@pytest.mark.parametrize("command", ["bash ./status.sh", "./scripts/status.sh"])
+def test_a_relative_saved_script_keeps_its_original_working_directory_meaning(tmp_path, command):
+    home = tmp_path / "home"
+    settings = saved_statusline(home, command)
+    result = run("uninstall.sh", home)
+    assert (result.returncode, result.stderr) == (0, "")
+    assert json.loads(settings.read_text()) == {"statusLine": {"type": "command", "command": command}}
+
+
+def test_a_quoted_script_path_can_contain_a_literal_dollar_sign(tmp_path):
+    home = tmp_path / "home"
+    script = home / "$STATUS_TOOL" / "status.sh"
+    command = f"bash '{script}'"
+    settings = saved_statusline(home, command)
+    script.parent.mkdir()
+    script.write_text("exit 42\n")
+    result = run("uninstall.sh", home, STATUS_TOOL="different-directory")
+    assert (result.returncode, result.stderr) == (0, "")
+    assert json.loads(settings.read_text()) == {"statusLine": {"type": "command", "command": command}}

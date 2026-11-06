@@ -6,7 +6,6 @@ shape of `ps -ww -eo pid=,ppid=,pgid=,tpgid=,tty=,lstart=,%cpu=,rss=,args=`, fro
 session on 2026-09-07 whose own footer read "2 shells".
 """
 import importlib.util
-import time
 from pathlib import Path
 
 import pytest
@@ -16,17 +15,6 @@ spec = importlib.util.spec_from_file_location(
 sidebar = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sidebar)
 
-
-@pytest.fixture
-def utc(monkeypatch):
-    """Start stamps read as UTC for the test, and the process clock goes back
-    with the variable: tzset() reads TZ once, so restoring the variable alone
-    would leave every later test in the wrong zone."""
-    monkeypatch.setenv("TZ", "UTC")
-    time.tzset()
-    yield
-    monkeypatch.undo()
-    time.tzset()
 
 SNAP = "/Users/x/.claude/shell-snapshots/snapshot-zsh-1788767509187-cg9f4y.sh"
 ROW = "{pid} {parent} {pid} {parent} ttys001 Thu Sep 17 12:00:00 2026 0.0 0 {args}\n"

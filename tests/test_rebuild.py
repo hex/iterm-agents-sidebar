@@ -9,13 +9,19 @@ import functools
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
 import types
+from datetime import datetime
 from pathlib import Path
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import iterm_fakes  # noqa: E402
+from iterm_fakes import Api, Colour  # noqa: E402
 
 spec = importlib.util.spec_from_file_location(
     "sidebar", Path(__file__).resolve().parent.parent / "sidebar.py")
@@ -527,6 +533,37 @@ def test_a_claude_row_says_what_is_in_front_of_its_agent_on_its_panes_terminal(m
     assert sidebar.prompt_refusal(card) == "nvim is in front"
 
 
+class ClaudeWithItsDetailFiled(Session):
+    """A live Claude whose state was over the variable's ceiling, as a Stop
+    listing what it has scheduled makes it."""
+    session_id = "s8"
+    stamp = time.time()
+
+    async def async_get_variable(self, name):
+        if name == "user.claudeState":
+            return json.dumps({"state": "idle", "pid": os.getpid(), "ts": self.stamp,
+                               "session": "c8", "detail": True})
+        return None
+
+
+def test_a_claude_card_carries_the_prompts_its_session_has_scheduled(monkeypatch, tmp_path):
+    crons = [{"id": "b63d99f2", "schedule": "26 13 5 11 *", "recurring": False, "prompt": "one shot"},
+             {"id": "20c147b9", "schedule": "31 13 * * *", "recurring": False, "prompt": "wake me"}]
+    monkeypatch.setattr(sidebar, "HOOK_STATE_DIR", str(tmp_path))
+    listed = datetime(2026, 11, 5, 13, 20).timestamp()
+    (tmp_path / "c8.published").write_text(json.dumps(
+        {"state": "idle", "pid": os.getpid(), "ts": ClaudeWithItsDetailFiled.stamp, "session": "c8",
+         "agents": 0, "subagents": [], "question": None, "tasks": [], "crons": crons, "crons_at": listed}))
+    b = bridge(monkeypatch, [])
+    b.app = one_session(ClaudeWithItsDetailFiled())
+    [row] = asyncio.run(b.read_sessions())
+    assert (row["crons"], row["crons_at"]) == (crons, listed)
+    now = datetime(2026, 11, 5, 13, 27).timestamp()
+    assert sidebar.find_row(sidebar.snapshot([row], now=now), "s8")["crons"] == [
+        dict(crons[0], next=datetime(2026, 11, 5, 13, 26).timestamp(), due=True, when="due"),
+        dict(crons[1], next=datetime(2026, 11, 5, 13, 31).timestamp(), when="once at 13:31")]
+
+
 class CodexReopened(Session):
     """A pane whose Codex exited and was started again: the variable still
     holds the old run's state, whose pid is gone, and the new run publishes
@@ -584,12 +621,15 @@ def filed(directory, session, cwd, ts, state="working"):
          "transcript_path": f"/Users/x/.codex/sessions/rollout-{session}.jsonl"}))
 
 
-#: When the pane's Codex started: filings are placed around it, and a working
-#: state older than the panel's staleness window reads unknown, so it is now.
-CODEX_STARTED = int(time.time()) - 60
+def codex_started():
+    """When the pane's Codex started: filings are placed around it, and a
+    working state older than the panel's staleness window reads unknown, so
+    it is read at each test's own start, never once for the whole module."""
+    return int(time.time()) - 60
 
 
-def codex_pane(monkeypatch, tmp_path, started=CODEX_STARTED):
+def codex_pane(monkeypatch, tmp_path, started=None):
+    started = codex_started() if started is None else started
     monkeypatch.setattr(sidebar, "HOOK_STATE_DIR", str(tmp_path))
     b = bridge(monkeypatch, [])
     monkeypatch.setattr(sidebar, "read_system", lambda: (
@@ -603,15 +643,15 @@ def test_a_codex_whose_hooks_find_no_terminal_is_read_from_its_filed_state(monke
     """Seen 2026-09-29: a Codex started while an earlier one's app-server
     daemon was still up worked five minutes on a bare card. Its hooks ran in
     that daemon, found no terminal, and never reached the pane."""
-    filed(tmp_path, "codex-new", "/Users/x/atlas", ts=CODEX_STARTED + 20)
+    filed(tmp_path, "codex-new", "/Users/x/atlas", ts=codex_started() + 20)
     [row] = asyncio.run(codex_pane(monkeypatch, tmp_path).read_sessions())
     assert (row["provider"], row["agent_state"], row["conversation"]) == ("openai", "working", "codex-new")
     assert row["rollout"] == "/Users/x/.codex/sessions/rollout-codex-new.jsonl"
 
 
 def test_two_filed_codex_sessions_in_one_directory_pair_with_neither(monkeypatch, tmp_path):
-    filed(tmp_path, "codex-a", "/Users/x/atlas", ts=CODEX_STARTED + 20)
-    filed(tmp_path, "codex-b", "/Users/x/atlas", ts=CODEX_STARTED + 27)
+    filed(tmp_path, "codex-a", "/Users/x/atlas", ts=codex_started() + 20)
+    filed(tmp_path, "codex-b", "/Users/x/atlas", ts=codex_started() + 27)
     [row] = asyncio.run(codex_pane(monkeypatch, tmp_path).read_sessions())
     assert (row["agent_state"], row["conversation"]) == (None, None)
 
@@ -624,8 +664,8 @@ def test_a_codex_plugin_job_in_the_same_directory_does_not_hide_the_panes_codex(
     states, jobs = tmp_path / "states", tmp_path / "jobs" / "atlas-0123456789abcdef"
     states.mkdir()
     jobs.mkdir(parents=True)
-    filed(states, "codex-pane", "/Users/x/atlas", ts=CODEX_STARTED + 20)
-    filed(states, "codex-job", "/Users/x/atlas", ts=CODEX_STARTED + 27)
+    filed(states, "codex-pane", "/Users/x/atlas", ts=codex_started() + 20)
+    filed(states, "codex-job", "/Users/x/atlas", ts=codex_started() + 27)
     (jobs / "state.json").write_text(json.dumps({"version": 1, "jobs": [
         {"id": "task-aaa-111", "sessionId": "claude-session", "status": "running",
          "threadId": "codex-job", "pid": None}]}))
@@ -635,8 +675,8 @@ def test_a_codex_plugin_job_in_the_same_directory_does_not_hide_the_panes_codex(
 
 
 def test_a_filed_codex_session_older_than_the_panes_codex_is_not_its(monkeypatch, tmp_path):
-    filed(tmp_path, "codex-old", "/Users/x/atlas", ts=CODEX_STARTED - 5000)
-    filed(tmp_path, "codex-elsewhere", "/Users/x/beacon", ts=CODEX_STARTED + 20)
+    filed(tmp_path, "codex-old", "/Users/x/atlas", ts=codex_started() - 5000)
+    filed(tmp_path, "codex-elsewhere", "/Users/x/beacon", ts=codex_started() + 20)
     [row] = asyncio.run(codex_pane(monkeypatch, tmp_path).read_sessions())
     assert (row["agent_state"], row["conversation"]) == (None, None)
 
@@ -1140,6 +1180,35 @@ def test_untie_from_the_bridge_ends_the_partnership(monkeypatch, tmp_path):
     assert b.partners.pairs() == [] and b.latest["partners"] == []
 
 
+def test_a_review_from_the_bridge_names_the_askers_folder_branch_and_commit(monkeypatch, tmp_path):
+    repo = tmp_path / "work"
+    repo.mkdir()
+    git = lambda *args: subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+                                       cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+    git("init", "-q", "-b", "wip/login")
+    git("commit", "-q", "--allow-empty", "-m", "one")
+    b = partnering(monkeypatch, tmp_path)
+    made = b.link("p1", "p2")["partnership"]
+    b.rows[0]["path"] = str(repo)
+    b.review("p1")
+    drop = json.loads(next((tmp_path / "links" / "b-id").glob("task-*.json")).read_text())
+    assert (drop["review"], drop["task"]) == (True, "review of wip/login")
+    assert drop["text"] == sidebar.partners.review_text("alpha", str(repo), "wip/login", git("rev-parse", "HEAD"),
+                                                        drop["nonce"])
+    assert b.latest["partners"][0]["open"] == {"from": "p1", "to": "p2", "state": "asked"}
+    logged = [line.split(" ", 2)[2] for line in (tmp_path / "daemon.log").read_text().splitlines()]
+    assert logged[-1] == f"partner {made['id'][:8]} review {drop['link'][:8]} asked alpha -> bravo"
+
+
+def test_a_review_with_linking_off_is_refused(monkeypatch, tmp_path):
+    b = partnering(monkeypatch, tmp_path)
+    b.link("p1", "p2")
+    sidebar.save_settings({"links": False})
+    with pytest.raises(sidebar.links.Refused, match="^linking is off in Settings$"):
+        b.review("p1")
+    assert list((tmp_path / "links" / "b-id").glob("task-*.json")) == []
+
+
 def every_refusal(b):
     return {row["session_id"]: row["link_refusal"] for group in b.latest["groups"] for row in group["rows"]}
 
@@ -1321,11 +1390,17 @@ REMOTE_ASKED = {"question": "Which one?", "options": ["This", "That"], "multi": 
                 "since": 1791700000}
 
 
-def remote_session(job="ssh", title="✳ Claude Code"):
+def remote_session(job="ssh", title="✳ Claude Code", asked=REMOTE_ASKED):
     class RemoteSession(Session):
+        def __init__(self):
+            self.typed = []
+
         async def async_get_variable(self, name):
-            return {"user.claudeState": json.dumps(REMOTE_STATE), "user.claudeQuestion": json.dumps(REMOTE_ASKED),
+            return {"user.claudeState": json.dumps(REMOTE_STATE), "user.claudeQuestion": json.dumps(asked),
                     "jobName": job, "autoName": title, "path": "/Users/x/atlas", "tty": "/dev/ttys004"}.get(name)
+
+        async def async_send_text(self, text):
+            self.typed.append(text)
     return RemoteSession()
 
 
@@ -1382,6 +1457,24 @@ def test_a_remote_row_without_the_agents_title_takes_no_key(monkeypatch, tmp_pat
     b.app = one_session(remote_session(title="user@box:~"))
     [row] = asyncio.run(b.read_sessions())
     assert row["remote_refusal"] == "the agent's title has gone from the pane"
+
+
+def test_a_remote_question_whose_options_show_previews_is_answered_in_its_pane(monkeypatch, tmp_path):
+    """There a number only moves the cursor and Enter picks, and a remote pane takes no Enter: the card
+    shows the question with the reason in place of its buttons, and a pick that arrives anyway types nothing."""
+    b = remote_bridge(monkeypatch, tmp_path)
+    pane = remote_session(asked=dict(REMOTE_ASKED, preview=True))
+    b.app = one_session(pane)
+    b.app.get_session_by_id = lambda session_id: pane if session_id == pane.session_id else None
+    asyncio.run(b._rebuild_once())
+    [row] = [row for group in b.latest["groups"] for row in group["rows"]]
+    assert row["question"] == {"question": "Which one?", "options": ["This", "That"], "multi": False, "more": 0,
+                               "preview": True}
+    assert row["remote_refusal"] == "a pick beside previews takes Enter"
+    asyncio.run(b.act("s1", "answer", json.dumps({"pick": 2, "question": "Which one?"})))
+    assert pane.typed == []
+    assert (tmp_path / "daemon.log").read_text().splitlines()[-1].split(" ", 2)[2] == (
+        "answer refused s1 replies do not reach a remote session yet")
 
 
 def test_a_remote_codex_row_opens_nothing_this_machine_holds(monkeypatch, tmp_path):
@@ -1448,12 +1541,6 @@ def test_a_tmux_server_that_did_not_answer_is_left_alone_for_a_while(monkeypatch
 
 # ------------------------------------------------- the terminal's background
 
-class Colour:
-    """iterm2.Color as a profile hands it out: floats from 0 to 255."""
-    def __init__(self, red, green, blue):
-        self.red, self.green, self.blue = red, green, blue
-
-
 class Profile:
     def __init__(self, plain, light=None, dark=None, separate=False):
         self.background_color = plain
@@ -1483,12 +1570,14 @@ def themed(app, words):
 
 def facing(monkeypatch, pane):
     """A bridge whose iTerm2 has `pane` in front, findable by its id. The marks'
-    start-up sweep, which reads every profile too, has already run."""
+    start-up sweep and the tab colours' adoption, which read every profile
+    too, have already run."""
     b = bridge(monkeypatch, [])
     b.server = Frames()
     b.app = in_front(one_session(pane), pane)
     b.app.get_session_by_id = lambda sid: pane if sid == pane.session_id else None
     b.marks.swept = True
+    b.tab_colours.adopted = True
     return b
 
 
@@ -1552,6 +1641,25 @@ def test_the_background_is_not_read_while_the_panel_does_not_follow_it(monkeypat
     b = facing(monkeypatch, pane)
     asyncio.run(b.rebuild())
     assert (pane.reads, b.server.sent[-1]["terminal_background"]) == (0, None)
+
+
+def test_a_rebuild_paints_a_cards_tab_in_its_session_colour_over_the_panes_background(monkeypatch):
+    """On by default: the orange card's tab, over a plain background the
+    profile keeps no light or dark one of, at 35% of the colour."""
+    frame = {"groups": [{"name": "AGENTS", "rows": [{"session_id": "c", "state": "idle", "depth": 0, "colour": "orange"}]}]}
+    monkeypatch.setattr(sidebar, "snapshot", lambda *_, **__: json.loads(json.dumps(frame)))
+    profile = Profile(Colour(253.0, 246.0, 227.0))
+    for field in ("tab_color", "tab_color_light", "tab_color_dark", "use_tab_color", "use_tab_color_light", "use_tab_color_dark"):
+        setattr(profile, field, None)
+    pane = iterm_fakes.Session("c", profile)
+    b = facing(monkeypatch, pane)
+    b.tab_colours = sidebar.tabcolour.Painter(api=Api())
+
+    async def read_sessions():
+        return []
+    b.read_sessions = read_sessions
+    asyncio.run(b._rebuild_once())
+    assert pane.writes == [{"tab_color": Colour(240, 202, 178), "use_tab_color": True}]
 
 
 class TwoPanes(NoWindows):

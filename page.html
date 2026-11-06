@@ -9,6 +9,8 @@
     --card: #ffffff; --card-hover: #f9f9fb; --card-border: #e5e5ea;
     /* A card at rest ten minutes, then thirty: washed toward the canvas. */
     --rested-bg: #f6f6f9; --neglected-bg: #eeeef2; --finished-bg: #e8f5ec;
+    /* Serenity's rule between two sessions: the ink, faint. */
+    --serene-rule: color-mix(in srgb, var(--fg) 7%, transparent);
     /* The words of an agent's tag: its colour, deepened until it reads on its own tint. */
     --ink-claude: #a15840; --ink-openai: #0c795e; --ink-omp: #6655d8;
     --blocked-bg: #fff3dc; --blocked-border: #ff9500; --blocked-text: #7a4100;
@@ -73,6 +75,7 @@
       --rec-ink: #8ec07c;
       --ctx-conv: #3987e5; --ctx-sys: #d95926; --ctx-mem: #199e70; --ctx-agents: #c98500;
       --card-edge: 0 0 0 1px var(--card-border);
+      --serene-rule: color-mix(in srgb, var(--fg) 8%, transparent);
     }
   }
   :root[data-term-theme="dark"] {
@@ -89,6 +92,7 @@
       --rec-ink: #8ec07c;
       --ctx-conv: #3987e5; --ctx-sys: #d95926; --ctx-mem: #199e70; --ctx-agents: #c98500;
       --card-edge: 0 0 0 1px var(--card-border);
+      --serene-rule: color-mix(in srgb, var(--fg) 8%, transparent);
   }
   /* The sheet's pickers and sliders follow the theme the colour picked. */
   :root[data-term-theme="light"] { color-scheme: light; }
@@ -441,6 +445,13 @@
   .children button.row > :is(.todo-mark, .started-mark):first-child { margin-left: 7px; margin-top: 3px; }
   .children button.row.todo .label { color: var(--dim); font-weight: 400; }
   .tasks-sum .n { color: var(--fg); font-weight: 500; }
+  /* A card's scheduled prompts, folded the same way: a mark for whether
+     the prompt comes back, the prompt, and when it runs at the row's end. */
+  .crons-sum .n { color: var(--fg); font-weight: 500; }
+  .children button.row > .cron-mark { flex: none; width: 10px; height: 10px; margin: 4px 6px 0 7px; color: var(--dim); }
+  .cron-when { margin-left: auto; flex: none; }
+  .cron-when.raw { font-family: ui-monospace, Menlo, monospace; font-size: 10px; }
+  .cron-when.due { color: var(--warn); }
   /* Shell rows hang off the summary line, so their elbow drops from its
      10px terminal icon, which sits 10px in. */
   .children.shell-rows {
@@ -636,8 +647,9 @@
     margin-top: 7px; padding-top: 7px;
     border-top: .5px solid color-mix(in srgb, var(--fg) 11%, transparent);
   }
+  /* A figure wider than the card wraps; only the Scheduled list ever is. */
   #card .count b {
-    display: block; white-space: nowrap;
+    display: block;
     font: 600 12.5px/1.2 -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -.02em;
     color: var(--fg); font-variant-numeric: tabular-nums;
   }
@@ -646,6 +658,36 @@
     font: 500 10px/1.3 -apple-system, sans-serif; color: var(--dim);
   }
   #card .count svg { width: 10px; height: 10px; opacity: .75; }
+  /* What a Serenity card leaves off its face. The line under the state wears
+     the state's face; each piece is inline-flex, since an icon in plain flow
+     takes a line of its own and wraps the line. */
+  #card .where {
+    margin-top: 1px; font: 500 10px/1.3 ui-monospace, Menlo, monospace;
+    color: var(--dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #card .where .wbit { display: inline-flex; align-items: center; gap: 3px; vertical-align: top; }
+  #card .where svg { flex: none; width: 9px; height: 9px; opacity: .75; }
+  /* A list under the counts, behind the counts' own hairline: a head with
+     its count, then a line a row. */
+  #card .dlist {
+    margin-top: 7px; padding-top: 6px;
+    border-top: .5px solid color-mix(in srgb, var(--fg) 11%, transparent);
+  }
+  #card .dhead {
+    display: flex; align-items: center; gap: 4px;
+    font: 500 10px/1.3 -apple-system, sans-serif; color: var(--dim);
+  }
+  #card .dhead b { font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+  #card .dhead svg { width: 10px; height: 10px; opacity: .75; }
+  #card .drow {
+    font: 500 11px/1.45 -apple-system, sans-serif; color: var(--fg);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #card .drow.mono { font: 500 10px/1.5 ui-monospace, Menlo, monospace; color: var(--dim); }
+  #card .drow .mk { color: var(--dim); margin-right: 5px; }
+  #card .drow :is(.todo-mark, .started-mark) { display: inline-block; vertical-align: 0; margin-right: 6px; }
+  #card .drow.more { color: var(--dim); font-size: 10px; }
   /* Effort wears the colour its letter wears on the card's facts line, max
      in that letter's two colours. The word alone takes it, because this is a
      setting the user chose and not something going wrong. */
@@ -978,6 +1020,25 @@
      step back from it: the name's ink at a lighter weight, while the activity
      under it stays in the dim ink. */
   .task .task-title { color: var(--fg); opacity: .8; font-weight: 500; }
+  /* Following a dark terminal colour, a session's name and its report's title
+     take a pale tint of the hue of the ground they sit on, the card's own
+     (the terminal's hue) or, for a finished card's report, its green wash,
+     and never more saturated than that ground: a grey or black terminal has
+     no hue, and its powerless one reads as a red. A subagent's or teammate's name is a warm
+     paper white a step below. Softer than white, and the same on every card,
+     so no name wears the session's colour. A resting name keeps its grey and
+     a waiting card its own colours. */
+  :root[data-term-theme="dark"] li.line.card { --ink-ground: var(--card); }
+  :root[data-term-theme="dark"] li.line.card.finished { --ink-ground: var(--finished-bg); }
+  :root[data-term-theme="dark"] li.line.card:not(.blocked) > button.row:not(.quiet) :is(.label, .label .run) {
+    color: oklch(from var(--ink-ground) .86 min(.035, c) h);
+  }
+  :root[data-term-theme="dark"] li.line.card:not(.blocked) .task .task-title {
+    color: oklch(from var(--ink-ground) .72 min(.03, c) h); opacity: 1;
+  }
+  :root[data-term-theme="dark"] .children button.row:not(.quiet) :is(.label, .label .run) {
+    color: oklch(.74 .02 75);
+  }
   .task .task-status > * + *::before { content: "\00b7"; margin-right: 5px; }
   /* The estimate as a hairline under the report, in the session's own colour:
      a figure to glance at rather than read. Not the meters' green-amber-red,
@@ -1433,7 +1494,7 @@
   .shell-pop button:focus-visible, #budget .acct-name:focus-visible,
   #budget .acct-item-name:focus-visible, #budget .acct-add:focus-visible,
   #budget .acct-switch:focus-visible, #budget .acct-rename:focus-visible,
-  #budget .lim-toggle:focus-visible,
+  #budget .lim-toggle:focus-visible, #budget .fold-act:focus-visible,
   li.line.card > .resume:focus-visible, li.line.card > .answers > .answer:focus-visible {
     outline: 1px solid var(--hot); outline-offset: 1px;
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 22%, transparent);
@@ -1466,6 +1527,35 @@
   /* Cards keep their height and the body scrolls; as flex items they would
      otherwise shrink to fit and clip their own rows. */
   #settings .set-body > * { flex-shrink: 0; }
+  #set-uninstall { color: var(--dim); font-size: 11px; line-height: 1.4; }
+  #set-uninstall > button {
+    min-height: 24px; margin: 0 1px; padding: 2px 10px; border: 0; background: none; color: var(--dim);
+    font: inherit; cursor: default; touch-action: manipulation;
+  }
+  #set-uninstall > button:hover { background: var(--tint-ctl); }
+  #set-uninstall > button:focus-visible { outline: 1px solid var(--hot); outline-offset: 1px; }
+  #set-uninstall .uninstall-log {
+    margin: 0; padding: 0 10px 9px; color: var(--dim);
+    font: 10px ui-monospace, Menlo, monospace; overflow-wrap: anywhere; user-select: text;
+  }
+  #set-uninstall .uninstall-card { color: var(--fg); }
+  #set-uninstall .uninstall-what, #set-uninstall .uninstall-error {
+    margin: -2px 0 0; padding: 0 10px 8px; color: var(--dim); font-size: 11px; line-height: 1.35;
+  }
+  #set-uninstall .uninstall-error { margin: 0; color: var(--alert); }
+  #set-uninstall .uninstall-foot {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border-top: 1px dotted color-mix(in srgb, var(--fg) 14%, transparent);
+  }
+  #set-uninstall .uninstall-foot button {
+    min-height: 32px; padding: 0; border: 0; background: none; color: var(--fg);
+    font: inherit; font-size: 12px; cursor: default; touch-action: manipulation;
+  }
+  #set-uninstall .uninstall-foot button + button { border-left: 1px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
+  #set-uninstall .uninstall-foot button:hover:not(:disabled) { background: var(--tint-row); }
+  #set-uninstall .uninstall-foot button:disabled { opacity: .4; }
+  #set-uninstall .uninstall-foot button:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
+  #set-uninstall .uninstall-foot .uninstall-confirm { color: var(--alert); font-weight: 600; }
   #settings .set-body::-webkit-scrollbar { width: 0; height: 0; }
   @supports (animation-timeline: scroll(self y)) {
     #settings .set-body { animation: groups-scroll-fade linear both; animation-timeline: scroll(self y); }
@@ -1840,16 +1930,67 @@
     color: var(--fg); opacity: .85; }
   #budget .device-link { flex: none; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
   #budget .device-link.off { background: none; box-shadow: inset 0 0 0 1px currentColor; }
-  /* The Past sessions fold above the limits: one line folded, a list of rows open.
-     A row is the name, a conversation's first prompt, its age and Resume. */
+  /* The Past sessions fold above the limits, one line folded, and the Ports
+     and Activity folds under it in the same box. The rows here are the Ports
+     fold's lines; Past sessions open is the log below. */
   #budget .past { margin-bottom: 8px; padding-bottom: 6px;
     border-bottom: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
   #budget .past-list { margin-top: 4px; }
+  #budget .fold-note { margin: 3px 0 1px; font: 400 11px/15px -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -.005em; color: var(--dim); }
+  #budget .fold-note time, #budget .fold-note code { font: 400 10px/15px ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  #budget .fold-note code { color: var(--fg); opacity: .8; }
+  #budget .fold-act { padding: 0 3px; margin: 0 -1px; border: 0; border-radius: 3px; background: none;
+    font: 600 11px/15px -apple-system, sans-serif; color: var(--hot); cursor: default; text-decoration: none; }
+  #budget .fold-act:hover { background: var(--tint-ctl); }
+  #budget .unlit { --unlit: color-mix(in srgb, var(--fg) 6%, transparent); position: relative; overflow: hidden;
+    opacity: 0; animation: unlit-in 0s linear .18s both; }
+  #budget .unlit i { display: block; flex: none; height: 6px; border-radius: 3px; background: var(--unlit); }
+  #budget .past-log.unlit { margin: 4px -6px 0; }
+  #budget .unlit .u-day { height: 14px; margin: 2px 6px 2px; display: flex; align-items: center; }
+  #budget .unlit .u-day i { width: 44px; height: 5px; }
+  #budget .unlit .u-day:first-child { margin-top: 0; }
+  #budget .unlit .u-entry { display: flex; align-items: center; gap: 8px; min-height: 24px; padding: 4px 6px; box-sizing: border-box; }
+  #budget .unlit .u-entry .w { width: 30px; height: 5px; }
+  #budget .unlit .u-entry .n { height: 7px; }
+  #budget .unlit .u-entry .p { flex: 0 1 auto; }
+  #budget .unlit .u-entry:nth-child(6n+2) .n { width: 64px; } #budget .unlit .u-entry:nth-child(6n+2) .p { width: 150px; }
+  #budget .unlit .u-entry:nth-child(6n+3) .n { width: 88px; } #budget .unlit .u-entry:nth-child(6n+3) .p { width: 96px; }
+  #budget .unlit .u-entry:nth-child(6n+4) .n { width: 40px; } #budget .unlit .u-entry:nth-child(6n+4) .p { width: 180px; }
+  #budget .unlit .u-entry:nth-child(6n+5) .n { width: 72px; } #budget .unlit .u-entry:nth-child(6n+5) .p { width: 0; }
+  #budget .unlit .u-entry:nth-child(6n+6) .n { width: 56px; } #budget .unlit .u-entry:nth-child(6n+6) .p { width: 130px; }
+  #budget .unlit .u-entry:nth-child(6n+1) .n { width: 80px; } #budget .unlit .u-entry:nth-child(6n+1) .p { width: 110px; }
+  #budget .unlit .u-row { display: flex; align-items: center; gap: 6px; height: 19px; }
+  #budget .unlit .u-row .pill { width: 7.5ch; height: 14px; border-radius: 4px; }
+  #budget .unlit .u-row .prog { width: 52px; }
+  #budget .unlit .u-row .sess { width: 76px; }
+  #budget .unlit .u-row:nth-child(2) .prog { width: 34px; } #budget .unlit .u-row:nth-child(2) .sess { width: 58px; }
+  #budget .unlit .u-row:nth-child(3) .prog { width: 44px; } #budget .unlit .u-row:nth-child(3) .sess { width: 90px; }
+  #budget .unlit .u-row .age { width: 18px; margin-left: auto; }
+  #budget .unlit .u-head { height: 19px; display: flex; align-items: center; }
+  #budget .unlit .u-head i { width: 176px; }
+  #budget .unlit .act-split i { width: 100%; height: 4px; }
+  #budget .unlit .act-week i { height: 100%; min-height: 0; border-radius: 2px; background: color-mix(in srgb, var(--fg) 3.5%, transparent); }
+  #budget .unlit .act-nums { height: 9px; align-items: center; opacity: 1; }
+  #budget .unlit .act-nums i { width: 3ch; height: 5px; justify-self: center; }
+  #budget .unlit .act-week > *, #budget .unlit .act-nums > *, #budget .unlit .act-days > * { cursor: default; }
+  #budget .unlit .act-row .name { width: min(118px, 100%); }
+  #budget .unlit .act-row:nth-child(2) .name { width: min(92px, 100%); }
+  #budget .unlit .act-row:nth-child(3) .name { width: min(140px, 100%); }
+  #budget .unlit .act-row .tok { width: 5ch; }
+  @keyframes unlit-in { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: no-preference) {
+    #budget .unlit { animation-duration: .2s; animation-timing-function: ease-out; }
+    #budget .past > .lim-toggle.reading { position: relative; }
+    #budget .past > .lim-toggle.reading::after {
+      content: ""; position: absolute; left: 6px; right: 6px; bottom: 3px; height: 1px; pointer-events: none;
+      background: color-mix(in srgb, var(--dim) 70%, transparent); transform-origin: left;
+      transform: scaleX(0); animation: gauge-fill 1.6s cubic-bezier(.2,.6,.4,1) .18s both;
+    }
+    #budget .past > .lim-toggle[data-wait="activity"]::after { animation-duration: 7s; }
+    @keyframes gauge-fill { from { transform: scaleX(0); } to { transform: scaleX(.88); } }
+  }
   #budget .past-row { display: flex; align-items: center; gap: 6px; height: 19px; min-width: 0; }
-  #budget .past-name { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; color: var(--fg); font-weight: 600; opacity: .85; }
-  #budget .past-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; color: var(--dim); }
   #budget .past-age { flex: none; margin-left: auto; color: var(--dim); }
   #budget .past-go { flex: none; padding: 1px 6px; border-radius: 4px;
     border: .5px solid color-mix(in srgb, var(--fg) 22%, transparent);
@@ -1857,6 +1998,120 @@
   #budget .past-go:hover:not(:disabled) { background: var(--tint-ctl); }
   #budget .past-go:disabled { opacity: .5; }
   #budget .past-error { color: var(--warn); }
+  /* Past sessions open is a shift log: a head per day in the session list's
+     own head recipe, then an entry per row. The time is a tabular column, so
+     the eye runs down the clock; then the name, and the prompt in the dim
+     ink after it. An entry is the target, in the queue rows' recipe: a
+     5px-round button that takes the list tint on hover, the focus ring, and
+     Resume in the one actionable ink at its right end while the pointer or
+     the focus is on it; nothing else sits at the right. The log steps 6px
+     past the foot's gutter so the tint has room and the text still lines up
+     with the fold's head. */
+  #budget .past-log { margin: 4px -6px 0; }
+  #budget .past-day { margin: 8px 6px 2px; font: 700 10px/14px -apple-system, sans-serif;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+  #budget .past-day:first-child { margin-top: 2px; }
+  #budget .past-entry { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 24px;
+    padding: 4px 6px; border: 0; border-radius: 5px; background: none;
+    font: 400 12px/16px -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -.01em;
+    color: var(--fg); text-align: left; cursor: default;
+    --resume-ground: color-mix(in srgb, var(--hot) 12%, var(--bg)); }
+  #budget .past-entry:hover:not(:disabled) { background: var(--tint-row); }
+  #budget .past-entry:focus-visible { outline: 1px solid var(--hot); outline-offset: -1px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 22%, transparent); }
+  #budget .past-entry:focus-visible:not(:hover) { --resume-ground: var(--bg); }
+  #budget .past-when { flex: none; width: 5ch; font: 400 10px/16px ui-monospace, Menlo, monospace;
+    letter-spacing: 0; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #budget .past-where, #budget .past-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #budget .past-where { flex: 0 0 auto; max-width: 45%; font-weight: 500; letter-spacing: -.02em; }
+  #budget .past-what { flex: 1 1 0; color: var(--dim); }
+  #budget .past-opening { flex: none; margin-left: auto;
+    font: 400 11px/16px -apple-system, sans-serif; letter-spacing: 0; color: var(--dim); }
+  /* Resume lies over the entry's right end on the entry's own hovered
+     colour, fading in over 14px, so at rest the text runs to the edge and no
+     width waits for a word that is not shown. */
+  #budget .past-resume { position: absolute; top: 0; right: 0; bottom: 0; display: flex; align-items: center;
+    padding: 0 6px 0 18px; border-radius: 0 5px 5px 0;
+    background: linear-gradient(to right, transparent, var(--resume-ground) 14px);
+    font: 600 11px/16px -apple-system, sans-serif; letter-spacing: 0; color: var(--hot); opacity: 0; }
+  #budget .past-entry:hover:not(:disabled) .past-resume, #budget .past-entry:focus-visible .past-resume { opacity: 1; }
+  /* A refusal under the entry it refuses, starting where the name does. */
+  #budget .past-refusal { padding: 0 6px 4px 44px;
+    font: 400 11px/14px -apple-system, sans-serif; color: var(--warn); }
+  /* The Ports fold under it, in the same rows: the port as a pill in a
+     column of its own, the program, the session it runs under and how long
+     it has run, then Stop, which shows only while the pointer or the focus is
+     on the row, or while it is stopping. Listeners no session holds fold
+     under one line. */
+  #budget .port-no { box-sizing: border-box; width: 7.5ch; justify-content: center; color: var(--dim);
+    font-variant-numeric: tabular-nums; border-color: transparent;
+    background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  #budget .past-row.port .past-go { visibility: hidden; }
+  #budget .past-row.port:hover .past-go, #budget .past-row.port:focus-within .past-go,
+  #budget .past-row.port .past-go:disabled { visibility: visible; }
+  #budget .port-prog { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--fg); }
+  #budget .port-sess { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--dim); }
+  #budget .port-sess::before { content: "\00b7  "; }
+  #budget .port-more { color: var(--dim); }
+  /* The Activity fold under Ports: the span's totals, Claude's and Codex's
+     tokens as one bar between their names, a bar a day by its tokens over
+     the day's total and weekday, then the projects by tokens, each by its
+     folder's own name, and one dim line each for the projects and the
+     scratch dirs the rows leave out. Today, the last bar, is in the ink; a
+     day with nothing is a hairline. A click on a day shows that day alone:
+     its bar takes the ink, its name is underlined, and the rows are its
+     projects by its tokens. */
+  #budget .act-head { height: 19px; line-height: 19px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--dim); }
+  #budget .act-head b, #budget .act-tok { font-weight: 600; color: var(--fg); opacity: .85;
+    font-variant-numeric: tabular-nums; }
+  /* The split: the larger part from the left, each named at its own end of
+     the bar, in the inks the provider tags wear mixed halfway to the
+     background, so the bar reads like the other measures and the words
+     carry the names. */
+  #budget .act-split { display: flex; align-items: center; gap: 6px; height: 14px; margin-bottom: 4px;
+    white-space: nowrap; color: var(--dim); }
+  #budget .act-split b { font-weight: 600; color: var(--fg); opacity: .85; }
+  #budget .act-split-bar { flex: 1 1 auto; display: flex; gap: 2px; min-width: 24px; height: 4px; }
+  #budget .act-split-bar i { width: var(--pct); min-width: 2px; border-radius: 1px; }
+  #budget .act-split-bar i:first-child { border-radius: 2px 1px 1px 2px; }
+  #budget .act-split-bar i:last-child { flex: 1 1 0; border-radius: 1px 2px 2px 1px; }
+  #budget .act-split-bar i.by-claude { background: color-mix(in srgb, var(--ink-claude) 50%, var(--bg)); }
+  #budget .act-split-bar i.by-codex { background: color-mix(in srgb, var(--ink-openai) 50%, var(--bg)); }
+  #budget :is(.act-week, .act-nums, .act-days) { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    font-size: 9px; text-align: center; }
+  #budget .act-week { height: 28px; grid-template-rows: 100%; align-items: end; margin-top: 2px; }
+  #budget .act-week i { height: var(--pct); min-height: 2px; border-radius: 2px;
+    background: color-mix(in srgb, var(--dim) 45%, transparent); }
+  #budget .act-nums { margin-top: 3px; color: var(--fg); opacity: .8; font-variant-numeric: tabular-nums; }
+  #budget .act-days { margin: 3px 0 6px; color: var(--dim); }
+  #budget .act-week i.zero { height: 1px; min-height: 0;
+    background: color-mix(in srgb, var(--dim) 18%, transparent); }
+  #budget .act-week i:is(.today, .sel) { background: var(--fg); opacity: .8; }
+  #budget :is(.act-week, .act-nums, .act-days) > * { cursor: pointer; }
+  #budget :is(.act-nums, .act-days) span.sel { color: var(--fg); opacity: 1; }
+  #budget .act-days span.sel { text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+  /* A project is its folder's own name in the 12px sans names wear, on a
+     16px line so WebKit keeps the descenders, then its tokens in the foot's
+     mono. Where another of the week's projects ends in the same name, case
+     aside, the parents that tell them apart come first in the dim ink, and
+     a session's @variant follows the name in it; the parents give way first
+     when the name is too long, the variant never. */
+  #budget .act-row { display: grid; grid-template-columns: minmax(0, 1fr) 5ch; column-gap: 8px;
+    align-items: center; min-height: 20px; }
+  #budget .act-name { display: flex; min-width: 0; font: 500 12px/16px -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -.02em; color: color-mix(in srgb, var(--fg) 85%, transparent); }
+  #budget .act-name > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #budget .act-lead { flex: 0 1000 auto; min-width: 2ch; font-weight: 400; color: var(--dim); }
+  #budget .act-base { flex: 0 1 auto; min-width: 0; }
+  #budget .act-variant { flex: none; font-weight: 400; color: var(--dim); }
+  #budget .act-tok { text-align: right; }
+  /* What the rows leave out, in the dim ink, its figure in the figures' column. */
+  #budget .act-rest { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 19px;
+    color: var(--dim); }
+  #budget .act-rest .act-tok { font-weight: 400; color: var(--dim); opacity: 1; }
   #budget .acct-item-head { display: flex; align-items: center; gap: 6px; min-width: 0; height: 19px; }
   #budget .codex { margin-top: 10px; padding-top: 8px;
     border-top: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
@@ -1887,15 +2142,43 @@
     background: color-mix(in srgb, var(--sev-crit) 12%, transparent); }
   /* The foot's head: what folds it on the left, the auto-switch setting on
      the right. The chevron turns the way the shells' fold line's does. */
-  #budget .lim-head { display: flex; align-items: center; gap: 5px; margin: 0 0 8px;
+  #budget .lim-head { position: relative; isolation: isolate; display: flex; align-items: center; gap: 5px;
+    margin: 0 -6px 8px; padding: 1px 6px;
     font-size: 10.5px; line-height: 14px; color: var(--dim); }
   #budget .lim-toggle { display: flex; align-items: center; gap: 5px; flex: 0 0 auto;
     padding: 1px 4px 1px 2px; margin-left: -2px; border: 0; border-radius: 4px; background: none;
     font: inherit; color: inherit; text-align: left; cursor: default; }
   #budget .lim-toggle:hover { background: var(--tint-ctl); color: var(--fg); }
+  #budget .lim-head > .lim-toggle { position: static; }
+  /* The head's tint is the fold heads' 24px band: 3px past its 18px above and
+     below, so the layout keeps its height. */
+  #budget .lim-head > .lim-toggle::before {
+    content: ""; position: absolute; inset: -3px 0; z-index: -1; border-radius: 6px;
+  }
+  #budget .lim-head > .lim-toggle:hover { background: none; }
+  #budget .lim-head > .lim-toggle:hover::before { background: var(--tint-ctl); }
+  #budget .lim-head > .lim-toggle:focus-visible { outline: none; box-shadow: none; }
+  #budget .lim-head > .lim-toggle:focus-visible::before {
+    outline: 1px solid var(--hot); outline-offset: -1px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 22%, transparent);
+  }
+  #budget .past > .lim-toggle, #budget .port-more {
+    width: calc(100% + 12px); box-sizing: border-box; border-radius: 5px;
+  }
+  /* A fold head's target and tint fill the band between the hairlines above
+     and below it: 24px with the name on its middle, the margins giving back
+     what it adds, so nothing around it moves. */
+  #budget .past > .lim-toggle { height: 24px; margin: -6px; padding: 7px 6px; border-radius: 6px; }
+  #budget .port-more { height: 12px; margin: 0 -6px; }
+  #budget .port-more { padding: 0 6px; }
+  #budget .past > .lim-toggle:focus-visible, #budget .port-more:focus-visible {
+    outline: 1px solid var(--hot); outline-offset: -1px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 22%, transparent);
+  }
   #budget .lim-toggle .chev { width: 8px; transition: transform .15s ease-out; }
   #budget .lim-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
-  #budget .lim-head .autosw { flex: 1 1 auto; min-width: 0; margin: 0; }
+  #budget .lim-head .autosw { position: relative; pointer-events: none; flex: 1 1 auto; min-width: 0; margin: 0; }
+  #budget .lim-head .autosw > * { pointer-events: auto; }
   @media (prefers-reduced-motion: reduce) { #budget .lim-toggle .chev { transition: none; } }
   /* Folded: every account and Codex side by side, a tile each with its
      fullest window as one bar, its tick where an even spend would be. */
@@ -2175,8 +2458,9 @@
   :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"]) #groups li.line.card.finished:has(> button.row:hover) {
     background: color-mix(in srgb, var(--fg) 4%, var(--finished-bg));
   }
-  /* A partner badge's face is the ground it sits on: here, and in Outlines, the canvas. */
-  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"], [data-card-style="outlines"]) #groups .pair-face { fill: var(--bg); }
+  /* A partner badge's face is the ground it sits on: here, in Outlines and in Serenity, the canvas. */
+  :root:not(.tiny):is([data-card-style="hairlines"], [data-card-style="air"], [data-card-style="inset"], [data-card-style="outlines"],
+                      [data-card-style="serenity"]) #groups .pair-face { fill: var(--bg); }
   /* Hairlines: a rule the panel's width between sessions, and a waiting or
      finished one a band across it. A worktree and a partner keep their own join. */
   :root:not(.tiny)[data-card-style="hairlines"] #groups ul { padding-inline: 0; }
@@ -2228,6 +2512,37 @@
     background: color-mix(in srgb, var(--fg) 4%, transparent);
   }
   :root:not(.tiny)[data-card-style="outlines"] #groups li.line.card:is(.rested, .neglected):not(.placeholder) { background: transparent; opacity: .72; }
+  /* Serenity: a quiet list. A session stands on the canvas with no face of
+     its own and 10px of room under it, and an inset rule over a plain one
+     that follows a plain one or a cluster. A waiting or finished card keeps
+     the whole card, and a worktree cluster its outline, docked as in Cards.
+     Working reads as plain words, and the bar as a thin line. The rule is
+     an image in background longhands, so the hover tint, a colour, lies
+     under it rather than replacing it. What the card leaves out is
+     buildGroups's to drop. */
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card { margin-bottom: 10px; }
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card:has(+ li.line.card:is(.worktree, .partner)) { margin-bottom: 0; }
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card:not(.asking, .blocked, .finished) {
+    background: none; box-shadow: none;
+  }
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card:not(.asking, .blocked, .finished):has(> button.row:hover) {
+    background-color: color-mix(in srgb, var(--fg) 5%, transparent);
+  }
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card:is(.rested, .neglected):not(.placeholder, .asking, .blocked, .finished) {
+    background: none; opacity: .72;
+  }
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card:not(.asking, .blocked, .finished, .worktree) + li.line.card:not(.asking, .blocked, .finished, .worktree, .partner),
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card.worktree + li.line.card:not(.asking, .blocked, .finished, .worktree, .partner) {
+    background-image: linear-gradient(var(--serene-rule), var(--serene-rule));
+    background-repeat: no-repeat; background-position: 12px 0; background-size: calc(100% - 24px) 1px;
+  }
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card > button.row.agent .word.working {
+    background: none; border-color: transparent; color: var(--dim); font-weight: 500;
+  }
+  :root:not(.tiny)[data-card-style="serenity"] #groups li.line.card > button.row.agent .task .task-bar { height: 2px; opacity: .55; }
+  :root:not(.tiny)[data-card-style="serenity"] #groups .serene-note {
+    margin: -2px 12px 8px; font: 500 11px/1.3 -apple-system, sans-serif; color: var(--warn);
+  }
   /* Task first only at full width; name-first and both narrow tiers retain
      their own geometry. The existing Done badge and finished wash stay native. */
   html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent {
@@ -2306,6 +2621,11 @@
   html:not(.compact):not(.tiny) #groups li.line.card.exited > button.row.agent.resting { --badge-room: calc(57px + var(--corner, 0px)); }
   html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent.long-turn { --badge-room: calc(75px + var(--corner, 0px)); }
   html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .word.long { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  /* The corner mark centres on the 18px pill beside it, wherever the card's
+     padding puts the pill: half the 3px the pill is taller than the mark. */
+  html:not(.compact):not(.tiny) #groups li.line.card > button.row.agent > .pcorner {
+    top: calc(var(--badge-top, 6px) + 1.5px);
+  }
   /* The corner mark sits on the folder line, centred on the pill's height,
      inside the face's wider padding. */
   html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent > .pcorner {
@@ -2537,6 +2857,9 @@ const STALE_AFTER_MS = 9000;
 // Overridden by the stored setting once it loads.
 const CONTEXT_SPEAKS_AT = 40;
 const speaksAt = () => SETTINGS?.context_threshold ?? CONTEXT_SPEAKS_AT;
+// A Serenity card shows its context only from here, close enough to
+// compacting to change what you do, and never below your own threshold.
+const SERENE_CONTEXT_AT = 70;
 
 // Everything in the panel is sized in px off one stylesheet, so one zoom on
 // the root scales type, icons, gaps and hairlines together. Growing only the
@@ -2642,7 +2965,9 @@ function taskCardRecency(row, now = Date.now() / 1000) {
 
 // Built before reconciliation, so these nodes survive the next frame in the
 // same way as the name-first stack. Children and compact faces never enter here.
-function taskCard(button, row) {
+// `serene`: a Serenity card, which has no clock, and whose words under the bar
+// are only an activity that hands you the move: the bar carries the percent.
+function taskCard(button, row, serene) {
   button.querySelector(":scope > .swatch:not(.fork), :scope > .busy")?.remove();
   const stack = button.querySelector(":scope > .stack");
   const label = stack.querySelector(".label");
@@ -2683,7 +3008,7 @@ function taskCard(button, row) {
   label.dataset.spoken = title === row.label ? "" : `task ${title}`;
   stack.replaceChildren(identity, name);
   if (question) stack.append(question);
-  const recency = taskCardRecency(row);
+  const recency = serene ? null : taskCardRecency(row);
   if (recency) stack.append(el("card-recency", recency));
   if (facts) stack.append(facts);
   if (row.task && SETTINGS?.show_task !== false) {
@@ -2700,8 +3025,10 @@ function taskCard(button, row) {
     }
     const activity = SETTINGS?.show_task_activity !== false && task.activity?.trim();
     const repeated = activity && [state.word.toLowerCase(), row.state].includes(activity.toLowerCase());
-    const words = [pct != null ? `${Math.round(pct)}%` : null, activity && !repeated ? activity : null].filter(Boolean).join(" · ");
-    if (words) line.append(el("task-status", words));
+    const said = activity && !repeated && (!serene || owedActivity(task, row.state !== "working")) ? activity : null;
+    const words = [pct != null ? `${Math.round(pct)}%` : null, said].filter(Boolean).join(" · ");
+    const shown = serene ? said : words;
+    if (shown) line.append(el("task-status", shown));
     line.dataset.spoken = words;
     if (line.childElementCount) stack.append(line);
   }
@@ -2925,6 +3252,12 @@ function fieldsFor(row) {
   add("uptime", "Up", row.started_at == null ? null : forHumans(Date.now() / 1000 - row.started_at),
       `Its process started ${forHumans(Date.now() / 1000 - row.started_at)} ago`);
   add("model", "Agents", row.agents, `${row.agents} subagent${row.agents === 1 ? "" : "s"} running now`);
+  // What the session has scheduled, in the fold's words, each kept whole
+  // where the figure wraps; the hover has each prompt.
+  if (row.crons?.length) {
+    add("clock", "Scheduled", [row.crons.length, ...row.crons.map(c => c.when.replaceAll(" ", "\u00a0"))].join(" \u00b7 "),
+        row.crons.map(c => `${c.when}: ${c.prompt}`).join("\n"));
+  }
   add("cost", "Cost", d.cost != null ? "$" + d.cost.toFixed(2) : null,
       "Spent this session, as Claude Code reports it");
   // A warm cache is unremarkable. One about to expire, with a six-figure
@@ -2950,9 +3283,80 @@ const thousands = n => n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n);
 const tokens = n =>
   n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(n);
 
+// Which agent, and on which branch when the row has one. One line, cut
+// short; the hover has all of it.
+function whereLine(row) {
+  const where = Object.assign(document.createElement("div"), {className: "where"});
+  const pieces = [[null, agentKind(row).name], ["branch", row.branch]].filter(([, text]) => text);
+  pieces.forEach(([icon, text], i) => {
+    if (i) where.append(" \u00b7 ");
+    const piece = Object.assign(document.createElement("span"), {className: "wbit"});
+    if (icon) piece.append(metaIcon(icon));
+    piece.append(text);
+    where.append(piece);
+  });
+  where.title = where.textContent;
+  return where;
+}
+
+// Each list a Serenity card leaves off its face: its items in the order the
+// card's own list keeps, and each item's mark and words. A subagent is named
+// as its row on the card is; a Codex job that failed or was cancelled ended
+// without finishing, so it says how it ended instead of wearing the tick.
+const DETAIL_LISTS = [
+  {icon: "model", word: "Subagent", items: row => row.subagents || [],
+   face: sub => codexJobFailed(sub) ? ["\u2715", `${subagentTitle(sub)} \u00b7 ${sub.phase}`]
+                                    : [sub.ended == null ? "\u25cf" : "\u2713", subagentTitle(sub)]},
+  {icon: "checked", word: "Task", items: row => tasksInOrder(row.tasks || []),
+   face: task => [taskMark(task.status === "in_progress"), task.subject]},
+  {icon: "shells", word: "Shell", items: row => row.shells || [], face: shell => ["$", shell.label], mono: true},
+];
+// Enough rows to say what is there without the card outgrowing the panel.
+const DETAIL_ROWS = 4;
+
+function detailLists(row) {
+  const el = (cls, text) => Object.assign(document.createElement("div"), {className: cls, textContent: text ?? ""});
+  const lists = [];
+  for (const {icon, word, items, face, mono} of DETAIL_LISTS) {
+    const all = items(row);
+    if (!all.length) continue;
+    const list = el("dlist");
+    const head = el("dhead");
+    head.append(metaIcon(icon), Object.assign(document.createElement("b"), {textContent: all.length}),
+                all.length === 1 ? word : word + "s");
+    list.append(head);
+    for (const item of all.slice(0, DETAIL_ROWS)) {
+      const [mark, text] = face(item);
+      const line = el("drow" + (mono ? " mono" : ""));
+      line.title = text;
+      // A glyph, or a task's ring as its row on the card draws it.
+      const shown = typeof mark === "string" ? Object.assign(document.createElement("span"), {textContent: mark}) : mark;
+      shown.classList.add("mk");
+      line.append(shown, text);
+      list.append(line);
+    }
+    if (all.length > DETAIL_ROWS) list.append(el("drow more", `+${all.length - DETAIL_ROWS} more`));
+    lists.push(list);
+  }
+  return lists;
+}
+
 function showCard(row) {
   const d = row.details || {};
   const pairs = fieldsFor(row);
+  // A Serenity card's Details carries what the card leaves off its face, on
+  // buildGroups's own terms: full width, and a row the daemon sent as an agent.
+  const serene = SETTINGS?.card_style === "serenity" && !compact
+    && LATEST.groups.some(group => group.name === "AGENTS" && group.rows.some(r => r.session_id === row.session_id));
+  if (serene) {
+    const task = row.task;
+    const age = task && !task.done && task.reported_at != null ? reportAge(task.reported_at) : null;
+    if (age) pairs.push({icon: "clock", label: "Report", value: age, title: `The session reported on its task ${age} ago`});
+    if (row.busy_kids) {
+      pairs.push({icon: "model", label: "Teammates", value: row.busy_kids,
+                  title: row.busy_kids === 1 ? "A teammate is working" : `${row.busy_kids} teammates are working`});
+    }
+  }
   // Nothing to say is better said by saying nothing.
   if (!pairs.length && !d.model && !CARD_STATES[row.state]) return;
 
@@ -2977,6 +3381,7 @@ function showCard(row) {
     sub.title = [state && STATE_TITLES[row.state], d.model && `Model ${d.model}`].filter(Boolean).join(" \u00b7 ");
     card.append(sub);
   }
+  if (serene) card.append(whereLine(row));
 
   // Budgets keep their rows; plain counts read as one row of figures.
   const gauges = pairs.filter(({value}) => value && typeof value === "object");
@@ -3056,6 +3461,7 @@ function showCard(row) {
     }
     card.append(figures);
   }
+  if (serene) card.append(...detailLists(row));
 
   card.classList.remove("pinned");
   card.hidden = false;
@@ -3375,8 +3781,14 @@ function menuFor(row, group) {
   const partner = row.partner && (group.rows || []).find(r => r.session_id === row.partner.with);
   const UNTIE = partner && {label: `Untie from ${quotedLabel(partner.label)}`, hint: "end the link; both sessions go on alone",
                            run: r => untieShown(r.session_id)};
+  // A review goes only while no task is open between the two and this card's turn has ended: its answer comes back
+  // here as a prompt. The daemon checks both again, and the card says why when it will not hand one over.
+  const pair = partner && (LATEST.partners || []).find(p => p.upper === row.session_id || p.lower === row.session_id);
+  const REVIEW = pair && !pair.open && row.state !== "working" && {label: `Ask ${quotedLabel(partner.label)} to review`,
+    hint: "it reads this session's change and replies here, changing nothing", run: r => postReview(r.session_id)};
   const items = group.name === "AGENTS"
-    ? [DETAILS, ...(UNTIE ? [UNTIE] : []), ...HOUSEKEEPING.filter(item => item.agents.includes(row.provider || "claude")), CLOSE]
+    ? [DETAILS, ...(REVIEW ? [REVIEW] : []), ...(UNTIE ? [UNTIE] : []),
+       ...HOUSEKEEPING.filter(item => item.agents.includes(row.provider || "claude")), CLOSE]
     : [CLOSE];
 
   const menu = document.createElement("div");
@@ -4372,6 +4784,23 @@ function postUntie(pane) {
     .catch(err => console.log("sidebar: untie failed", err));
 }
 
+// Asks the card's partner to review the card's change. A review the daemon will not hand over says why on the
+// card, as a link it will not make does.
+function postReview(pane) {
+  fetch(`/review?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify({pane})})
+    .then(r => r.json().then(reply => ({status: r.status, reply})))
+    .then(({status, reply}) => {
+      if (status === 409 && reply?.error) {
+        refusedPrompts.set(pane, {text: `not asked: ${reply.error}`, until: Date.now() + REFUSAL_SHOWN_MS});
+        render(LATEST);
+        setTimeout(() => render(LATEST), REFUSAL_SHOWN_MS + 50);
+      } else if (status !== 200) {
+        console.log("sidebar: review refused", status, reply);
+      }
+    })
+    .catch(err => console.log("sidebar: review failed", err));
+}
+
 // Work crossing a pair (S6 of the ripple lab): the ring turns half way in 520 ms so the sender's colour lands on the
 // receiver's side, two quiet rings in the sender's colour leave the badge 200 ms apart, then the ring turns home in
 // 720 ms. A function of the time since the landing began, so a repaint, which leaves the badge at rest, picks it up mid-way.
@@ -4719,8 +5148,10 @@ function reportAge(since) {
   return s < 60 ? `${Math.max(0, Math.round(s))}s` : waited(since);
 }
 // `resting`: the session is not working, so its estimate is of a turn that
-// ended and the bar would read as work going on.
-function taskLine(task, resting) {
+// ended and the bar would read as work going on. `serene`: a Serenity card,
+// whose line says the activity only when it hands you the move, and no age
+// and no Complete, which its badge and wash already say.
+function taskLine(task, resting, serene) {
   const since = task.reported_at;
   const stale = !task.done && (since == null || Date.now() / 1000 - since >= TASK_STALE_AFTER);
   const line = Object.assign(document.createElement("span"), {className: "task" + (stale ? " stale" : "")});
@@ -4738,16 +5169,18 @@ function taskLine(task, resting) {
   const spoken = [];
   if (task.done) {
     // A tick before the word: the one report that is a result, not a claim.
-    const done = el("task-done", "");
-    done.append(metaIcon("checked"), document.createTextNode("Complete"));
-    status.append(done);
-    spoken.push("Complete");
+    if (!serene) {
+      const done = el("task-done", "");
+      done.append(metaIcon("checked"), document.createTextNode("Complete"));
+      status.append(done);
+      spoken.push("Complete");
+    }
   } else {
-    if (task.activity && on("show_task_activity")) {
+    if (task.activity && on("show_task_activity") && (!serene || owedActivity(task, resting))) {
       status.append(el("task-activity" + (owedActivity(task, resting) ? " owed" : ""), task.activity));
       spoken.push(task.activity);
     }
-    if (on("show_task_age") && age != null) {
+    if (on("show_task_age") && age != null && !serene) {
       // The age wears a clock, so it reads as "reported this long ago" and
       // not as one more figure the session claimed. It keeps its stamp, and
       // ticks on from it between snapshots.
@@ -5322,12 +5755,13 @@ function autoSwitchRow() {
   const row = Object.assign(document.createElement("div"), {className: "autosw"});
   const sw = document.createElement("button");
   sw.className = "sw";
+  sw.id = "limits-auto-switch";
   sw.setAttribute("role", "switch");
   sw.setAttribute("aria-checked", String(!!SETTINGS?.auto_switch));
   sw.setAttribute("aria-label", "Switch before a limit");
   sw.title = "Leave the active account before a limit stops your sessions";
   on(sw, "click", () => push({auto_switch: !SETTINGS?.auto_switch}));
-  row.append(Object.assign(document.createElement("span"), {textContent: "Auto-switch"}), sw);
+  row.append(Object.assign(document.createElement("label"), {htmlFor: sw.id, textContent: "Auto-switch"}), sw);
   return row;
 }
 
@@ -5338,16 +5772,6 @@ function autoSwitchRow() {
 // rest on hover.
 function nextSwitchChip(next) {
   if (!SETTINGS?.auto_switch) return null;
-  // A model limit full on every account: no switch helps it, and the other
-  // limits decide until the first one returns.
-  const gone = next?.exhausted?.[0];
-  if (gone && !(next.near && next.to)) {
-    const chip = Object.assign(document.createElement("span"), {className: "next-chip",
-      textContent: `${gone.model} full everywhere`});
-    const back = gone.resets_at ? ` until ${gone.account} resets in ${forHumans(gone.resets_at - Date.now() / 1000)}` : "";
-    chip.title = `${gone.model} is at 100% on every account${back}; switching counts the other limits meanwhile`;
-    return chip;
-  }
   if (!next?.near) return null;
   // No target does not mean every account is full: the emptier one may need
   // a login, or be too close to this one for the hop to be worth it.
@@ -5388,13 +5812,26 @@ function limitsHead(store) {
   return head;
 }
 
+// The windows one bar may stand for, and the model limits it passes over: a
+// model full on every account, as the daemon names them in `exhausted`, says
+// the same on every bar and no switch frees it, so the bar shows the next
+// limit with room. With nothing else left, every window stays.
+function standingWindows(windows, exhausted) {
+  const passedOver = exhausted.filter(gone => windows.some(w => w.label === gone.model));
+  const rest = windows.filter(w => !passedOver.some(gone => gone.model === w.label));
+  return rest.length ? {windows: rest, passedOver} : {windows, passedOver: []};
+}
+const passedOverSaid = gone => `${gone.model} is at 100% on every account`
+  + (gone.resets_at ? `; back when ${gone.account} resets in ${forHumans(gone.resets_at - Date.now() / 1000)}` : "");
+
 // Folded, a source is one tile: its name, then its fullest window as a bar
-// with its figure, the window's short name and the time to its reset. All
-// the windows are on the tile's tooltip. A reading that failed keeps its
+// with its figure, the window's short name and the time to its reset, less a
+// model limit full on every account. All the windows are on the tile's
+// tooltip, and why one was passed over. A reading that failed keeps its
 // last figures, as the open foot does, with how old they are in place of
 // the reset; with no figures at all, why not takes their place.
 const foldShort = label => label === "5-hour" ? "5h" : label === "Weekly" ? "wk" : label.slice(0, 3).toLowerCase();
-function foldTile(icon, name, windows, {active = false, status = ""} = {}) {
+function foldTile(icon, name, windows, {active = false, status = "", exhausted = []} = {}) {
   const tile = Object.assign(document.createElement("div"), {className: "fold-tile"});
   const head = Object.assign(document.createElement("span"), {className: "fold-tile-head"});
   head.append(icon, Object.assign(document.createElement("span"), {className: "fold-name", textContent: name}));
@@ -5408,7 +5845,8 @@ function foldTile(icon, name, windows, {active = false, status = ""} = {}) {
     head.append(check);
   }
   tile.append(head);
-  const fullest = windows.reduce((a, w) => (a && a.used >= w.used ? a : w), null);
+  const standing = standingWindows(windows, exhausted);
+  const fullest = fullestWindow(standing.windows);
   if (!fullest) {
     tile.append(Object.assign(document.createElement("span"), {className: "acct-status", textContent: status}));
     return tile;
@@ -5421,13 +5859,15 @@ function foldTile(icon, name, windows, {active = false, status = ""} = {}) {
   const when = status || [foldShort(fullest.label), row.querySelector(".at").textContent].filter(Boolean).join(" ");
   fig.append(row.querySelector(".pct"), Object.assign(document.createElement("span"), {className: "when", textContent: when}));
   tile.append(row.querySelector(".track"), fig);
-  tile.title = [name, ...windows.map(w => `${w.label} ${Math.round(w.used)}%`), status].filter(Boolean).join(" \u00b7 ");
+  tile.title = [[name, ...windows.map(w => `${w.label} ${Math.round(w.used)}%`), status].filter(Boolean).join(" \u00b7 "),
+                ...standing.passedOver.map(passedOverSaid)].join("\n");
   return tile;
 }
 
 // At compact width the foot is one line: the account sessions run on, its
-// fullest window as name, bar and figure, the reset only once the window is
-// tight, and a near switch on a line of its own. Codex gets a line of the same
+// fullest window less a model limit full on every account as name, bar and
+// figure, the reset only once the window is tight, and a near switch on a line
+// of its own. Codex gets a line of the same
 // shape only while its fullest window is tight. The chevron opens the whole
 // Limits for this page only, so the fold kept for the full width stays as it
 // was set. At tiny width the foot is the chevron and a hairline for that
@@ -5451,14 +5891,15 @@ function compactFoot(store, codex) {
     return row.querySelector(".track");
   };
   const figure = fullest => el("span", "cpct", Math.round(fullest.used) + "%");
-  const footLine = (lead, name, windows) => {
+  const footLine = (lead, name, windows, exhausted = []) => {
     const line = el("div", "cfoot-line");
     line.append(lead);
-    const fullest = fullestWindow(windows);
+    const standing = standingWindows(windows, exhausted);
+    const fullest = fullestWindow(standing.windows);
     if (!fullest) return line;
     line.append(el("span", "cwl", foldShort(fullest.label)), track(line, fullest), figure(fullest));
     if (fullest.resets_at && tightWindow(fullest, now)) line.append(el("span", "cwhen", untilReset(fullest.resets_at, now)));
-    line.title = said(name, windows);
+    line.title = [said(name, windows), ...standing.passedOver.map(passedOverSaid)].join("\n");
     return line;
   };
   const open = () => { compactLimitsOpen = true; paintBudget(lastSnapshot); };
@@ -5472,10 +5913,12 @@ function compactFoot(store, codex) {
     line.type = "button";
     line.setAttribute("aria-expanded", "false");
     line.append(el("span", "chev", "›"));
-    const fullest = fullestWindow(windows);
+    const standing = standingWindows(windows, store.exhausted);
+    const fullest = fullestWindow(standing.windows);
     if (fullest) line.append(track(line, fullest));
     if (fullest && tightWindow(fullest, now)) line.append(figure(fullest));
     line.title = [windows.length ? said(active.name, windows) : `${active.name}: ${accountStatus(active)}`,
+                  ...standing.passedOver.map(passedOverSaid),
                   next?.textContent, theirs.length ? said("Codex", theirs) : null,
                   "Limits: every window and account"].filter(Boolean).join("\n");
     on(line, "click", open);
@@ -5486,10 +5929,10 @@ function compactFoot(store, codex) {
   const toggle = el("button", "lim-toggle");
   toggle.type = "button";
   toggle.setAttribute("aria-expanded", "false");
-  toggle.title = "Limits: every window and account";
+  toggle.setAttribute("aria-label", `${active.name} limits: every window and account`);
   toggle.append(el("span", "chev", "›"), el("span", "cacct", active.name));
   on(toggle, "click", open);
-  const line = footLine(toggle, active.name, windows);
+  const line = footLine(toggle, active.name, windows, store.exhausted);
   if (!windows.length) line.append(el("span", "acct-status", accountStatus(active)));
   box.append(line);
   if (next) {
@@ -5518,7 +5961,7 @@ function accountWindows(account) {
 function foldedAccountTiles(store) {
   return [...store.accounts].sort((a, b) => b.active - a.active).map(account =>
     foldTile(providerIcon("claude", "Claude"), account.name, accountWindows(account),
-             {active: account.active, status: accountStatus(account)}));
+             {active: account.active, status: accountStatus(account), exhausted: store.exhausted}));
 }
 
 // Codex folded, its reserve counted with its plan's windows.
@@ -5827,8 +6270,10 @@ function buildBudget(snapshot) {
   if (!compact && !folded && snapshot.hosts?.length) strip.prepend(devicesRow(snapshot.hosts));
 
   if (strip.childElementCount) strip.prepend(limitsHead(store));
-  // Above the limits: the cards are sessions, these are more sessions, and
-  // the account's figures are the foot.
+  // Above the limits: the cards are sessions, these are more sessions, what
+  // they serve and what they did, and the account's figures are the foot.
+  strip.prepend(activityFold());
+  strip.prepend(portsFold());
   strip.prepend(pastFold());
   return strip;
 }
@@ -5840,10 +6285,10 @@ function buildBudget(snapshot) {
 let pastOpen = false;
 let pastRows = null;
 let pastError = null;
-let pastReading = false;
+let pastReads = 0;
 const pastOpening = new Map();
 function readPast() {
-  pastReading = true;
+  pastReads++;
   fetch(`/past?token=${encodeURIComponent(TOKEN)}`)
     .then(async r => {
       const body = await r.json().catch(() => ({}));
@@ -5851,7 +6296,7 @@ function readPast() {
       else pastError = body.error || `read failed (${r.status})`;
     })
     .catch(err => { pastError = String(err); })
-    .then(() => { pastReading = false; paintBudget(lastSnapshot); });
+    .then(() => { pastReads--; paintBudget(lastSnapshot); });
 }
 function reopenPast(row) {
   const key = row.path + "\n" + (row.conversation || "");
@@ -5867,43 +6312,505 @@ function reopenPast(row) {
     .catch(err => { pastOpening.set(key, {at: Date.now(), error: String(err)}); })
     .then(() => paintBudget(lastSnapshot));
 }
+// The head a row's day takes: Today, Yesterday, else the weekday's name, in
+// English as those two are; within the week a weekday names one day. Read
+// through Date.now, so a pinned Date.now pins the heads.
+function pastDayHead(at) {
+  const now = new Date(Date.now());
+  const midnight = back => new Date(now.getFullYear(), now.getMonth(), now.getDate() - back).getTime() / 1000;
+  if (at >= midnight(0)) return "Today";
+  if (at >= midnight(1)) return "Yesterday";
+  return new Date(at * 1000).toLocaleDateString("en-GB", {weekday: "long"});
+}
+// One row as a button that resumes it: its local time, its name and its
+// prompt, then Resume over its end, or "opening…" while it opens; under it,
+// the daemon's refusal.
+function pastEntry(row) {
+  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
+  const key = row.path + "\n" + (row.conversation || "");
+  const opening = pastOpening.get(key);
+  const waiting = !!(opening && !opening.error && Date.now() - opening.at < 15000);
+  const item = el("div", "past-item");
+  item.setAttribute("role", "listitem");
+  const button = el("button", "past-entry");
+  button.type = "button";
+  button.dataset.key = key;
+  button.disabled = waiting;
+  button.append(el("span", "past-when", clock(row.at)), el("span", "past-where", row.name));
+  // A cs session carries its name alone; a conversation its first prompt, if it had one.
+  if (row.title) button.append(el("span", "past-what", row.title));
+  button.append(waiting ? el("span", "past-opening", "opening\u2026") : el("span", "past-resume", "Resume"));
+  const what = row.kind === "cs" ? `session ${row.name}` : row.title ? `${row.title}, in ${row.name}` : `conversation in ${row.name}`;
+  button.setAttribute("aria-label", `${waiting ? "opening" : "resume"} ${what}, ${waited(row.at)} ago`);
+  on(button, "click", () => reopenPast(row));
+  item.append(button);
+  if (opening?.error) item.append(el("div", "past-refusal", opening.error));
+  return item;
+}
 function pastFold() {
   const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
   const box = el("div", "past");
   const toggle = el("button", "lim-toggle");
   toggle.type = "button";
   toggle.setAttribute("aria-expanded", String(pastOpen));
-  toggle.title = "Past sessions: the last week's with no card, and Resume";
+  toggle.setAttribute("aria-label", "Past sessions: the last week's with no card");
   toggle.append(el("span", "chev", "\u203a"), el("span", "", "Past sessions"));
   on(toggle, "click", () => { pastOpen = !pastOpen; if (pastOpen) readPast(); paintBudget(lastSnapshot); });
   box.append(toggle);
   if (!pastOpen) return box;
+  if (pastReads) toggle.className += " reading";
+  const said = pastError || (pastRows?.length === 0
+    ? "Nothing to resume from the last 7 days; the ones open now are on their cards." : null);
+  if (said !== null) {
+    const note = el("div", "past-list");
+    note.append(el("div", !pastError && pastRows?.length === 0 ? "fold-note" : "acct-status", said));
+    box.append(note);
+  }
+  if (!pastRows?.length) {
+    if (pastReads && pastRows === null && !pastError) {
+      const log = el("div", "past-log unlit");
+      log.setAttribute("aria-hidden", "true");
+      const day = el("div", "u-day");
+      day.append(el("i", ""));
+      log.append(day);
+      for (let i = 0; i < 6; i++) {
+        const entry = el("div", "u-entry");
+        entry.append(el("i", "w"), el("i", "n"), el("i", "p"));
+        log.append(entry);
+      }
+      box.append(log);
+    }
+    return box;
+  }
+  // The rows come newest first, so a day's head goes where the day changes.
+  const log = el("div", "past-log");
+  let day = null, list = null;
+  for (const row of pastRows) {
+    const head = pastDayHead(row.at);
+    if (head !== day) {
+      day = head;
+      list = el("div", "past-entries");
+      list.setAttribute("role", "list");
+      log.append(el("div", "past-day", head), list);
+    }
+    list.append(pastEntry(row));
+  }
+  box.append(log);
+  return box;
+}
+
+// The Ports fold: the TCP ports listening on this Mac and what holds them,
+// those under one of the panel's sessions first and the rest under one more
+// fold, each with Stop. The agents' own ports and the daemon's are not
+// listed. Read from the daemon when the fold opens, never polled: lsof walks
+// every process's open files.
+let portOpen = false;
+let portOthersOpen = false;
+let portRows = null;
+let portError = null;
+let portReadAt = null;
+let portReads = 0;
+// "pid:port:start" -> when its Stop was clicked and the daemon's refusal, if any.
+const portStopping = new Map();
+// A Stop clicked this long ago offers Stop again: a holder can ignore SIGTERM.
+const PORT_STOP_HOLD = 15000;
+function readPorts() {
+  portReads++;
+  paintBudget(lastSnapshot);
+  fetch(`/ports?token=${encodeURIComponent(TOKEN)}`)
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      if (r.ok) { portRows = body.rows || []; portError = null; portReadAt = Date.now() / 1000; }
+      else portError = body.error || `read failed (${r.status})`;
+    })
+    .catch(err => { portError = String(err); })
+    .then(() => { portReads--; paintBudget(lastSnapshot); });
+}
+function stopPort(row) {
+  const key = `${row.pid}:${row.port}:${row.started_at}`;
+  portStopping.set(key, {at: Date.now(), error: null});
+  paintBudget(lastSnapshot);
+  setTimeout(() => paintBudget(lastSnapshot), PORT_STOP_HOLD);
+  fetch(`/stop-port?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify(
+    {pid: row.pid, port: row.port, started_at: row.started_at})})
+    .then(async r => {
+      // A holder takes a moment to close its socket once it has the signal.
+      if (r.ok) { setTimeout(readPorts, 1000); return; }
+      const body = await r.json().catch(() => ({}));
+      portStopping.set(key, {at: Date.now(), error: body.error || `refused (${r.status})`});
+    })
+    .catch(err => { portStopping.set(key, {at: Date.now(), error: String(err)}); })
+    .then(() => paintBudget(lastSnapshot));
+}
+// One row and, when its Stop was refused, the reason under it.
+function portLine(row, now) {
+  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
+  const stopping = portStopping.get(`${row.pid}:${row.port}:${row.started_at}`);
+  const waiting = !!(stopping && !stopping.error && Date.now() - stopping.at < PORT_STOP_HOLD);
+  const line = el("div", "past-row port");
+  line.setAttribute("role", "listitem");
+  line.title = `${row.addresses.map(address => `${address}:${row.port}`).join(", ")}\npid ${row.pid}\n${row.command}`;
+  line.append(el("span", "word port-no", `:${row.port}`), el("span", "port-prog", row.program));
+  if (row.session) line.append(el("span", "port-sess", row.session));
+  line.append(el("span", "past-age", forHumans(now - row.started_at)));
+  const stop = el("button", "past-go", waiting ? "stopping\u2026" : "Stop");
+  stop.type = "button";
+  stop.disabled = waiting;
+  stop.setAttribute("aria-label", `stop ${row.program} on port ${row.port}`);
+  on(stop, "click", () => stopPort(row));
+  line.append(stop);
+  return stopping?.error ? [line, el("div", "acct-status past-error", stopping.error)] : [line];
+}
+function portsFold() {
+  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
+  const box = el("div", "past");
+  const toggle = el("button", "lim-toggle");
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", String(portOpen));
+  toggle.setAttribute("aria-label", "Ports: what listens on this Mac, the panel's sessions' first, and Stop");
+  toggle.append(el("span", "chev", "\u203a"), el("span", "", "Ports"));
+  on(toggle, "click", () => { portOpen = !portOpen; if (portOpen) readPorts(); paintBudget(lastSnapshot); });
+  box.append(toggle);
+  if (!portOpen) return box;
+  if (portReads) toggle.className += " reading";
   const list = el("div", "past-list");
   list.setAttribute("role", "list");
-  if (pastError) list.append(el("div", "acct-status", pastError));
-  else if (pastRows === null) list.append(el("div", "acct-status", pastReading ? "reading\u2026" : ""));
-  else if (!pastRows.length) list.append(el("div", "acct-status", "nothing from the last week without a card"));
+  if (portReads && portRows === null && !portError) {
+    const placeholder = el("div", "unlit");
+    placeholder.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 3; i++) {
+      const row = el("div", "u-row");
+      row.append(el("i", "pill"), el("i", "prog"), el("i", "sess"), el("i", "age"));
+      placeholder.append(row);
+    }
+    list.append(placeholder);
+  }
+  if (portError) list.append(el("div", "acct-status", portError));
+  else if (portRows && !portRows.length) {
+    const note = el("div", "fold-note");
+    const again = el("button", "fold-act", "Look again");
+    again.type = "button";
+    on(again, "click", readPorts);
+    note.append(el("span", "", "No listener found at "), el("time", "", clock(portReadAt)),
+                el("span", "", " \u00b7 "), again);
+    list.append(note);
+  }
   const now = Date.now() / 1000;
-  for (const row of pastRows || []) {
-    const key = row.path + "\n" + (row.conversation || "");
-    const opening = pastOpening.get(key);
-    const line = el("div", "past-row");
-    line.setAttribute("role", "listitem");
-    line.title = row.path + (row.title ? "\n" + row.title : "");
-    line.append(el("span", "past-name", row.name));
-    // A cs session carries its name; a conversation carries its first prompt.
-    if (row.kind === "claude") line.append(el("span", "past-title", row.title || "(no prompt)"));
-    line.append(el("span", "past-age", forHumans(now - row.at)));
-    const go = el("button", "past-go", opening && !opening.error ? "opening\u2026" : "Resume");
-    go.type = "button";
-    go.disabled = !!(opening && !opening.error && Date.now() - opening.at < 15000);
-    go.setAttribute("aria-label", `resume ${row.kind === "cs" ? "session" : "conversation in"} ${row.name}`);
-    on(go, "click", () => reopenPast(row));
-    line.append(go);
-    list.append(line);
-    if (opening?.error) list.append(el("div", "acct-status past-error", opening.error));
+  const others = (portRows || []).filter(row => !row.session_id);
+  for (const row of portRows || []) if (row.session_id) list.append(...portLine(row, now));
+  if (others.length) {
+    const more = el("button", "lim-toggle port-more");
+    more.type = "button";
+    more.setAttribute("aria-expanded", String(portOthersOpen));
+    const allOthers = others.length === portRows.length;
+    more.append(el("span", "chev", "\u203a"),
+                el("span", "", `${others.length} ${allOthers ? "" : "other "}${others.length === 1 ? "listener" : "listeners"}`
+                  + (allOthers ? ", none under an agent" : "")));
+    on(more, "click", () => { portOthersOpen = !portOthersOpen; paintBudget(lastSnapshot); });
+    list.append(more);
+    if (portOthersOpen) for (const row of others) list.append(...portLine(row, now));
   }
   box.append(list);
+  return box;
+}
+
+// The Activity fold: what Claude Code and Codex did over the last week, by
+// day and by project, from their own logs. Read from the daemon when the fold
+// opens, never with a frame: a cold week reads every log written in it.
+let activityOpen = false;
+let activityReport = null;
+let activityError = null;
+let activityReads = 0;
+// The date of the one day the fold shows alone, picked by a click on its
+// bar; null is the week.
+let activityDay = null;
+// The projects listed by name; the rest are one line under them.
+const ACTIVITY_ROWS = 10;
+function readActivity() {
+  activityReads++;
+  fetch(`/activity?days=7&token=${encodeURIComponent(TOKEN)}`)
+    .then(async r => {
+      const body = await r.json().catch(() => ({}));
+      if (r.ok) { activityReport = body; activityError = null; }
+      else activityError = body.error || `read failed (${r.status})`;
+    })
+    .catch(err => { activityError = String(err); })
+    .then(() => { activityReads--; paintBudget(lastSnapshot); });
+}
+// A count in at most three figures: 999, 1.2k, 84M, 7.5B. One decimal under
+// ten, none above, and a count that would round to 1000 says the next unit up.
+// Rounded in whole tenths of the unit: 9950 / 1000 is a hair under 9.95 as
+// a float, and toFixed would say 9.9k.
+function shortCount(n) {
+  if (n < 1000) return String(n);
+  for (const [size, unit] of [[1e3, "k"], [1e6, "M"], [1e9, "B"]]) {
+    const tenths = Math.round(n / (size / 10));
+    const shown = tenths < 100 ? tenths / 10 : Math.round(n / size);
+    if (shown < 1000 || unit === "B") return shown + unit;
+  }
+}
+// The report as the fold draws it: each day's prompts and tokens, Claude's
+// and Codex's apart, oldest first, and each project's tokens per day over both
+// providers, most first, with whether the daemon found it a scratch dir. A
+// prompt is a Claude prompt or a Codex turn. Claude's tokens are its input,
+// output and cache writes, and Codex's its total less its cached input: cache
+// reads, the conversation so far read again, are left out. A project with no
+// tokens in the week, its work all cache reads, is left out too, as a picked
+// day leaves out a project with none that day; its prompts still count.
+function activitySummary(report) {
+  const days = [...report.days].reverse();
+  const projects = new Map();
+  const totals = days.map((day, i) => {
+    const total = {date: day.date, prompts: 0, tokens: 0, claude: 0, codex: 0};
+    const add = ({project, scratch}, kind, asked, used) => {
+      total.prompts += asked;
+      total.tokens += used;
+      total[kind] += used;
+      const row = projects.get(project) || {project, scratch, days: days.map(() => 0), tokens: 0};
+      row.days[i] += used;
+      row.tokens += used;
+      projects.set(project, row);
+    };
+    for (const r of day.claude) add(r, "claude", r.prompts, r.tokens.input + r.tokens.output + r.tokens.cache_write);
+    for (const r of day.codex) add(r, "codex", r.turns, r.tokens.total - r.tokens.cached_input);
+    return total;
+  });
+  return {days: totals, projects: [...projects.values()].filter(p => p.tokens).sort((a, b) => b.tokens - a.tokens)};
+}
+// What the fold shows: the week, or the one day picked, as its label, its
+// prompts and tokens with Claude's and Codex's share, the index of that day
+// among the summary's, and the projects with their tokens over that span,
+// most first. A day the summary no longer holds, the window having moved on,
+// is the week.
+function activityView(summary, date) {
+  const i = summary.days.findIndex(day => day.date === date);
+  if (i < 0) {
+    const n = summary.days.length;
+    const sum = key => summary.days.reduce((total, day) => total + day[key], 0);
+    return {day: null, label: `${n} ${n === 1 ? "day" : "days"}`, prompts: sum("prompts"), tokens: sum("tokens"),
+            claude: sum("claude"), codex: sum("codex"), projects: summary.projects};
+  }
+  const day = summary.days[i];
+  return {day: i, prompts: day.prompts, tokens: day.tokens, claude: day.claude, codex: day.codex,
+          label: new Date(`${day.date}T12:00`).toLocaleDateString(undefined, {weekday: "short", day: "numeric", month: "short"}),
+          projects: summary.projects.filter(p => p.days[i]).map(p => ({...p, tokens: p.days[i]}))
+            .sort((a, b) => b.tokens - a.tokens)};
+}
+// "7 days · 1.3k prompts · 7.5B tokens", or the day's, the figures bold. The
+// report has no count of conversations over the window: one that runs on two
+// days, or in two projects, is a conversation in each.
+function activityHead(view) {
+  const bold = text => Object.assign(document.createElement("b"), {textContent: text});
+  const said = (n, one, many) => n === 1 ? one : many;
+  const head = Object.assign(document.createElement("div"), {className: "act-head"});
+  head.append(bold(view.label), " · ", bold(shortCount(view.prompts)), ` ${said(view.prompts, "prompt", "prompts")} · `,
+              bold(shortCount(view.tokens)), ` ${said(view.tokens, "token", "tokens")}`);
+  return head;
+}
+// The head's tokens as Claude's and Codex's: one bar between their names, the
+// larger from the left. A span only one of them worked in has no split, the
+// head's figure being all of it.
+function activitySplit(view) {
+  const parts = [["claude", "Claude", view.claude], ["codex", "Codex", view.codex]]
+    .filter(([, , n]) => n > 0).sort((a, b) => b[2] - a[2]);
+  if (parts.length < 2) return [];
+  const named = ([, name, n]) => {
+    const words = document.createElement("span");
+    words.append(`${name} `, Object.assign(document.createElement("b"), {textContent: shortCount(n)}));
+    return words;
+  };
+  const bar = Object.assign(document.createElement("span"), {className: "act-split-bar"});
+  bar.setAttribute("role", "img");
+  bar.setAttribute("aria-label", parts.map(([, name, n]) => `${name} ${shortCount(n)} tokens`).join(", "));
+  for (const [kind, , n] of parts) {
+    const segment = Object.assign(document.createElement("i"), {className: `by-${kind}`});
+    segment.dataset.pct = String(Math.round(100 * n / view.tokens));
+    bar.append(segment);
+  }
+  const line = Object.assign(document.createElement("div"), {className: "act-split"});
+  line.append(named(parts[0]), bar, named(parts[1]));
+  return [line];
+}
+// What each of the week's projects is called, by its path: its folder's own
+// name, its last path part, and where another of them ends in the same name,
+// case aside, as many parents as tell it from every such other. One set of
+// names for the whole week, so a project is called the same in a picked
+// day's view, and so a project the rows leave out still tells a listed one
+// apart. The root, with no parts, is called by its path. The open fold draws
+// again on every frame, so the paths are grouped by their last part, and a
+// group is sorted by its parts read from the last: the path that shares the
+// most parts with another is then beside it.
+function activityNames(paths) {
+  const names = new Map([[null, {parents: "", name: "(no directory)"}]]);
+  const groups = new Map();
+  for (const path of paths) {
+    if (path === null) continue;
+    const segments = path.split("/").filter(Boolean);
+    if (!segments.length) { names.set(path, {parents: "", name: path}); continue; }
+    const folded = segments.map(s => s.toLowerCase());
+    const group = groups.get(folded.at(-1)) || [];
+    group.push({path, segments, folded});
+    groups.set(folded.at(-1), group);
+  }
+  // How many parts, from the last, two paths share, case aside.
+  const shared = (a, b) => { let k = 0; while (k < a.length && k < b.length && a.at(-1 - k) === b.at(-1 - k)) k++; return k; };
+  const fromLast = (a, b) => {
+    const k = shared(a.folded, b.folded);
+    if (k === a.folded.length || k === b.folded.length) return a.folded.length - b.folded.length;
+    return a.folded.at(-1 - k) < b.folded.at(-1 - k) ? -1 : 1;
+  };
+  for (const group of groups.values()) {
+    group.sort(fromLast);
+    group.forEach(({path, segments, folded}, i) => {
+      const most = Math.max(0, ...[group[i - 1], group[i + 1]].filter(Boolean).map(other => shared(folded, other.folded)));
+      const k = Math.min(most + 1, segments.length);
+      names.set(path, {parents: segments.slice(-k, -1).map(s => `${s}/`).join(""), name: segments.at(-1)});
+    });
+  }
+  return names;
+}
+// A name as the row draws it: the parents that tell it apart, the folder's
+// name, and a cs session's @variant, each its own span.
+function activityName({parents, name}) {
+  const span = (cls, text) => Object.assign(document.createElement("span"), {className: cls, textContent: text});
+  const box = span("act-name", "");
+  const [, base, variant] = name.match(/^(.+?)(@[^@]+)?$/);
+  if (parents) box.append(span("act-lead", parents));
+  box.append(span("act-base", base));
+  if (variant) box.append(span("act-variant", variant));
+  return box;
+}
+// A listed project: its name and its tokens, its whole path said to
+// assistive tech and never shown as a tooltip.
+function activityRow(project, name) {
+  const row = Object.assign(document.createElement("div"), {className: "act-row"});
+  row.setAttribute("role", "listitem");
+  row.setAttribute("aria-label", `${project.project ?? "no directory in the log"}, ${shortCount(project.tokens)} tokens`);
+  row.append(activityName(name),
+             Object.assign(document.createElement("span"), {className: "act-tok", textContent: shortCount(project.tokens)}));
+  return row;
+}
+// A line for what the rows leave out: what it is in words, its tokens in the
+// figures' column.
+function activityRest(words, projects) {
+  const line = Object.assign(document.createElement("div"), {className: "act-rest"});
+  line.append(Object.assign(document.createElement("span"), {textContent: words}),
+              Object.assign(document.createElement("span"), {className: "act-tok",
+                textContent: shortCount(projects.reduce((total, p) => total + p.tokens, 0))}));
+  return line;
+}
+// A bar a day, oldest first, its height the percent of the busiest day's
+// tokens, which the stylesheet floors at 2px; a day with none is a hairline.
+// The last, today, is marked, or the picked day in its place.
+function activityBars(values, className, picked = null) {
+  const box = Object.assign(document.createElement("span"), {className});
+  const peak = Math.max(...values, 1);
+  values.forEach((value, i) => {
+    const bar = document.createElement("i");
+    bar.className = !value ? "zero" : i === picked ? "sel" : picked === null && i === values.length - 1 ? "today" : "";
+    if (value) bar.dataset.pct = String(Math.round(100 * value / peak));
+    box.append(bar);
+  });
+  return box;
+}
+function activityFold() {
+  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
+  const box = el("div", "past");
+  const toggle = el("button", "lim-toggle");
+  toggle.dataset.wait = "activity";
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", String(activityOpen));
+  toggle.setAttribute("aria-label", "Activity: the last week's prompts and tokens, Claude Code's and Codex's, by day and by project");
+  toggle.append(el("span", "chev", "›"), el("span", "", "Activity"));
+  on(toggle, "click", () => { activityOpen = !activityOpen; if (activityOpen) readActivity(); paintBudget(lastSnapshot); });
+  box.append(toggle);
+  if (!activityOpen) return box;
+  if (activityReads) toggle.className += " reading";
+  const list = el("div", "past-list");
+  box.append(list);
+  if (activityError && activityReport === null) { list.append(el("div", "acct-status", activityError)); return box; }
+  if (activityReport === null) {
+    if (activityReads) {
+      const placeholder = el("div", "unlit");
+      placeholder.setAttribute("aria-hidden", "true");
+      const head = el("div", "u-head"), split = el("div", "act-split");
+      head.append(el("i", ""));
+      split.append(el("i", ""));
+      const week = el("div", "act-week"), nums = el("div", "act-nums"), names = el("div", "act-days");
+      const today = new Date(Date.now());
+      for (let back = 6; back >= 0; back--) {
+        week.append(el("i", ""));
+        nums.append(el("i", ""));
+        const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back, 12);
+        names.append(el("span", "", day.toLocaleDateString(undefined, {weekday: "short"})));
+      }
+      const rows = el("div", "act-rows");
+      for (let i = 0; i < 3; i++) {
+        const row = el("div", "act-row");
+        row.append(el("i", "name"), el("i", "tok"));
+        rows.append(row);
+      }
+      placeholder.append(head, split, week, nums, names, rows);
+      list.append(placeholder);
+    }
+    return box;
+  }
+  const summary = activitySummary(activityReport);
+  const issues = [];
+  if (activityError) issues.push(el("div", "acct-status", activityError));
+  // A log the report could not read in full leaves its figures short.
+  if (activityReport.unread.length) {
+    const files = new Set(activityReport.unread.map(u => u.path)).size;
+    const short = el("div", "acct-status past-error", `${files} ${files === 1 ? "log" : "logs"} not counted in full`);
+    short.setAttribute("aria-label", activityReport.unread.map(u => `${u.path}: ${u.error}`).join("\n"));
+    issues.push(short);
+  }
+  if (summary.days.every(day => !day.prompts && !day.tokens)) {
+    const note = el("div", "fold-note");
+    note.append("No prompts or tokens in ", el("code", "", "~/.claude/projects"), " or ",
+                el("code", "", "~/.codex/sessions"), " over the last 7 days.");
+    list.append(note, ...issues);
+    return box;
+  }
+  const view = activityView(summary, activityDay);
+  const week = activityBars(summary.days.map(day => day.tokens), "act-week", view.day);
+  const nums = el("div", "act-nums"), names = el("div", "act-days");
+  summary.days.forEach((day, i) => {
+    nums.append(el("span", i === view.day ? "sel" : "", shortCount(day.tokens)));
+    names.append(el("span", i === view.day ? "sel" : "", new Date(`${day.date}T12:00`).toLocaleDateString(undefined, {weekday: "short"})));
+    // A click on a day's bar, figure or name shows that day alone; one more lets it go.
+    for (const column of [week, nums, names]) on(column.children[i], "click", () => {
+      activityDay = activityDay === day.date ? null : day.date;
+      paintBudget(lastSnapshot);
+    });
+  });
+  list.append(activityHead(view), ...activitySplit(view), week, nums, names);
+  if (view.day !== null && !view.prompts && !view.tokens) {
+    const weekday = new Date(`${summary.days[view.day].date}T12:00`).toLocaleDateString("en-GB", {weekday: "long"});
+    const note = el("div", "fold-note");
+    const back = el("button", "fold-act", "Show the week");
+    back.type = "button";
+    on(back, "click", () => {
+      activityDay = null;
+      paintBudget(lastSnapshot);
+      document.querySelector('#budget .lim-toggle[data-wait="activity"]').focus();
+    });
+    note.append(`Nothing on ${weekday} · `, back);
+    list.append(note);
+  }
+  // Scratch dirs get no row and are no project's rival for a name.
+  const called = activityNames(summary.projects.filter(p => !p.scratch).map(p => p.project));
+  const projects = view.projects.filter(p => !p.scratch);
+  const listed = projects.slice(0, ACTIVITY_ROWS);
+  const rows = el("div", "");
+  rows.setAttribute("role", "list");
+  for (const project of listed) rows.append(activityRow(project, called.get(project.project)));
+  list.append(rows);
+  const more = projects.length - ACTIVITY_ROWS;
+  if (more > 0) list.append(activityRest(`+${more} more ${more === 1 ? "project" : "projects"}`, projects.slice(ACTIVITY_ROWS)));
+  const scratch = view.projects.filter(p => p.scratch);
+  if (scratch.length) list.append(activityRest(`${scratch.length} scratch ${scratch.length === 1 ? "dir" : "dirs"}`, scratch));
+  list.append(...issues);
   return box;
 }
 
@@ -6165,6 +7072,8 @@ const FOLD_FINISHED_OVER = 3;
 const openFinished = new Set();
 // The cards whose task list is open, by session id, for the same reason.
 const openTasks = new Set();
+// The cards whose scheduled prompts are open, by session id, for the same reason.
+const openCrons = new Set();
 
 // Cards whose shells are shown the other way from the Expand shells setting,
 // by session id, so a repaint keeps what you opened or closed.
@@ -6193,6 +7102,53 @@ function stackOf(text, meta) {
     stack.append(Object.assign(document.createElement("span"), {className: "model", textContent: meta}));
   }
   return stack;
+}
+
+// The prompts a session has scheduled to wake it, as the end of its last
+// turn listed them: one line with the count, opening to a row per prompt
+// with a mark for whether it comes back and the daemon's words for when it
+// runs. An expression the daemon could not read has no next run and is
+// shown as written.
+function cronsFold(li, row) {
+  const crons = row.crons;
+  const open = openCrons.has(row.session_id);
+  const head = `${crons.length} scheduled`;
+  const sum = document.createElement("button");
+  sum.type = "button";
+  sum.className = "shell-sum crons-sum";
+  sum.dataset.childKey = "crons";
+  const text = document.createElement("span");
+  text.append(Object.assign(document.createElement("span"), {className: "n", textContent: String(crons.length)}),
+              head.slice(String(crons.length).length));
+  sum.append(metaIcon("clock"), text,
+             Object.assign(document.createElement("span"), {className: "chev", textContent: "\u203a"}));
+  sum.setAttribute("aria-expanded", String(open));
+  sum.setAttribute("aria-controls", "crons-" + row.session_id);
+  sum.setAttribute("aria-label", `${crons.length} scheduled prompt${crons.length === 1 ? "" : "s"} in ${row.label}`);
+  sum.title = `${head}: prompts the session set to run later, as listed when its last turn ended`;
+  on(sum, "click", () => {
+    if (openCrons.has(row.session_id)) openCrons.delete(row.session_id);
+    else openCrons.add(row.session_id);
+    if (LATEST) render(LATEST);
+  });
+  li.append(sum);
+  if (!open) return;
+  const rows = Object.assign(document.createElement("div"),
+                             {className: "children shell-rows", id: "crons-" + row.session_id});
+  for (const cron of crons) {
+    const cb = childRow(row, "tail", `cron\n${cron.id}`);
+    const mark = metaIcon(cron.recurring ? "again" : "clock");
+    mark.classList.add("cron-mark");
+    const when = Object.assign(document.createElement("span"),
+                               {className: "mchip cron-when" + (cron.next == null ? " raw" : cron.due ? " due" : "")});
+    when.append(Object.assign(document.createElement("span"), {className: "mtext", textContent: cron.when}));
+    cb.append(mark, stackOf(cron.prompt), when);
+    cb.title = cron.prompt;
+    cb.setAttribute("aria-label", `${cron.recurring ? "recurring" : "one-shot"} prompt, ${cron.when}: ${cron.prompt}`);
+    on(cb, "click", () => act(row.session_id, "focus"));
+    rows.append(cb);
+  }
+  li.append(rows);
 }
 
 // Under a waiting card, the buttons that answer the gate of `row`: the card's
@@ -6585,6 +7541,16 @@ function tasksInOrder(tasks) {
   return [...tasks.filter(t => t.status === "in_progress"), ...tasks.filter(t => t.status !== "in_progress")];
 }
 
+// A Codex job's phase says how it ended: failed and cancelled are not finished.
+function codexJobFailed(sub) {
+  return sub.provider === "codex" && sub.ended != null && ["failed", "cancelled"].includes(sub.phase);
+}
+
+// A Codex job by its kind, any other subagent by the name it was given, else its type.
+function subagentTitle(sub) {
+  return sub.provider === "codex" ? `Codex ${sub.type || "job"}` : sub.name || sub.type || "subagent";
+}
+
 // The card list as the frame says it should read, detached.
 function buildGroups(snapshot) {
   const built = document.createElement("div");
@@ -6613,6 +7579,12 @@ function buildGroups(snapshot) {
     // At compact width an agent card is its name and its state, and its
     // teammates have no lines; each one waiting on you puts its gate on the card.
     const shortCards = compact && group.name === "AGENTS";
+    // Serenity's face, at full width only: compact width already strips a card
+    // to its name and state, and tiny is narrower still. An agent card keeps
+    // only what changes what you do.
+    const serene = SETTINGS?.card_style === "serenity" && !compact && group.name === "AGENTS";
+    // The lists under a card's row: subagents, tasks, scheduled prompts, shells.
+    const lists = !shortCards && !serene;
     const waitingIn = new Map();
     let parent = null;
     for (const row of shortCards ? group.rows : []) {
@@ -6750,8 +7722,9 @@ function buildGroups(snapshot) {
         stack.append(label);
       }
       // Which agent this is, said once per card: a tag after the name or a
-      // mark in the row's corner. The glyph then leaves the facts line.
-      const marked = group.name === "AGENTS" && !row.depth && !shortCards ? agentMark() : "off";
+      // mark in the row's corner. The glyph then leaves the facts line. A
+      // Serenity card says it in Details only.
+      const marked = group.name === "AGENTS" && !row.depth && !shortCards && !serene ? agentMark() : "off";
       if (marked === "tag" || marked === "corner") {
         b.dataset.agent = agentKindOf(row);
         const glyph = providerIcon(agentKindOf(row), "");
@@ -6784,7 +7757,7 @@ function buildGroups(snapshot) {
           // Codex's own status line knows the conversation by the title Codex
           // gave it, so a Codex card does too; the report keeps the rest.
           stack.append(taskLine(row.provider === "openai" && row.topic ? {...row.task, title: row.topic} : row.task,
-                                row.state !== "working"));
+                                row.state !== "working", serene));
         } else if ((row.topic || row.doing) && SETTINGS?.show_task !== false) {
           stack.append(topicLine(row.topic, row.doing));
         }
@@ -6793,6 +7766,8 @@ function buildGroups(snapshot) {
       // Branch then model, on one line under the name: both describe the
       // session rather than its state, so they belong together and behind it.
       // Each item has an icon saying which it is, and a middot between items.
+      // A Serenity card keeps only the facts that change what you do: the
+      // host, a heavy process tree and a context near its end.
       const meta = document.createElement("span");
       meta.className = "model";
       // The agent runs on another machine: its host, first on the line. The
@@ -6806,7 +7781,7 @@ function buildGroups(snapshot) {
         meta.append(chip);
       }
       for (const [kind, value] of [["title", row.title], ["branch", row.branch], ["model", row.model]]) {
-        if (!value || SETTINGS?.[`show_${kind}`] === false) continue;
+        if (!value || serene || SETTINGS?.[`show_${kind}`] === false) continue;
         const chip = document.createElement("span");
         chip.className = "mchip";
         chip.classList.add(kind === "branch" ? "branch" : kind === "title" ? "title" : "model-name");
@@ -6842,7 +7817,7 @@ function buildGroups(snapshot) {
       // A teammate is its own session in its own pane, so the card's own
       // badge can read idle while work goes on under it. The dots say a
       // teammate is working; the badge still speaks for this pane alone.
-      if (row.busy_kids) {
+      if (row.busy_kids && !serene) {
         const chip = Object.assign(document.createElement("span"), {className: "mchip kids"});
         const dots = Object.assign(document.createElement("span"), {className: "busy down"});
         dots.innerHTML = "<i></i><i></i><i></i>";
@@ -6856,7 +7831,7 @@ function buildGroups(snapshot) {
       // its mark, and an omp row never has one; the card would then say
       // nothing about which agent it is. The mark names the program instead.
       const program = PROGRAMS[row.provider];
-      if (program && !row.model && marked !== "tag") {
+      if (program && !row.model && marked !== "tag" && !serene) {
         const chip = Object.assign(document.createElement("span"), {className: "mchip model-name"});
         chip.append(providerIcon(row.provider, program.mark),
                     Object.assign(document.createElement("span"), {className: "mtext", textContent: program.name}));
@@ -6868,7 +7843,7 @@ function buildGroups(snapshot) {
       // other item here is an icon and a value -- a bare number on the first
       // line was the one exception, sitting against the shells count with
       // nothing between them so the two read as a single figure.
-      if (typeof row.context === "number" && row.context >= speaksAt()) {
+      if (typeof row.context === "number" && row.context >= (serene ? Math.max(SERENE_CONTEXT_AT, speaksAt()) : speaksAt())) {
         const chip = document.createElement("span");
         chip.className = "mchip ctx" + (row.context >= 90 ? " critical" : "");
         chip.append(metaIcon("gauge"),
@@ -6958,7 +7933,7 @@ function buildGroups(snapshot) {
         ? `Working for ${longFigure}, may be stuck` : pillTitle(row);
 
       if (group.name === "AGENTS" && !row.depth && !compact && !tiny
-          && (SETTINGS?.card_anatomy ?? "task") === "task") taskCard(b, row);
+          && (SETTINGS?.card_anatomy ?? "task") === "task") taskCard(b, row, serene);
 
 
       // aria-label only, never title: the details card says the same thing,
@@ -6989,6 +7964,19 @@ function buildGroups(snapshot) {
       const standing = questionStandingLine(row);
       const refusal = refusalLine(row.session_id);
       if (row.depth && li === card) {
+        // A Serenity card draws a teammate's line only while it waits on you,
+        // since the line carries its question. A long turn is a note on the
+        // card, and a refused prompt or a lost remote control goes under the
+        // card in place of the line.
+        if (serene && !hot) {
+          if (longTurn) {
+            li.append(Object.assign(document.createElement("div"),
+                                    {className: "serene-note", textContent: `${row.label} \u00b7 Long ${longFigure}`}));
+          }
+          if (refusal) li.append(refusal);
+          if (lost) li.append(lost);
+          continue;
+        }
         // A teammate: one line inside its parent's card, above the shells.
         b.classList.add("child");
         b.dataset.childKey = "mate\n" + row.session_id;
@@ -7056,7 +8044,7 @@ function buildGroups(snapshot) {
       // own; the hook lists them with the name they were given and the model
       // they reply with, once their files say so, and by type until then.
       // Clicking one focuses the session they run in.
-      const subs = SETTINGS?.show_agents !== false && !shortCards ? row.subagents || [] : [];
+      const subs = SETTINGS?.show_agents !== false && lists ? row.subagents || [] : [];
       // Subagents of one type that start in the same second, as a workflow's
       // do, are told apart by their turn among the ones alike: a key two rows
       // share makes the list measure one against the other's place and move it.
@@ -7064,8 +8052,7 @@ function buildGroups(snapshot) {
       // A workflow leaves dozens of finished subagents behind. Past a few,
       // they fold into one line that opens them, and the ones still running
       // stay in sight. One that failed is never folded away.
-      const ended = sub => sub.ended != null
-        && !(sub.provider === "codex" && ["failed", "cancelled"].includes(sub.phase));
+      const ended = sub => sub.ended != null && !codexJobFailed(sub);
       const folds = subs.filter(ended).length > FOLD_FINISHED_OVER;
       const folded = [];
       for (const sub of subs) {
@@ -7079,7 +8066,7 @@ function buildGroups(snapshot) {
         // with how long it ran; its key does not change, so nothing moves.
         const done = sub.ended != null;
         // A Codex job that failed or was cancelled ended, but did not finish.
-        const failed = codex && done && ["failed", "cancelled"].includes(sub.phase);
+        const failed = codexJobFailed(sub);
         const dots = Object.assign(document.createElement("span"), {className: done ? "busy" : "busy down"});
         if (failed) dots.innerHTML = "";
         else if (done) { dots.innerHTML = ""; const mark = metaIcon("check"); mark.classList.add("done-mark"); dots.append(mark); }
@@ -7088,7 +8075,7 @@ function buildGroups(snapshot) {
         if (sub.depth) sb.dataset.depth = Math.min(sub.depth, NEST_DEPTHS);
         const ran = sub.since == null ? null
           : forHumans((done ? sub.ended : Date.now() / 1000) - sub.since);
-        const title = codex ? `Codex ${sub.type || "job"}` : sub.name || sub.type || "subagent";
+        const title = subagentTitle(sub);
         const stack = stackOf(title);
         const meta = Object.assign(document.createElement("span"), {className: "model"});
         if (codex && sub.phase && sub.phase !== "done") {
@@ -7165,7 +8152,7 @@ function buildGroups(snapshot) {
       // The session's open tasks, the checklist it keeps with TaskCreate.
       // One line with the count, opening to a row per task; a card with
       // nothing open says nothing.
-      const tasks = SETTINGS?.show_task !== false && SETTINGS?.show_task_list !== false && !shortCards ? row.tasks || [] : [];
+      const tasks = SETTINGS?.show_task !== false && SETTINGS?.show_task_list !== false && lists ? row.tasks || [] : [];
       if (tasks.length) {
         const open = openTasks.has(row.session_id);
         const doing = tasks.filter(t => t.status === "in_progress").length;
@@ -7209,6 +8196,7 @@ function buildGroups(snapshot) {
           li.append(rows);
         }
       }
+      if (row.crons?.length && lists) cronsFold(li, row);
 
       // Background shells. Claude Code draws these in its own footer from
       // memory it never publishes, so they are read off the process tree.
@@ -7220,7 +8208,7 @@ function buildGroups(snapshot) {
       else if (shellsHad.has(key)) { shellsEndedAt.set(key, [Date.now(), shellsHad.get(key)]); shellsHad.delete(key); }
       const [endedAt, hadN] = shellsEndedAt.get(key) ?? [-Infinity, 0];
       const lingering = !shells.length && Date.now() - endedAt < SHELL_LINGER_MS;
-      if (lingering && !shortCards) {
+      if (lingering && lists) {
         const sum = Object.assign(document.createElement("div"), {className: "shell-sum quiet"});
         sum.dataset.childKey = "shells";
         // What just happened, not a negative: the count it had, finished.
@@ -7230,7 +8218,7 @@ function buildGroups(snapshot) {
         clearTimeout(lingerTimer);
         lingerTimer = setTimeout(() => { if (LATEST) render(LATEST); }, SHELL_LINGER_MS + 50);
       }
-      if (shells.length && !shortCards) {
+      if (shells.length && lists) {
         const open = SETTINGS?.expand_shells ? !flippedShells.has(key) : flippedShells.has(key);
         const sum = document.createElement("button");
         sum.type = "button";
@@ -7330,10 +8318,11 @@ const SETTING_ROWS = [
   {k: "tab_status",     label: "Status under the tab title"},
   {head: "Look"},
   {k: "card_style", label: "Card style",
-   choices: [["cards", "Cards"], ["hairlines", "Hairlines"], ["air", "Air"], ["inset", "Inset rules"], ["outlines", "Outlines"]]},
+   choices: [["cards", "Cards"], ["hairlines", "Hairlines"], ["air", "Air"], ["inset", "Inset rules"], ["outlines", "Outlines"], ["serenity", "Serenity"]]},
   {k: "card_anatomy", label: "Card anatomy",
    choices: [["task", "Task first"], ["name", "Name first"]]},
   {k: "follow_terminal", label: "Follow the terminal's background"},
+  {k: "tab_colour", label: "Session colour on the tab"},
   {k: "ui_scale",     label: "Text size",
    steps: [0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]},
   {k: "shell_font", label: "Shell names",
@@ -7365,6 +8354,8 @@ const SETTING_ROWS = [
    note: "When the panel switches accounts, sessions that had remote control on get it back once they are idle, under the account switched to."},
   {k: "commit_heatmap", label: "Commit heatmap",
    note: "An agent card's Details shows its project's commits per day for the last twelve weeks, every branch and author, as GitHub draws them."},
+  {k: "codex_memory_note", label: "Hand Codex Claude's memory index",
+   note: "Each new Codex session is sent the project's Claude Code memory index, up to 10 KB of MEMORY.md, so OpenAI receives it too. Codex can read the rest of the file and the notes it lists."},
 ];
 
 // Each control keeps a closure that repaints it from SETTINGS, so a change
@@ -7599,7 +8590,128 @@ function settingsBody() {
     }
   }
   box.append(repositoryCard());
+  box.append(uninstallRow());
   syncSettings();
+}
+
+let UNINSTALL = {state: "idle"};
+
+function uninstallRow() {
+  const row = Object.assign(document.createElement("div"), {id: "set-uninstall"});
+  paintUninstall(row);
+  return row;
+}
+
+function paintUninstall(row = document.getElementById("set-uninstall")) {
+  row.replaceChildren();
+  if (UNINSTALL.state === "idle") {
+    const open = Object.assign(document.createElement("button"), {type: "button", textContent: "Uninstall the panel…"});
+    open.addEventListener("click", () => {
+      const accounts = LATEST.accounts;
+      UNINSTALL = {state: "confirm", keepAccounts: false,
+                   accountCount: accounts && !accounts.error && Array.isArray(accounts.accounts) ? accounts.accounts.length : null};
+      paintUninstall(row).focus();
+    });
+    row.append(open);
+    return;
+  }
+  // The confirmation is a settings card that asks, says what goes, carries the
+  // logins switch as a settings row with what happens to them under its words,
+  // and closes on two equal halves, as a macOS alert does. Once accepted, the
+  // same card says the run is under way and where its log is.
+  const card = Object.assign(document.createElement("div"), {className: "set-card uninstall-card"});
+  const title = Object.assign(document.createElement("div"), {className: "set-title"});
+  const message = Object.assign(document.createElement("p"), {className: "uninstall-what"});
+  card.append(title, message);
+  row.append(card);
+  if (UNINSTALL.state === "accepted") {
+    title.append(Object.assign(document.createElement("span"), {textContent: "Uninstalling the panel"}));
+    message.textContent = "The panel stops when it is done. Its log:";
+    message.setAttribute("role", "status");
+    card.append(Object.assign(document.createElement("p"), {className: "uninstall-log", textContent: UNINSTALL.log}));
+    return;
+  }
+  title.append(Object.assign(document.createElement("span"), {textContent: "Uninstall the panel?"}));
+  message.textContent = "Removes the panel, hooks, settings and state; keeps the checkout.";
+  const count = UNINSTALL.accountCount;
+  const notice = Object.assign(document.createElement("span"), {className: "set-note"});
+  const describeAccounts = () => {
+    const who = count === null ? "Your saved account logins are" : `Your ${count} saved account ${count === 1 ? "login is" : "logins are"}`;
+    notice.textContent = `${who} ${UNINSTALL.keepAccounts ? "kept" : "deleted too"}.`;
+  };
+  const keep = Object.assign(document.createElement("label"), {className: "set plain"});
+  keep.append(Object.assign(document.createElement("span"), {textContent: "Keep my account logins"}));
+  if (count !== 0) { describeAccounts(); keep.append(notice); }
+  const sw = Object.assign(document.createElement("button"), {
+    type: "button", className: "sw", disabled: UNINSTALL.state === "submitting"});
+  sw.setAttribute("role", "switch");
+  sw.setAttribute("aria-label", "Keep my account logins");
+  sw.setAttribute("aria-checked", String(UNINSTALL.keepAccounts));
+  sw.addEventListener("click", () => {
+    UNINSTALL.keepAccounts = !UNINSTALL.keepAccounts;
+    sw.setAttribute("aria-checked", String(UNINSTALL.keepAccounts));
+    describeAccounts();
+  });
+  keep.append(sw);
+  card.append(keep);
+  const confirm = Object.assign(document.createElement("button"), {
+    type: "button", className: "uninstall-confirm", textContent: "Uninstall"});
+  confirm.addEventListener("click", uninstallPanel);
+  const cancel = Object.assign(document.createElement("button"), {type: "button", textContent: "Cancel"});
+  cancel.addEventListener("click", () => cancelUninstall());
+  confirm.disabled = cancel.disabled = UNINSTALL.state === "submitting";
+  confirm.setAttribute("aria-busy", String(confirm.disabled));
+  const foot = Object.assign(document.createElement("div"), {className: "uninstall-foot"});
+  foot.append(cancel, confirm);
+  if (UNINSTALL.error) {
+    const error = Object.assign(document.createElement("p"), {
+      className: "uninstall-error", textContent: UNINSTALL.error, tabIndex: -1});
+    error.setAttribute("role", "alert");
+    card.append(error, foot);
+    error.focus();
+  } else {
+    card.append(foot);
+  }
+  return cancel;
+}
+
+function uninstallPanel() {
+  if (UNINSTALL.state !== "confirm") return;
+  const {keepAccounts, accountCount} = UNINSTALL;
+  UNINSTALL = {state: "submitting", keepAccounts, accountCount};
+  paintUninstall();
+  return fetch(`/uninstall?token=${encodeURIComponent(TOKEN)}`, {
+    method: "POST", body: JSON.stringify({keep_accounts: keepAccounts})})
+    .then(async response => {
+      const text = await response.text();
+      let reply;
+      try { reply = JSON.parse(text); }
+      catch { throw new Error(text || `Uninstall request failed (${response.status})`); }
+      if (response.status !== 202) throw new Error(reply?.error || text);
+      if (typeof reply?.log !== "string" || !reply.log) throw new Error("Uninstall response did not name its log");
+      UNINSTALL = {state: "accepted", log: reply.log};
+      paintUninstall();
+    })
+    .catch(error => {
+      UNINSTALL = {state: "confirm", keepAccounts, accountCount, error: error.message};
+      paintUninstall();
+    });
+}
+
+function cancelUninstall(focus = true) {
+  if (UNINSTALL.state !== "confirm") return;
+  UNINSTALL = {state: "idle"};
+  paintUninstall();
+  if (focus) document.getElementById("set-uninstall").querySelector("button").focus();
+}
+
+function dismissUninstall(event) {
+  if (UNINSTALL.state !== "confirm") return false;
+  const escape = event.type === "keydown" && event.key === "Escape";
+  const outside = event.type === "pointerdown" && !document.getElementById("set-uninstall").contains(event.target);
+  if (!escape && !outside) return false;
+  cancelUninstall(escape);
+  return true;
 }
 
 // The last card: where this install comes from, read off the git remote it
@@ -7839,6 +8951,26 @@ document.getElementById("reload").addEventListener("click", () => {
   fetch(`/accounts?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify({op: "read"})})
     .catch(() => {}).finally(() => location.reload());
 });
+// Its right-click: register the panel again under a fresh URL, so iTerm2
+// builds the web view anew in every window. For a panel that stopped taking
+// the pointer or stopped drawing, where a reload of the page is not enough;
+// closing the window and summoning it again is the other cure. Nothing to
+// paint on success: iTerm2 opens this page afresh.
+document.getElementById("reload").addEventListener("contextmenu", event => {
+  const menu = Object.assign(document.createElement("div"), {className: "menu", hidden: true});
+  menu.setAttribute("role", "menu");
+  const item = Object.assign(document.createElement("button"), {type: "button", textContent: "Rebuild the panel"});
+  item.setAttribute("role", "menuitem");
+  item.title = "Opens the panel afresh in every window, for one that stopped answering the pointer";
+  item.addEventListener("click", () => {
+    closeMenu();
+    fetch(`/rebuild?token=${encodeURIComponent(TOKEN)}`, {method: "POST"})
+      .catch(err => console.log("sidebar: rebuild failed", err));
+  });
+  menu.append(item);
+  menu.addEventListener("pointerdown", e => e.stopPropagation());
+  openMenuAt(menu, event.currentTarget, event, null);
+});
 
 const gear = document.getElementById("gear");
 // Slides up out of the gear bar and back down into it. The close waits for
@@ -7848,6 +8980,7 @@ gear.addEventListener("click", () => {
   const box = document.getElementById("settings");
   const scrim = document.getElementById("scrim");
   const open = box.hidden || drawerMotion?.closing;
+  if (!open) cancelUninstall(false);
   gear.setAttribute("aria-expanded", String(open));
   drawerMotion?.cancel();
   drawerMotion = null;
@@ -7873,8 +9006,9 @@ gear.addEventListener("click", () => {
   }, () => {});
 });
 document.getElementById("scrim").addEventListener("click", () => gear.click());
+document.addEventListener("pointerdown", dismissUninstall);
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && !document.getElementById("settings").hidden) gear.click();
+  if (e.key === "Escape" && !document.getElementById("settings").hidden && !dismissUninstall(e)) gear.click();
 });
 
 // The width the panel opened at, before the first frame paints.
@@ -7931,18 +9065,42 @@ function revealAfterPaint(id) {
   });
 }
 
-const events = new EventSource(`/events?token=${encodeURIComponent(TOKEN)}`);
+// The live frames come over a WebSocket because WebKit gives a host six HTTP
+// connections: a stream held open on one in every window's panel would leave a
+// sixth window's Allow, answers and settings with none to go out on. Each
+// message is one frame as /events writes it, an optional `event: name` line
+// and then its `data:` line. Nothing reopens a closed socket by itself, so
+// this does after RECONNECT_MS, and the list reads STALE until a frame lands.
+const RECONNECT_MS = 2000;
+let events = null;
+function connectEvents() {
+  events = new WebSocket(`ws://${location.host}/live?token=${encodeURIComponent(TOKEN)}`);
+  events.onmessage = message => {
+    let name = "message", data = "";
+    for (const line of message.data.split("\n")) {
+      if (line.startsWith("event: ")) name = line.slice(7);
+      else if (line.startsWith("data: ")) data = line.slice(6);
+    }
+    if (name === "heartbeat") onHeartbeat(data);
+    else if (name === "message") onSnapshot(data);
+  };
+  events.onerror = () => document.body.classList.add("stale");
+  events.onclose = () => {
+    document.body.classList.add("stale");
+    setTimeout(connectEvents, RECONNECT_MS);
+  };
+}
 // A heartbeat proves the daemon is answering; its payload says whether what
 // the daemon last read is current. An unfresh one paints STALE immediately
 // rather than waiting out the timer, because the daemon already knows.
-events.addEventListener("heartbeat", event => {
+function onHeartbeat(data) {
   let fresh = true;
-  try { fresh = JSON.parse(event.data || "{}").fresh !== false; } catch (err) { }
+  try { fresh = JSON.parse(data || "{}").fresh !== false; } catch (err) { }
   if (fresh) markFresh();
   else document.body.classList.add("stale");
-});
-events.onmessage = event => {
-  const frame = JSON.parse(event.data);
+}
+function onSnapshot(data) {
+  const frame = JSON.parse(data);
   markFresh();
   // Never LATEST: settings and other repaints draw LATEST again, and this
   // one was sorted before the last drop.
@@ -7954,13 +9112,13 @@ events.onmessage = event => {
   refusedFrame = null;
   LATEST = frame;
   render(LATEST, true);
-};
+}
 function paintRefused() {
   if (!refusedFrame || frameIsStale(refusedFrame)) return;
   LATEST = refusedFrame;
   refusedFrame = null;
   render(LATEST, true);
 }
-events.onerror = () => document.body.classList.add("stale");
+connectEvents();
 markFresh();
 </script>

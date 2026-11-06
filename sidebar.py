@@ -1,4 +1,6 @@
 #!/usr/bin/env python3.10
+# ABOUTME: Serves the Agents panel and connects its actions to iTerm2.
+# ABOUTME: Collects terminal state and streams it to the panel's local web view.
 """iTerm2 Toolbelt sidebar: every terminal session, agents first.
 
 Runs as a Basic iTerm2 script (single file, stdlib only, no pip). The shebang
@@ -6,7 +8,9 @@ above is what iTerm2 parses to pick an interpreter -- it resolves
 `iterm2env-3.10` from it -- so do not drop the version.
 """
 import asyncio
+import base64
 import datetime
+import hashlib
 import hmac
 import json
 import math
@@ -18,6 +22,8 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -27,6 +33,7 @@ from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import accounts  # noqa: E402
+import activity  # noqa: E402
 import alerts  # noqa: E402
 import codex  # noqa: E402
 import context_usage  # noqa: E402
@@ -34,11 +41,15 @@ import links  # noqa: E402
 import omp  # noqa: E402
 import partners  # noqa: E402
 import past  # noqa: E402
+import ports  # noqa: E402
 import remote  # noqa: E402
-from sidebar_rules import connection_refusal, prompt_refusal, remote_key_refusal, typing_refusal  # noqa: E402
+import schedules  # noqa: E402
+from sidebar_rules import (connection_refusal, prompt_refusal, remote_key_refusal,  # noqa: E402
+                           remote_question_refusal, typing_refusal)
 import sound  # noqa: E402
 import marks  # noqa: E402
 import statusline  # noqa: E402
+import tabcolour  # noqa: E402
 import tabstatus  # noqa: E402
 import update  # noqa: E402
 
@@ -66,6 +77,12 @@ WORKING_GOES_STALE_AFTER = 300
 #: the agent to start, short enough to try again after one that did not.
 RESUME_HOLD = 60
 
+#: What Resume types for a cs session, at a dead pane's prompt or in a Past
+#: sessions tab. The click on Resume is the answer to cs's "Continue previous
+#: conversation?", so --resume has cs reopen its recorded conversation without
+#: reading a key. A cs that lacks the flag refuses it and opens nothing.
+CS_RESUME = "cs . --resume"
+
 #: A terminal whose foreground job is one of these is sitting at its prompt:
 #: the shell itself is not a command anyone ran. A login shell reports "-zsh".
 SHELLS = frozenset({"zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "nu"})
@@ -91,7 +108,7 @@ VERBS = ("focus", "send", "close",
          # builds the command, the page sends no text.
          "resume",
          # pick an option of a standing AskUserQuestion; the daemon checks
-         # the question and types only its digit.
+         # the question and types only the keys that pick it.
          "answer")
 
 #: What the page may do with accounts. Nothing here removes one.
@@ -202,13 +219,16 @@ DEFAULT_SETTINGS = {
     # default iTerm2 profile's font.
     "shell_font": "system",
     # How a session row stands on the canvas: a card, a hairline between
-    # rows, air between them, a rule inset to the text column, or the card's
-    # outline alone.
+    # rows, air between them, a rule inset to the text column, the card's
+    # outline alone, or Serenity's quiet list of only what changes what you do.
     "card_style": "cards",
     "card_anatomy": "task",
     # The panel's canvas takes the background of the terminal in front, and
     # every surface on it is derived from that colour.
     "follow_terminal": True,
+    # Each card's iTerm2 tab wears its cs session's colour, over the pane's
+    # own background.
+    "tab_colour": True,
     # Experimental: dragging a card onto another links the two. Off, nothing
     # is linked and a link already made ends.
     "links": False,
@@ -218,6 +238,10 @@ DEFAULT_SETTINGS = {
     # Experimental: each agent card shows its project's commits per day for
     # twelve weeks. Off, git is never asked.
     "commit_heatmap": False,
+    # Experimental: a new Codex session is handed the project's Claude Code
+    # memory index, and OpenAI receives it with the session. Off, the Codex
+    # hook reads none.
+    "codex_memory_note": False,
 }
 
 #: (low, high) for the values that are numbers.
@@ -240,7 +264,7 @@ LINKS_TURNED_OFF = "linking was turned off"
 SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off"),
                    "order": ("terminal", "name", "attention", "hand"),
                    "shell_font": ("system", "mono", "terminal"),
-                   "card_style": ("cards", "hairlines", "air", "inset", "outlines"),
+                   "card_style": ("cards", "hairlines", "air", "inset", "outlines", "serenity"),
                    "card_anatomy": ("task", "name")}
 
 
@@ -322,12 +346,11 @@ NOTIFIER_APP = Path.home() / ".local" / "share" / "agents-sidebar" / "Agents.app
 ENDPOINT_FILE = NOTIFIER_APP.parent / "endpoint.json"
 
 
-def write_endpoint(path, port, token, pid):
-    """Say where the daemon listens, readable by its own user alone. -> None.
+def write_private(path, payload):
+    """Write `payload` to `path` as JSON, readable by its own user alone. -> None.
 
-    Written beside and renamed over, so a script reading it mid-restart gets
-    the old file or the new one, never half of one. The token on disk is no
-    more than that user can already do: drive iTerm2 directly.
+    Written beside and renamed over, so a reader gets the old file or the
+    new one, never half of one.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -336,8 +359,18 @@ def write_endpoint(path, port, token, pid):
     staged.unlink(missing_ok=True)
     descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as out:
-        json.dump({"port": port, "token": token, "pid": pid}, out)
+        json.dump(payload, out)
     os.replace(staged, path)
+
+
+def write_endpoint(path, port, token, pid):
+    """Say where the daemon listens, readable by its own user alone. -> None.
+
+    Written beside and renamed over, so a script reading it mid-restart gets
+    the old file or the new one, never half of one. The token on disk is no
+    more than that user can already do: drive iTerm2 directly.
+    """
+    write_private(path, {"port": port, "token": token, "pid": pid})
 
 #: What each moment says. The session's own name is the title, so the message
 #: only has to finish the sentence.
@@ -375,9 +408,10 @@ def notify_argv(app, session_id, name, kind, question, remote=False, refusal=Non
 
     `kind` is a key of NOTIFY_MESSAGES, or "clear" to take a standing notice
     down. `question` is the row's, when the session is asking one: its
-    options become buttons, and Other -- which Claude Code always offers --
-    becomes the reply field. A multi-select question gets neither, since one
-    button cannot express several picks. Any other gated tool gets a single
+    options become buttons, and Other -- which Claude Code offers unless it
+    draws the options beside their previews -- becomes the reply field. A
+    multi-select question gets neither, since one button cannot express
+    several picks. Any other gated tool gets a single
     Allow button. A finished turn offers a reply that becomes the next prompt.
     A session on another machine (`remote`) gets no reply field: a reply is a
     typed line, and only single keys are typed into a remote pane. One the
@@ -404,7 +438,7 @@ def notify_argv(app, session_id, name, kind, question, remote=False, refusal=Non
         if not question.get("multi") and not refusal:
             for n, label in enumerate(question["options"][:NOTICE_BUTTONS], 1):
                 argv += ["--button", f"{n}={label}"]
-            if not remote:
+            if not remote and not question.get("preview"):
                 argv += ["--reply", "Other"]
         return argv
     if question and question.get("tool"):
@@ -419,11 +453,10 @@ def notify_response(line, kind, question):
     """One line the sender printed -> (verb, text) for act, or (None, None).
 
     A click brings the session forward. Allow on a tool gate sends 1, the
-    Yes of every permission prompt. A button sends the digit that picks
-    that option: Claude Code's prompt takes the number outright, and a digit
-    that somehow misses moves a cursor and confirms nothing. A reply to a
-    question picks Other -- the option after the last listed -- and types
-    the text; a reply to a finished turn is the next prompt. Both are sent
+    Yes of every permission prompt. A button sends the keys that pick that
+    option (option_keys). A reply to a question picks Other -- the option
+    after the last listed -- and types the text, and sends nothing where
+    there is no Other; a reply to a finished turn is the next prompt. Both are sent
     only while the question the buttons were built for still stands, since
     keystrokes into whatever replaced it are the one failure this must not
     have. The next prompt goes as `prompt`, so act refuses it once the
@@ -440,7 +473,7 @@ def notify_response(line, kind, question):
         text = response.get("text") or ""
         if kind == "done":
             return "prompt", text + "\n"
-        if question and "options" in question:
+        if question and "options" in question and not question.get("preview"):
             return "send", f"{len(question['options']) + 1}{text}\n"
         return None, None
     if action == "allow" and question and question.get("tool") and "options" not in question:
@@ -448,7 +481,7 @@ def notify_response(line, kind, question):
         return "send", "1"
     if isinstance(action, str) and action.isdigit() and question and "options" in question:
         if 1 <= int(action) <= min(len(question["options"]), NOTICE_BUTTONS):
-            return "send", action
+            return "send", "".join(option_keys(question, int(action)))
     return None, None
 
 
@@ -509,6 +542,16 @@ def at_step(questions, step):
     return [LEFT] * len(questions) + [RIGHT] * step
 
 
+def option_keys(asked, number):
+    """The keys that pick option `number` of a pick-one question on Claude Code.
+
+    The digit picks outright from a list. Beside their previews it only
+    moves the cursor, and Enter, typed as a write of its own, picks
+    (measured on 2.1.318). A question published without `preview` is a list.
+    """
+    return [str(number)] + (["\r"] if asked.get("preview") else [])
+
+
 def ticked_keys(pick, options, lone):
     """A pick-any question's Submit -> its ticked digits, then Tab, or None.
 
@@ -538,8 +581,8 @@ def answer_keys(text, standing, answered, provider=None):
     the step the daemon expects next. A question answered in the terminal is
     not seen: on Claude Code `at_step` first walks the picker back to the
     card's question; elsewhere the card's next click answers the question
-    after it. A multi-select question takes its ticks as a list, typed by
-    `ticked_keys`.
+    after it. A pick-one question takes the keys `option_keys` gives; a
+    multi-select question takes its ticks as a list, typed by `ticked_keys`.
 
     The keys come back as a list, each typed as its own write, led by the
     arrows that take the pane to the question the click was meant for. A
@@ -578,8 +621,10 @@ def answer_keys(text, standing, answered, provider=None):
     asked = questions[typed] if typed < len(questions) else {"options": ["Submit answers"]}
     if asked.get("multi"):
         keys = ticked_keys(pick, asked["options"], "set" not in standing) if measured else None
+    elif type(pick) is not int or not 1 <= pick <= len(asked["options"]):
+        keys = None
     else:
-        keys = [str(pick)] if type(pick) is int and 1 <= pick <= len(asked["options"]) else None
+        keys = option_keys(asked, pick) if measured else [str(pick)]
     if not keys:
         return None
     return at_step(questions, typed) + keys if measured else keys
@@ -1177,7 +1222,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
     handed in, which is the order iTerm2 enumerates windows, tabs and panes,
     so a card sits where its terminal does and nothing a session does moves
     it; `order` "name" puts the top-level cards in name order instead, and
-    "attention" gathers them by what they are doing, judged at `now`; "hand"
+    "attention" gathers them by what they are doing, judged at `now`, the
+    moment a scheduled prompt's next run is told from too; "hand"
     puts the agent cards in the order of the names in `hand_order`, which
     the payload carries back so the page can tell a frame sorted before a
     drop from one sorted after it. `pairs` lists (upper pane, lower pane)
@@ -1186,6 +1232,7 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
     another (see machines). Each input dict needs session_id, window_id,
     tab_id, path, auto_name and job_name.
     """
+    now = time.time() if now is None else now
     # A tab is only worth numbering by pane when it actually has more than one,
     # and a window prefix is noise until a second window exists.
     panes_in_tab = {}
@@ -1348,6 +1395,9 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
                 row["tasks"] = session["tasks"]
             if session.get("tasks_done") is not None:
                 row["tasks_done"] = session["tasks_done"]
+            # A list reported empty has nothing for a card to show.
+            if session.get("crons"):
+                row["crons"] = scheduled(session["crons"], session.get("crons_at"), now)
             if session.get("blocked_since") is not None:
                 row["blocked_since"] = session["blocked_since"]
             if session.get("question"):
@@ -1459,7 +1509,7 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
         for kind in rows:
             rows[kind] = by_name(rows[kind])
     elif order == "attention":
-        rows["agent"] = by_attention(rows["agent"], time.time() if now is None else now)
+        rows["agent"] = by_attention(rows["agent"], now)
     elif order == "hand":
         rows["agent"] = by_hand(rows["agent"], hand_order)
     if group_by_provider:
@@ -1651,12 +1701,13 @@ def resume_command(path, provider, conversation):
 
     A cs session goes back through cs, which resumes its own recorded
     conversation and keeps its memory and task list; bare claude would lose
-    both. cs then asks before it resumes, and that question is the confirmation.
+    both. The click on Resume is the confirmation, so cs is told to resume
+    without asking (CS_RESUME).
     """
     if not path or not isinstance(conversation, str) or not CONVERSATION_ID.fullmatch(conversation):
         return None
     if provider == "claude":
-        return "cs ." if os.path.isdir(os.path.join(path, ".cs")) else f"claude --resume {conversation}"
+        return CS_RESUME if os.path.isdir(os.path.join(path, ".cs")) else f"claude --resume {conversation}"
     if provider == "openai":
         return f"codex resume {conversation}"
     return None
@@ -1708,8 +1759,8 @@ def still_resuming(resuming, rows, now):
 
     One ends when its agent reports, or its pane goes. Otherwise it holds for
     RESUME_HOLD, and past that for as long as something other than the shell
-    it was typed at runs in the pane: cs waits on its question until it is
-    answered, and a second resume would be typed into it.
+    it was typed at runs in the pane: what the resume started is still
+    starting there, and a second resume would be typed into it.
     """
     exited = {row["session_id"]: row.get("job_name") for row in rows if row["agent_state"] == "exited"}
     return {sid: (sent, shell) for sid, (sent, shell) in resuming.items()
@@ -2106,7 +2157,8 @@ def read_system():
 
 
 #: Programs that run a script: the script names what is running, not them.
-INTERPRETERS = re.compile(r"^(node|bun|deno|ruby|perl|php|python[0-9.]*)$")
+#: In any case: the python.org build's binary is Python.
+INTERPRETERS = re.compile(r"^(node|bun|deno|ruby|perl|php|python[0-9.]*)$", re.I)
 
 
 def foreground_command(args):
@@ -2371,12 +2423,12 @@ def filed_codex_state(cwd, since, directory=None, jobs=frozenset()):
 def with_detail(raw, directory=None):
     """The session variable -> the whole published state, as JSON text.
 
-    A variable that says `detail: true` left its subagents, its tasks and its
-    question in a file under the session id. A file as new as the variable is
-    the whole state and replaces it. An older one lost a race with a later
-    event: its subagents and tasks still stand, its question may have been
-    answered since and is dropped. No readable file leaves the variable as it
-    came.
+    A variable that says `detail: true` left its subagents, its tasks, its
+    scheduled prompts and its question in a file under the session id. A file
+    as new as the variable is the whole state and replaces it. An older one
+    lost a race with a later event: its subagents, tasks and scheduled prompts
+    still stand, its question may have been answered since and is dropped. No
+    readable file leaves the variable as it came.
     """
     try:
         envelope = json.loads(raw)
@@ -2401,6 +2453,10 @@ def with_detail(raw, directory=None):
     merged = dict(envelope, subagents=whole.get("subagents"), tasks=whole.get("tasks"))
     if "tasks_done" in whole:
         merged["tasks_done"] = whole["tasks_done"]
+    if "crons" in whole:
+        merged["crons"] = whole["crons"]
+    if "crons_at" in whole:
+        merged["crons_at"] = whole["crons_at"]
     return json.dumps(merged)
 
 
@@ -2511,17 +2567,20 @@ def question_shape(asked):
     Only what they read is kept, each part of the type they expect and no
     longer than the hook would have sent it. Anything else is no question:
     the page walks `options` as a list and a notice builds buttons from it,
-    and neither may fail on another machine's word.
+    and neither may fail on another machine's word. `preview` is the hook's
+    own verdict (side_by_side there), since only labels travel; it is kept
+    only when true, as the hook sends it.
     """
     text = lambda key, limit: asked[key][:limit] if isinstance(asked.get(key), str) else None
     if "options" in asked:
         options, question = asked["options"], text("question", QUESTION_LIMIT)
+        preview = asked.get("preview", False)
         if (question is None or not isinstance(options, list) or not 1 <= len(options) <= OPTIONS_MOST
-                or not all(isinstance(option, str) for option in options)
+                or not all(isinstance(option, str) for option in options) or not isinstance(preview, bool)
                 or asked.get("multi") or asked.get("more") or "set" in asked):
             return None
         shaped = {"question": question, "options": [option[:OPTION_LIMIT] for option in options],
-                  "multi": False, "more": 0}
+                  "multi": False, "more": 0, **({"preview": True} if preview else {})}
         return dict({"header": text("header", HEADER_LIMIT) or ""}, **shaped) if "header" in asked else shaped
     tool, gate = text("tool", HEADER_LIMIT), text("id", HEADER_LIMIT)
     if tool and gate:
@@ -2664,6 +2723,64 @@ def parse_tasks_done(raw):
     except (ValueError, TypeError, AttributeError):
         return None
     return done if type(done) is int and done >= 0 else None
+
+
+#: Each field of a scheduled prompt the hook publishes, and the type it has.
+CRON_FIELDS = {"id": str, "schedule": str, "recurring": bool, "prompt": str}
+
+
+def parse_crons(raw):
+    """The claudeState payload -> the prompts scheduled to wake the session.
+
+    [{id, schedule, recurring, prompt}] as the hook listed them, [] when it
+    listed none, and None when no list was published or one entry is not
+    as the hook writes it.
+    """
+    try:
+        listed = json.loads(raw).get("crons")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    as_written = isinstance(listed, list) and all(
+        isinstance(entry, dict) and entry.keys() == CRON_FIELDS.keys()
+        and all(type(entry[field]) is kind for field, kind in CRON_FIELDS.items())
+        for entry in listed)
+    return listed if as_written else None
+
+
+def parse_crons_at(raw):
+    """The claudeState payload -> when the Stop that listed the scheduled
+    prompts ran (epoch s), or None. Left unrounded: a Stop in the last half
+    second before a run, rounded up to it, would count that run as past."""
+    try:
+        listed_at = json.loads(raw).get("crons_at")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if type(listed_at) in (int, float) and math.isfinite(listed_at) and listed_at > 0:
+        return listed_at
+    return None
+
+
+def scheduled(crons, listed_at, now):
+    """A session's scheduled prompts -> as its card shows them, at `now`.
+
+    Each gains `next`, its next run (epoch s; None when its expression cannot
+    be read or never matches), `when`, that run in words, and `due` once a
+    one-shot's run has passed; its prompt is masked as a command is. A
+    recurring prompt runs next at the first match after now. A one-shot runs
+    at the first match after `listed_at`, when the Stop that listed it ran:
+    that stands through the turn the run starts, where the state's own stamp
+    has already moved past the run. A list published without that moment
+    times its one-shots from now.
+    """
+    published = []
+    for cron in crons:
+        after = now if cron["recurring"] or listed_at is None else listed_at
+        entry = dict(cron, prompt=masked(cron["prompt"]), next=schedules.next_run(cron["schedule"], after))
+        if not cron["recurring"] and entry["next"] is not None and entry["next"] < now:
+            entry["due"] = True
+        entry["when"] = schedules.said(entry, now)
+        published.append(entry)
+    return published
 
 
 def parse_tools_running(raw):
@@ -2830,6 +2947,9 @@ def parse_model(status):
 #: claude pid. The bridge learns that pid for free: it is the $PPID of the
 #: statusline process itself.
 STATUS_DIR = os.path.expanduser("~/.claude/agents-sidebar-status")
+#: In the status directory, what the activity report read of each log, so the
+#: first read after a restart reads only the logs written since.
+ACTIVITY_FILE = "activity.json"
 #: Claude Code's user settings, whose statusLine.command must be the bridge
 #: for any of the payload above to reach the panel.
 CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
@@ -3110,13 +3230,9 @@ def parse_context(status):
     return int(found.group(1)) if found else None
 
 
-def git_branch(path):
-    """The branch a directory is on, or None.
-
-    Reads .git/HEAD directly rather than shelling out to git: this runs for
-    every session on every rebuild, and a subprocess per session per two
-    seconds is a real cost for a string sitting in a file.
-    """
+def git_dir(path):
+    """The git directory of the repository a directory is in, or None: its
+    `.git`, or the directory a `.git` file names."""
     if not path:
         return None
     here = Path(path)
@@ -3124,25 +3240,86 @@ def git_branch(path):
         marker = folder / ".git"
         if not marker.exists():
             continue
-        head = marker / "HEAD"
-        if marker.is_file():
-            # A worktree or submodule: .git is a file pointing at the real dir.
-            try:
-                pointer = marker.read_text(encoding="utf-8").strip()
-            except OSError:
-                return None
-            if not pointer.startswith("gitdir:"):
-                return None
-            head = Path(pointer.split(":", 1)[1].strip()) / "HEAD"
+        if not marker.is_file():
+            return marker
+        # A worktree or submodule: .git is a file pointing at the real dir,
+        # by a path that may be relative to the folder it sits in.
         try:
-            ref = head.read_text(encoding="utf-8").strip()
+            pointer = marker.read_text(encoding="utf-8").strip()
         except OSError:
             return None
-        if ref.startswith("ref: refs/heads/"):
-            return ref[len("ref: refs/heads/"):] or None
-        # Detached: HEAD holds the commit itself, so show enough to recognise.
-        return ref[:7] if ref else None
+        if not pointer.startswith("gitdir:"):
+            return None
+        return folder / pointer.split(":", 1)[1].strip()
     return None
+
+
+def git_branch(path):
+    """The branch a directory is on, or None.
+
+    Reads .git/HEAD directly rather than shelling out to git: this runs for
+    every session on every rebuild, and a subprocess per session per two
+    seconds is a real cost for a string sitting in a file.
+    """
+    gitdir = git_dir(path)
+    if gitdir is None:
+        return None
+    try:
+        ref = (gitdir / "HEAD").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if ref.startswith("ref: refs/heads/"):
+        return ref[len("ref: refs/heads/"):] or None
+    # Detached: HEAD holds the commit itself, so show enough to recognise.
+    return ref[:7] if ref else None
+
+
+#: A commit id as git writes it in HEAD, a ref file and packed-refs: SHA-1, or
+#: SHA-256 in a repository made with it.
+COMMIT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+
+
+def git_head(path):
+    """(branch, commit) of the repository a directory is in, or None outside one.
+
+    The branch is None on a detached HEAD, the commit None on a branch with no
+    commit yet or a ref that could not be read. Read from git's own files, as
+    git_branch reads HEAD; what is not a commit id never comes back as one, since
+    a review's brief carries it into another session's prompt.
+    """
+    gitdir = git_dir(path)
+    if gitdir is None:
+        return None
+    try:
+        ref = (gitdir / "HEAD").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not ref.startswith("ref: "):
+        return (None, ref) if COMMIT_ID.fullmatch(ref) else None
+    name = ref[len("ref: "):]
+    commit = ref_commit(gitdir, name) if name.startswith("refs/") and ".." not in name.split("/") else None
+    return (name.removeprefix("refs/heads/"), commit if commit and COMMIT_ID.fullmatch(commit) else None)
+
+
+def ref_commit(gitdir, name):
+    """What a ref names, or None: its file in the worktree's git dir or in the
+    common dir a linked worktree shares, else its line in packed-refs there."""
+    try:
+        common = gitdir / (gitdir / "commondir").read_text(encoding="utf-8").strip()
+    except OSError:
+        common = gitdir
+    for folder in (gitdir, common):
+        try:
+            return (folder / name).read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+    try:
+        packed = (common / "packed-refs").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    # `<commit> <ref>` a line; a `^` line is the commit a tag above it peels to.
+    rows = (line.partition(" ") for line in packed.splitlines())
+    return next((commit for commit, _, ref_name in rows if ref_name == name), None)
 
 
 def sibling_base(path):
@@ -3161,27 +3338,11 @@ def git_main_worktree(path):
     The main worktree, a submodule and a plain directory all answer None:
     only a session in a linked worktree has a session to be tied to.
     """
-    if not path:
+    gitdir = git_dir(path)
+    # <main>/.git/worktrees/<name>
+    if gitdir is None or gitdir.parent.name != "worktrees" or gitdir.parent.parent.name != ".git":
         return None
-    here = Path(path)
-    for folder in [here, *here.parents]:
-        marker = folder / ".git"
-        if not marker.exists():
-            continue
-        if not marker.is_file():
-            return None
-        try:
-            pointer = marker.read_text(encoding="utf-8").strip()
-        except OSError:
-            return None
-        if not pointer.startswith("gitdir:"):
-            return None
-        gitdir = Path(pointer.split(":", 1)[1].strip())
-        # <main>/.git/worktrees/<name>
-        if gitdir.parent.name != "worktrees" or gitdir.parent.parent.name != ".git":
-            return None
-        return str(gitdir.parent.parent.parent.resolve())
-    return None
+    return str(gitdir.parent.parent.parent.resolve())
 
 
 #: The days a card's commit strip covers, today last: twelve weeks.
@@ -3287,6 +3448,72 @@ def heartbeat_frame(fresh):
     return b'event: heartbeat\ndata: {"fresh": ' + (b"true" if fresh else b"false") + b'}\n\n'
 
 
+#: RFC 6455's opcodes, the ones the live socket sends or answers.
+LIVE_TEXT, LIVE_CLOSE, LIVE_PING, LIVE_PONG = 0x1, 0x8, 0x9, 0xA
+#: The page sends nothing the daemon acts on, so a frame this long ends the
+#: connection rather than be buffered.
+LIVE_FRAME_LIMIT = 65536
+
+
+def live_accept(head):
+    """Raw request head -> the Sec-WebSocket-Accept its key asks for, or None
+    when it carries no key."""
+    for line in head.split(b"\r\n")[1:]:
+        name, _, value = line.partition(b":")
+        if name.strip().lower() == b"sec-websocket-key":
+            digest = hashlib.sha1(value.strip() + b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest()
+            return base64.b64encode(digest)
+    return None
+
+
+def live_origin_allowed(head):
+    """Does the request head come from the panel's own origin, or from no page
+    at all? A WebSocket skips the browser's cross-origin rules, so a page on
+    another origin that held the token could read the frames; the Origin
+    header is the one thing a page cannot forge. A request without one is a
+    script, not a page."""
+    origin = host = None
+    for line in head.split(b"\r\n")[1:]:
+        name, _, value = line.partition(b":")
+        if name.strip().lower() == b"origin":
+            origin = value.strip()
+        elif name.strip().lower() == b"host":
+            host = value.strip()
+    return origin is None or (host is not None and origin == b"http://" + host)
+
+
+def live_message(payload, opcode=LIVE_TEXT):
+    """One final WebSocket frame from the daemon. A server never masks; a
+    frame is one bytes object so a pong cannot land inside a snapshot."""
+    length = len(payload)
+    if length < 126:
+        head = bytes([0x80 | opcode, length])
+    elif length < 65536:
+        head = bytes([0x80 | opcode, 126]) + length.to_bytes(2, "big")
+    else:
+        head = bytes([0x80 | opcode, 127]) + length.to_bytes(8, "big")
+    return head + payload
+
+
+async def read_live_frame(reader):
+    """-> (opcode, payload) of the page's next frame, unmasked.
+
+    IncompleteReadError at the end of the connection, ValueError for a frame
+    over LIVE_FRAME_LIMIT.
+    """
+    first, second = await reader.readexactly(2)
+    length = second & 0x7F
+    if length == 126:
+        length = int.from_bytes(await reader.readexactly(2), "big")
+    elif length == 127:
+        length = int.from_bytes(await reader.readexactly(8), "big")
+    if length > LIVE_FRAME_LIMIT:
+        raise ValueError(f"a {length}-byte frame from the page")
+    mask = await reader.readexactly(4) if second & 0x80 else b"\0\0\0\0"
+    payload = await reader.readexactly(length)
+    return first & 0x0F, bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload))
+
+
 def rebuild_is_fresh(last_ok, now):
     """Has a rebuild succeeded recently enough to trust what is on screen?
 
@@ -3329,6 +3556,31 @@ class ReturnTrips:
 #: How much of a page error the daemon log keeps: the message and the
 #: first frames of its stack.
 PAGE_ERROR_LIMIT = 500
+UNINSTALL_SCRIPT = Path(__file__).resolve().with_name("uninstall.sh")
+
+
+class Uninstall:
+    """An accepted removal keeps its log open until the answer reaches the page."""
+
+    def __init__(self, keep_accounts):
+        self.script = UNINSTALL_SCRIPT
+        self.keep_accounts = keep_accounts
+        if not self.script.is_file():
+            raise ValueError(f"uninstall script is missing: {self.script}")
+        self.output = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="agents-sidebar-uninstall-",
+                                                 suffix=".log", dir=os.environ.get("TMPDIR"), delete=False)
+        self.process = None
+
+    async def start(self):
+        try:
+            self.process = await asyncio.create_subprocess_exec(
+                "/bin/bash", str(self.script), *(["--keep-accounts"] if self.keep_accounts else []),
+                stdin=subprocess.DEVNULL,
+                stdout=self.output, stderr=subprocess.STDOUT, start_new_session=True)
+        except OSError as error:
+            self.output.write(f"Could not start uninstall: {error}\n")
+        finally:
+            self.output.close()
 
 
 class Sidebar:
@@ -3340,8 +3592,8 @@ class Sidebar:
 
     def __init__(self, token, page_path, snapshot_fn, action_fn,
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
-                 context_fn=None, link_fn=None, github_fn=None, untie_fn=None, hand_over_fn=None,
-                 past_fn=None, reopen_fn=None,
+                 context_fn=None, link_fn=None, github_fn=None, untie_fn=None, review_fn=None, hand_over_fn=None,
+                 past_fn=None, reopen_fn=None, ports_fn=None, stop_port_fn=None, rebuild_fn=None, activity_fn=None,
                  log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
@@ -3352,6 +3604,12 @@ class Sidebar:
         #: again, raising ValueError with the reason when it will not.
         self.past_fn = past_fn
         self.reopen_fn = reopen_fn
+        #: () -> the Ports fold's rows; (pid, port, started_at) -> SIGTERM to that
+        #: row's holder. Both raise ports.Refused with the reason when they will not.
+        self.ports_fn = ports_fn
+        self.stop_port_fn = stop_port_fn
+        #: days -> the activity report of the last that many days.
+        self.activity_fn = activity_fn
         self.accounts_fn = accounts_fn
         #: () -> (ok, text): takes the release the panel was offered.
         self.update_fn = update_fn
@@ -3365,10 +3623,16 @@ class Sidebar:
         self.link_fn = link_fn
         #: pane -> None: ends that card's partnership; raises links.Refused.
         self.untie_fn = untie_fn
+        #: pane -> None: hands that card's partner a review of its change; raises links.Refused.
+        self.review_fn = review_fn
         #: page name -> None: opens that GitHub page; raises update.Refused when there is none.
         self.github_fn = github_fn
+        #: () -> registers the panel again under a fresh URL, so iTerm2 builds
+        #: its web view anew in every window.
+        self.rebuild_fn = rebuild_fn
         #: line -> None: where the page's own failures are written down.
         self.log_fn = log_fn
+        self.uninstall_job = None
 
     def authorized(self, target):
         supplied = parse_qs(urlsplit(target).query).get("token", [""])[0]
@@ -3431,6 +3695,15 @@ class Sidebar:
             return self._json(200, {"rows": self.past_fn() if self.past_fn else []})
         if method == "POST" and path == "/reopen":
             return self._reopen(body)
+        if method == "GET" and path == "/ports":
+            try:
+                return self._json(200, {"rows": self.ports_fn() if self.ports_fn else []})
+            except ports.Refused as refusal:
+                return self._json(409, {"error": str(refusal)})
+        if method == "POST" and path == "/stop-port":
+            return self._stop_port(body)
+        if method == "GET" and path == "/activity":
+            return self._activity(target)
 
         if method == "POST" and path == "/link":
             return self._link(body)
@@ -3438,8 +3711,30 @@ class Sidebar:
         if method == "POST" and path == "/untie":
             return self._untie(body)
 
+        if method == "POST" and path == "/review":
+            return self._review(body)
+
         if method == "POST" and path == "/github":
             return self._github(body)
+
+        if method == "POST" and path == "/rebuild":
+            if self.rebuild_fn is None:
+                return self._json(400, {"error": "this daemon cannot rebuild the panel"})
+            self.rebuild_fn()
+            return self._json(200, {"ok": True})
+
+        if method == "POST" and path == "/uninstall":
+            request = self._body(body)
+            if (request is None or set(request) - {"keep_accounts"} or
+                    not isinstance(request.get("keep_accounts", False), bool)):
+                return self._json(400, {"error": "expected only an optional boolean keep_accounts"})
+            if self.uninstall_job is not None:
+                return self._json(409, {"error": "uninstall already requested"})
+            try:
+                self.uninstall_job = Uninstall(request.get("keep_accounts", False))
+            except (ValueError, OSError) as error:
+                return self._json(409, {"error": str(error)})
+            return self._json(202, {"log": self.uninstall_job.output.name})
 
         if method == "POST" and path == "/page-error":
             return self._page_error(body)
@@ -3478,6 +3773,17 @@ class Sidebar:
 
         self.action_fn(session_id, verb, text)
         return self._json(200, {"ok": True})
+
+    def _activity(self, target):
+        """The activity report of the days the page names, one to activity.MOST_DAYS,
+        and activity.DAYS when it names none."""
+        if self.activity_fn is None:
+            return self._json(400, {"error": "this daemon cannot read activity"})
+        asked = parse_qs(urlsplit(target).query).get("days", [str(activity.DAYS)])[0]
+        # ASCII digits only: int() would take "٣" too.
+        if not re.fullmatch(r"-?[0-9]+", asked):
+            return self._json(400, {"error": "days must be a whole number"})
+        return self._json(200, self.activity_fn(min(max(int(asked), 1), activity.MOST_DAYS)))
 
     def _page_error(self, body):
         """The page could not paint a frame. Its console cannot be read, so the
@@ -3520,6 +3826,22 @@ class Sidebar:
             return self._json(409, {"error": str(refusal)})
         return self._json(200, {"ok": True})
 
+    def _stop_port(self, body):
+        """SIGTERM to a Ports row's holder. Its parts are checked for shape here
+        and against the daemon's last reading and the process table in
+        stop_port_fn: no pid the page sends reaches kill unless it was listed."""
+        request = self._body(body) or {}
+        pid, port, started_at = request.get("pid"), request.get("port"), request.get("started_at")
+        whole = lambda value: isinstance(value, int) and not isinstance(value, bool)
+        if (not (whole(pid) and whole(port) and whole(started_at)) or pid <= 1 or not 1 <= port <= 65535
+                or self.stop_port_fn is None):
+            return self._json(400, {"error": "unknown row"})
+        try:
+            self.stop_port_fn(pid, port, started_at)
+        except ports.Refused as refusal:
+            return self._json(409, {"error": str(refusal)})
+        return self._json(200, {"ok": True})
+
     def _github(self, body):
         page = (self._body(body) or {}).get("page")
         if page not in update.GITHUB_PAGES or self.github_fn is None:
@@ -3546,6 +3868,16 @@ class Sidebar:
             return self._json(400, {"error": "an untie needs a pane"})
         try:
             self.untie_fn(request["pane"])
+        except links.Refused as refusal:
+            return self._json(409, {"error": str(refusal)})
+        return self._json(200, {"ok": True})
+
+    def _review(self, body):
+        request = self._body(body)
+        if request is None or not isinstance(request.get("pane"), str) or self.review_fn is None:
+            return self._json(400, {"error": "a review needs a pane"})
+        try:
+            self.review_fn(request["pane"])
         except links.Refused as refusal:
             return self._json(409, {"error": str(refusal)})
         return self._json(200, {"ok": True})
@@ -3603,7 +3935,8 @@ SESSION_VARIABLES = ("path", "autoName", "jobName", "jobPid", "tty", "name", "tm
 
 class Server:
     """The asyncio listener. A thin adapter over Sidebar.handle plus the one
-    thing handle cannot express: a response that never ends (SSE).
+    thing handle cannot express: a response that never ends (SSE, and the
+    same frames over a WebSocket for the panel).
     """
 
     def __init__(self, sidebar, health_fn=lambda: True, restart_fn=lambda: None):
@@ -3645,6 +3978,50 @@ class Server:
         finally:
             self.subscribers.discard(queue)
 
+    async def _live(self, reader, writer, accept):
+        """The panel's stream: the frames _events writes, each as one text
+        message. WebKit gives a host six HTTP connections, and an SSE stream
+        held one for every window's panel; a WebSocket sits outside that pool.
+        """
+        queue = asyncio.Queue()
+        self.subscribers.add(queue)
+        listening = asyncio.ensure_future(self._listen(reader, writer, queue))
+        try:
+            writer.write(b"HTTP/1.1 101 Switching Protocols\r\n"
+                         b"Upgrade: websocket\r\n"
+                         b"Connection: Upgrade\r\n"
+                         b"Sec-WebSocket-Accept: " + accept + b"\r\n\r\n")
+            writer.write(live_message(sse_frame(self.sidebar.snapshot_fn())))
+            writer.write(live_message(heartbeat_frame(self.health_fn())))
+            await writer.drain()
+            print("sidebar: page connected", flush=True)
+            while (frame := await queue.get()) is not None:
+                writer.write(live_message(frame))
+                await writer.drain()
+            writer.write(live_message(b"", LIVE_CLOSE))
+            await writer.drain()
+        except (ConnectionResetError, BrokenPipeError, asyncio.CancelledError):
+            pass
+        finally:
+            listening.cancel()
+            self.subscribers.discard(queue)
+
+    async def _listen(self, reader, writer, queue):
+        """Answers the page's pings, and ends its stream at a close or the end
+        of the connection, rather than at the next write that fails."""
+        try:
+            while True:
+                opcode, payload = await read_live_frame(reader)
+                if opcode == LIVE_CLOSE:
+                    break
+                if opcode == LIVE_PING:
+                    # Undrained: a pong is never longer than the ping it answers.
+                    writer.write(live_message(payload, LIVE_PONG))
+        except (asyncio.IncompleteReadError, ConnectionResetError, ValueError):
+            pass
+        finally:
+            queue.put_nowait(None)
+
     async def _client(self, reader, writer):
         try:
             head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=10)
@@ -3670,26 +4047,53 @@ class Server:
             writer.close()
             return
 
+        if urlsplit(target).path == "/live":
+            accept = live_accept(head)
+            if not self.sidebar.authorized(target) or not live_origin_allowed(head):
+                refusal = b"403 Forbidden"
+            elif accept is None:
+                refusal = b"400 Bad Request"
+            else:
+                await self._live(reader, writer, accept)
+                writer.close()
+                return
+            writer.write(b"HTTP/1.1 " + refusal + b"\r\nContent-Length: 0\r\n\r\n")
+            await writer.drain()
+            writer.close()
+            return
+
         path = urlsplit(target).path
-        if path in ("/accounts", "/update", "/context", "/github", "/past"):
+        if path in ("/accounts", "/update", "/context", "/github", "/past", "/ports", "/stop-port", "/activity"):
             # Account ops wait on the Keychain, Claude Code's locks and the
             # network, for seconds, an update on a pull and install.sh, a
-            # context read on a fork of claude, and a GitHub page on `open`;
-            # off the loop, the heartbeat keeps going.
+            # context read on a fork of claude, a GitHub page on `open`, the
+            # Ports fold and its Stop on lsof and ps, and a cold activity
+            # report on every log of its window; off the loop, the heartbeat
+            # keeps going.
             status, content_type, payload = await asyncio.to_thread(
                 self.sidebar.handle, method, target, body)
         else:
             status, content_type, payload = self.sidebar.handle(method, target, body)
-        writer.write(f"HTTP/1.1 {status} OK\r\n"
-                     f"Content-Type: {content_type}\r\n"
-                     f"Content-Length: {len(payload)}\r\n"
-                     f"Cache-Control: no-store\r\n"
-                     f"Connection: close\r\n\r\n".encode() + payload)
-        await writer.drain()
-        writer.close()
+        uninstall_job = self.sidebar.uninstall_job if path == "/uninstall" and status == 202 else None
+        answered = False
+        try:
+            writer.write(f"HTTP/1.1 {status} OK\r\n"
+                         f"Content-Type: {content_type}\r\n"
+                         f"Content-Length: {len(payload)}\r\n"
+                         f"Cache-Control: no-store\r\n"
+                         f"Connection: close\r\n\r\n".encode() + payload)
+            await writer.drain()
+            answered = True
+        finally:
+            writer.close()
+            if uninstall_job is not None and not answered:
+                uninstall_job.output.close()
+                self.sidebar.uninstall_job = None
         # Only once the answer is on the wire: the page says "restarting" from it.
         if path == "/update" and status == 200:
             self.restart_fn()
+        if uninstall_job is not None:
+            await uninstall_job.start()
 
     async def _heartbeat(self):
         while True:
@@ -3753,6 +4157,13 @@ class Bridge:
         self.live_sessions = set()
         #: The Past sessions fold's rows as last read; a reopen is checked against them.
         self.past = []
+        #: The Ports fold's rows as last read; a Stop is checked against them.
+        self.ports = []
+        #: Each log's figures as the activity report last read them, and the
+        #: lock that runs one report at a time over them. None until the first
+        #: read of this daemon's life loads what the last one kept.
+        self.activity_cache = None
+        self.activity_lock = threading.Lock()
         self.trips = ReturnTrips()
         #: The rows of the last rebuild, which a resume and a context read
         #: re-check against.
@@ -3789,6 +4200,8 @@ class Bridge:
         self.marks = marks.Marker()
         #: Writes the status under each agent's tab title and takes it back.
         self.status = tabstatus.Writer(invoke=self.invoke_function)
+        #: Paints each card's tab in its session colour and puts back what it replaced.
+        self.tab_colours = tabcolour.Painter()
         #: Plays the panel's sounds; main() makes it before the server takes
         #: its first request, since making it writes the tone files.
         self.player = None
@@ -3960,6 +4373,7 @@ class Bridge:
                             commands):
                         # Answered: the command it asked for is running.
                         agent_state = "working"
+                    question = remote_question(raw, values[QUESTION_VARIABLE]) if host else parse_question(raw)
                     rows.append({
                         "session_id": session.session_id,
                         "window_id": window.window_id,
@@ -3984,9 +4398,10 @@ class Bridge:
                         # The machine the agent runs on when it is not this one, and why
                         # not even one key may be typed into its pane now.
                         "host": host,
-                        "remote_refusal": remote_key_refusal(
+                        "remote_refusal": (remote_key_refusal(
                             host, transport, parse_front(raw),
                             bool(values["autoName"]) and values["autoName"].startswith(AGENT_TITLE_MARKER))
+                            or remote_question_refusal(question))
                         if host and raw else None,
                         "in_front": program_in_front(pid, tty, groups, args),
                         # The name the agent gave the conversation, where it keeps one.
@@ -4007,10 +4422,11 @@ class Bridge:
                         # The agent's last event, by the other machine's clock:
                         # the one sign of life a remote row has.
                         "reported_at": _reported_at(raw) if host else None,
-                        "question": remote_question(raw, values[QUESTION_VARIABLE]) if host
-                                    else parse_question(raw),
+                        "question": question,
                         "tasks": parse_tasks(raw),
                         "tasks_done": parse_tasks_done(raw),
+                        "crons": parse_crons(raw),
+                        "crons_at": parse_crons_at(raw),
                         "working_since": parse_working_since(raw),
                         "idle_since": parse_idle_since(raw),
                         "turn_started": parse_turn_started(raw),
@@ -4171,6 +4587,7 @@ class Bridge:
         await self.marks.step(self.app, agent_rows, self.unseen.sids, settings, self.log)
         hooks = statusline.cc_status(CLAUDE_SETTINGS)
         await self.status.step(self.app, agent_rows, self.unseen.sids, settings, hooks, self.log)
+        await self.tab_colours.step(self.app, agent_rows, settings, self.log)
         note = tabstatus.notice(settings, hooks, self.status.available)
         if note:
             self.latest["tab_status"] = note
@@ -4303,7 +4720,7 @@ class Bridge:
         if not await self.type_keys(session, session_id, [command + "\n"]):
             del self.resuming[session_id]
             return
-        # In front, so cs's own question is where the answer is typed.
+        # In front, since the conversation the click asked for reopens in this pane.
         await session.async_activate(select_tab=True, order_window_front=True)
         self.log("resume", session_id[:8], command)
         await self.rebuild()
@@ -4316,6 +4733,43 @@ class Bridge:
         self.past = past.rows(past.PROJECTS_DIR, time.time(), live_paths, set(self.live_sessions))
         return self.past
 
+    def read_activity(self, days):
+        """The activity report of the last `days` days. Read on request, off the loop, one at
+        a time: a cold week reads every transcript and rollout written in it, and an open
+        that waits behind another then reads only what changed since. What it read is kept
+        in ACTIVITY_FILE, so the first open after a restart reads only what changed too."""
+        path = os.path.join(STATUS_DIR, ACTIVITY_FILE)
+        with self.activity_lock:
+            if self.activity_cache is None:
+                self.activity_cache = self._kept_activity(path)
+            read_at = {log: key for log, (key, _) in self.activity_cache.items()}
+            out = activity.report(activity.PROJECTS_DIR, activity.SESSIONS_DIR, days, time.time(),
+                                  self.activity_cache)
+            if {log: key for log, (key, _) in self.activity_cache.items()} != read_at:
+                try:
+                    write_private(path, activity.kept(self.activity_cache, activity.local_zone()))
+                except OSError as failure:
+                    self.log(f"activity: {path} not written: {failure}")
+            return out
+
+    def _kept_activity(self, path):
+        """What the last daemon kept of each log: an empty cache when it kept nothing, and when
+        this daemon cannot trust the file, which the log then says once, with the reason.
+        Starting cold costs one slow read; figures counted another way would be wrong all week."""
+        try:
+            data = Path(path).read_bytes()
+        except FileNotFoundError:
+            return {}
+        except OSError as failure:
+            reason = f"cannot be read: {failure}"
+        else:
+            try:
+                return activity.parse_kept(data, activity.local_zone())
+            except ValueError as failure:
+                reason = str(failure)
+        self.log(f"activity: {path} not used, {reason}; reading every log again")
+        return {}
+
     def reopen(self, kind, path, conversation):
         """Open a past row again in a new tab: a cs session through cs, a
         conversation through claude. Refused with the reason, as ValueError,
@@ -4326,10 +4780,91 @@ class Bridge:
             raise ValueError("not in the last reading; open the fold again")
         if not os.path.isdir(path):
             raise ValueError("its directory is gone")
-        command = "cs ." if kind == "cs" else resume_command(path, "claude", conversation)
+        command = CS_RESUME if kind == "cs" else resume_command(path, "claude", conversation)
         if command is None:
             raise ValueError("nothing to resume")
         asyncio.ensure_future(self.open_tab_and_type(path, command))
+
+    def read_ports(self):
+        """The Ports fold's rows: every TCP port listening on this Mac that this
+        user can see, under the session whose process tree holds it. Read on
+        request, off the loop: lsof walks every process's open files. Raises
+        ports.Refused when lsof or ps cannot be run or read.
+
+        A session's tree starts at its card's agent and at each Codex job its
+        Claude session has running, which runs outside that tree. The agents'
+        and the jobs' own sockets, and the daemon's, are not listed.
+        """
+        try:
+            # lsof exits 1 when nothing matches, and also when it could not
+            # inspect some process; what it printed is the reading either way.
+            found = subprocess.run(ports.LISTENERS, capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ports.Refused(f"could not run lsof: {error}") from error
+        try:
+            listeners = ports.parse_listeners(found.stdout)
+        except ValueError as error:
+            raise ports.Refused(f"could not read lsof: {error}") from error
+        listing = read_process_listing()
+        if not listing:
+            raise ports.Refused("could not run ps")
+        table, args, (_, started, _, _) = parse_resources(listing), parse_args(listing), parse_processes(listing)
+        roots = {row["agent_pid"]: row["session_id"] for row in self.rows if row.get("agent_pid")}
+        by_conversation = {row["conversation"]: row["session_id"] for row in self.rows if row.get("conversation")}
+        for job in read_codex_jobs():
+            if job["pid"] and job["status"] in ("queued", "running") and job["session"] in by_conversation:
+                roots.setdefault(job["pid"], by_conversation[job["session"]])
+        agents = set(roots)
+        owners = {pid: session for root, session in roots.items() for pid in tree_pids(table, root, agents)}
+        processes = {pid: {"started_at": started[pid], "command": masked(args[pid]),
+                           "program": foreground_command(args[pid])}
+                     for pid, _ in listeners if pid in started and pid in args}
+        self.ports = ports.rows(listeners, processes, owners, self.labels(), agents | {os.getpid()})
+        return self.ports
+
+    def labels(self):
+        """Session id -> the name its card shows, as of the last frame."""
+        return {row["session_id"]: row["label"] for group in self.latest.get("groups", []) for row in group["rows"]}
+
+    def stop_port(self, pid, port, started_at):
+        """SIGTERM to the process holding `port`, once it is checked to be the
+        one the fold showed: a row of the last reading, no card's agent since,
+        still listening there, and started when it was. A pid is reused, so
+        the start is what tells the same process from another. Raises
+        ports.Refused with the reason for anything else; nothing escalates.
+        """
+        row = next((r for r in self.ports if (r["pid"], r["port"], r["started_at"]) == (pid, port, started_at)), None)
+        if row is None:
+            raise ports.Refused("not in the last reading; open the fold again")
+        agent = next((r["session_id"] for r in self.rows if r.get("agent_pid") == pid), None)
+        if agent is not None:
+            label = self.labels().get(agent)
+            raise ports.Refused(f"{label}'s agent" if label else "a card's agent")
+        try:
+            holder = subprocess.run(ports.holder_check(pid, port), capture_output=True, text=True, timeout=5)
+            if not ports.holds(holder.stdout, pid):
+                raise ports.Refused(f"no longer listening on :{port}")
+            began = subprocess.run(["/bin/ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
+                                   timeout=5, env={**os.environ, "LC_ALL": "C"})
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ports.Refused(f"could not check: {error}") from error
+        start = process_start(began.stdout)
+        if start is None:
+            raise ports.Refused("already gone")
+        if start != started_at:
+            raise ports.Refused(f"pid {pid} is another program now")
+        # kill(0) and kill(-1) signal whole groups; the route takes no such pid,
+        # and this is the line that would send it.
+        if pid <= 1:
+            raise ports.Refused(f"pid {pid} is no single process")
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError as error:
+            raise ports.Refused("already gone") from error
+        except PermissionError as error:
+            raise ports.Refused("not yours to stop") from error
+        self.ports = [r for r in self.ports if r is not row]
+        self.log("stop-port", pid, f":{port}", row["program"])
 
     async def open_tab_and_type(self, path, command):
         """A new tab in `path`, and the command typed once its shell is up.
@@ -4375,7 +4910,7 @@ class Bridge:
         return self.context_reads.run(session_id, path, conversation)
 
     async def answer_from_card(self, session, session_id, text):
-        """Type the digit of the option clicked on a card, if its question still stands.
+        """Type the keys that pick the option clicked on a card, if its question still stands.
 
         Checked against the last rebuild, not the page's copy, and remembered,
         so a second click types nothing until a different question stands.
@@ -4532,6 +5067,17 @@ class Bridge:
     def untie(self, pane):
         """Ends the partnership the card is in; raises links.Refused when it is in none."""
         self.log(self.partners.untie(pane, time.time()))
+        self.latest["partners"] = self.partners.frames()
+
+    def review(self, pane):
+        """Hands the card's partner a review of the change in the card's folder; raises links.Refused when it
+        cannot go."""
+        if not load_settings()["links"]:
+            raise links.Refused(LINKS_OFF)
+        ends = {one: self.partner_end(one) for one in self.partners.partnered()}
+        asker = ends.get(pane)
+        head = git_head(asker["cwd"]) if asker else None
+        self.log(self.partners.review(ends, pane, head, time.time()))
         self.latest["partners"] = self.partners.frames()
 
     def step_links(self, on):
@@ -4935,9 +5481,13 @@ async def main(connection):
         hand_over_fn=lambda: statusline.drop_cc_status(CLAUDE_SETTINGS),
         context_fn=lambda session_id: bridge.read_context(session_id),
         past_fn=lambda: bridge.read_past(),
+        activity_fn=lambda days: bridge.read_activity(days),
         reopen_fn=lambda kind, path, conversation: bridge.reopen(kind, path, conversation),
+        ports_fn=lambda: bridge.read_ports(),
+        stop_port_fn=lambda pid, port, started_at: bridge.stop_port(pid, port, started_at),
         link_fn=lambda source, target: bridge.link(source, target),
         untie_fn=lambda pane: bridge.untie(pane),
+        review_fn=lambda pane: bridge.review(pane),
         github_fn=lambda page: update.open_github(update.origin(here), page),
         log_fn=lambda line: bridge.log("page error", line),
     )
@@ -4953,9 +5503,20 @@ async def main(connection):
     port = await start_serving(server, bridge, token, ENDPOINT_FILE)
     await bridge.sweep_notices()
 
-    await iterm2.tool.async_register_web_view_tool(
-        connection, TOOL_DISPLAY_NAME, TOOL_IDENTIFIER, True,
-        f"http://127.0.0.1:{port}/?token={token}")
+    builds = 0
+
+    async def register_panel():
+        # A URL iTerm2 has not seen makes it build the web view anew in every
+        # window, which is what a rebuild is for; the first one carries no mark.
+        nonlocal builds
+        mark = f"&build={builds}" if builds else ""
+        builds += 1
+        await iterm2.tool.async_register_web_view_tool(
+            connection, TOOL_DISPLAY_NAME, TOOL_IDENTIFIER, True,
+            f"http://127.0.0.1:{port}/?token={token}{mark}")
+
+    sidebar.rebuild_fn = lambda: asyncio.ensure_future(register_panel())
+    await register_panel()
     print(f"sidebar: serving on 127.0.0.1:{port}", flush=True)
 
     asyncio.ensure_future(bridge.watch_layout())

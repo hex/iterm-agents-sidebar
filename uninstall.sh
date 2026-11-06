@@ -1,14 +1,22 @@
 #!/bin/bash
+# ABOUTME: Removes the panel's installed files and its own settings and data.
+# ABOUTME: Drops a saved statusline when its absolute script path is missing.
 # Take the sidebar out again: everything install.sh put in place, and the
-# panel's own data. The Claude logins the panel copied go with it; a login
-# store with nothing reading it is a liability, not a convenience. What is
+# panel's own data. The Claude logins the panel copied go with it unless
+# --keep-accounts keeps the store and its Keychain items. What is
 # left: the .before-agents-sidebar backups, and the writable_roots line in
 # Codex's config.toml, which is the same TOML edit we refuse to guess at on
 # the way in.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[ $# -eq 0 ] || { echo "usage: ./uninstall.sh" >&2; exit 1; }
+keep_accounts=0
+if [ $# -eq 1 ] && [ "$1" = --keep-accounts ]; then
+  keep_accounts=1
+elif [ $# -ne 0 ]; then
+  echo "usage: ./uninstall.sh [--keep-accounts]" >&2
+  exit 1
+fi
 
 if [ -t 1 ]; then green=$'\e[32m'; yellow=$'\e[33m'; dim=$'\e[2m'; off=$'\e[0m'; else green=""; yellow=""; dim=""; off=""; fi
 tilde() { printf '%s' "${1/#$HOME/~}"; }
@@ -56,7 +64,7 @@ status_dir="$HOME/.claude/agents-sidebar-status"
 bridge="$repo/plugin/statusline-bridge.sh"
 if [ -f "$settings" ]; then
   restored=$(python3 - "$settings" "$bridge" "$status_dir/original-statusline" <<'PY'
-import json, os, sys
+import json, os, re, shlex, sys
 path, bridge, original = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
     settings = json.load(open(path))
@@ -67,16 +75,34 @@ if line.get("command") != bridge:
     print("not ours; left alone")
     sys.exit(0)
 previous = open(original).read() if os.path.exists(original) else ""
+missing = None
 if previous:
-    line["command"] = previous
-    settings["statusLine"] = line
-    print("your statusline is back: " + previous)
+    try:
+        words = shlex.split(previous, comments=True)
+    except ValueError as error:
+        sys.exit(f"cannot read saved statusline: {error}; left unchanged")
+    script = words[0] if words else ""
+    interpreter = (len(words) > 1 and
+                   re.fullmatch(r"(?:ba|z)?sh|python[0-9.]*|node|ruby|perl", os.path.basename(script)) and
+                   not words[1].startswith("-"))
+    if interpreter:
+        script = words[1]
+    expanded = os.path.expandvars(os.path.expanduser(script))
+    if os.path.isabs(expanded) and not os.path.exists(script) and not os.path.exists(expanded):
+        missing = script
+        del settings["statusLine"]
+        print("statusLine removed; missing script: " + missing)
+    else:
+        line["command"] = previous
+        settings["statusLine"] = line
+        print("your statusline is back: " + previous)
 else:
     del settings["statusLine"]
     print("statusLine removed; there was none before")
 with open(path, "w") as out:
     json.dump(settings, out, indent=2)
     out.write("\n")
+sys.exit(1 if missing else 0)
 PY
   ) && ok statusline "$restored" || warn statusline "$restored"
 else
@@ -123,7 +149,7 @@ fi
 # store with the Keychain items behind it.
 store="$HOME/.config/agents-sidebar/accounts.json"
 items=0
-if [ -f "$store" ]; then
+if [ "$keep_accounts" = 0 ] && [ -f "$store" ]; then
   items=$(python3 - "$store" <<'PY'
 import json, subprocess, sys
 try:
@@ -142,10 +168,21 @@ PY
 fi
 # Not ~/.local/share/agents-sidebar itself: the one-line install keeps its
 # checkout in there, and this script may be running from it.
-rm -rf "$HOME/.config/agents-sidebar" "$status_dir" "$HOME/.claude/agents-sidebar-subagents" \
+if [ "$keep_accounts" = 1 ] && [ -f "$store" ]; then
+  find "$HOME/.config/agents-sidebar" -mindepth 1 -maxdepth 1 ! -name accounts.json -exec rm -rf {} +
+  ok accounts "logins kept in $(tilde "$store") and the Keychain"
+else
+  rm -rf "$HOME/.config/agents-sidebar"
+  [ "$keep_accounts" = 0 ] || skip accounts "no logins stored at $(tilde "$store"); Keychain left alone"
+fi
+rm -rf "$status_dir" "$HOME/.claude/agents-sidebar-subagents" \
        "$HOME/.claude/agents-sidebar-tasks" "$HOME/.claude/agents-sidebar-links"
 rm -f "$HOME/.claude/agents-sidebar-settings.json" "$HOME/.local/share/agents-sidebar/endpoint.json"
-ok data "settings, state and the account store removed$([ "$items" -gt 0 ] && echo ", $items Keychain items with them")"
+if [ "$keep_accounts" = 1 ]; then
+  ok data "settings and state removed"
+else
+  ok data "settings, state and the account store removed$([ "$items" -gt 0 ] && echo ", $items Keychain items with them")"
+fi
 
 printf '\nNext\n'
 for item in "${next[@]}"; do printf '  %s\n' "$item"; done

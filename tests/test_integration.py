@@ -75,6 +75,140 @@ async def test_events_stream_opens_with_current_state(tmp_path):
     writer.close()
 
 
+#: RFC 6455's own example: this key is answered with s3pPLMBiTxaQ9kYGzzhZRbK+xOo=.
+SAMPLE_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
+
+
+async def open_live(port, token=TOKEN, origin=None):
+    """-> (reader, writer, response head) for a WebSocket handshake on /live,
+    as a script sends it, or as a page on `origin` would."""
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    writer.write((f"GET /live?token={token} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+                  + (f"Origin: {origin}\r\n" if origin else "")
+                  + f"Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                  f"Sec-WebSocket-Key: {SAMPLE_KEY}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+    await writer.drain()
+    head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
+    return reader, writer, head
+
+
+async def server_message(reader):
+    """-> (first byte, payload) of the daemon's next frame. A server never masks."""
+    first, second = await asyncio.wait_for(reader.readexactly(2), timeout=5)
+    assert second & 0x80 == 0, "the daemon masked a frame"
+    length = second & 0x7F
+    if length == 126:
+        length = int.from_bytes(await reader.readexactly(2), "big")
+    elif length == 127:
+        length = int.from_bytes(await reader.readexactly(8), "big")
+    return first, await asyncio.wait_for(reader.readexactly(length), timeout=5)
+
+
+def client_frame(opcode, payload, mask=b"\x37\xfa\x21\x3d"):
+    """One final frame from a client, masked as RFC 6455 requires of every one."""
+    masked = bytes(byte ^ mask[i % 4] for i, byte in enumerate(payload))
+    if len(payload) < 126:
+        length = bytes([0x80 | len(payload)])
+    else:
+        length = bytes([0x80 | 126]) + len(payload).to_bytes(2, "big")
+    return bytes([0x80 | opcode]) + length + mask + masked
+
+
+@pytest.mark.asyncio
+async def test_live_socket_opens_with_current_state(tmp_path):
+    """The panel's own transport carries the same frames as /events: the
+    current snapshot, then whether it is current, then every broadcast."""
+    server, port = await running_server(tmp_path, [])
+    reader, writer, head = await open_live(port)
+
+    status, *headers = head.decode().rstrip("\r\n").split("\r\n")
+    assert status == "HTTP/1.1 101 Switching Protocols"
+    assert dict(line.split(": ", 1) for line in headers) == {
+        "Upgrade": "websocket", "Connection": "Upgrade",
+        "Sec-WebSocket-Accept": "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="}
+
+    first, snapshot = await server_message(reader)
+    assert first == 0x81                                      # final text frame
+    assert (snapshot[:6], snapshot[-2:]) == (b"data: ", b"\n\n")
+    assert json.loads(snapshot[6:-2]) == PAYLOAD
+    assert await server_message(reader) == (0x81, b'event: heartbeat\ndata: {"fresh": true}\n\n')
+
+    # Past the one-byte and two-byte length forms too: a snapshot of many
+    # sessions runs to tens of kilobytes.
+    for size in (300, 70_000):
+        frame = b"data: " + json.dumps({"groups": [], "pad": "x" * size}).encode() + b"\n\n"
+        server.broadcast(frame)
+        assert await server_message(reader) == (0x81, frame)
+    writer.close()
+
+
+@pytest.mark.asyncio
+async def test_live_socket_refuses_a_wrong_token_and_a_plain_request(tmp_path):
+    server, port = await running_server(tmp_path, [])
+    reader, writer, head = await open_live(port, token="nope")
+    assert head == b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"
+    writer.close()
+
+    with pytest.raises(urllib.error.HTTPError) as plain:
+        await asyncio.to_thread(get, f"http://127.0.0.1:{port}/live?token={TOKEN}")
+    assert plain.value.code == 400
+    assert server.subscribers == set()
+
+
+@pytest.mark.asyncio
+async def test_live_socket_takes_only_the_panels_own_origin(tmp_path):
+    """A WebSocket skips the browser's cross-origin rules, so a page elsewhere
+    that held the token could read the frames. Its Origin header gives it away;
+    the panel's own passes, and a script sends none."""
+    server, port = await running_server(tmp_path, [])
+    reader, writer, head = await open_live(port, origin="http://evil.example")
+    assert head == b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"
+    writer.close()
+    assert server.subscribers == set()
+
+    reader, writer, head = await open_live(port, origin=f"http://127.0.0.1:{port}")
+    assert head.startswith(b"HTTP/1.1 101 Switching Protocols\r\n")
+    first, payload = await server_message(reader)
+    assert json.loads(payload.split(b"data: ", 1)[1]) == PAYLOAD
+    writer.close()
+
+
+@pytest.mark.asyncio
+async def test_a_close_from_the_page_ends_its_subscription(tmp_path):
+    """A closed panel must stop costing a queue the moment it says so, not at
+    the next write that fails."""
+    server, port = await running_server(tmp_path, [])
+    reader, writer, _ = await open_live(port)
+    await server_message(reader)                              # snapshot
+    await server_message(reader)                              # heartbeat
+    assert len(server.subscribers) == 1
+
+    # A message the daemon has no use for, long enough for the two-byte length
+    # form: the ping after it is only answered if that frame was read whole.
+    writer.write(client_frame(0x1, b"y" * 300) + client_frame(0x9, b"still there?"))
+    assert await server_message(reader) == (0x8A, b"still there?")
+
+    writer.write(client_frame(0x8, (1000).to_bytes(2, "big")))
+    assert await asyncio.wait_for(reader.read(), timeout=5) == b"\x88\x00"
+    assert server.subscribers == set()
+    writer.close()
+
+
+@pytest.mark.asyncio
+async def test_a_frame_too_long_for_the_page_to_send_ends_its_subscription(tmp_path):
+    """The page sends nothing the daemon acts on; a frame that claims 70 KB is
+    not waited for and buffered."""
+    server, port = await running_server(tmp_path, [])
+    reader, writer, _ = await open_live(port)
+    await server_message(reader)                              # snapshot
+    await server_message(reader)                              # heartbeat
+
+    writer.write(bytes([0x81, 0x80 | 127]) + (70_000).to_bytes(8, "big"))
+    assert await asyncio.wait_for(reader.read(), timeout=5) == b"\x88\x00"
+    assert server.subscribers == set()
+    writer.close()
+
+
 @pytest.mark.asyncio
 async def test_action_reaches_the_handler_over_http(tmp_path):
     calls = []
@@ -130,6 +264,38 @@ async def test_a_slow_account_op_does_not_hold_up_other_requests(tmp_path):
     assert status == 200
     assert took < 0.5, f"the page waited {took:.2f}s behind the switch"
     assert await switching == 200
+
+
+@pytest.mark.asyncio
+async def test_a_cold_activity_report_does_not_hold_up_other_requests(tmp_path):
+    """A week's report reads every transcript written in it, for seconds the first time;
+    on the event loop the heartbeat would stop and the panel flag itself stale."""
+    import threading
+    import time
+    page = tmp_path / "page.html"
+    page.write_text("<h1>agents</h1>")
+    started = threading.Event()
+
+    def slow_report(days):
+        started.set()
+        time.sleep(1.5)
+        return {"generated_at": 1, "days": []}
+
+    sidebar = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: PAYLOAD,
+                      action_fn=lambda *a: None, activity_fn=slow_report)
+    port = await Server(sidebar).start()
+
+    def page_while_reading():
+        assert started.wait(2)
+        began = time.monotonic()
+        status, _ = get(f"http://127.0.0.1:{port}/?token={TOKEN}")
+        return status, time.monotonic() - began
+
+    reading = asyncio.ensure_future(asyncio.to_thread(get, f"http://127.0.0.1:{port}/activity?token={TOKEN}"))
+    status, took = await asyncio.to_thread(page_while_reading)
+    assert status == 200
+    assert took < 0.5, f"the page waited {took:.2f}s behind the report"
+    assert await reading == (200, b'{"generated_at": 1, "days": []}')
 
 
 async def update_over_http(tmp_path, result):

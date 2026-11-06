@@ -1265,7 +1265,7 @@ def _with_pace(window, fetched_at):
 
 
 def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_switch=None,
-                    next_switch=None, live=None):
+                    next_switch=None, exhausted=(), live=None):
     """What the panel receives about accounts: names, which is active, figures and pace.
 
     Pace is worked out here from the reading's own time, so the snapshot only
@@ -1273,10 +1273,20 @@ def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_s
     `emails` (id -> email), else "Account N" from the id, which stays put when
     another account is removed. `last_switch` is the loop's record of the
     latest switch and `next_switch` its outlook; the panel gets targets by name.
+    `exhausted` is `exhausted_models` of the same readings, each named with the
+    account it returns on first. It stands apart from the outlook, which says
+    nothing while the active account's reading fails, since the panel's bars
+    set those limits aside whether or not a switch is in view.
     `live` is the email Claude Code is logged in with, stored or not, so the
     panel can say whose login "Add" would store; None when it has none.
     """
     emails = emails or {}
+    by_id = {a["id"]: a for a in accounts}
+
+    def with_account(gone):
+        held = by_id.get(gone["account_id"], {"id": gone["account_id"]})
+        return dict(gone, account=_name(held, emails.get(gone["account_id"])))
+
     shaped = []
     for account in accounts:
         state = states.get(account["id"]) or {}
@@ -1307,12 +1317,9 @@ def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_s
             held = next((a for a in accounts if a["id"] == next_switch["login"]), {"id": next_switch["login"]})
             outlook["login"] = _name(held, emails.get(held["id"]))
         if next_switch.get("exhausted"):
-            by_id = {a["id"]: a for a in accounts}
-            outlook["exhausted"] = [dict(gone, account=_name(by_id.get(gone["account_id"], {"id": gone["account_id"]}),
-                                                             emails.get(gone["account_id"])))
-                                    for gone in next_switch["exhausted"]]
+            outlook["exhausted"] = [with_account(gone) for gone in next_switch["exhausted"]]
     return {"active": active_id, "accounts": shaped, "error": error, "last_switch": shown,
-            "next_switch": outlook, "live": live}
+            "next_switch": outlook, "exhausted": [with_account(gone) for gone in exhausted], "live": live}
 
 
 def _store_lock(store_path):
@@ -1481,6 +1488,7 @@ class AccountMeters:
         self._snapshot = meters_snapshot(load_store(self.store_path), self.states,
                                          active["id"] if active else None, emails=self.emails,
                                          last_switch=self.last_switch, next_switch=outlook,
+                                         exhausted=exhausted_models(self.states, accounts, now),
                                          live=(live_login or {}).get("emailAddress"))
 
     def read_now(self, now):

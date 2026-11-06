@@ -8,6 +8,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import links
+import ports
 from sidebar import Sidebar
 
 TOKEN = "lQuxAh5DplagEnuB_cy5XepFMk2v6-7m"  # shape of a real secrets.token_urlsafe(24)
@@ -518,6 +519,25 @@ def test_a_link_without_the_token_is_forbidden(tmp_path):
     assert status == 403
 
 
+def test_a_rebuild_registers_the_panel_again(tmp_path):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    rebuilds = []
+    server = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                     action_fn=lambda *a: None, rebuild_fn=lambda: rebuilds.append("again"))
+    status, _, body = server.handle("POST", f"/rebuild?token={TOKEN}", b"")
+    assert (status, json.loads(body), rebuilds) == (200, {"ok": True}, ["again"])
+
+
+def test_a_daemon_with_no_panel_to_rebuild_says_so(tmp_path):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    server = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                     action_fn=lambda *a: None)
+    status, _, body = server.handle("POST", f"/rebuild?token={TOKEN}", b"")
+    assert (status, json.loads(body)) == (400, {"error": "this daemon cannot rebuild the panel"})
+
+
 def github_server(tmp_path, open_page):
     page = tmp_path / "page.html"
     page.write_text("x")
@@ -593,6 +613,39 @@ def test_an_untie_without_the_token_is_forbidden(tmp_path):
     assert status == 403
 
 
+def review_server(tmp_path, review):
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda *a: None, review_fn=review)
+
+
+def test_a_review_route_hands_the_pane_to_the_bridge(tmp_path):
+    seen = []
+    status, _, body = review_server(tmp_path, seen.append).handle("POST", f"/review?token={TOKEN}", b'{"pane": "p1"}')
+    assert (status, json.loads(body), seen) == (200, {"ok": True}, ["p1"])
+
+
+@pytest.mark.parametrize("body", [b"[]", b"{}", b'{"pane": 1}', b"not json"])
+def test_a_malformed_review_is_refused_400(tmp_path, body):
+    status, _, out = review_server(tmp_path, lambda p: pytest.fail("not called")).handle(
+        "POST", f"/review?token={TOKEN}", body)
+    assert (status, json.loads(out)) == (400, {"error": "a review needs a pane"})
+
+
+def test_a_review_the_partners_refuse_is_409_with_the_reason(tmp_path):
+    def review(pane):
+        raise links.Refused("“alpha” is working: ask for a review once its turn ends")
+    status, _, out = review_server(tmp_path, review).handle("POST", f"/review?token={TOKEN}", b'{"pane": "p1"}')
+    assert (status, json.loads(out)) == (409, {"error": "“alpha” is working: ask for a review once its turn ends"})
+
+
+def test_a_review_without_the_token_is_forbidden(tmp_path):
+    seen = []
+    status, _, _ = review_server(tmp_path, seen.append).handle("POST", "/review?token=wrong", b'{"pane": "p1"}')
+    assert (status, seen) == (403, [])
+
+
 # The Past sessions fold: GET /past lists what the daemon read, POST /reopen asks it
 # to open one row again in a new tab. The row is named by what the list
 # said, and the daemon checks it against its own last reading, never the
@@ -649,3 +702,106 @@ def test_a_reopen_the_daemon_refuses_says_why(tmp_path):
     status, _, payload = _past(tmp_path, [], refusal="not in the last reading").handle(
         "POST", f"/reopen?token={TOKEN}", json.dumps({"kind": "cs", "path": "/Users/x/s/demo"}).encode())
     assert status == 409 and json.loads(payload) == {"error": "not in the last reading"}
+
+
+# The Ports fold: GET /ports lists the TCP listeners the daemon read, POST
+# /stop-port asks it to SIGTERM one row's holder. A row is named by its pid,
+# port and start, and the daemon checks them against its own reading and the
+# process table, never the page's copy.
+LISTENER = {"port": 5173, "addresses": ["*"], "pid": 4100, "program": "vite", "command": "node vite",
+            "started_at": 1789646400, "session_id": "pane-a", "session": "alpha"}
+
+
+def _ports(tmp_path, stopped, refusal=None, reading=None):
+    page = tmp_path / "page.html"
+    page.write_text("<h1>sidebar</h1>")
+
+    def read():
+        if reading:
+            raise ports.Refused(reading)
+        return [LISTENER]
+
+    def stop(pid, port, started_at):
+        if refusal:
+            raise ports.Refused(refusal)
+        stopped.append((pid, port, started_at))
+
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda session_id, verb, text: None, ports_fn=read, stop_port_fn=stop)
+
+
+def test_ports_lists_what_the_daemon_read(tmp_path):
+    status, _, body = _ports(tmp_path, []).handle("GET", f"/ports?token={TOKEN}", b"")
+    assert (status, json.loads(body)) == (200, {"rows": [LISTENER]})
+
+
+def test_a_ports_reading_the_daemon_could_not_take_says_why(tmp_path):
+    status, _, body = _ports(tmp_path, [], reading="could not run lsof: [Errno 2] No such file or directory").handle(
+        "GET", f"/ports?token={TOKEN}", b"")
+    assert (status, json.loads(body)) == (409, {"error": "could not run lsof: [Errno 2] No such file or directory"})
+
+
+def test_stop_port_hands_the_daemon_the_rows_pid_port_and_start(tmp_path):
+    stopped = []
+    status, _, body = _ports(tmp_path, stopped).handle("POST", f"/stop-port?token={TOKEN}", json.dumps(
+        {"pid": 4100, "port": 5173, "started_at": 1789646400}).encode())
+    assert (status, json.loads(body), stopped) == (200, {"ok": True}, [(4100, 5173, 1789646400)])
+
+
+@pytest.mark.parametrize("body", [
+    {"pid": True, "port": 5173, "started_at": 1789646400},
+    {"pid": "4100", "port": 5173, "started_at": 1789646400},
+    {"pid": 1, "port": 5173, "started_at": 1789646400},
+    {"pid": 0, "port": 5173, "started_at": 1789646400},
+    {"pid": -1, "port": 5173, "started_at": 1789646400},
+    {"pid": 4100, "port": 0, "started_at": 1789646400},
+    {"pid": 4100, "port": 65536, "started_at": 1789646400},
+    {"pid": 4100, "port": 5173.0, "started_at": 1789646400},
+    {"pid": 4100, "port": 5173, "started_at": False},
+    {"pid": 4100, "port": 5173, "started_at": None},
+    {"pid": 4100, "port": 5173},
+    [4100, 5173, 1789646400],
+])
+def test_a_stop_whose_parts_are_not_what_the_list_gives_is_refused(tmp_path, body):
+    stopped = []
+    status, _, payload = _ports(tmp_path, stopped).handle("POST", f"/stop-port?token={TOKEN}", json.dumps(body).encode())
+    assert (status, json.loads(payload), stopped) == (400, {"error": "unknown row"}, [])
+
+
+def test_a_stop_the_daemon_refuses_says_why(tmp_path):
+    status, _, payload = _ports(tmp_path, [], refusal="no longer listening on :5173").handle(
+        "POST", f"/stop-port?token={TOKEN}", json.dumps({"pid": 4100, "port": 5173, "started_at": 1789646400}).encode())
+    assert (status, json.loads(payload)) == (409, {"error": "no longer listening on :5173"})
+
+
+# The activity report: GET /activity?days=N asks the daemon for the last N days, one
+# to a month, and a week when the page names none.
+def _activity(tmp_path, asked):
+    page = tmp_path / "page.html"
+    page.write_text("<h1>sidebar</h1>")
+    return Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: {"groups": []},
+                   action_fn=lambda session_id, verb, text: None,
+                   activity_fn=lambda days: asked.append(days) or {"generated_at": 1, "days": []})
+
+
+@pytest.mark.parametrize("query, days", [("", 7), ("&days=3", 3), ("&days=30", 30), ("&days=31", 30),
+                                         ("&days=400", 30), ("&days=0", 1), ("&days=-4", 1)])
+def test_activity_reads_the_days_the_page_names_within_one_to_a_month(tmp_path, query, days):
+    asked = []
+    status, content_type, body = _activity(tmp_path, asked).handle("GET", f"/activity?token={TOKEN}{query}", b"")
+    assert (status, content_type, json.loads(body)) == (200, "application/json", {"generated_at": 1, "days": []})
+    assert asked == [days]
+
+
+@pytest.mark.parametrize("query", ["&days=abc", "&days=2.5", "&days=%D9%A3", "&days=7;rm"])
+def test_activity_for_days_that_are_not_a_whole_number_is_refused(tmp_path, query):
+    asked = []
+    status, _, body = _activity(tmp_path, asked).handle("GET", f"/activity?token={TOKEN}{query}", b"")
+    assert (status, json.loads(body)) == (400, {"error": "days must be a whole number"})
+    assert asked == []
+
+
+def test_activity_without_the_token_is_forbidden(tmp_path):
+    asked = []
+    status, _, _ = _activity(tmp_path, asked).handle("GET", "/activity?token=wrong&days=3", b"")
+    assert (status, asked) == (403, [])

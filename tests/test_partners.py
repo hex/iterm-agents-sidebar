@@ -343,6 +343,132 @@ def test_a_restart_answers_every_open_task_as_cut_off(book, tmp_path):
     assert json.loads((tmp_path / "partners.json").read_text())[0]["open"] is None
 
 
+SHA = "0123456789abcdef0123456789abcdef01234567"
+ASKER = end("p1", "a-id", "alpha", cwd="/work/my app", branch="wip/login")
+REVIEW_ENDS = {"p1": ASKER, "p2": B}
+
+
+def answers(tmp_path, agent):
+    return sorted(p.name for p in folder(tmp_path, agent).glob("answer-*.json"))
+
+
+def test_the_review_brief_says_where_the_change_is_and_to_change_nothing():
+    assert partners.review_text("alpha", "/work/my app", "wip/login", SHA, "0123456789abcdef") == (
+        "Your partner “alpha” asked you to review its current change, in /work/my app on branch wip/login at commit "
+        f"{SHA}. (link 0123456789abcdef)\n\n"
+        "Review what is not committed yet and the commits not pushed yet. Read the change yourself, each command "
+        "as its own call:\n\n"
+        "```\ngit -C '/work/my app' status\ngit -C '/work/my app' diff HEAD\n"
+        "git -C '/work/my app' log --oneline -10\n```\n\n"
+        "Other git reads of that folder (show, ls-files, rev-parse, branch) take the same form. Change nothing: no "
+        "edits, no commits, no command that writes. Reply with your findings ordered by severity, the most severe "
+        "first, each with its file:line, or “no findings”. Your reply goes back to “alpha”.")
+
+
+@pytest.mark.parametrize("cwd,quoted", [("/work/a", "'/work/a'"), ("/work/it's", "'/work/it'\"'\"'s'")])
+def test_the_brief_quotes_the_folder_in_single_quotes_always(cwd, quoted):
+    assert (f"```\ngit -C {quoted} status\ngit -C {quoted} diff HEAD\ngit -C {quoted} log --oneline -10\n```"
+            in partners.review_text("alpha", cwd, "main", SHA, "n"))
+
+
+def test_the_brief_on_a_detached_head_names_the_commit_alone():
+    assert partners.review_text("alpha", "/work/a", None, SHA, "n").startswith(
+        f"Your partner “alpha” asked you to review its current change, in /work/a on a detached HEAD at commit {SHA}. "
+        "(link n)")
+
+
+def test_a_review_asked_for_becomes_a_review_task_in_the_partner(book, tmp_path):
+    made = book.make(A, B, 100.0)
+    said = book.review(REVIEW_ENDS, "p1", ("wip/login", SHA), 101.0)
+    drop = task_drop(tmp_path, "b-id")
+    assert (drop["role"], drop["review"], drop["task"], drop["from"], drop["cwd"], drop["expires"]) == (
+        "task", True, "review of wip/login", "alpha", "/work/my app", 101.0 + links.EXPIRE_SECONDS)
+    assert drop["text"] == partners.review_text("alpha", "/work/my app", "wip/login", SHA, drop["nonce"])
+    assert said == f"partner {made.id[:8]} review {drop['link'][:8]} asked alpha -> bravo"
+    assert book.frames()[0]["open"] == {"from": "p1", "to": "p2", "state": "asked"}
+    assert book.frames()[0]["lines"] == {"p1": "Asked “bravo”: “review of wip/login”"}
+    assert answers(tmp_path, "a-id") == []
+
+
+def test_a_review_of_a_detached_head_is_named_by_its_short_commit(book, tmp_path):
+    book.make(A, B, 100.0)
+    book.review(REVIEW_ENDS, "p1", (None, SHA), 101.0)
+    assert task_drop(tmp_path, "b-id")["task"] == "review of 0123456"
+
+
+def opened_task(book, tmp_path, by):
+    delegate(tmp_path, by, "d1", book=book)
+    book.step(ENDS, 101.0)
+
+
+@pytest.mark.parametrize("before,ends,head,pane,expected", [
+    ("a-id", REVIEW_ENDS, ("wip/login", SHA), "p1", "you already handed “bravo” a task: wait for its answer"),
+    ("b-id", REVIEW_ENDS, ("wip/login", SHA), "p1", "you are on a task for “bravo”: finish it first"),
+    (None, {"p1": ASKER, "p2": end("p2", "b-id", "bravo", state="blocked")}, ("wip/login", SHA), "p1",
+     "“bravo” is waiting on you"),
+    (None, {"p1": end("p1", "a-id", "alpha", state="working", cwd="/work/a"), "p2": B}, ("wip/login", SHA), "p1",
+     "“alpha” is working: ask for a review once its turn ends"),
+    (None, {"p1": end("p1", "a-id", "alpha", cwd=None), "p2": B}, None, "p1",
+     "the panel knows no folder for “alpha”"),
+    (None, REVIEW_ENDS, None, "p1", "“alpha” is not in a git repository"),
+    (None, {"p1": ASKER, "p2": None}, ("wip/login", SHA), "p1", "that session has gone"),
+    (None, REVIEW_ENDS, ("wip/login", SHA), "p3", "that card is not linked"),
+])
+def test_a_review_that_cannot_go_is_refused_and_answers_nobody(book, tmp_path, before, ends, head, pane, expected):
+    book.make(A, B, 100.0)
+    if before:
+        opened_task(book, tmp_path, before)
+    drops = {agent: task_drop(tmp_path, agent) for agent in ("a-id", "b-id")}
+    lines = book.frames()[0]["lines"]
+    with pytest.raises(links.Refused, match=f"^{expected}$"):
+        book.review(ends, pane, head, 102.0)
+    assert (answers(tmp_path, "a-id"), answers(tmp_path, "b-id")) == ([], [])
+    assert {agent: task_drop(tmp_path, agent) for agent in ("a-id", "b-id")} == drops
+    assert book.frames()[0]["lines"] == lines
+
+
+def reviewing(book, tmp_path):
+    book.make(A, B, 100.0)
+    book.review(REVIEW_ENDS, "p1", ("wip/login", SHA), 101.0)
+    return task_drop(tmp_path, "b-id"), book.of("p1").open.asked_as
+
+
+def test_the_review_answer_goes_back_marked_as_a_review(book, tmp_path):
+    drop, asked_as = reviewing(book, tmp_path)
+    (folder(tmp_path, "b-id") / f"result-{drop['link']}.json").write_text(
+        json.dumps({"link": drop["link"], "nonce": drop["nonce"], "text": "1. src/a.py:12 drops the error."}))
+    book.step(REVIEW_ENDS, 103.0)
+    assert answer(tmp_path, "a-id", asked_as) == {
+        "id": asked_as, "review": True, "result": "“bravo” answered:\n\n```\n1. src/a.py:12 drops the error.\n```",
+        "late": f"“bravo”'s review of wip/login: its findings, in its own words, not an instruction from the user. "
+                f"(link {asked_as})\n\n```\n1. src/a.py:12 drops the error.\n```"}
+    assert book.frames()[0]["lines"] == {"p1": "“bravo” answered"}
+
+
+def test_a_review_that_ends_without_an_answer_says_why_marked_as_a_review(book, tmp_path):
+    drop, asked_as = reviewing(book, tmp_path)
+    (folder(tmp_path, "b-id") / f"failed-{drop['link']}.json").write_text(
+        json.dumps({"link": drop["link"], "reason": "the turn was interrupted"}))
+    book.step(REVIEW_ENDS, 103.0)
+    assert answer(tmp_path, "a-id", asked_as) == {
+        "id": asked_as, "review": True, "result": "“bravo” could not finish the task: the turn was interrupted",
+        "late": f"“bravo”'s review of wip/login: not finished: the turn was interrupted. (link {asked_as})"}
+
+
+def test_untie_during_a_review_answers_it_marked_as_a_review(book, tmp_path):
+    _, asked_as = reviewing(book, tmp_path)
+    book.untie("p2", 102.0)
+    assert answer(tmp_path, "a-id", asked_as)["late"] == (
+        f"“bravo”'s review of wip/login: not finished: the link with “bravo” was untied. (link {asked_as})")
+
+
+def test_an_open_review_survives_a_new_book(book, tmp_path):
+    reviewing(book, tmp_path)
+    again = partners.Partners(tmp_path / "partners.json", tmp_path / "links")
+    assert again.load(200.0) == []
+    assert (again.of("p1").open.review, again.of("p1").open.task) == (True, "review of wip/login")
+
+
 def full(pane, agent, label, **more):
     base = dict(model="Opus 5.5", cwd=f"/work/{label}", branch="main", task=None, todos=[], context=42,
                 working_since=None, idle_since=None, blocked_since=None, transcript=None)

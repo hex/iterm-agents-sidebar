@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents sidebar docked on the right: one card per session, with the one waiting on a question turning amber">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents panel docked on the right: one card per session, each with a Working, Waiting or Idle pill, the one waiting on a question turning amber, and under the cards the Past sessions, Ports and Activity folds, then Limits and the release">
 
 # Agents sidebar
 
@@ -18,13 +18,18 @@ again on an installed machine stops with a pointer to that button. Or clone it a
 clone is the install, so leave it in place; the Update button updates it too. It needs nothing else: one iTerm2 Basic
 script, no pip, no virtualenv, nothing beyond the standard library.
 
-1. Scripts, AutoLaunch, `agents_sidebar` starts it without restarting iTerm2.
-2. View, Toolbelt, Agents opens the panel.
+The install starts the daemon when iTerm2 is running. If a daemon already
+runs, it leaves it alone and prints its restart command. If iTerm2 isn't running,
+open it and choose Scripts > AutoLaunch > `agents_sidebar` to start the panel.
+A launch failure prints iTerm2's error and leaves the install in place.
+View > Toolbelt > Agents opens the panel.
 
 The install also points `statusLine.command` in `~/.claude/settings.json` at
 `plugin/statusline-bridge.sh`, because that payload is the only place Claude
 Code says how full the context is; the bridge publishes it and then renders
 the statusline you had, so your line stays. The install backs the file up first.
+If that command exits 127, the bridge shows `status line: <command or script> not found`
+instead of keeping stale text. Other failures keep the last rendered line.
 Without it, cards show no context %, model or effort, and the details card no cost,
 limits or cache. Whenever `settings.json` lacks the bridge (installed with
 `--no-statusline`, or replaced by another tool), the foot of the panel says so
@@ -51,12 +56,20 @@ of that name it did not write.
 
 Through the one-liner, a flag goes after `bash -s --`. See
 [docs/integrations.md](docs/integrations.md) for the detail and how to undo
-any of it. `./uninstall.sh` takes it out again: the script, the hook,
-your own statusline back, our entries out of Codex's hooks, the omp extension,
+any of it. Run `agents-sidebar uninstall`, or choose **Uninstall the panel…**
+at the bottom of Settings and confirm. Both remove the script, the hook,
+our entries from Codex's hooks, the omp extension,
 the notifier, the `agents-sidebar` command, and the panel's settings, state and
 account store with the Keychain items
-behind it. It leaves the checkout, the `.before-agents-sidebar` backups and
-the writable directory line in `~/.codex/config.toml`.
+behind it by default. To keep saved logins, turn on **Keep my account logins**
+in the confirmation, or run `agents-sidebar uninstall --keep-accounts`.
+This keeps `~/.config/agents-sidebar/accounts.json` and its Keychain items;
+the other panel data still goes. It leaves the checkout, the `.before-agents-sidebar` backups and
+the writable directory line in `~/.codex/config.toml`. The command prints a
+quoted command to delete the checkout. Settings shows the uninstall log's path.
+Uninstall restores your saved statusline unless its absolute script path is
+missing; then it removes `statusLine` and warns with that path. You can also
+run `./uninstall.sh` from the checkout, with `--keep-accounts` to keep logins.
 
 Notifications need `swiftc`, from the Xcode Command Line Tools
 (`xcode-select --install`). Without it the panel works as usual and posts
@@ -95,12 +108,18 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 | Unknown | A grey `No report` pill: a turn silent for five minutes with no command or tool running under it |
 
 A conversation that is over and gone from the list is under **Past sessions** above the limits: the last week's, with Resume in a new tab ([usage](docs/usage.md#past-sessions)).
+A server a session left running is under **Ports**, below Past sessions: the TCP ports listening on this Mac, the sessions' own first, each with Stop ([usage](docs/usage.md#ports)).
+What the agents did this week is under **Activity**, below Ports: prompts and tokens a day, and the projects that used the most, from Claude Code's and Codex's own logs ([usage](docs/usage.md#activity)).
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="One card, each of its parts joined by a line to what it means: the folder and the agent, the state pill, the task as the title, how long since it reported, the branch, model, context and CPU, the bar with the percent and what it is doing now, then a teammate, running and finished subagents, a Codex job, the task list with its counts and the background shells">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="A card with its folder, agent mark, Working pill, task title, report age, branch, model, context and CPU. A progress bar shows the reported percent and current activity. Then a teammate, running and finished subagents, a Codex job, the task list, scheduled prompts and background shells. Lines join each part to its explanation.">
 
 Card anatomy in Settings > Look offers Task first, with the folder, state
 pill, active task title and update age, or Name first; new installs use Task
 first, while saved settings keep Name first until changed.
+
+Serenity, in Settings > Look, leaves the branch and the subagent, task,
+scheduled-prompt and shell lists off the card at full width, and Details shows
+them instead. A compact Serenity card has the usual compact Details.
 
 With Name first, an agent reports its own task under the name: a title, then
 `Reading code · 40s`, then ticks for how far it says it has got. The
@@ -136,6 +155,10 @@ The panel takes the background colour of the pane in front and draws its cards
 in shades of it, light or dark as that colour is ([usage](docs/usage.md#the-terminals-background)).
 Each agent's tab says the same under its title: `working`, `needs you` with
 the question, `done`, or `idle`, in the panel's colours ([usage](docs/usage.md#the-status-under-a-tab)).
+A cs session's tab takes a tint of the session's colour, 35% of it over the
+pane's background, on by default. iTerm2 colours a tab from its active pane,
+and a pane with a tab colour of its own keeps it
+([usage](docs/usage.md#the-sessions-colour-on-its-tab)).
 
 An omp session reports its state through the extension the install writes:
 when a turn starts and ends, when an approval or a question waits on you, and
@@ -173,6 +196,12 @@ with TaskCreate or the open steps of a Codex plan, fold into one line
 Started tasks come first, each with a half-filled circle and what the session is doing on it; pending ones
 follow with an empty ring. Codex plans have
 no done count, so their head reads "6 tasks · 1 started".
+Prompts a Claude session has scheduled with `/loop`, CronCreate or
+ScheduleWakeup fold into the next line ("2 scheduled"), a row each with
+when it runs: "every 10 min", "daily at 09:00", "once at 13:31". Claude Code
+lists them when the session's turn ends, so a one-shot that has fired reads
+"due" until then, and a resumed session can show its old list until its
+first turn ends.
 Background shells fold into
 one line ("2 commands running") that opens on a click; a row shows a long
 path by its last part, and clicking a shell shows the whole command with a
@@ -182,7 +211,9 @@ Copy button.
 
 A pane that runs `ssh` or `et` (Eternal Terminal) to a machine with the hooks
 installed gets a card for the Claude Code session there: its state, the host
-it runs on, its folder, and a question you can answer from the card. A row
+it runs on, its folder, and a question you can answer from the card. Answer
+a question whose options show previews in its pane, since picking there
+takes Enter. A row
 under the Limits head then names each machine the panes reach, with its
 agent count and whether a pane here holds its connection. Model, context,
 tasks and replies wait for a later release. See
@@ -195,9 +226,8 @@ The banner can answer for you, so a session in another tab doesn't wait.
 | On the banner | What it does |
 | --- | --- |
 | A click | Brings that session forward, tab and all. A hidden hotkey window gets its profile's hotkey first |
-| A question's option button | Sends that option's number into the prompt. A question that takes more than one answer gets no buttons and no Other |
-| A permission prompt's Yes or No | Yes types `y` on Codex and `1` on Claude Code; No presses Esc. Other choices stay in the terminal |
-| Other | Picks that option, then types your text |
+| A question's option button | Sends that option's number into the prompt, and Enter after it when the options show previews. A question that takes more than one answer gets no buttons and no Other |
+| Other | Picks that option, then types your text. A question whose options show previews has no Other, so its banner has no reply field |
 | Allow, on a permission gate | Answers Yes. It shows the command's first line and approves the whole command, so No stays in the terminal |
 | Reply, on a finished turn | Your text becomes the session's next prompt. The panel types nothing if the session has since started waiting on you, its agent has exited, or another program is in front of its agent |
 
@@ -217,10 +247,10 @@ offer stays dismissed.
 | Alerts | Play sounds, Volume, Show macOS notifications |
 | When a session waits for you | Sound, Notification, Bring it forward; under it Go back once it resumes |
 | When one finishes | Sound, Notification, Lift its card first, Green wash, Done as the pane's badge, Status under the tab title: see [The status under a tab](docs/usage.md#the-status-under-a-tab) |
-| Look | Card style, Card anatomy, Follow the terminal's background, Text size, Shell names, Provider badge: see [Card style](docs/usage.md#card-style) |
+| Look | Card style, Card anatomy, Follow the terminal's background, Session colour on the tab, Text size, Shell names, Provider badge: see [Card style](docs/usage.md#card-style) and [The session's colour on its tab](docs/usage.md#the-sessions-colour-on-its-tab) |
 | On a card | Branch, Task (under it What it is doing, How old the report is (Name first), Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded) |
 | Rows | Warn above, CPU heavy at, Memory heavy at, Order, Show the foot's offers again (while an offer stays dismissed) |
-| Experimental | Link cards, Keep remote control after a switch and Commit heatmap, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control) and [Commit heatmap](docs/usage.md#commit-heatmap) |
+| Experimental | Link cards, Keep remote control after a switch, Commit heatmap and Hand Codex Claude's memory index, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control), [Commit heatmap](docs/usage.md#commit-heatmap) and [Claude's memory index in Codex](docs/usage.md#claudes-memory-index-in-codex) |
 | Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |
 
 Some have limits the picture doesn't show:
@@ -232,11 +262,12 @@ Some have limits the picture doesn't show:
 | Memory heavy at | 0.5 to 8 GB |
 | Text size | Minus and plus buttons over nine sizes, 0.8 to 1.6 times the size as designed |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Past sessions, Ports and Activity fold heads, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
 
 The foot lists the sessions waiting on you, oldest first, each with what it
-asks: the question's header and text, or the tool and its command. Under them are your
-Claude account limits: 5-hour, weekly, and per-model weekly, with the time left
+asks: the question's header and text, or the tool and its command. Under them are
+the Past sessions, Ports and Activity folds, then your Claude account limits:
+5-hour, weekly, and per-model weekly, with the time left
 until each resets. The tick on a weekly bar marks where an even spend across
 the week would be right now; a percentage turns warm 15 points past it, and the
 row's hover says both figures. Store a login with **Add <your email>** and you can switch
@@ -244,16 +275,19 @@ between accounts from there. Auto-switch, off by default, spends first the
 quota that resets soonest and leaves an account before a limit stops your
 sessions. Only the limits of the models your sessions run, or ran in the last
 ten minutes, count, and a model
-limit full on every account is set aside with a `Fable full everywhere` chip.
+limit full on every account stops counting, since no switch frees it.
 While Auto-switch is on, you have two or more accounts and a switch is near,
 a chip reads the account's name and `soon`, and gives the reason on hover. Codex's own limits sit under them, read from
 its session log: a 5-hour and a weekly window, or weekly alone, depending on
 the plan, and a row for the fallback allowance while Codex draws on one, such
-as Luna Reserve. Click **Limits** over them to fold the lot to a tile per
-account and Codex, each with its fullest window as one bar. See [docs/accounts.md](docs/accounts.md).
+as Luna Reserve. Click **Limits**, or its head outside Auto-switch and its
+chip, to fold the lot to a tile per
+account and Codex, each with its fullest window as one bar. An account's bar
+passes over a model limit full on every account for the next limit with room,
+and its hover says when that model returns. See [docs/accounts.md](docs/accounts.md).
 
 The bar at the bottom names the release you run, and two buttons: reload and
-the gear. Click the release to read the release notes on GitHub. At start, once a day and on every reload press, the daemon lists
+the gear. Click the release to read the release notes on GitHub. A right-click on reload offers Rebuild the panel, which opens it afresh in every window, for a panel that stopped answering the pointer or stopped drawing. At start, once a day and on every reload press, the daemon lists
 the releases on the repository it was cloned from; when one is
 newer, the bar adds an Update button that names it in its tooltip. Pressing it takes that
 release only if a release key the installed copy already trusts signed it,
@@ -265,7 +299,8 @@ needs reopening from View > Toolbelt. See
 
 Right-click an agent row, or press Shift+F10 on a selected one, for
 Details, `/compact`, `/rotate`, `/clear` and Close. A card linked to a
-partner also offers Untie from its partner. Details opens the row's
+partner also offers to ask its partner for a review, and Untie from its
+partner. Details opens the row's
 details card and keeps it open until Escape or a click elsewhere; nothing
 else opens the card. Close and `/clear` ask for a second
 click. The menu stays where it opened while the cards under it grow, shrink,
@@ -284,7 +319,9 @@ With Link cards on under Experimental in settings (it starts off), hold a
 dragged card still over another agent card for 0.4 s and let go to link the
 two sessions. Two Claude Code sessions become partners, one card on
 the panel: each can read the other's recent conversation and hand it a task,
-getting the answer back. They stay partners through `/clear` until you untie
+getting the answer back. Either card's menu also asks the other for a
+read-only review of its session's change, and the findings come back to that
+session as a prompt. They stay partners through `/clear` until you untie
 them from either card's menu, drag one card out of the pair, or turn Link
 cards off. With Codex or omp in the pair, the dragged card's session writes
 up its latest result and the session under it starts working on it, with
@@ -308,20 +345,28 @@ named, and 1 on a timeout, a closed session or no panel. See
 
 ## What it reads, and where it goes
 
-Everything stays on your Mac unless you store an account. The daemon reads:
+Everything stays on your Mac unless you store an account or turn on Hand Codex
+Claude's memory index. The daemon reads:
 
 - iTerm2, through its API: every session's title, working directory and
   foreground job, and the pane in front.
 - What the hooks publish from Claude Code, Codex and omp: the state, the
-  working directory, the tool names, the task line, and the question or the
-  permission a session waits on. That text goes to the card, the macOS banner
-  and the line under the tab. A token, key or password in a command shows as
-  `***`; free text in a question reads as the agent wrote it.
+  working directory, the tool names, the task line, the prompts a session has
+  scheduled, and the question or the permission a session waits on. That
+  text goes to the card, the macOS banner and the line under the tab. A
+  token, key or password in a command or a scheduled prompt shows as `***`;
+  free text in a question reads as the agent wrote it.
 - The statusline payload: context, model, effort, cost and limits.
 - The first 64 KB of each transcript under `~/.claude/projects`, for
   **Past sessions**: the directory and the first prompt, nothing after.
 - `ps`, for each session's process tree, and `git` in each session's
   directory, for its branch.
+- `lsof`, when **Ports** opens: each listening TCP socket's address, port
+  and the pid and name of the process that holds it.
+- Claude Code's transcripts under `~/.claude/projects` and Codex's rollouts
+  under `~/.codex/sessions`, when **Activity** opens: each line's time,
+  directory and token counts, which lines are prompts, the client that wrote
+  them, and a conversation's cost. It keeps none of the text.
 
 It writes under `~/.claude/agents-sidebar-*`, `~/.config/agents-sidebar` and
 `~/.local/share/agents-sidebar`, readable by your user alone; the list is in
@@ -333,6 +378,13 @@ already reach; and once you store an account, the panel keeps that login's
 refresh token in its own Keychain item and calls Anthropic's token and usage
 endpoints with it, which [docs/accounts.md](docs/accounts.md#before-you-store-anything)
 explains before you do. The panel sends no telemetry.
+
+Hand Codex Claude's memory index, under Experimental and off until you turn it
+on, makes the Codex hook read the project's Claude Code memory index,
+`MEMORY.md`, at the start of each Codex session. Codex gets up to 10 KB of it
+and sends it to OpenAI with the rest of the session. It can also read the rest
+of the file and the notes the index lists
+([docs/usage.md](docs/usage.md#claudes-memory-index-in-codex)).
 
 ## More
 

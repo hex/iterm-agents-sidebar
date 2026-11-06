@@ -38,7 +38,7 @@ LISTENER_OWNERS = {
     # the trampoline every built node's handlers run through
     "listen",
     # nodes made once, or on an event: the details card, the floating menu, the settings sheet, the offers
-    "paintBreakdown", "ctxOpener", "ctxDeferred", "menuFor", "settingSwitch", "settingRow", "settingsBody", "githubRow",
+    "paintBreakdown", "ctxOpener", "ctxDeferred", "menuFor", "settingSwitch", "settingRow", "settingsBody", "paintUninstall", "githubRow",
     "paintVersion", "paintOffer",
 }
 

@@ -15,6 +15,13 @@ request, so a change to the page alone needs only a reload of the panel
 restarted. The new run takes a port the OS picks, so reopen the panel after
 it from View > Toolbelt > Agents.
 
+The install starts the daemon at the end when iTerm2 is running and no
+Python process runs `AutoLaunch/agents_sidebar.py`. The check excludes
+`it2_api_wrapper`. It never restarts an existing daemon; it prints that
+daemon's process ID and the kill-and-launch command instead. A launch error prints
+a warning without failing the install. With iTerm2 closed, the install
+prints the manual start instructions.
+
 To restart the daemon without restarting iTerm2, kill its
 `venvs/3.10/bin/python` process, not the `it2_api_wrapper.sh` parent
 (`pgrep -f AutoLaunch/agents_sidebar.py` matches both). Nothing starts it
@@ -36,7 +43,11 @@ only a change to `hooks.json` also needs `/reload-plugins` in a running
 session.
 
 The daemon binds `127.0.0.1` and checks a token of 24 random bytes on every
-request, including the event stream. The panel can ask six things about a
+request, including the event stream. The panel itself reads the live frames
+over a WebSocket at `/live`, with the same token, because WebKit allows six
+HTTP connections to a host and a stream held open in every window's panel
+would leave a sixth window none for its requests.
+The panel can ask six things about a
 session: focus, send, prompt, close, resume and answer. Alerts are not among
 them: the daemon decides sounds, banners and the focus move from its own
 reading (`alerts.py`), so a page that fell behind cannot replay old ones.
@@ -54,15 +65,47 @@ asks only whether it waits or has exited.
 
 The server also takes `POST /accounts` (switch, add, rename, read), `/update`,
 `/statusline`, `/tab-status` (takes iTerm2's `cc-status` hook out of Claude Code's settings), `/context`, `/link`, `/untie`, `/github` (opens the repository
-or releases page the daemon builds) and `/page-error`. No endpoint runs arbitrary code.
+or releases page the daemon builds), `/rebuild` (registers the panel again under a fresh URL, so iTerm2 builds its web view anew in every window: the reload button's right-click menu), `/stop-port` (`SIGTERM` to the holder of a port the last `GET /ports` listed, once a fresh `lsof` and `ps` show the same process still holds it) and `/page-error`. No endpoint runs arbitrary code.
+`POST /uninstall` checks the token, then accepts an object containing only
+the optional boolean `keep_accounts`. An empty body or `{}` defaults to false.
+Malformed JSON, unknown keys and other value types return 400 before a job or
+log exists. When true, it passes `--keep-accounts` as a separate script argument.
+Otherwise, the script deletes saved logins. The route prepares a private log in `$TMPDIR`.
+It sends 202 with the log path before starting this checkout's `uninstall.sh`
+in its own process session. A pending job holds the open log through the
+response, so launching does not reopen a path. A failed response closes it
+without launching; a failed launch writes its error into the log. Repeated
+requests return 409. The route works in development checkouts too.
+`POST /review` takes `{"pane": "<pane id>"}` and asks that pane's partner to
+review its change. A refusal returns HTTP 409 with the reason in `error`.
+`/live` also refuses a request whose `Origin` header is not `http://` plus its `Host`: a WebSocket skips the browser's cross-origin rules, so that header is what keeps a page on another origin from reading the frames. A request with no `Origin`, such as a script's, passes on the token alone.
 
 Once a reading of iTerm2 has worked, the first or a later one, the daemon writes its port, token and
 pid to `~/.local/share/agents-sidebar/endpoint.json`, readable by your user
 alone, so `agents-sidebar` can reach `/events`. That puts the token on disk
 where before it lived only in the Toolbelt URL. Anything running as you can
 read it, and anything running as you can already drive iTerm2 through its
-own API, so the file grants nothing new. The command reads `/events` only;
-it sends no action.
+own API, so the file grants nothing new. The command's `status` and `wait`
+read `/events` and send no action. `agents-sidebar uninstall` resolves the
+command's symlink, runs its checkout's script and returns the script's exit
+status. Its `--keep-accounts` flag keeps `~/.config/agents-sidebar/accounts.json`
+and its Keychain items while the other panel data goes. It leaves the checkout
+and prints a quoted command to delete it.
+
+Settings offers the same uninstall behind an inline confirmation. Its page
+state moves from idle to confirmation, submission and acceptance. The confirmation
+counts all records in the latest account snapshot, including failed readings.
+An unavailable store gets a warning without a count; a known empty store gets
+no account warning. **Keep my account logins** is a switch that starts off and sends
+`keep_accounts`. A refused or failed `POST` returns to confirmation with the
+reason and keeps the choice and count. Cancel, Escape and outside clicks cancel
+only before submission; reopening resets the choice.
+
+The statusline bridge treats exit 127 as a missing command and writes
+`status line: <command or script> not found`; other failures keep the
+cached line. Uninstall removes `statusLine` when the saved command names a
+missing absolute script path. It preserves relative paths, whose working
+directory belongs to Claude, and restores existing script paths.
 
 ## Releases
 
@@ -139,14 +182,20 @@ read against the source.
   Codex session's reply, read from its rollout.
 - `omp.py`: what an omp session says about itself, read from its own files.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
+- `past.py`: the Past sessions fold's rows, read from Claude Code's transcripts.
+- `ports.py`: the Ports fold's rows, from `lsof`'s listening TCP sockets.
 - `statusline.py`: puts the statusline bridge into Claude Code's settings, and takes iTerm2's `cc-status` hook out.
 - `tabstatus.py`: the status under each agent's tab title, written through iTerm2's `set_session_status` and
   taken back when the session exits or goes unreported, the setting goes off or the daemon stops.
+- `tabcolour.py`: each card's tab in its cs session colour, mixed over the pane's own backgrounds, written
+  through the session's own profile, put back when it no longer applies, and known by its colours after a restart.
 - `update.py`: checks the mirror for a newer release and takes it.
 - `links.py`: links between two cards, the one-shot hand-off, through each session's links folder.
 - `partners.py`: partner sessions: the record, each end's `partner.json`, and the tasks between them.
 - `remote.py`: Remote Control on each Claude card, from its state file, and turned back on after a panel switch.
+- `schedules.py`: when a scheduled prompt's cron expression next runs, and the words its row says that in.
 - `marks.py`: the word Done as iTerm2's badge in the pane of a session that finished unseen, written through the session's own profile and restored when the pane is seen.
+- `activity.py`: the activity report, per day, project and provider, from Claude Code's transcripts and Codex's rollouts.
 - `agents-sidebar`: the command scripts use to list agents and wait on one;
   standard library only, and it runs on the Python 3.9 macOS ships.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and
@@ -209,6 +258,31 @@ Inspect Element.
   directory and names the tty's foreground process. A script run by an
   interpreter shows under the script's name: `node .../bin/codex` shows as
   `codex`.
+- **Activity** (`GET /activity?days=N`): Claude Code's transcripts and its
+  subagents' (under `<conversation>/subagents/`, a workflow's one level
+  deeper), and Codex's rollouts, each line counted on the day its own
+  timestamp falls on in this machine's time, never by the file's mtime. Claude
+  writes a reply once per content block with the whole reply's usage on every
+  line, so usage counts once per message id. A prompt is a line whose
+  `turnOrigin` is `human`; a transcript with no `turnOrigin` anywhere predates
+  the flag, and its prompts go by their text. A subagent's lines can carry a
+  session id of their own, so a conversation is its transcript's id, and a
+  subagent's the folder it sits in. A worktree under `.claude/worktrees/`
+  counts to its checkout, and each row's `scratch` says whether that project
+  is `/tmp`, `/private/tmp`, `/var/folders` or `/private/var/folders`, or a
+  folder under one; the page lists those apart. Codex's `token_count` totals
+  are running sums, so a day gets how far they rose that day. Cost is a
+  conversation's only, from its last `cost-state` line, which has no time.
+  The page counts neither program's cache reads. The daemon keeps each file's
+  figures against its size and mtime and runs one report at a time: on one
+  machine a cold week read 641 files in about 9 s of CPU and a warm one in
+  about half a second, since it reads again only a file written since the last
+  read. After a read that changed them it writes the figures to
+  `activity.json` in the status directory, owner-only and renamed over the
+  last copy, and it loads that file at the first read of its life, never at
+  start. Figures another `activity.py` made (the file's SHA-256), or made in
+  another time zone, or not wholly in the shape it writes, are not used: that
+  read starts cold and `daemon.log` says why.
 - **CPU and memory:** one `ps` listing per rebuild, summed over each session's
   process tree by parent pid, stopping at any pid that is another card so a
   teammate is not counted twice. CPU is `ps %cpu` summed. Only the verdict
@@ -282,7 +356,7 @@ of a guess.
   each session, with its `.lock` and, for a large state, its `.published` file.
 - `~/.claude/agents-sidebar-tasks/`: each session's task note.
 - `~/.claude/agents-sidebar-status/`: the statusline payloads and lines,
-  `daemon.log` and `partners.json`.
+  `daemon.log`, `partners.json` and `activity.json`.
 - `~/.claude/agents-sidebar-links/<session id>/`: each session's link,
   partner and remote control files.
 - `~/.claude/agents-sidebar-settings.json`: the panel's settings.

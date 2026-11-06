@@ -1,8 +1,8 @@
-"""One pass of the meter loop against real Keychain items and the real endpoints.
+"""One pass of the meter loop against scratch Keychain items and supplied refusals.
 
 Scratch items stand in for Claude Code's credential and the panel's stored
-ones. Every token is one that was never issued, so the endpoints refuse them
-and nothing is spent.
+ones. Tokens were never issued; usage and refresh refusals are supplied at the
+request boundaries without contacting the OAuth endpoints.
 """
 import json
 import sys
@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from accounts import AccountMeters, delete_secret, load_store, save_store, write_secret
 
 SCRATCH_SERVICE = "agents-sidebar-test"
-pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="needs the macOS Keychain and network")
+pytestmark = pytest.mark.skipif(sys.platform != "darwin", reason="needs the macOS Keychain")
 FAR_FUTURE_MS = 4_000_000_000_000
 
 
@@ -27,7 +27,9 @@ def _credential(tag):
 
 
 @pytest.fixture
-def world(tmp_path):
+def world(tmp_path, monkeypatch):
+    monkeypatch.setattr("accounts.request_refresh", lambda blob, now_ms: ("invalid_grant", None))
+    monkeypatch.setattr("accounts.request_usage", lambda access_token: ("unauthorized", None))
     tag = uuid.uuid4().hex[:8]
     live = f"test-live-{tag}"
     accounts = [{"id": f"test-{tag}-1", "alias": "work", "accountUuid": "uuid-active"},
@@ -97,7 +99,7 @@ def test_an_unreadable_store_is_reported_not_rebuilt(world):
                            world["claude_json"])
     meters.tick(now=1000)
     assert meters.snapshot() == {"active": None, "accounts": [], "error": "store is not valid JSON",
-                                 "last_switch": None, "next_switch": None, "live": None}
+                                 "last_switch": None, "next_switch": None, "exhausted": [], "live": None}
     assert Path(world["store"]).read_text() == "{ torn"
 
 
@@ -255,3 +257,26 @@ def test_a_balance_is_tried_only_once_a_second_reading_proposes_it(world, tmp_pa
     meters.states[ids[0]] = _weekly_reading(20.0, 60.0, 1300)
     meters.states[ids[1]]["fetched_at"] = 1300
     assert meters.tick(now=1300, auto=True) == [{"kind": "refused", "why": "log in to home again"}]
+
+
+def _fable_full(weekly, resets_at, now, outcome="ok"):
+    return dict(_reading(0.0, now - 60), outcome=outcome, tried_at=now - 10, next_at=now + 600,
+                usage={"five_hour": None, "seven_day": {"used": weekly, "resets_at": resets_at},
+                       "models": [{"name": "Fable", "used": 100.0, "resets_at": resets_at}]})
+
+
+def test_a_model_full_on_every_account_reaches_the_panel_with_switching_off_and_the_active_reading_refused(world):
+    """The switch outlook says nothing while the active account's last reading
+    failed, yet each account's last figures still show Fable full everywhere,
+    and the panel's bars are drawn from those figures, not from the outlook."""
+    now = 10_000
+    work, home = (a["id"] for a in world["accounts"])
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"])
+    meters.states = {work: _fable_full(67.0, now + 86400, now, outcome="rate_limited"),
+                     home: _fable_full(83.0, now + 15 * 3600, now)}
+    assert meters.tick(now=now) == []
+    snap = meters.snapshot()
+    assert snap["next_switch"] is None
+    assert snap["exhausted"] == [{"model": "Fable", "resets_at": now + 15 * 3600, "account_id": home,
+                                  "account": "home"}]

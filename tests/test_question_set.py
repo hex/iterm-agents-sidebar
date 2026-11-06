@@ -38,19 +38,35 @@ def click(pick, step):
     return json.dumps({"pick": pick, "question": ASKED["question"], "step": step})
 
 
-def walk(*clicks, provider=None):
+def walk(*clicks, provider=None, asked=None):
     """Send clicks in turn the way the daemon does -> the keys typed for each."""
+    asked = asked or ASKED
     answered, typed = None, []
     for pick, step in clicks:
-        keys = answer_keys(click(pick, step), ASKED, answered, provider)
+        keys = answer_keys(click(pick, step), asked, answered, provider)
         typed.append(keys)
         if keys is not None:
-            answered = next_answered(ASKED, answered)
+            answered = next_answered(asked, answered)
     return typed
 
 
 def test_each_step_types_its_pick_and_submit_types_one():
     assert walk((2, 0), (1, 1), (1, "submit")) == [[LEFT, LEFT, "2"], [LEFT, LEFT, RIGHT, "1"], [RIGHT, RIGHT, "1"]]
+
+
+def test_each_step_with_previews_types_its_pick_then_enter_and_submit_types_one():
+    """Measured on Claude Code 2.1.318: on a question drawn beside its previews
+    the number only moves the cursor, and Enter picks and moves to the next
+    question. The review step lists Submit and Cancel plainly."""
+    previewed = [dict(asked, preview=True) for asked in SET]
+    assert walk((2, 0), (1, 1), (1, "submit"), asked={**previewed[0], "more": 1, "set": previewed}) == [
+        [LEFT, LEFT, "2", "\r"], [LEFT, LEFT, RIGHT, "1", "\r"], [RIGHT, RIGHT, "1"]]
+
+
+def test_a_set_mixing_both_types_enter_only_after_a_pick_with_previews():
+    mixed = [SET[0], dict(SET[1], preview=True)]
+    assert walk((2, 0), (1, 1), (1, "submit"), asked={**mixed[0], "more": 1, "set": mixed}) == [
+        [LEFT, LEFT, "2"], [LEFT, LEFT, RIGHT, "1", "\r"], [RIGHT, RIGHT, "1"]]
 
 
 def test_a_codex_set_types_each_pick_alone_since_its_arrow_keys_were_never_measured():

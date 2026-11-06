@@ -75,6 +75,8 @@ export function world(on: On): World {
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
+  // The engine's own verdict beneath the mod's: every call may run, so a deny is the mod's.
+  on('tool.check', () => ({ decision: 'allow' as const }))
   on('session.append', ($, e, next) => next(e))
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
     const { Box } = $.ui.resolve(e)

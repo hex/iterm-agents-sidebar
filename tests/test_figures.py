@@ -40,7 +40,7 @@ def test_the_settings_figure_lists_every_setting_the_sheet_has():
     svg = (ASSETS / "settings.svg").read_text()
     rows = setting_rows()
     labels = [row["label"] for row in rows if "k" in row]
-    assert len(labels) == 36
+    assert len(labels) == 38
     for label in [row["label"] for row in rows if "label" in row]:
         assert f">{label}<" in svg, label
 

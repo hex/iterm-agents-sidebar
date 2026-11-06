@@ -9,7 +9,7 @@ from panel_draw import *  # noqa: F401,F403
 #: The README banner is wide and short. BANNER_H=864 draws the same window
 #: taller, 16:9, for a place that crops anything wider (a social post's
 #: preview); the panel flows from the top, so the extra height is floor.
-W, H = 1536, int(os.environ.get("BANNER_H", 742))
+W, H = 1536, int(os.environ.get("BANNER_H", 856))
 CYCLE = "11s"
 
 # The window nearly fills the frame: what is left is room for its shadow,
@@ -29,8 +29,9 @@ def cycle(attr, values, key_times, **kw):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="100%" '
-  f'role="img" aria-label="An iTerm2 window with the Agents sidebar docked on the right: one card '
-  f'per session, with the one waiting on a question turning amber">')
+  f'role="img" aria-label="An iTerm2 window with the Agents panel docked on the right: one card per session, each with a Working, '
+  f'Waiting or Idle pill, the one waiting on a question turning amber, and under the cards the Past sessions, Ports and '
+  f'Activity folds, then Limits and the release">')
 A('  <title>Agents sidebar</title>')
 A(f'''  <defs>
     <filter id="drop" x="-6%" y="-14%" width="112%" height="140%">
@@ -171,15 +172,13 @@ def head(baseline, name):
     text(PX + 24, baseline, name, fill=DIM, size=11, weight=700, extra=' letter-spacing="1.3"')
 
 
-_card, _swatch, _dots, _badge, _tag = card, swatch, working_dots, badge, tag
+_card, _swatch, _tag = card, swatch, tag
 card = lambda top, height: _card(CARD_X, CARD_W, top, height)
 swatch = lambda top, hue, hollow=False: _swatch(CARD_X + 18, top, hue, hollow)
-working_dots = lambda top, hue: _dots(CARD_X + 18, top, hue)
-badge = lambda top, word, ink=DIM, fill=None, animation="": _badge(CARD_X + CARD_W - 16, top, word, ink, fill, animation)
 tag = lambda name, baseline, kind: _tag(TEXT_X + NAME_W[name] + 9, baseline, kind)
 
 
-TEXT_X = CARD_X + 44
+TEXT_X = CARD_X + 16
 
 y = WY + BAR + 30
 head(y, "AGENTS")
@@ -187,7 +186,7 @@ head(y, "AGENTS")
 # A session at work, its own report under its name, and a teammate below it.
 c1 = y + 20
 card(c1, 114)
-working_dots(c1 + 20, "#e8833a")
+pill(CARD_X + CARD_W - 16, c1 + 15.5, "Working", LIT, mix(LIT, CARD, .14))
 text(TEXT_X, c1 + 31, "atlas", fill=FG, size=15, weight=600)
 tag("atlas", c1 + 31, "claude")
 text(TEXT_X, c1 + 52, "Refactor the token parser", fill=DIM, size=12.5)
@@ -217,10 +216,10 @@ card(c2, 114)
 A(f'  <g opacity="0">{cycle("opacity", "0;0;1;1;0;0", ASKING)}'
   f'<rect x="{CARD_X}" y="{c2}" width="{CARD_W}" height="114" rx="10" fill="{BLOCKED_BG}" '
   f'stroke="{BLOCKED_BORDER}" stroke-width="3"/></g>')
-working_dots(c2 + 20, "#2a9d8f")
 text(TEXT_X, c2 + 31, "beacon", fill=FG, size=15, weight=600)
 tag("beacon", c2 + 31, "claude")
 A(f'  <g>{cycle("opacity", "1;1;0;0;1;1", ASKING)}')
+pill(CARD_X + CARD_W - 16, c2 + 15.5, "Working", LIT, mix(LIT, CARD, .14))
 text(TEXT_X, c2 + 52, "Cache the pricing lookup", fill=DIM, size=12.5)
 text(TEXT_X, c2 + 72, "Choosing a store", fill=DIM, size=12.5)
 x = middot(TEXT_X + width_of("Choosing a store", 12.5), c2 + 72)
@@ -232,6 +231,7 @@ A(f'  <g mask="url(#tick)">'
 chips(TEXT_X, c2 + 102, [("branch", "feat/cache", None), ("model", "Fable 5.1", None)])
 A('  </g>')
 A(f'  <g opacity="0">{cycle("opacity", "0;0;1;1;0;0", ASKING)}')
+pill(CARD_X + CARD_W - 16, c2 + 15.5, "Waiting", "#de935f", mix("#d7af5f", BLOCKED_BG, .2))
 text(TEXT_X, c2 + 52, "Which store should the cache use?", fill=BLOCKED_TEXT, size=12.5)
 for i, answer in enumerate(("Postgres", "SQLite")):
     y_row = c2 + 62 + i * 23
@@ -240,13 +240,10 @@ for i, answer in enumerate(("Postgres", "SQLite")):
     text(TEXT_X + 9, y_row + 13.5, str(i + 1), fill=BLOCKED_TEXT, size=11.5, weight=500)
     text(TEXT_X + 22, y_row + 13.5, answer, fill=FG, size=11.5, weight=500)
 A('  </g>')
-badge(c2 + 15.5, "Waiting", ink=BADGE_INK, fill=BLOCKED_BORDER,
-      animation=cycle("opacity", "0;0;1;1;0;0", ASKING))
 
 # One finished, and one whose tree is eating the machine.
 c3 = c2 + 128
 card(c3, 80)
-swatch(c3 + 20, "#8e8e93")
 text(TEXT_X, c3 + 31, "ember", fill=FG, size=15, weight=600)
 tag("ember", c3 + 31, "openai")
 mark("checked", TEXT_X, c3 + 52 - 10, 11, LIT)
@@ -257,13 +254,13 @@ x = middot(x, c3 + 69)
 mark("cpu", x, c3 + 58, 13, ALERT)
 text(x + 17, c3 + 69, "CPU", fill=ALERT, size=12.5)
 A('  </g>')
-badge(c3 + 15.5, "Idle")
+pill(CARD_X + CARD_W - 16, c3 + 15.5, "Idle", DIM, mix(FG, CARD, .08))
 
 # An omp session: its state and its name come off its tab title, the rest
 # from omp's own files. What the running tool is for sits under the name.
 c4 = c3 + 94
 card(c4, 100)
-working_dots(c4 + 20, "#c4508f")
+pill(CARD_X + CARD_W - 16, c4 + 15.5, "Working", LIT, mix(LIT, CARD, .14))
 text(TEXT_X, c4 + 31, "harbor", fill=FG, size=15, weight=600)
 tag("harbor", c4 + 31, "omp")
 text(TEXT_X, c4 + 52, "Move the crawler to a container", fill=DIM, size=12.5)
@@ -281,13 +278,28 @@ s1 = c4 + 108
 head(s1 + 26, "SESSIONS")
 card(s1 + 36, 50)
 swatch(s1 + 55, None, hollow=True)
-text(TEXT_X, s1 + 57, "~/src/website", fill=FG, size=13)
-text(TEXT_X, s1 + 75, "vite dev", fill=DIM, size=11.5, family=MONO)
+text(CARD_X + 44, s1 + 57, "~/src/website", fill=FG, size=13)
+text(CARD_X + 44, s1 + 75, "vite dev", fill=DIM, size=11.5, family=MONO)
 
-# The foot: the release the panel runs, and nothing more while it is current.
 rule_y = WY + WH - 34
+fy = rule_y - 114
+for label in ("Past sessions", "Ports", "Activity", "Limits"):
+    dash = ' stroke-dasharray="1 2"' if label != "Past sessions" else ""
+    A(f'  <line x1="{PX+14}" y1="{fy}" x2="{PX+PANEL_W-14}" y2="{fy}" stroke="{RULE}"{dash}/>')
+    text(PX + 24, fy + 13, "›", fill=DIM, size=10.5, family=MONO)
+    text(PX + 36, fy + 13, label, fill=DIM, size=10.5, family=MONO)
+    fy += 18
+mark("claude", PX + 24, fy + 2, 11, CLAUDE_MARK)
+text(PX + 41, fy + 11, "work", fill=FG, size=10, family=MONO)
+mark("checked", PX + 72, fy + 2, 11, LIT)
+A(f'  <rect x="{PX+24}" y="{fy+18}" width="{PANEL_W-48}" height="3" rx="1.5" fill="{RULE}"/>')
+A(f'  <rect x="{PX+24}" y="{fy+18}" width="{(PANEL_W-48)*.42}" height="3" rx="1.5" fill="{SEV_OK}"/>')
+text(PX + 24, fy + 35, "42%", fill=DIM, size=10, family=MONO)
+text(PX + PANEL_W - 24, fy + 35, "5h 2h", fill=DIM, size=10, family=MONO, extra=' text-anchor="end"')
 A(f'  <line x1="{PX+14}" y1="{rule_y}" x2="{PX+PANEL_W-14}" y2="{rule_y}" stroke="{RULE}"/>')
 text(PX + 24, rule_y + 22, "2026.09.20", fill=DIM, size=12, family=MONO)
+mark("reload", PX + PANEL_W - 62, rule_y + 10, 14, DIM)
+mark("gear", PX + PANEL_W - 34, rule_y + 10, 14, DIM)
 print(f"sessions card bottom {s1 + 86}, foot rule {rule_y}", file=sys.stderr)
 
 # The pointer arrives on the waiting card and clicks it: the terminal follows.

@@ -5,7 +5,7 @@ from panel_draw import *  # noqa: F401,F403
 
 W, H = 880, 220
 CX, CW, CT = 24, 404, 22
-TX = CX + 44
+TX = CX + 16
 LX = CX + CW + 40
 MENU_BG, MENU_EDGE = "#232325", "#3c3c3f"
 
@@ -36,13 +36,12 @@ A(f'''  <defs>
 A(f'  <rect width="{W}" height="{H}" rx="16" fill="{BG}"/>')
 
 card(CX, CW, CT, 80)
-swatch(CX + 18, CT + 20, "#8e8e93")
 text(TX, CT + 31, "ember", fill=DIM, size=15, weight=500)
 tag(TX + NAME_W["ember"] + 9, CT + 31, "claude")
 mark("checked", TX, CT + 52 - 10, 11, LIT)
 text(TX + 15, CT + 52, "Complete", fill=SEV_OK, size=12.5, weight=600)
 chips(TX, CT + 69, [("branch", "main", None), ("model", "Fable 5.1", None), ("gauge", "82%", ALERT)])
-badge(CX + CW - 16, CT + 15.5, "Idle")
+pill(CX + CW - 16, CT + 15.5, "Idle", DIM, mix(FG, CARD, .08))
 note(CX + CW + 8, CT + 26, "Right-click a row, or Shift+F10 on a selected one")
 
 # The menu, unfolded from the pointer.

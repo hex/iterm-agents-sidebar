@@ -3,7 +3,9 @@
 Session ids, window ids, paths and titles are verbatim from the 2026-09-07
 spike capture of the live iTerm2 instance.
 """
+import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -833,6 +835,69 @@ def test_agent_rows_carry_completed_task_counts_only_when_published():
     for fields in [{}, {"tasks_done": None}]:
         bare = snapshot([dict(LIVE[1], agent_state="idle", **fields)])["groups"][0]["rows"][0]
         assert "tasks_done" not in bare
+
+
+def test_agent_rows_carry_their_scheduled_prompts_only_when_there_are_some():
+    """A session that listed none and one that never said look the same on a card."""
+    crons = [{"id": "6ba43431", "schedule": "*/10 * * * *", "recurring": True, "prompt": "say hello"}]
+    now = datetime(2026, 11, 5, 13, 21, 30).timestamp()
+    got = snapshot([dict(LIVE[1], agent_state="idle", crons=crons)], now=now)["groups"][0]["rows"][0]
+    assert got["crons"] == [dict(crons[0], next=datetime(2026, 11, 5, 13, 30).timestamp(), when="every 10 min")]
+    bare = [snapshot([dict(LIVE[1], agent_state="idle", **fields)], now=now)["groups"][0]["rows"][0]
+            for fields in [{}, {"crons": None}, {"crons": []}]]
+    assert "crons" not in bare[0]
+    assert len({json.dumps(row) for row in bare}) == 1
+
+
+def cron_rows(session, now):
+    return snapshot([dict(LIVE[1], **session)], now=now)["groups"][0]["rows"][0]["crons"]
+
+
+def test_a_scheduled_prompt_is_published_with_its_next_run_in_words_and_its_secrets_masked():
+    """A one-shot runs at the first match after the Stop that listed it, a
+    recurring one at the first after now."""
+    crons = [{"id": "6ba43431", "schedule": "*/10 * * * *", "recurring": True, "prompt": "say hello"},
+             {"id": "20c147b9", "schedule": "31 13 * * *", "recurring": False,
+              "prompt": "deploy with GITHUB_TOKEN=abc123"},
+             {"id": "c0ffee00", "schedule": "every 5m", "recurring": True, "prompt": "check in"}]
+    listed = datetime(2026, 11, 5, 13, 11, 30).timestamp()
+    assert cron_rows({"agent_state": "idle", "crons_at": listed, "crons": crons},
+                     datetime(2026, 11, 5, 13, 25).timestamp()) == [
+        dict(crons[0], next=datetime(2026, 11, 5, 13, 30).timestamp(), when="every 10 min"),
+        dict(crons[1], prompt="deploy with GITHUB_TOKEN=***", next=datetime(2026, 11, 5, 13, 31).timestamp(),
+             when="once at 13:31"),
+        dict(crons[2], next=None, when="every 5m"),
+    ]
+
+
+def test_a_one_shot_past_its_run_reads_due_through_the_turn_it_woke():
+    """The list changes only at a Stop, and when it was listed stands through
+    the turn the run started, whose own events all come after it. A rest that
+    began past the run, once a background agent let the session go, moves
+    nothing."""
+    wake = {"id": "20c147b9", "schedule": "31 13 * * *", "recurring": False, "prompt": "wake me"}
+    session = {"agent_state": "working", "crons_at": datetime(2026, 11, 5, 13, 21, 30).timestamp(),
+               "idle_since": datetime(2026, 11, 5, 13, 31, 1).timestamp(),
+               "working_since": datetime(2026, 11, 5, 13, 31, 2).timestamp(), "crons": [wake]}
+    assert cron_rows(session, datetime(2026, 11, 5, 13, 33).timestamp()) == [
+        dict(wake, next=datetime(2026, 11, 5, 13, 31).timestamp(), due=True, when="due")]
+
+
+def test_a_one_shot_listed_the_evening_before_says_its_run_as_today_s():
+    wake = {"id": "20c147b9", "schedule": "31 13 * * *", "recurring": False, "prompt": "wake me"}
+    session = {"agent_state": "idle", "crons_at": datetime(2026, 11, 4, 23, 0).timestamp(), "crons": [wake]}
+    assert cron_rows(session, datetime(2026, 11, 5, 10, 0).timestamp()) == [
+        dict(wake, next=datetime(2026, 11, 5, 13, 31).timestamp(), when="once at 13:31")]
+
+
+def test_a_one_shot_listed_with_no_time_runs_at_the_first_match_from_now():
+    """A list that came without the moment it was listed is timed from now,
+    whatever rest the session came to."""
+    wake = {"id": "20c147b9", "schedule": "31 13 * * *", "recurring": False, "prompt": "wake me"}
+    session = {"agent_state": "working", "idle_since": datetime(2026, 11, 5, 13, 21, 30).timestamp(),
+               "crons": [wake]}
+    assert cron_rows(session, datetime(2026, 11, 5, 13, 33).timestamp()) == [
+        dict(wake, next=datetime(2026, 11, 6, 13, 31).timestamp(), when="once Fri 13:31")]
 
 
 def test_a_session_named_base_at_feature_follows_the_base_session_by_name_when_git_says_nothing():

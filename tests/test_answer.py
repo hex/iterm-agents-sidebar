@@ -13,6 +13,9 @@ each:
   as a list: test_pick_any.py);
 - a pick past the last option, zero, or not a number at all: the digit would
   land on Other, or move a cursor;
+- a digit alone on a question whose options show previews: Claude Code draws
+  it side by side, where the digit only moves the cursor and Enter picks, so
+  the card would claim an answer it never gave;
 - a tool gate or no question at all: there are no options to pick;
 - a malformed request body from the page;
 - the same question asked again, word for word, after the first was
@@ -41,6 +44,17 @@ def test_a_pick_on_the_standing_question_sends_its_number():
 
 def test_the_last_option_is_a_valid_pick():
     assert answer_keys(click(3), ASKED, None) == ["3"]
+
+
+def test_a_pick_on_a_question_with_previews_sends_its_number_then_enter():
+    """Measured on Claude Code 2.1.318: the number moves the cursor to the
+    option and its preview, and Enter, as a write of its own, picks it."""
+    assert answer_keys(click(2), dict(ASKED, preview=True), None) == ["2", "\r"]
+
+
+def test_a_codex_question_with_previews_sends_its_number_alone():
+    """Only Claude Code's side-by-side picker was measured."""
+    assert answer_keys(click(2), dict(ASKED, preview=True), None, "openai") == ["2"]
 
 
 def test_a_click_meant_for_a_question_that_has_since_changed_sends_nothing():

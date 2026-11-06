@@ -1,7 +1,8 @@
 """Running a switch plan on real files, real lock folders and scratch Keychain items.
 
 A temp folder stands in for ~/.claude and ~/.claude.json, and a scratch item for
-Claude Code's credential. Refresh tokens are ones that were never issued.
+Claude Code's credential. Tokens were never issued; refresh refusals are supplied
+at the request boundary without contacting the OAuth endpoint.
 """
 import json
 import os
@@ -30,7 +31,8 @@ def _credential(tag, **extra):
 
 
 @pytest.fixture
-def world(tmp_path):
+def world(tmp_path, monkeypatch):
+    monkeypatch.setattr("accounts.request_refresh", lambda blob, now_ms: ("invalid_grant", None))
     tag = uuid.uuid4().hex[:8]
     alice, bob, live = f"test-{tag}-a", f"test-{tag}-b", f"test-{tag}-live"
     accounts = [{"id": alice, "alias": "work", "accountUuid": "uuid-alice"},

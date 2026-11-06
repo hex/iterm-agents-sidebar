@@ -30,6 +30,7 @@ const document = {createElement: tag => ({tag, children: [], attrs: {}, listener
   get firstChild() { return this.children[0]; },
   get lastChild() { return this.children[this.children.length - 1]; },
   append(...children) { this.children.push(...children); },
+  replaceChildren(...nodes) { this.children = nodes; },
   insertAdjacentHTML(where, html) { this.innerHTML = html; },
   setAttribute(k, v) { this.attrs[k] = v; },
   addEventListener(k, fn) { this.listeners[k] = fn; }
@@ -54,15 +55,15 @@ def root_styles(settings_seen):
 
 def test_the_root_names_the_chosen_style_and_cards_before_settings_arrive():
     assert root_styles([None, {"card_style": "hairlines"}, {"card_style": "air"}, {"card_style": "inset"},
-                        {"card_style": "outlines"}, {"card_style": "cards"}]) == \
-        ["cards", "hairlines", "air", "inset", "outlines", "cards"]
+                        {"card_style": "outlines"}, {"card_style": "serenity"}, {"card_style": "cards"}]) == \
+        ["cards", "hairlines", "air", "inset", "outlines", "serenity", "cards"]
 
 
 def test_the_sheet_offers_every_style_the_daemon_accepts_by_its_name():
     row = next(r for r in setting_rows() if r.get("k") == "card_style")
     assert row["label"] == "Card style"
     assert row["choices"] == [["cards", "Cards"], ["hairlines", "Hairlines"], ["air", "Air"],
-                              ["inset", "Inset rules"], ["outlines", "Outlines"]]
+                              ["inset", "Inset rules"], ["outlines", "Outlines"], ["serenity", "Serenity"]]
     assert tuple(value for value, _ in row["choices"]) == sidebar.SETTING_CHOICES["card_style"]
     anatomy = next((r for r in setting_rows() if r.get("k") == "card_anatomy"), None)
     assert anatomy is not None, "Card anatomy is missing from the settings sheet"
@@ -75,7 +76,7 @@ def test_cards_is_the_page_as_it_was_and_every_other_style_has_its_rules():
     """No rule is keyed to cards, so choosing it leaves the stylesheet alone."""
     css = re.search(r"<style>(.*?)</style>", PAGE, re.S).group(1)
     keyed = set(re.findall(r'\[data-card-style="(\w+)"\]', css))
-    assert keyed == {"hairlines", "air", "inset", "outlines"}
+    assert keyed == {"hairlines", "air", "inset", "outlines", "serenity"}
 
 
 def heads():
@@ -94,14 +95,20 @@ def heads():
     ("Alerts", ["sound", "volume", "notify"]),
     ("When a session waits for you", ["sound_blocked", "notify_blocked", "focus_blocked", "return_after_blocked"]),
     ("When one finishes", ["sound_done", "notify_done", "finished_first", "finished_wash", "mark_badge", "tab_status"]),
-    ("Look", ["card_style", "card_anatomy", "follow_terminal", "ui_scale", "shell_font", "provider_mark"]),
+    ("Look", ["card_style", "card_anatomy", "follow_terminal", "tab_colour", "ui_scale", "shell_font", "provider_mark"]),
     ("On a card", ["show_branch", "show_task", "show_task_activity", "show_task_age", "show_task_bar", "show_task_list",
                    "show_model", "show_agents", "show_shells", "expand_shells"]),
     ("Rows", ["context_threshold", "cpu_threshold", "memory_threshold", "order", "offers"]),
-    ("Experimental", ["links", "keep_remote", "commit_heatmap"]),
+    ("Experimental", ["links", "keep_remote", "commit_heatmap", "codex_memory_note"]),
 ])
 def test_each_head_holds_its_settings_in_order(head, keys):
     assert heads().get(head) == keys
+
+
+def test_the_tab_colour_switch_is_named_as_the_docs_name_it():
+    """A plain switch: it needs no other setting and carries no note."""
+    assert next(r for r in setting_rows() if r.get("k") == "tab_colour") == \
+        {"k": "tab_colour", "label": "Session colour on the tab"}
 
 
 def test_every_setting_sits_under_one_head_only():
@@ -134,6 +141,7 @@ def test_a_fold_title_controls_its_body_and_saves_each_toggle():
         """
 let SETTINGS = {sheet_folds: ['on_card', 'another']};
 let SETTING_SYNC = [];
+let UNINSTALL = {state: "idle"};
 const saved = [], LATEST = {repository: null};
 const SETTING_ROWS = [{head: 'On a card', fold: 'on_card'}, {k: 'show_branch', label: 'Branch'}];
 const drawer = document.createElement('div');
@@ -144,6 +152,7 @@ function push(value) { saved.push(value); Object.assign(SETTINGS, value); SETTIN
         function(PAGE, "settingRow"), function(PAGE, "settingSwitch"),
         function(PAGE, "settingsBody"), function(PAGE, "syncSettings"),
         function(PAGE, "repositoryCard"), function(PAGE, "githubRow"), function(PAGE, "paintRepository"),
+        function(PAGE, "uninstallRow"), function(PAGE, "paintUninstall"),
         """
 settingsBody();
 const card = drawer.children[1].children[0];

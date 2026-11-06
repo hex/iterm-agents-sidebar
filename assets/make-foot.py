@@ -3,7 +3,7 @@
 import pathlib, sys
 from panel_draw import *  # noqa: F401,F403
 
-W, H = 880, 504
+W, H = 880, 570
 PX, PW = 24, 430
 IX, IW = PX + 20, PW - 40      # the content's edges inside the panel
 LX = PX + PW + 40
@@ -51,7 +51,7 @@ def switch(x, y, on, w=20, h=12):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account\'s '
+  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the Past sessions, Ports and Activity fold heads, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account\'s '
   f'5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, '
   f'Codex\'s own limits, and the bar with the release, the Update button for a newer one, reload and the gear">')
 A('  <title>The foot of the panel</title>')
@@ -78,10 +78,19 @@ for i, (name, kind, ago, head, asks, face) in enumerate(waiting):
 note(IX + IW + 12, y + 43, "Who is waiting, oldest first; a click brings one forward")
 note(IX + IW + 12, y + 59, "What each asks: a question, or a tool to allow")
 
+y += 104
+for label, words in (("Past sessions", "Past sessions resumes conversations with no card"),
+                     ("Ports", "Ports lists listening ports and their Stop controls"),
+                     ("Activity", "Activity shows the week's prompts and tokens")):
+    hairline(y, dotted=label != "Past sessions")
+    mono(IX + 3, y + 17, "›", size=10.5)
+    mono(IX + 11, y + 17, label, size=10.5)
+    note(IX + IW + 12, y + 14, words)
+    y += 22
+
 # The budget: its head, with the fold and auto-switch, then the account the
 # sessions run on.
-y += 104
-hairline(y)
+hairline(y, dotted=True)
 # The head's chevron, turned down while the foot is open.
 A(f'  <text x="{IX + 3}" y="{y + 13}" fill="{DIM}" font-size="10.5" font-family="{MONO}" '
   f'transform="rotate(90 {IX + 3} {y + 12.5})" text-anchor="middle">›</text>')

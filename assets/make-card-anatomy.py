@@ -3,7 +3,7 @@
 import pathlib, sys
 from panel_draw import *  # noqa: F401,F403
 
-W, H = 880, 478
+W, H = 880, 504
 CX, CW, CT = 24, 404, 22
 PAD = 16
 TX = CX + PAD
@@ -45,10 +45,9 @@ note = NOTES.add
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="One card, each of its parts joined by a line to what it means: the folder and the agent, '
-  f'the state pill, the task as the title, how long since it reported, the branch, model, context and CPU, '
-  f'the bar with the percent and what it is doing now, then a teammate, running and finished subagents, '
-  f'a Codex job, the task list with its counts and the background shells">')
+  f'aria-label="A card with its folder, agent mark, Working pill, task title, report age, branch, model, context and CPU. '
+  f'A progress bar shows the reported percent and current activity. Then a teammate, running and finished subagents, '
+  f'a Codex job, the task list, scheduled prompts and background shells. Lines join each part to its explanation.">')
 A('  <title>What a card carries</title>')
 A(f'  <rect width="{W}" height="{H}" rx="16" fill="{BG}"/>')
 
@@ -138,8 +137,17 @@ text(CX + 28 + 7.1 + 3, ty + 17, "open \u00b7 1 started \u00b7 5 done", fill=DIM
 text(CX + CW - 18, ty + 18, "›", fill=DIM, size=13)
 note(CX + 28 + 7.1 + 130.7 + 16, ty + 13, "Its task list: open, started and done; a click lists the open ones")
 
+cy = ty + 26
+A(f'  <line x1="{CX+10}" y1="{cy}" x2="{CX+CW-10}" y2="{cy}" stroke="{CARD_BORDER}" '
+  f'stroke-dasharray="1 2"/>')
+mark("clock", CX + 12, cy + 8, 10, DIM)
+text(CX + 28, cy + 17, "2", fill=FG, size=11, weight=500)
+text(CX + 38, cy + 17, "scheduled", fill=DIM, size=11)
+text(CX + CW - 18, cy + 18, "›", fill=DIM, size=13)
+note(CX + 28 + width_of("2 scheduled", 11) + 16, cy + 13, "Scheduled prompts open to their text and next run")
+
 # Background shells, folded into one line and opened.
-sy = ty + 26
+sy = cy + 26
 A(f'  <line x1="{CX+10}" y1="{sy}" x2="{CX+CW-10}" y2="{sy}" stroke="{CARD_BORDER}" '
   f'stroke-dasharray="1 2"/>')
 mark("shells", CX + 12, sy + 8, 10, DIM)

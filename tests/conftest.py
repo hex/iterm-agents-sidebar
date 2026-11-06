@@ -3,6 +3,7 @@
 import os
 import pwd
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,18 @@ def daemon_dirs_of_the_test(request, monkeypatch, tmp_path_factory):
     for module in sidebar_modules(request.module):
         monkeypatch.setattr(module, "STATUS_DIR", str(status))
         monkeypatch.setattr(module, "HOOK_STATE_DIR", str(hook_state))
+
+
+@pytest.fixture
+def utc(monkeypatch):
+    """Start stamps read as UTC for the test, and the process clock goes back
+    with the variable: tzset() reads TZ once, so restoring the variable alone
+    would leave every later test in the wrong zone."""
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
 
 
 @pytest.fixture(autouse=True, scope="session")

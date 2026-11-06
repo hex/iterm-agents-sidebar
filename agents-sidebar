@@ -3,6 +3,7 @@
 # ABOUTME: Reads the running daemon's /events stream, found through its endpoint.json.
 """agents-sidebar status [--json]
 agents-sidebar wait <target> [--until STATE]... [--timeout SECONDS]
+agents-sidebar uninstall [--keep-accounts]
 
 Standard library only, and Python 3.9 at the oldest: /usr/bin/python3 is what
 a fresh Mac runs it with.
@@ -11,6 +12,7 @@ import argparse
 import json
 import math
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -318,6 +320,19 @@ def seconds(text):
     return value
 
 
+def uninstall(keep_accounts):
+    checkout = os.path.dirname(os.path.realpath(__file__))
+    try:
+        result = subprocess.run(["bash", os.path.join(checkout, "uninstall.sh"),
+                                 *(["--keep-accounts"] if keep_accounts else [])])
+    except OSError as error:
+        raise Failure(f"cannot run uninstall.sh in {checkout}: {error}") from error
+    finally:
+        print(f"Checkout kept at {checkout}")
+        print(f"Delete it with: rm -rf -- {shlex.quote(checkout)}")
+    return result.returncode
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog="agents-sidebar")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -328,10 +343,14 @@ def main(argv):
     waiting.add_argument("--until", action="append", choices=STATES, metavar="STATE",
                          help=f"one of {', '.join(STATES)}; repeatable; default blocked and idle")
     waiting.add_argument("--timeout", type=seconds, metavar="SECONDS", help="give up after this long, with exit 1")
+    removing = commands.add_parser("uninstall", help="remove the panel, its integrations and data; keep the checkout")
+    removing.add_argument("--keep-accounts", action="store_true", help="keep saved account logins and their Keychain items")
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "status":
             status(arguments.json)
+        elif arguments.command == "uninstall":
+            return uninstall(arguments.keep_accounts)
         else:
             wait(arguments.target, set(arguments.until or ("blocked", "idle")), arguments.timeout)
     except Failure as failure:

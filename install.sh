@@ -1,4 +1,6 @@
 #!/bin/bash
+# ABOUTME: Installs the panel, integrations and command from this checkout.
+# ABOUTME: Starts its iTerm2 daemon when the application is running.
 # Install the sidebar as an iTerm2 AutoLaunch script.
 #
 # Drops a stub into AutoLaunch/ that loads sidebar.py from this repo, rather
@@ -80,8 +82,7 @@ if [ -n "$runtime" ]; then
 else
   warn runtime "no iTerm2 Python 3.10 found; iTerm2 offers to download it when the script first runs"
 fi
-next+=("Start it:   Scripts > AutoLaunch > agents_sidebar"
-       "Open it:    View > Toolbelt > Agents (cmd-B shows the Toolbelt)")
+next+=("Open it:    View > Toolbelt > Agents (cmd-B shows the Toolbelt)")
 
 # The state hook ships as a Claude Code plugin, NOT as an edit to
 # ~/.claude/settings.json. Eight council providers agreed there is no safe way
@@ -270,6 +271,31 @@ PLIST
       fi
     fi
   fi
+fi
+
+if [ -f "$stub" ] && pgrep -x iTerm2 >/dev/null; then
+  daemon_pids=()
+  for pid in $(pgrep -f 'AutoLaunch/agents_sidebar.py' || true); do
+    case "$(ps -o args= -p "$pid" 2>/dev/null)" in
+      *it2_api_wrapper*) continue ;;
+    esac
+    case "$(ps -o comm= -p "$pid" 2>/dev/null)" in
+      *[Pp]ython*) daemon_pids+=("$pid") ;;
+    esac
+  done
+  if [ ${#daemon_pids[@]} -gt 0 ]; then
+    skip daemon "already running"
+    next+=("Restart it: kill ${daemon_pids[*]}; osascript -e 'tell application \"iTerm2\" to launch API script named \"agents_sidebar\"'")
+  else
+    if launch_message=$(osascript -e 'tell application "iTerm2" to launch API script named "agents_sidebar"' 2>&1); then
+      ok daemon "started in iTerm2"
+    else
+      warn daemon "$launch_message"
+      next+=("Start it:   Scripts > AutoLaunch > agents_sidebar")
+    fi
+  fi
+else
+  next+=("Start it:   Scripts > AutoLaunch > agents_sidebar")
 fi
 
 printf '\nNext\n'

@@ -544,3 +544,74 @@ Partnerships of three or more sessions, partners for Codex and omp (a later
 step, through an MCP server), sharing files or tool output beyond what
 `partner_read` returns, partners across machines, routing your own prompts
 to the better-fit session by the panel itself.
+
+## Review request (2026-11-05)
+
+A partnered Claude card's menu offers `Ask “‹partner›” to review` beside
+Untie. It sends the partner one read-only task about the asking session's
+current change; the partner reads the change itself and replies, and the
+reply reaches the asking session as a prompt. Decided:
+
+- **Offered while it can go.** The item shows while the pair has no open
+  task and the asking card is not working. The page posts
+  `POST /review {"pane"}` on the event loop; the daemon checks again and
+  answers 409 with the reason, which the card shows as `not asked:` and the
+  reason, as a refused link shows its own.
+- **A refusal files nothing.** A review meets the delegation's own refusals
+  (no partnership, a task open either way, a partner waiting on its user)
+  and three of its own: the asker is working, the panel knows no folder for
+  it, or that folder is in no git repository. The last is an addition to
+  the first draft, since the brief needs a branch or commit to name. A
+  refusal raises `links.Refused` and writes no `answer-` file: nothing waits
+  on a click in the page, and a late "not handed" answer would start a turn
+  in the asker.
+- **The brief names the change, never carries it.** `review_text`, beside
+  `task_text`, names the asker's label, absolute folder, branch (or a
+  detached `HEAD`) and `HEAD` commit, and lists `git -C '‹folder›' status`,
+  `diff HEAD` and `log --oneline -10`, the folder always in single quotes,
+  each to run as its own call. It says to change nothing and to
+  reply with findings ordered by severity, each with `file:line`, or “no
+  findings”. The diff stays out: it can pass the 16 000-character cap, and
+  the tree moves on. The daemon reads the commit from git's own files, as
+  `git_branch` reads `HEAD`: a linked worktree's `.git` file leads to its git
+  dir, its `commondir` to the refs it shares, then `packed-refs`. A value
+  that is not a commit id is never used, since the brief carries it into
+  another session's prompt.
+- **The card line** reads `Asked “‹partner›”: “review of ‹branch›”`, the
+  task's own text being `review of ‹branch›` (the short commit on a
+  detached `HEAD`).
+- **Read-only in the partner.** The drop carries `review: true` and the
+  asker's folder as `cwd`. In that task's turn on the main loop, the mod's
+  `tool.check` hook denies every call whose `isReadOnly` is not set, but a
+  Bash call that is one git read of that folder, which Claude Code does not
+  mark as a read: `git -C`, the folder as the brief writes it (or bare
+  when the shell reads it unchanged), one of `status`,
+  `diff`, `log`, `show`, `ls-files`, `rev-parse` or a `branch` listing, and
+  plain or single-quoted arguments with no output file, no `--no-index` and
+  no absolute, home or `..` path (`review-reads.ts`). It denies the Agent
+  tool and `partner_delegate` whatever they say of themselves: a subagent can
+  outlive the turn, and a delegating tool calls itself read-only. A hook
+  that fails denies. `partner_delegate`, like the mod's other tools, is
+  served in its `tool.call` hook and never reaches `tool.check`, so its
+  refusal sits there as well; `partner_read` and the task-line tools still
+  run. The lock holds across a plugin reload, failing closed: while the
+  review's task is kept in the store, a call whose turn the mod has not
+  seen counts as the review's, and the task is read back from the store at
+  the first guarded call when the reload raised no `session.start`.
+- **The answer carries a mark.** Every way a review ends (its answer, a turn
+  that failed, an untie, a panel restart) files the answer with
+  `review: true`, and its `late` text starts `“‹partner›”'s review of
+  ‹branch›:` and carries `(link ‹answer id›)`.
+- **No loop.** The asking mod sends that answer as the usual late-answer
+  prompt and records the turn it starts, matched by the marker. In that
+  turn `partner_delegate` answers "This turn is the partner's review; hand
+  off again from a prompt of your own." The mod keeps that record in its
+  store from the prompt's submit to the end of its turn, so it holds across
+  a plugin reload, failing closed: while the store holds it, the mod
+  refuses a call whose turn it has not seen the same way.
+- **The record gains a field.** `Task` gains `review: bool = False`, saved
+  in `partners.json`. A release without the field reads a record that
+  holds any open task as unreadable, and starts with no partners.
+
+Open: a review that ends without an answer still starts a turn in the
+asker, as a delegation's late answer does.

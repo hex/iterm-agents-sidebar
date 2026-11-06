@@ -38,9 +38,9 @@ def test_github_pages_are_opened_by_the_daemon_by_name_not_by_url():
     assert "LATEST" not in body
 
 
-def test_settings_end_on_a_repository_card_built_with_the_rest():
+def test_settings_end_on_the_repository_card_then_the_uninstall_line():
     body = function(PAGE.read_text(encoding="utf-8"), "settingsBody")
-    assert re.search(r"box\.append\(repositoryCard\(\)\);\n  syncSettings\(\);\n\}", body)
+    assert re.search(r"box\.append\(repositoryCard\(\)\);\n  box\.append\(uninstallRow\(\)\);\n  syncSettings\(\);\n\}", body)
 
 
 def test_the_repository_card_names_the_repository_and_opens_it_and_its_release_notes():
