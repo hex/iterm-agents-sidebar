@@ -70,6 +70,16 @@ def test_the_card_states_figure_washes_the_unseen_finish_in_the_panels_finished_
     assert re.search(r'<text [^>]*fill="#f2f2f7"[^>]*>cinder</text>', washed)
 
 
+@pytest.mark.parametrize("name", ["banner", "card-anatomy"])
+def test_a_figure_draws_a_dev_servers_port_in_the_panels_javascript_ink(name):
+    """vite runs on node, so its :5173 pill wears the dark theme's --kind-js, as the panel paints it."""
+    css = (ASSETS.parent / "page.html").read_text()
+    dark = css[css.index("@media (prefers-color-scheme: dark)"):]
+    ink = dark[dark.index("--kind-js:"):].split(";")[0].split(":")[1].strip()
+    svg = (ASSETS / f"{name}.svg").read_text()
+    assert re.search(rf'<text [^>]*fill="{ink}"[^>]*>:5173</text>', svg)
+
+
 @pytest.mark.parametrize("name", FIGURES)
 def test_the_readme_describes_a_figure_as_the_figure_describes_itself(name):
     """A reader without the picture gets the README's alt text, a screen

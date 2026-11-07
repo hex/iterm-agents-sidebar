@@ -21,6 +21,13 @@
     /* Lamp states. Named for what they are on the board, not for a
        generic scale -- these belong to this panel and nothing else. */
     --lit: #2f8f4e; --alert: #c2410c;
+    /* The language a listener runs, on its port pill: the ink, and a wash of
+       the same hue. JavaScript is violet, the hue farthest from Python's blue
+       and Ruby's red, and far from the globe's amber. */
+    --kind-js: #793393; --kind-python: #1f58ad; --kind-ruby: #9c2a37;
+    /* A listener the network can reach: amber as information, apart from
+       --warn, which a refusal under the same entry wears. */
+    --exposed-ink: #875e00;
     /* The lamp green reads at 4.07:1 on a white card, which a 2px tick does
        not care about and 11px words do. */
     --lit-ink: #2a7d45;
@@ -70,6 +77,8 @@
       --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
       --accent-ink: #1c1c1e; --badge-ink: #3a2500; --switch-bg: #d97757;
       --lit: #8ec07c; --alert: #fb8b5e; --lit-ink: #8ec07c;
+      --kind-js: #cb9adf; --kind-python: #85b1ee; --kind-ruby: #f08c96;
+      --exposed-ink: #c9a35a;
       --alert-bg: #fb8b5e2b;
       --sev-ok: #30d158; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
       --rec-ink: #8ec07c;
@@ -87,6 +96,8 @@
       --hot: #81a2be; --warn: #de935f; --warn-bg: #2c2118;
       --accent-ink: #1c1c1e; --badge-ink: #3a2500; --switch-bg: #d97757;
       --lit: #8ec07c; --alert: #fb8b5e; --lit-ink: #8ec07c;
+      --kind-js: #cb9adf; --kind-python: #85b1ee; --kind-ruby: #f08c96;
+      --exposed-ink: #c9a35a;
       --alert-bg: #fb8b5e2b;
       --sev-ok: #30d158; --sev-warn: #d7af5f; --sev-crit: #d75f5f;
       --rec-ink: #8ec07c;
@@ -195,13 +206,26 @@
     8%, 92%     { --fade-top: 24px; --fade-foot: 24px; }
     100%        { --fade-top: 24px; --fade-foot: 0px; }
   }
+  /* The fade says there is more past a scroller's edge: the list, the
+     settings drawer's body and History's body. It dissolves the rows
+     themselves rather than laying a colour over them, so it works on any
+     background; the depth of each edge follows the scroll position, and the
+     edge you have reached goes crisp. */
+  #groups, #settings .set-body, #budget .hist-body {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top),
+                                        #000 calc(100% - var(--fade-foot)), transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top),
+                                        #000 calc(100% - var(--fade-foot)), transparent 100%);
+  }
   /* Scroll-driven: no listener, no frame work. Where the timeline is not
      understood the initial values stand, which is a crisp top and a faded
      foot -- true for a list at rest. */
   @supports (animation-timeline: scroll(self y)) {
-    #groups { animation: groups-scroll-fade linear both; animation-timeline: scroll(self y); }
+    #groups, #settings .set-body, #budget .hist-body {
+      animation: groups-scroll-fade linear both; animation-timeline: scroll(self y);
+    }
   }
-  @media (prefers-reduced-motion: reduce) { #groups { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { #groups, #settings .set-body, #budget .hist-body { animation: none; } }
   li.line.card {
     /* The list's fade depth plus a gap: a card revealed for a question
        stops clear of the fade, not inside it. */
@@ -1469,17 +1493,7 @@
   /* The list is the only thing that scrolls: the account meters and the bar
      are the panel's fixed foot, and a foot that scrolls away takes the
      numbers you are watching with it. */
-  #groups {
-    flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-    /* The fade says there is more list past the edge. It dissolves the rows
-       themselves rather than laying a colour over them, so it works on any
-       background; the depth of each edge follows the scroll position, and
-       the edge you have reached goes crisp. */
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top),
-                                        #000 calc(100% - var(--fade-foot)), transparent 100%);
-            mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top),
-                                        #000 calc(100% - var(--fade-foot)), transparent 100%);
-  }
+  #groups { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   #groups::-webkit-scrollbar { width: 0; height: 0; }
   #bar button {
     width: 24px; height: 24px; padding: 0; cursor: default; border: 0;
@@ -1519,10 +1533,6 @@
   #settings .set-body {
     min-height: 0; overflow-y: auto; overscroll-behavior: contain;
     display: flex; flex-direction: column; gap: 9px; padding: 2px 0 8px;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top),
-                                        #000 calc(100% - var(--fade-foot)), transparent 100%);
-            mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top),
-                                        #000 calc(100% - var(--fade-foot)), transparent 100%);
   }
   /* Cards keep their height and the body scrolls; as flex items they would
      otherwise shrink to fit and clip their own rows. */
@@ -1557,10 +1567,6 @@
   #set-uninstall .uninstall-foot button:focus-visible { outline: 2px solid var(--hot); outline-offset: -2px; }
   #set-uninstall .uninstall-foot .uninstall-confirm { color: var(--alert); font-weight: 600; }
   #settings .set-body::-webkit-scrollbar { width: 0; height: 0; }
-  @supports (animation-timeline: scroll(self y)) {
-    #settings .set-body { animation: groups-scroll-fade linear both; animation-timeline: scroll(self y); }
-  }
-  @media (prefers-reduced-motion: reduce) { #settings .set-body { animation: none; } }
   #settings .set-close {
     width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; cursor: default;
     display: inline-flex; align-items: center; justify-content: center;
@@ -1930,9 +1936,8 @@
     color: var(--fg); opacity: .85; }
   #budget .device-link { flex: none; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
   #budget .device-link.off { background: none; box-shadow: inset 0 0 0 1px currentColor; }
-  /* The Past sessions fold above the limits, one line folded, and the Ports
-     and Activity folds under it in the same box. The rows here are the Ports
-     fold's lines; Past sessions open is the log below. */
+  /* The History fold above the limits, one line folded; its Sessions tab is
+     the log below. */
   #budget .past { margin-bottom: 8px; padding-bottom: 6px;
     border-bottom: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
   #budget .past-list { margin-top: 4px; }
@@ -1960,13 +1965,6 @@
   #budget .unlit .u-entry:nth-child(6n+5) .n { width: 72px; } #budget .unlit .u-entry:nth-child(6n+5) .p { width: 0; }
   #budget .unlit .u-entry:nth-child(6n+6) .n { width: 56px; } #budget .unlit .u-entry:nth-child(6n+6) .p { width: 130px; }
   #budget .unlit .u-entry:nth-child(6n+1) .n { width: 80px; } #budget .unlit .u-entry:nth-child(6n+1) .p { width: 110px; }
-  #budget .unlit .u-row { display: flex; align-items: center; gap: 6px; height: 19px; }
-  #budget .unlit .u-row .pill { width: 7.5ch; height: 14px; border-radius: 4px; }
-  #budget .unlit .u-row .prog { width: 52px; }
-  #budget .unlit .u-row .sess { width: 76px; }
-  #budget .unlit .u-row:nth-child(2) .prog { width: 34px; } #budget .unlit .u-row:nth-child(2) .sess { width: 58px; }
-  #budget .unlit .u-row:nth-child(3) .prog { width: 44px; } #budget .unlit .u-row:nth-child(3) .sess { width: 90px; }
-  #budget .unlit .u-row .age { width: 18px; margin-left: auto; }
   #budget .unlit .u-head { height: 19px; display: flex; align-items: center; }
   #budget .unlit .u-head i { width: 176px; }
   #budget .unlit .act-split i { width: 100%; height: 4px; }
@@ -1987,18 +1985,16 @@
       background: color-mix(in srgb, var(--dim) 70%, transparent); transform-origin: left;
       transform: scaleX(0); animation: gauge-fill 1.6s cubic-bezier(.2,.6,.4,1) .18s both;
     }
-    #budget .past > .lim-toggle[data-wait="activity"]::after { animation-duration: 7s; }
+    /* History's head is one element whichever tab it shows, so it keeps the
+       focus; a gauge running on it goes on through a change of duration, but
+       a change of name starts it again, so a tab shown while the other still
+       reads fills its own from the left. */
+    #budget .past > .lim-toggle[data-wait="activity"]::after { animation-name: gauge-fill-week; animation-duration: 7s; }
     @keyframes gauge-fill { from { transform: scaleX(0); } to { transform: scaleX(.88); } }
+    @keyframes gauge-fill-week { from { transform: scaleX(0); } to { transform: scaleX(.88); } }
   }
-  #budget .past-row { display: flex; align-items: center; gap: 6px; height: 19px; min-width: 0; }
-  #budget .past-age { flex: none; margin-left: auto; color: var(--dim); }
-  #budget .past-go { flex: none; padding: 1px 6px; border-radius: 4px;
-    border: .5px solid color-mix(in srgb, var(--fg) 22%, transparent);
-    background: none; font: inherit; color: var(--fg); cursor: default; }
-  #budget .past-go:hover:not(:disabled) { background: var(--tint-ctl); }
-  #budget .past-go:disabled { opacity: .5; }
   #budget .past-error { color: var(--warn); }
-  /* Past sessions open is a shift log: a head per day in the session list's
+  /* History's Sessions tab is a shift log: a head per day in the session list's
      own head recipe, then an entry per row. The time is a tabular column, so
      the eye runs down the clock; then the name, and the prompt in the dim
      ink after it. An entry is the target, in the queue rows' recipe: a
@@ -2006,13 +2002,14 @@
      Resume in the one actionable ink at its right end while the pointer or
      the focus is on it; nothing else sits at the right. The log steps 6px
      past the foot's gutter so the tint has room and the text still lines up
-     with the fold's head. */
+     with the fold's head. An entry the focus reaches scrolls clear of the
+     body's fade, not into it. */
   #budget .past-log { margin: 4px -6px 0; }
   #budget .past-day { margin: 8px 6px 2px; font: 700 10px/14px -apple-system, sans-serif;
     letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
   #budget .past-day:first-child { margin-top: 2px; }
   #budget .past-entry { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 24px;
-    padding: 4px 6px; border: 0; border-radius: 5px; background: none;
+    padding: 4px 6px; border: 0; border-radius: 5px; background: none; scroll-margin-block: 24px;
     font: 400 12px/16px -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -.01em;
     color: var(--fg); text-align: left; cursor: default;
     --resume-ground: color-mix(in srgb, var(--hot) 12%, var(--bg)); }
@@ -2038,24 +2035,7 @@
   /* A refusal under the entry it refuses, starting where the name does. */
   #budget .past-refusal { padding: 0 6px 4px 44px;
     font: 400 11px/14px -apple-system, sans-serif; color: var(--warn); }
-  /* The Ports fold under it, in the same rows: the port as a pill in a
-     column of its own, the program, the session it runs under and how long
-     it has run, then Stop, which shows only while the pointer or the focus is
-     on the row, or while it is stopping. Listeners no session holds fold
-     under one line. */
-  #budget .port-no { box-sizing: border-box; width: 7.5ch; justify-content: center; color: var(--dim);
-    font-variant-numeric: tabular-nums; border-color: transparent;
-    background: color-mix(in srgb, var(--fg) 8%, transparent); }
-  #budget .past-row.port .past-go { visibility: hidden; }
-  #budget .past-row.port:hover .past-go, #budget .past-row.port:focus-within .past-go,
-  #budget .past-row.port .past-go:disabled { visibility: visible; }
-  #budget .port-prog { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; color: var(--fg); }
-  #budget .port-sess { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; color: var(--dim); }
-  #budget .port-sess::before { content: "\00b7  "; }
-  #budget .port-more { color: var(--dim); }
-  /* The Activity fold under Ports: the span's totals, Claude's and Codex's
+  /* History's Activity tab: the span's totals, Claude's and Codex's
      tokens as one bar between their names, a bar a day by its tokens over
      the day's total and weekday, then the projects by tokens, each by its
      folder's own name, and one dim line each for the projects and the
@@ -2112,6 +2092,34 @@
   #budget .act-rest { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 19px;
     color: var(--dim); }
   #budget .act-rest .act-tok { font-weight: 400; color: var(--dim); opacity: 1; }
+  /* History's tabs as one segmented control under its head: two equal
+     halves in a track of the ink at 6%, the shown one lifted above the
+     foot's own surface with a hairline, never a shadow. The lift is the
+     foot's colour made lighter, not --card: on a dark terminal --card sits
+     below the track and the shown half read as pressed in. */
+  #budget .hist-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin: 9px 0 2px; padding: 2px;
+    border-radius: 6px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  #budget .hist-tab { min-width: 0; height: 18px; padding: 0 6px; border: 0; border-radius: 4px; background: none;
+    font: 400 10px/14px ui-monospace, Menlo, monospace; color: var(--dim); white-space: nowrap; cursor: default; }
+  #budget .hist-tab:hover { background: var(--tint-ctl); color: var(--fg); }
+  #budget .hist-tab[aria-selected="true"] { background: oklch(from var(--bg) calc(l + .08) c h); color: var(--fg);
+    box-shadow: inset 0 0 0 var(--hair) color-mix(in srgb, var(--fg) 16%, transparent); }
+  #budget .hist-tab:focus-visible { outline: 1px solid var(--hot); outline-offset: -1px;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 22%, transparent); }
+  /* Under the tabs, one height whichever tab shows and whatever it holds, so
+     a tab, a read landing or a picked day never moves the panel around the
+     fold. 344px holds Activity's week, 337px tall and 341px at the smallest
+     text size, where its small figures round up; Sessions' longer log
+     scrolls inside it. The body scrolls inside the tab panel, so the fade's
+     mask leaves the panel's focus ring whole, and reaches the gutters' full
+     8px, so the entries' tints and rings 6px into them keep their room. With
+     nothing to scroll the fade's timeline is inactive and these depths keep
+     both edges crisp. */
+  #budget .hist-body { height: 344px; margin: 0 -8px; padding: 0 8px; overflow-y: auto; overscroll-behavior: contain;
+    --fade-top: 0px; --fade-foot: 0px; }
+  #budget .hist-body::-webkit-scrollbar { width: 0; height: 0; }
+  #budget .hist-panel:focus-visible { outline: 1px solid var(--hot); outline-offset: 2px; border-radius: 2px;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--hot) 22%, transparent); }
   #budget .acct-item-head { display: flex; align-items: center; gap: 6px; min-width: 0; height: 19px; }
   #budget .codex { margin-top: 10px; padding-top: 8px;
     border-top: .5px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
@@ -2162,16 +2170,14 @@
     outline: 1px solid var(--hot); outline-offset: -1px;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 22%, transparent);
   }
-  #budget .past > .lim-toggle, #budget .port-more {
+  #budget .past > .lim-toggle {
     width: calc(100% + 12px); box-sizing: border-box; border-radius: 5px;
   }
   /* A fold head's target and tint fill the band between the hairlines above
      and below it: 24px with the name on its middle, the margins giving back
      what it adds, so nothing around it moves. */
   #budget .past > .lim-toggle { height: 24px; margin: -6px; padding: 7px 6px; border-radius: 6px; }
-  #budget .port-more { height: 12px; margin: 0 -6px; }
-  #budget .port-more { padding: 0 6px; }
-  #budget .past > .lim-toggle:focus-visible, #budget .port-more:focus-visible {
+  #budget .past > .lim-toggle:focus-visible {
     outline: 1px solid var(--hot); outline-offset: -1px;
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 22%, transparent);
   }
@@ -2646,6 +2652,100 @@
   html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent :is(.mi, .provider, .remote-mark, .ptag) { color: var(--dim); }
   html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .provider { fill: currentColor; }
   html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .asks { margin: 0; }
+
+  /* A card's listening ports: its first as a pill in its language's tint,
+     the rest as one counted grey pill beside it, at the right end of the
+     report line, or after the facts on a card with no report. The pills are
+     a button of their own beside the card's row, since a button cannot hold
+     one: a transparent copy of them sits in the line and keeps its words
+     clear of them, and the button lies over the copy by anchor positioning.
+     Every pill is the panel's 16px badge, tinted, with no outline. */
+  li.line.card { anchor-scope: --port-slot, --port-chip; }
+  /* Transparent, never hidden: WebKit and Chrome skip drawing a button
+     anchored to a hidden box. The negative margins keep the line as tall as
+     it was without the pills. */
+  .port-slot { flex: none; display: inline-flex; gap: 2px; margin-block: -2px; opacity: 0;
+    anchor-name: --port-slot; }
+  .task .task-status > .port-slot { margin-left: auto; }
+  .task .task-status > .port-slot::before { content: none; }
+  .model > .port-slot { margin-left: 4px; }
+  /* The task anatomy cuts its report line as one block; with the pills at its
+     end, its parts are cut each on its own instead. */
+  html[data-card-anatomy="task"]:not(.compact):not(.tiny) #groups li.line.card > button.row.agent .task-status:has(> .port-slot) {
+    display: flex; align-items: baseline; gap: 5px;
+  }
+  .task .task-status > .task-words { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .port-pill { display: inline-block; height: 16px; padding: 0 4px; border-radius: 4px; box-sizing: border-box;
+    font: 600 10px/16px -apple-system, sans-serif; letter-spacing: 0; font-variant-numeric: tabular-nums;
+    white-space: nowrap; color: var(--dim); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  .port-chip { position: absolute; z-index: 2; position-anchor: --port-slot; top: anchor(top); left: anchor(left);
+    display: inline-flex; gap: 2px; margin: 0; padding: 0; border: 0; border-radius: 4px; background: none;
+    font: inherit; color: inherit; cursor: default; anchor-name: --port-chip; position-visibility: always; }
+  .port-chip:hover .port-pill, .port-chip[aria-expanded="true"] .port-pill {
+    color: var(--fg); background: color-mix(in srgb, var(--fg) 14%, transparent); }
+  /* A listener's language tints its pill, ink and wash of one hue; any other
+     program, and the count of the rest, stay grey. Open or under the pointer
+     the ink goes full and the wash deepens, as the grey's does. */
+  .port-pill.kind-js { --kind: var(--kind-js); }
+  .port-pill.kind-python { --kind: var(--kind-python); }
+  .port-pill.kind-ruby { --kind: var(--kind-ruby); }
+  .port-pill:is(.kind-js, .kind-python, .kind-ruby) {
+    color: var(--kind); background: color-mix(in srgb, var(--kind) 14%, transparent); }
+  .port-chip:is(:hover, [aria-expanded="true"]) .port-pill:is(.kind-js, .kind-python, .kind-ruby) {
+    background: color-mix(in srgb, var(--kind) 24%, transparent); }
+  .port-chip:focus-visible, .port-pop .port-act:focus-visible {
+    outline: 1px solid var(--hot); outline-offset: 0;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--hot) 22%, transparent); }
+  /* The card's listeners in the menu's slab, hung under the pill and lined up
+     with its right edge, or above it when there is no room below. A popover in
+     the top layer: the list's fade mask cuts even a fixed box inside it, so
+     one opened over the panel's foot would vanish past the list's edge. Its
+     left edge stays 6px inside the panel: a pill midway along a facts line
+     gives up the line-up rather than push it off the panel's left, and a
+     narrow panel narrows it. At 300px an exposed address beside Open and
+     Stop, each with its icon and word, gets about 100px. The pill is its one anchor: WebKit follows the
+     list's scroll for that anchor alone. The panel's width is divided by the
+     scale because zoom renders the result: a plain 100vw at 1.5x lets the
+     slab run off the panel's left. */
+  .menu.port-pop { --panel: calc(100vw / var(--scale));
+    position: fixed; inset: auto; margin: 0; overflow: visible; color: var(--fg);
+    position-anchor: --port-chip; top: calc(anchor(bottom) + 4px);
+    right: min(anchor(right), calc(var(--panel) - min(300px, var(--panel) - 24px) - 6px));
+    width: 300px; max-width: calc(var(--panel) - 24px); box-sizing: border-box; gap: 2px; padding: 4px;
+    position-try-fallbacks: flip-block; transform-origin: top right; }
+  .port-entry { display: flex; flex-direction: column; gap: 3px; padding: 6px 6px 7px; border-radius: 6px; }
+  .port-entry + .port-entry { border-top: .5px solid color-mix(in srgb, var(--fg) 10%, transparent);
+    border-top-left-radius: 0; border-top-right-radius: 0; }
+  .port-head, .port-foot { display: flex; align-items: center; gap: 6px; min-width: 0; height: 18px; }
+  .port-head .port-pill { flex: none; width: 42px; text-align: center; }
+  /* What it runs, then how long it has run; where it listens sits under the
+     program, so the pill's column stays clear. */
+  .port-prog { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 500 12px/16px -apple-system, sans-serif; letter-spacing: -.01em; color: var(--fg); }
+  .port-age { flex: none; font: 400 10px/16px ui-monospace, Menlo, monospace; color: var(--dim);
+    font-variant-numeric: tabular-nums; }
+  .port-foot { padding-left: 48px; }
+  .port-where { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 400 10px/16px ui-monospace, Menlo, monospace; color: var(--dim); }
+  /* Outside the address, so a cut address never cuts the globe. */
+  .port-foot > .port-globe { width: 10px; height: 10px; margin-right: -3px; opacity: 1; color: var(--exposed-ink); }
+  .port-ask { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 600 11px/16px -apple-system, sans-serif; color: var(--alert); }
+  .port-refusal { padding: 1px 0 0 48px; font: 400 11px/14px -apple-system, sans-serif; color: var(--warn); }
+  /* The menu's own buttons are rows to pick; these act on one listener, so
+     they are small outlined buttons that say which act they are, with a plain
+     tint under the pointer. Stop, once asked, is the alert's solid button. */
+  .menu.port-pop .port-act { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 18px;
+    min-height: 0; padding: 0 7px; border-radius: 4px;
+    border: .5px solid color-mix(in srgb, var(--fg) 22%, transparent); background: none;
+    font: 500 11px/1 -apple-system, sans-serif; letter-spacing: 0; color: var(--fg); cursor: default; }
+  /* Its icon before its word, in the button's own ink; the word stays its name. */
+  .menu.port-pop .port-act .mi { width: 10px; height: 10px; opacity: 1; }
+  .menu.port-pop .port-act.bare { width: 18px; padding: 0; justify-content: center; }
+  .menu.port-pop .port-act:hover:not(:disabled) { color: var(--fg); background: var(--tint-ctl); }
+  .menu.port-pop .port-act:disabled { opacity: .5; }
+  .menu.port-pop .port-act.stop-now { color: var(--accent-ink); background: var(--alert); border-color: var(--alert); }
+  .menu.port-pop .port-act.stop-now:hover { color: var(--accent-ink); background: color-mix(in srgb, var(--alert) 88%, var(--fg)); }
 </style>
 
 <div id="banner" role="status" aria-live="polite">
@@ -2733,6 +2833,12 @@ const META_ICONS = {
   host: '<path d="M216,72a8,8,0,0,1-8,8H176a8,8,0,0,1,0-16h32A8,8,0,0,1,216,72Zm-8,24H176a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16Zm40-48V208a16,16,0,0,1-16,16H152a16,16,0,0,1-16-16V192H96v16h16a8,8,0,0,1,0,16H64a8,8,0,0,1,0-16H80V192H32A24,24,0,0,1,8,168V96A24,24,0,0,1,32,72H136V48a16,16,0,0,1,16-16h80A16,16,0,0,1,248,48ZM136,176V88H32a8,8,0,0,0-8,8v72a8,8,0,0,0,8,8Zm96,32V48H152V208h80Zm-40-40a12,12,0,1,0,12,12A12,12,0,0,0,192,168Z"/>',
   // A docked worktree: forked from the session above it.
   fork: '<path d="M224,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V95a32,32,0,1,0-16,0v17a24,24,0,0,0,24,24h40v25a32,32,0,1,0,16,0V136h40a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,224,64ZM48,64A16,16,0,1,1,64,80,16,16,0,0,1,48,64Zm96,128a16,16,0,1,1-16-16A16,16,0,0,1,144,192ZM192,80a16,16,0,1,1,16-16A16,16,0,0,1,192,80Z"/>',
+  // A listener's two acts: open its page, and stop it, with the filled
+  // square a player's stop wears, from Phosphor's fill weight.
+  open: '<path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/>',
+  stop: '<path d="M216,56V200a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V56A16,16,0,0,1,56,40H200A16,16,0,0,1,216,56Z"/>',
+  // An address the network reaches.
+  globe: '<path d="M128,24h0A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm87.62,96H175.79C174,83.49,159.94,57.67,148.41,42.4A88.19,88.19,0,0,1,215.63,120ZM96.23,136h63.54c-2.31,41.61-22.23,67.11-31.77,77C118.45,203.1,98.54,177.6,96.23,136Zm0-16C98.54,78.39,118.46,52.89,128,43c9.55,9.93,29.46,35.43,31.77,77Zm11.36-77.6C96.06,57.67,82,83.49,80.21,120H40.37A88.19,88.19,0,0,1,107.59,42.4ZM40.37,136H80.21c1.82,36.51,15.85,62.33,27.38,77.6A88.19,88.19,0,0,1,40.37,136Zm108,77.6c11.53-15.27,25.56-41.09,27.38-77.6h39.84A88.19,88.19,0,0,1,148.41,213.6Z"/>',
 };
 
 // A level the picker does not have gets no letter rather than a guessed one.
@@ -2883,15 +2989,23 @@ const COMPACT_ABOVE = 208;
 // line where a badge and an alarm stop fitting beside each other.
 const TINY_BELOW = 120;
 const TINY_ABOVE = 136;
+// Under about 300px a listener's resting Open and Stop show their icon
+// alone, and its asked Stop its word alone, so its address and the Stop
+// question beside them keep their room.
+const BARE_ACTS_BELOW = 300;
+const BARE_ACTS_ABOVE = 316;
 let compact = false;
 let tiny = false;
+let bareActs = false;
 function syncCompact() {
   const width = window.innerWidth / uiScale;
   const next = compact ? width <= COMPACT_ABOVE : width < COMPACT_BELOW;
   const nextTiny = next && (tiny ? width <= TINY_ABOVE : width < TINY_BELOW);
-  if (next === compact && nextTiny === tiny) return;
+  const nextBare = bareActs ? width <= BARE_ACTS_ABOVE : width < BARE_ACTS_BELOW;
+  if (next === compact && nextTiny === tiny && nextBare === bareActs) return;
   compact = next;
   tiny = nextTiny;
+  bareActs = nextBare;
   // The whole Limits opened at compact width is a look for now: the next time
   // the panel narrows, the foot is one line again.
   if (!compact) compactLimitsOpen = false;
@@ -3207,10 +3321,13 @@ function forHumans(seconds) {
   if (seconds == null) return null;
   const s = Math.max(0, Math.round(seconds));
   if (s < 60) return s + "s";
-  if (s < 3600) return Math.round(s / 60) + "m";
-  const hours = Math.floor(s / 3600);
+  // Rounded to the minute before it is split, so 59.5 minutes reads as the
+  // hour rather than as 60 of the minutes under it.
+  const minutes = Math.round(s / 60);
+  if (minutes < 60) return minutes + "m";
+  const hours = Math.floor(minutes / 60);
   if (hours < 24) {
-    const mins = Math.round((s % 3600) / 60);
+    const mins = minutes % 60;
     return mins ? `${hours}h ${mins}m` : `${hours}h`;
   }
   return Math.round(s / 86400) + "d";
@@ -5104,8 +5221,6 @@ function paintAll(snapshot) {
   paintVersion();
   paintRepository();
   paintOffers(snapshot);
-  const underline = document.getElementById("set-note-tab_colour");
-  if (underline) tabUnderlineNote(underline, snapshot);
   // Work crossing a pair: a new landing starts, and one already playing draws onto the badge, which the paint left at rest, at once.
   for (const id of landingNow.keys()) stepLanding(id);
   playLandings(snapshot.partners);
@@ -6272,19 +6387,16 @@ function buildBudget(snapshot) {
   if (!compact && !folded && snapshot.hosts?.length) strip.prepend(devicesRow(snapshot.hosts));
 
   if (strip.childElementCount) strip.prepend(limitsHead(store));
-  // Above the limits: the cards are sessions, these are more sessions, what
-  // they serve and what they did, and the account's figures are the foot.
-  strip.prepend(activityFold());
-  strip.prepend(portsFold());
-  strip.prepend(pastFold());
+  // Above the limits: the cards are sessions, History the week's other
+  // sessions and what they all did, and the account's figures are the foot.
+  strip.prepend(historyFold());
   return strip;
 }
 
-// The Past sessions fold: conversations written to lately that have no card now, a
+// History's Sessions tab: conversations written to lately that have no card now, a
 // cs session as one row and any other directory as one row per
-// conversation, each with Resume. Read from the daemon when the fold opens,
+// conversation, each with Resume. Read from the daemon when the tab shows,
 // not with every frame: it lists every project folder Claude Code keeps.
-let pastOpen = false;
 let pastRows = null;
 let pastError = null;
 let pastReads = 0;
@@ -6349,18 +6461,9 @@ function pastEntry(row) {
   if (opening?.error) item.append(el("div", "past-refusal", opening.error));
   return item;
 }
-function pastFold() {
+function pastPanel() {
   const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
-  const box = el("div", "past");
-  const toggle = el("button", "lim-toggle");
-  toggle.type = "button";
-  toggle.setAttribute("aria-expanded", String(pastOpen));
-  toggle.setAttribute("aria-label", "Past sessions: the last week's with no card");
-  toggle.append(el("span", "chev", "\u203a"), el("span", "", "Past sessions"));
-  on(toggle, "click", () => { pastOpen = !pastOpen; if (pastOpen) readPast(); paintBudget(lastSnapshot); });
-  box.append(toggle);
-  if (!pastOpen) return box;
-  if (pastReads) toggle.className += " reading";
+  const box = el("div", "hist-body");
   const said = pastError || (pastRows?.length === 0
     ? "Nothing to resume from the last 7 days; the ones open now are on their cards." : null);
   if (said !== null) {
@@ -6401,125 +6504,9 @@ function pastFold() {
   return box;
 }
 
-// The Ports fold: the TCP ports listening on this Mac and what holds them,
-// those under one of the panel's sessions first and the rest under one more
-// fold, each with Stop. The agents' own ports and the daemon's are not
-// listed. Read from the daemon when the fold opens, never polled: lsof walks
-// every process's open files.
-let portOpen = false;
-let portOthersOpen = false;
-let portRows = null;
-let portError = null;
-let portReadAt = null;
-let portReads = 0;
-// "pid:port:start" -> when its Stop was clicked and the daemon's refusal, if any.
-const portStopping = new Map();
-// A Stop clicked this long ago offers Stop again: a holder can ignore SIGTERM.
-const PORT_STOP_HOLD = 15000;
-function readPorts() {
-  portReads++;
-  paintBudget(lastSnapshot);
-  fetch(`/ports?token=${encodeURIComponent(TOKEN)}`)
-    .then(async r => {
-      const body = await r.json().catch(() => ({}));
-      if (r.ok) { portRows = body.rows || []; portError = null; portReadAt = Date.now() / 1000; }
-      else portError = body.error || `read failed (${r.status})`;
-    })
-    .catch(err => { portError = String(err); })
-    .then(() => { portReads--; paintBudget(lastSnapshot); });
-}
-function stopPort(row) {
-  const key = `${row.pid}:${row.port}:${row.started_at}`;
-  portStopping.set(key, {at: Date.now(), error: null});
-  paintBudget(lastSnapshot);
-  setTimeout(() => paintBudget(lastSnapshot), PORT_STOP_HOLD);
-  fetch(`/stop-port?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify(
-    {pid: row.pid, port: row.port, started_at: row.started_at})})
-    .then(async r => {
-      // A holder takes a moment to close its socket once it has the signal.
-      if (r.ok) { setTimeout(readPorts, 1000); return; }
-      const body = await r.json().catch(() => ({}));
-      portStopping.set(key, {at: Date.now(), error: body.error || `refused (${r.status})`});
-    })
-    .catch(err => { portStopping.set(key, {at: Date.now(), error: String(err)}); })
-    .then(() => paintBudget(lastSnapshot));
-}
-// One row and, when its Stop was refused, the reason under it.
-function portLine(row, now) {
-  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
-  const stopping = portStopping.get(`${row.pid}:${row.port}:${row.started_at}`);
-  const waiting = !!(stopping && !stopping.error && Date.now() - stopping.at < PORT_STOP_HOLD);
-  const line = el("div", "past-row port");
-  line.setAttribute("role", "listitem");
-  line.title = `${row.addresses.map(address => `${address}:${row.port}`).join(", ")}\npid ${row.pid}\n${row.command}`;
-  line.append(el("span", "word port-no", `:${row.port}`), el("span", "port-prog", row.program));
-  if (row.session) line.append(el("span", "port-sess", row.session));
-  line.append(el("span", "past-age", forHumans(now - row.started_at)));
-  const stop = el("button", "past-go", waiting ? "stopping\u2026" : "Stop");
-  stop.type = "button";
-  stop.disabled = waiting;
-  stop.setAttribute("aria-label", `stop ${row.program} on port ${row.port}`);
-  on(stop, "click", () => stopPort(row));
-  line.append(stop);
-  return stopping?.error ? [line, el("div", "acct-status past-error", stopping.error)] : [line];
-}
-function portsFold() {
-  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
-  const box = el("div", "past");
-  const toggle = el("button", "lim-toggle");
-  toggle.type = "button";
-  toggle.setAttribute("aria-expanded", String(portOpen));
-  toggle.setAttribute("aria-label", "Ports: what listens on this Mac, the panel's sessions' first, and Stop");
-  toggle.append(el("span", "chev", "\u203a"), el("span", "", "Ports"));
-  on(toggle, "click", () => { portOpen = !portOpen; if (portOpen) readPorts(); paintBudget(lastSnapshot); });
-  box.append(toggle);
-  if (!portOpen) return box;
-  if (portReads) toggle.className += " reading";
-  const list = el("div", "past-list");
-  list.setAttribute("role", "list");
-  if (portReads && portRows === null && !portError) {
-    const placeholder = el("div", "unlit");
-    placeholder.setAttribute("aria-hidden", "true");
-    for (let i = 0; i < 3; i++) {
-      const row = el("div", "u-row");
-      row.append(el("i", "pill"), el("i", "prog"), el("i", "sess"), el("i", "age"));
-      placeholder.append(row);
-    }
-    list.append(placeholder);
-  }
-  if (portError) list.append(el("div", "acct-status", portError));
-  else if (portRows && !portRows.length) {
-    const note = el("div", "fold-note");
-    const again = el("button", "fold-act", "Look again");
-    again.type = "button";
-    on(again, "click", readPorts);
-    note.append(el("span", "", "No listener found at "), el("time", "", clock(portReadAt)),
-                el("span", "", " \u00b7 "), again);
-    list.append(note);
-  }
-  const now = Date.now() / 1000;
-  const others = (portRows || []).filter(row => !row.session_id);
-  for (const row of portRows || []) if (row.session_id) list.append(...portLine(row, now));
-  if (others.length) {
-    const more = el("button", "lim-toggle port-more");
-    more.type = "button";
-    more.setAttribute("aria-expanded", String(portOthersOpen));
-    const allOthers = others.length === portRows.length;
-    more.append(el("span", "chev", "\u203a"),
-                el("span", "", `${others.length} ${allOthers ? "" : "other "}${others.length === 1 ? "listener" : "listeners"}`
-                  + (allOthers ? ", none under an agent" : "")));
-    on(more, "click", () => { portOthersOpen = !portOthersOpen; paintBudget(lastSnapshot); });
-    list.append(more);
-    if (portOthersOpen) for (const row of others) list.append(...portLine(row, now));
-  }
-  box.append(list);
-  return box;
-}
-
-// The Activity fold: what Claude Code and Codex did over the last week, by
-// day and by project, from their own logs. Read from the daemon when the fold
-// opens, never with a frame: a cold week reads every log written in it.
-let activityOpen = false;
+// History's Activity tab: what Claude Code and Codex did over the last week, by
+// day and by project, from their own logs. Read from the daemon when the tab
+// shows, never with a frame: a cold week reads every log written in it.
 let activityReport = null;
 let activityError = null;
 let activityReads = 0;
@@ -6715,19 +6702,9 @@ function activityBars(values, className, picked = null) {
   });
   return box;
 }
-function activityFold() {
+function activityPanel() {
   const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
-  const box = el("div", "past");
-  const toggle = el("button", "lim-toggle");
-  toggle.dataset.wait = "activity";
-  toggle.type = "button";
-  toggle.setAttribute("aria-expanded", String(activityOpen));
-  toggle.setAttribute("aria-label", "Activity: the last week's prompts and tokens, Claude Code's and Codex's, by day and by project");
-  toggle.append(el("span", "chev", "›"), el("span", "", "Activity"));
-  on(toggle, "click", () => { activityOpen = !activityOpen; if (activityOpen) readActivity(); paintBudget(lastSnapshot); });
-  box.append(toggle);
-  if (!activityOpen) return box;
-  if (activityReads) toggle.className += " reading";
+  const box = el("div", "hist-body");
   const list = el("div", "past-list");
   box.append(list);
   if (activityError && activityReport === null) { list.append(el("div", "acct-status", activityError)); return box; }
@@ -6795,7 +6772,7 @@ function activityFold() {
     on(back, "click", () => {
       activityDay = null;
       paintBudget(lastSnapshot);
-      document.querySelector('#budget .lim-toggle[data-wait="activity"]').focus();
+      document.querySelector('#budget [role="tab"][data-tab="activity"]').focus();
     });
     note.append(`Nothing on ${weekday} · `, back);
     list.append(note);
@@ -6813,6 +6790,92 @@ function activityFold() {
   const scratch = view.projects.filter(p => p.scratch);
   if (scratch.length) list.append(activityRest(`${scratch.length} scratch ${scratch.length === 1 ? "dir" : "dirs"}`, scratch));
   list.append(...issues);
+  return box;
+}
+
+// The History fold: the last week twice over, as the sessions that have no
+// card now and as what Claude Code and Codex did, a tab each. The tab last
+// shown is a setting, so the fold opens on it after a restart too, and the
+// settings any panel saves bring it to the others. A tab reads its log the
+// first time the open fold shows it, whatever brought it there, and not again
+// until the fold opens again: going back to a tab shows what it read. A panel
+// whose content holds nothing that takes the focus takes it itself, as the
+// tabs pattern asks: Activity's always, Sessions' until it lists an entry. A
+// panel that stops taking the focus while it holds it drops it to the page, so
+// a focused panel keeps taking it through the paint that brings its rows, and
+// leaves that to its entries on the first paint after the focus moves on.
+let historyOpen = false;
+const historyRead = new Set();
+const HISTORY_TABS = [
+  {id: "sessions", name: "Sessions", read: () => readPast(), reading: () => pastReads > 0, panel: () => pastPanel(),
+   takesFocus: () => !pastRows?.length},
+  {id: "activity", name: "Activity", read: () => readActivity(), reading: () => activityReads > 0,
+   panel: () => activityPanel(), takesFocus: () => true},
+];
+// Before the settings arrive there is no tab to remember, and the fold opens on the first.
+function historyTab() {
+  return HISTORY_TABS.find(tab => tab.id === SETTINGS?.history_tab) || HISTORY_TABS[0];
+}
+function showHistory(tab) {
+  if (tab !== historyTab()) push({history_tab: tab.id});
+  paintBudget(lastSnapshot);
+}
+// The arrows go to the other tab, round the ends, and Home and End to the
+// first and last; the tab the focus reaches is the one shown. A held key
+// moves once: each move saves the tab, and a save per repeat floods the
+// daemon with replies that can land out of order.
+function historyKeys(event, from) {
+  const at = HISTORY_TABS.indexOf(from), last = HISTORY_TABS.length - 1;
+  const to = {ArrowRight: at === last ? 0 : at + 1, ArrowLeft: at === 0 ? last : at - 1, Home: 0, End: last}[event.key];
+  if (to === undefined) return;
+  event.preventDefault();
+  if (event.repeat) return;
+  showHistory(HISTORY_TABS[to]);
+  document.querySelector(`#budget [role="tab"][data-tab="${HISTORY_TABS[to].id}"]`).focus();
+}
+function historyFold() {
+  const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
+  const box = el("div", "past");
+  const shown = historyTab();
+  const toggle = el("button", "lim-toggle");
+  toggle.type = "button";
+  toggle.dataset.wait = shown.id;
+  toggle.setAttribute("aria-expanded", String(historyOpen));
+  toggle.setAttribute("aria-label", "History: the last week's sessions with no card, and the prompts and tokens of"
+                      + " Claude Code and Codex by day and by project");
+  toggle.append(el("span", "chev", "›"), el("span", "", "History"));
+  on(toggle, "click", () => {
+    historyOpen = !historyOpen;
+    historyRead.clear();
+    paintBudget(lastSnapshot);
+  });
+  box.append(toggle);
+  if (!historyOpen) return box;
+  if (!historyRead.has(shown.id)) { historyRead.add(shown.id); shown.read(); }
+  if (shown.reading()) toggle.className += " reading";
+  const tabs = el("div", "hist-tabs");
+  tabs.setAttribute("role", "tablist");
+  tabs.setAttribute("aria-label", "History");
+  for (const tab of HISTORY_TABS) {
+    const button = el("button", "hist-tab", tab.name);
+    button.type = "button";
+    button.id = `history-tab-${tab.id}`;
+    button.dataset.tab = tab.id;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(tab === shown));
+    if (tab === shown) button.setAttribute("aria-controls", "history-panel");
+    button.tabIndex = tab === shown ? 0 : -1;
+    on(button, "click", () => showHistory(tab));
+    on(button, "keydown", event => historyKeys(event, tab));
+    tabs.append(button);
+  }
+  const panel = el("div", "hist-panel");
+  panel.append(shown.panel());
+  panel.id = "history-panel";
+  panel.setAttribute("role", "tabpanel");
+  panel.setAttribute("aria-labelledby", `history-tab-${shown.id}`);
+  if (shown.takesFocus() || document.activeElement?.id === "history-panel") panel.tabIndex = 0;
+  box.append(tabs, panel);
   return box;
 }
 
@@ -7518,13 +7581,22 @@ const resuming = new WeakSet();
 function paint(snapshot) {
   const root = document.getElementById("groups");
   const keepId = document.activeElement?.dataset?.sessionId ?? null;
+  // A pill or a popover entry a frame takes away gives the focus to its card.
+  const portsCard = document.activeElement?.closest?.("li.line.card > :is(.port-chip, .port-pop)")?.parentElement.dataset.key;
   morph(root, buildGroups(snapshot));
-  // A session that closed took its menu with it.
+  // A session that closed took its menu with it, and a card whose listeners
+  // all left took its popover.
   if (openMenuKey && !root.querySelector(`[data-session-id="${CSS.escape(openMenuKey)}"]`)) closeMenu();
+  if (portsOpenFor && !root.querySelector(".port-pop")) portsOpenFor = null;
+  root.querySelector(".port-pop:not(:popover-open)")?.showPopover();
   showOpenShell(root);
   // Keep the keyboard where it was: a moved row is blurred by its move.
   if (keepId && !root.contains(document.activeElement)) {
     root.querySelector(`[data-session-id="${CSS.escape(keepId)}"]`)?.focus();
+  }
+  if (portsCard && !root.contains(document.activeElement)) {
+    const card = root.querySelector(`li.line.card[data-key="${CSS.escape(portsCard)}"]`);
+    (card?.querySelector(":scope > .port-chip") ?? card?.querySelector(":scope > button.row"))?.focus();
   }
 }
 
@@ -7556,6 +7628,232 @@ function codexJobFailed(sub) {
 function subagentTitle(sub) {
   return sub.provider === "codex" ? `Codex ${sub.type || "job"}` : sub.name || sub.type || "subagent";
 }
+
+// The TCP ports a card's sessions listen on, from the frame's rows: each
+// card's lead row's own and its teammates', by port. A teammate's line has no
+// room for a pill, so the card's one pill speaks for every pane in it.
+// Listeners no card holds never reach the frame.
+function cardPorts(rows) {
+  const cards = new Map();
+  let lead = null;
+  for (const row of rows) {
+    if (!row.depth || !lead) lead = row;
+    if (row.ports?.length) cards.set(lead.session_id, [...(cards.get(lead.session_id) || []), ...row.ports]);
+  }
+  for (const listed of cards.values()) listed.sort((a, b) => a.port - b.port || a.pid - b.pid);
+  return cards;
+}
+// The card whose listeners are open under its pill, by session id, and the
+// listener whose Stop asks to be confirmed, by portKey. One of each at a time.
+let portsOpenFor = null;
+let portAsking = null;
+// portKey -> when its Stop was sent, and -> the daemon's last refusal of a
+// Stop or an Open on it.
+const portStopSent = new Map();
+const portRefusals = new Map();
+// A Stop sent this long ago offers Stop again: a holder can ignore SIGTERM.
+const PORT_STOP_HOLD = 15000;
+const portKey = p => `${p.pid}:${p.port}:${p.started_at}`;
+const portWhere = addresses => addresses.map(a => a === "*" ? "all interfaces" : a).join(", ");
+// Anything but loopback, which lsof prints as 127.x or [::1]: every
+// interface (*) or an address another machine can reach.
+const portExposed = addresses => addresses.some(a => !/^(127\.|\[::1\]$)/.test(a));
+function portSpan(cls, text) {
+  return Object.assign(document.createElement("span"), {className: cls, textContent: text ?? ""});
+}
+function portPills(listed) {
+  const pills = [portSpan(`port-pill kind-${listed[0].kind}`, `:${listed[0].port}`)];
+  if (listed.length > 1) pills.push(portSpan("port-pill", `+${listed.length - 1}`));
+  return pills;
+}
+// The pills' transparent copy, which takes their room at the end of the
+// card's report line, or of its facts line when it reports nothing: one made
+// for it when the card shows no facts. Placed once the stack is in its
+// anatomy's order, which builds the task anatomy's report line anew.
+function placePortSlot(stack, listed) {
+  let line = stack.querySelector(":scope > .task > .task-status") || stack.querySelector(":scope > .model");
+  if (!line) stack.append(line = portSpan("model"));
+  // The task anatomy's report is bare words; held in a span, they are cut short of the pills.
+  for (const words of [...line.childNodes].filter(node => node.nodeType === Node.TEXT_NODE)) {
+    words.replaceWith(portSpan("task-words", words.data));
+  }
+  const slot = portSpan("port-slot");
+  slot.setAttribute("aria-hidden", "true");
+  slot.append(...portPills(listed));
+  line.append(slot);
+}
+function stopWaits(p) {
+  const sent = portStopSent.get(portKey(p));
+  return sent != null && Date.now() - sent < PORT_STOP_HOLD;
+}
+// A Stop or an Open on one listener, named by what the card showed: the
+// daemon checks it against its own reading and answers with the reason when
+// it will not. -> a Promise of that reason, or null.
+function sendPortAct(path, p) {
+  return fetch(`${path}?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify(
+    {pid: p.pid, port: p.port, started_at: p.started_at})})
+    .then(async r => r.ok ? null : (await r.json().catch(() => ({}))).error || `refused (${r.status})`)
+    .catch(err => String(err));
+}
+// The daemon reads the ports again a second after it sends the signal, and
+// the frame that reading changes takes the listener off its card.
+function stopPort(p) {
+  const key = portKey(p);
+  portAsking = null;
+  portRefusals.delete(key);
+  portStopSent.set(key, Date.now());
+  render(LATEST, false, true);
+  setTimeout(() => render(LATEST, false, true), PORT_STOP_HOLD);
+  sendPortAct("/stop-port", p).then(refusal => {
+    if (refusal) {
+      portStopSent.delete(key);
+      portRefusals.set(key, refusal);
+    }
+    render(LATEST, false, true);
+  });
+}
+// The daemon opens the page, as it opens GitHub's: the panel's web view has no browser of its own.
+function openPort(p) {
+  const key = portKey(p);
+  portRefusals.delete(key);
+  sendPortAct("/open-port", p).then(refusal => {
+    if (refusal) portRefusals.set(key, refusal);
+    render(LATEST, false, true);
+  });
+}
+function portsFocus(sessionId, selector) {
+  document.querySelector(`#groups li.line.card[data-key="${CSS.escape(sessionId)}"] ${selector}`)?.focus();
+}
+function showPorts(sessionId) {
+  portsOpenFor = portsOpenFor === sessionId ? null : sessionId;
+  portAsking = null;
+  render(LATEST, false, true);
+}
+// The pill over its copy, and under it, while it is open, the card's
+// listeners: a button beside the card's row, since a button cannot hold one.
+function portControls(row, listed) {
+  const open = portsOpenFor === row.session_id;
+  const chip = Object.assign(document.createElement("button"), {type: "button", className: "port-chip"});
+  chip.append(...portPills(listed));
+  chip.setAttribute("aria-haspopup", "dialog");
+  chip.setAttribute("aria-expanded", String(open));
+  if (open) chip.setAttribute("aria-controls", "ports-" + row.session_id);
+  chip.setAttribute("aria-label", "listening: " + listed.map(p => `${p.program} on port ${p.port}`).join(", "));
+  on(chip, "click", () => {
+    showPorts(row.session_id);
+    if (portsOpenFor === row.session_id) portsFocus(row.session_id, ".port-pop .port-act");
+  });
+  on(chip, "keydown", e => {
+    if (e.key !== "Escape" || !open) return;
+    e.preventDefault();
+    showPorts(row.session_id);
+  });
+  return open ? [chip, portsPopover(row, listed)] : [chip];
+}
+// The card's listeners in the menu's slab: one entry each, with its port,
+// program, uptime and where it listens, then Open and Stop. Escape closes it
+// and gives the focus back to the pill.
+function portsPopover(row, listed) {
+  const pop = Object.assign(document.createElement("div"), {className: "menu port-pop", id: "ports-" + row.session_id});
+  // Shown by paint once it is live: a popover opens only from the document.
+  pop.setAttribute("popover", "manual");
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", `ports ${row.label} listens on`);
+  const now = Date.now() / 1000;
+  pop.append(...listed.map(p => portEntry(p, now)));
+  on(pop, "pointerdown", e => e.stopPropagation());
+  on(pop, "keydown", e => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    showPorts(row.session_id);
+    portsFocus(row.session_id, ":scope > .port-chip");
+  });
+  return pop;
+}
+// Stop asks once, in the entry it was pressed in, and a refusal stays under
+// its entry until the next act on that listener.
+function portEntry(p, now) {
+  const key = portKey(p);
+  const entry = portSpan("port-entry");
+  // Keyed, so a listener that leaves takes its own entry and no other's focus.
+  entry.id = `port-${p.pid}-${p.port}-${p.started_at}`;
+  const up = forHumans(now - p.started_at);
+  entry.setAttribute("role", "group");
+  const exposed = portExposed(p.addresses);
+  entry.setAttribute("aria-label", `${p.program} on port ${p.port}, on ${portWhere(p.addresses)}`
+                                   + `${exposed ? ", reachable from the network" : ""}, up ${up}`);
+  const head = portSpan("port-head");
+  head.append(portSpan(`port-pill kind-${p.kind}`, `:${p.port}`), portSpan("port-prog", p.program),
+              portSpan("port-age", up));
+  // A bare button shows its icon alone; its word stays its name and becomes its tooltip.
+  const button = (cls, text, said, act, icon, bare = false) => {
+    const b = Object.assign(document.createElement("button"), {type: "button", className: `port-act ${cls}`.trim(),
+                                                               textContent: bare ? "" : text});
+    if (icon) b.prepend(metaIcon(icon));
+    if (bare) {
+      b.classList.add("bare");
+      b.title = text;
+    }
+    b.setAttribute("aria-label", said);
+    on(b, "click", act);
+    return b;
+  };
+  const inEntry = selector => document.getElementById(entry.id)?.querySelector(selector)?.focus();
+  const foot = portSpan("port-foot");
+  if (portAsking === key) {
+    // Under 300px the asked Stop gives its square up to the question.
+    foot.append(portSpan("port-ask", `Stop ${p.program}?`),
+                button("stop-now", "Stop", `stop ${p.program} on port ${p.port}`, () => {
+                  stopPort(p);
+                  inEntry(".port-act");
+                }, bareActs ? null : "stop"),
+                button("", "Cancel", "keep it running", () => {
+                  portAsking = null;
+                  render(LATEST, false, true);
+                  inEntry(".port-act:last-child");
+                }));
+  } else {
+    const waits = stopWaits(p);
+    const stop = button("", waits ? "Stopping…" : "Stop", `stop ${p.program} on port ${p.port}`, () => {
+      portAsking = key;
+      render(LATEST, false, true);
+      inEntry(".port-act.stop-now");
+    }, "stop", bareActs && !waits);
+    stop.disabled = waits;
+    if (exposed) {
+      const globe = metaIcon("globe");
+      globe.classList.add("port-globe");
+      foot.append(globe);
+    }
+    foot.append(portSpan("port-where", portWhere(p.addresses)),
+                button("", "Open", `open localhost:${p.port} in the browser`, () => openPort(p), "open", bareActs), stop);
+  }
+  entry.append(head, foot);
+  const refusal = portRefusals.get(key);
+  if (refusal) {
+    const said = portSpan("port-refusal", refusal);
+    said.setAttribute("role", "status");
+    entry.append(said);
+  }
+  return entry;
+}
+// A press anywhere but an open popover or a pill closes the popover.
+document.addEventListener("pointerdown", event => {
+  if (!portsOpenFor || event.target.closest?.(".port-pop, .port-chip")) return;
+  showPorts(portsOpenFor);
+});
+// A scroll that takes the pill out of the list's view closes its popover, as
+// a scroll closes a floating menu: WebKit keeps a top-layer box on screen
+// after its anchor has gone, over the panel's foot. The focus goes back to
+// the pill without scrolling it back into view.
+document.getElementById("groups").addEventListener("scroll", event => {
+  const chip = portsOpenFor ? document.querySelector(".port-pop")?.previousElementSibling : null;
+  if (!chip) return;
+  const at = chip.getBoundingClientRect(), list = event.currentTarget.getBoundingClientRect();
+  if (at.top >= list.top && at.bottom <= list.bottom) return;
+  if (chip.nextElementSibling.contains(document.activeElement)) chip.focus({preventScroll: true});
+  showPorts(portsOpenFor);
+}, {passive: true});
 
 // The card list as the frame says it should read, detached.
 function buildGroups(snapshot) {
@@ -7591,6 +7889,8 @@ function buildGroups(snapshot) {
     const serene = SETTINGS?.card_style === "serenity" && !compact && group.name === "AGENTS";
     // The lists under a card's row: subagents, tasks, scheduled prompts, shells.
     const lists = !shortCards && !serene;
+    // At compact width a card is its name and its state, with no line to carry a pill.
+    const listening = group.name === "AGENTS" && !compact ? cardPorts(group.rows) : new Map();
     const waitingIn = new Map();
     let parent = null;
     for (const row of shortCards ? group.rows : []) {
@@ -7940,6 +8240,7 @@ function buildGroups(snapshot) {
 
       if (group.name === "AGENTS" && !row.depth && !compact && !tiny
           && (SETTINGS?.card_anatomy ?? "task") === "task") taskCard(b, row, serene);
+      const listed = listening.get(row.session_id);
 
 
       // aria-label only, never title: the details card says the same thing,
@@ -8004,6 +8305,12 @@ function buildGroups(snapshot) {
       for (const mate of tiny ? [] : mates) {
         li.append(mateGate(mate));
         offerAnswers(li, mate, shortCards);
+      }
+      // A card that asks shows only its name, the question and the answers,
+      // so its pill comes back once the question is answered.
+      if (listed && !li.classList.contains("asking")) {
+        placePortSlot(stack, listed);
+        b.after(...portControls(row, listed));
       }
       // Outside the row, since a button cannot hold one. The daemon decides
       // what is typed and refuses anything it no longer finds safe.
@@ -8443,12 +8750,11 @@ function settingRow(row, kind) {
     SETTING_SYNC.push(() => { line.hidden = SETTINGS.offer_statusline !== false && SETTINGS.offer_tab_status !== false; });
     return line;
   }
-  const note = (row.note || row.k === "follow_terminal" || row.k === "tab_status" || row.k === "tab_colour") && Object.assign(document.createElement("span"),
+  const note = (row.note || row.k === "follow_terminal" || row.k === "tab_status") && Object.assign(document.createElement("span"),
                                          {className: "set-note", id: `set-note-${row.k}`, textContent: row.note || ""});
   if (note) line.append(note);
   if (row.k === "follow_terminal") SETTING_SYNC.push(() => terminalBackgroundNote(note, LATEST));
   if (row.k === "tab_status") SETTING_SYNC.push(() => tabStatusNote(note, LATEST));
-  if (row.k === "tab_colour") SETTING_SYNC.push(() => tabUnderlineNote(note, LATEST));
   const off = () => !!(row.needs && !SETTINGS[row.needs]);
 
   if (row.choices) {
@@ -8938,14 +9244,6 @@ function takeOffer(offer) {
 function tabStatusNote(note, snapshot) {
   note.hidden = snapshot.tab_status !== "unavailable";
   note.textContent = "Needs iTerm2 3.7.6";
-}
-
-// The settings line under the tab tint: what else it changes in iTerm2, and,
-// when iTerm2 shares its settings from a folder, that the change goes with them.
-function tabUnderlineNote(note, snapshot) {
-  const folder = snapshot.iterm_prefs_folder?.replace(/^~\/Library\/Mobile Documents\/com~apple~CloudDocs(?=\/|$)/, "iCloud Drive");
-  note.textContent = "Also hides iTerm2's line under the selected tab."
-    + (folder ? ` iTerm2 shares its settings from ${folder}, so every Mac that loads them gets this too.` : "");
 }
 
 function push(change) {

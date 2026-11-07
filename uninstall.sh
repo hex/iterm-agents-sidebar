@@ -109,11 +109,14 @@ else
   skip statusline "no settings.json"
 fi
 
-# iTerm2's line under the selected tab, which the panel holds at 0 while the
-# tab tint is on: back to what was there, unless it changed since. `defaults`
+# iTerm2's line under the selected tab, where tab-underline.json says the panel
+# set it to 0: back to what was there, unless it changed since. `defaults`
 # ignores HOME, so AGENTS_SIDEBAR_ITERM_PREFS names another domain for tests.
 underline="$status_dir/tab-underline.json"
 iterm_prefs="${AGENTS_SIDEBAR_ITERM_PREFS:-com.googlecode.iterm2}"
+# The record survives a refused put back: it alone holds what goes back, and
+# it is where another uninstall, or a reinstalled daemon, looks for it.
+keep_underline=0
 if [ -f "$underline" ]; then
   said=$(python3 - "$underline" "$iterm_prefs" <<'PY'
 import json, re, subprocess, sys
@@ -150,12 +153,14 @@ else:
     value = {"1": "true", "0": "false"}.get(kept["value"], kept["value"]) if kept["type"] == "boolean" else kept["value"]
     verb, code, _, complaint = "write", *defaults("write", domain, key, flags[kept["type"]], value)
 if code:
-    leave(f"still hidden; defaults {verb} said {complaint}", 1)
+    leave(f"defaults {verb} said {complaint}", 2)
 leave("iTerm2's line under the selected tab is back", 0)
 PY
   ) && outcome=0 || outcome=$?
   case "$outcome" in
     0) ok underline "$said" ;;
+    2) keep_underline=1
+       warn underline "still hidden, and $(tilde "$underline") kept, so running uninstall again tries again; $said" ;;
     3) skip underline "$said" ;;
     *) warn underline "$said" ;;
   esac
@@ -229,7 +234,12 @@ else
   rm -rf "$HOME/.config/agents-sidebar"
   [ "$keep_accounts" = 0 ] || skip accounts "no logins stored at $(tilde "$store"); Keychain left alone"
 fi
-rm -rf "$status_dir" "$HOME/.claude/agents-sidebar-subagents" \
+if [ "$keep_underline" = 1 ]; then
+  find "$status_dir" -mindepth 1 -maxdepth 1 ! -name tab-underline.json -exec rm -rf {} +
+else
+  rm -rf "$status_dir"
+fi
+rm -rf "$HOME/.claude/agents-sidebar-subagents" \
        "$HOME/.claude/agents-sidebar-tasks" "$HOME/.claude/agents-sidebar-links"
 rm -f "$HOME/.claude/agents-sidebar-settings.json" "$HOME/.local/share/agents-sidebar/endpoint.json"
 if [ "$keep_accounts" = 1 ]; then

@@ -169,6 +169,16 @@ def test_rows_carry_the_task_the_session_reported():
     assert "task" not in snapshot([dict(LIVE[1], task=None)])["groups"][0]["rows"][0]
 
 
+def test_an_agents_row_carries_the_ports_its_card_shows_and_a_row_with_none_has_no_key():
+    listening = [{"port": 5173, "addresses": ["*"], "pid": 4100, "program": "vite", "started_at": 1789646400}]
+    agent = dict(LIVE[1], agent_state="working", ports=listening)
+    shell = dict(LIVE[0], ports=listening)
+    groups = snapshot([agent, shell])["groups"]
+    assert [(g["name"], [r.get("ports") for r in g["rows"]]) for g in groups] == [
+        ("AGENTS", [listening]), ("SESSIONS", [None])]
+    assert "ports" not in snapshot([dict(LIVE[1], agent_state="working", ports=[])])["groups"][0]["rows"][0]
+
+
 def test_rows_carry_their_terminal_so_a_script_can_find_its_own():
     """A script asking for the session it runs in knows its tty and nothing
     else iTerm2 would recognise inside tmux; a row whose tty was not read has

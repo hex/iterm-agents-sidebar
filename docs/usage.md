@@ -575,31 +575,6 @@ tab, and what comes back later is still the profile's own. A stopped daemon
 leaves the tabs as they are; the next one finds its own tints by their
 colours and keeps them, repaints them or turns them off.
 
-While the setting is on, the panel also hides the white line iTerm2's Minimal
-theme draws under the selected tab. It sets iTerm2's advanced setting
-`MinimalSelectedTabUnderlineProminence` to 0, which iTerm2 applies at once.
-The note under the switch, on or off, says `Also hides
-iTerm2's line under the selected tab.` This is an iTerm2 setting, not a
-profile one. When iTerm2 loads its settings from a custom folder and saves
-changes to it, at once or when it quits, this change goes there too, so
-every Mac that loads them from that folder loses the line as well, and gets
-it back when the setting goes off or you uninstall the panel. The note
-under the switch then names the folder, with a folder in iCloud Drive shown
-as `iCloud Drive/...`. The daemon reads where iTerm2 saves its settings when
-it starts, so after you change that in iTerm2, the note catches up when the
-panel restarts.
-
-Turning the setting off puts back what was there: the value you had, in the
-type `defaults` kept it in, or no value at all. Uninstall does the same. A value
-you change while the panel holds the line at 0 is yours: the panel leaves it,
-even after the setting goes off, and the log says `tab underline taken back`
-once. A line you had already hidden yourself is yours: the log says
-`tab underline own` when the setting comes on, and the line stays hidden
-after it goes off. The panel acts only when the
-setting changes and when its daemon starts, and it keeps what it replaced in
-`~/.claude/agents-sidebar-status/tab-underline.json`, so a restarted daemon
-neither hides the line again nor loses what goes back.
-
 ## A long name
 
 A card name too long for its row fades out at the edge. Every few seconds it
@@ -725,8 +700,9 @@ that line it shows only what the state needs:
 Teammates get no lines. One waiting on you puts its gate on its lead's card,
 under its colour and name, with its own answers, and the lead's badge reads
 Waiting while it does. The arrows and Cmd+Enter reach that gate as they reach
-a teammate's line. The facts line, the agent's tag or corner mark, the
-subagent rows, the task list and the background shells stay off the card.
+a teammate's line. The facts line, the agent's tag or corner mark, the port
+pill, the subagent rows, the task list and the background shells stay off the
+card.
 
 Waiting on you goes from the foot, since each waiting card carries its own
 question. Limits is one line: the account your sessions run on, its fullest
@@ -740,7 +716,8 @@ and so does the panel narrowing again after it has widened. Without an active
 account, or when the account store fails, the foot keeps its full layout.
 
 The Limits head takes the hover tint and keyboard focus ring across the row
-on the same 24 px band as the fold heads, 3 px above and below its 18 px head.
+on the same 24 px band as History's head, 3 px above and below its own 18 px
+head.
 Its switch and chip stay separate from the fold target. The tint drops over
 the switch, and clicking **Auto-switch** changes the switch too.
 
@@ -1068,9 +1045,7 @@ It prints the checkout path and a quoted command to delete it. See
 [what uninstall removes and keeps](integrations.md#uninstall).
 
 Your saved statusline comes back unless its absolute script path is missing;
-then uninstall removes `statusLine` and warns with the path. iTerm2's line
-under the selected tab comes back too, unless you hid it yourself or changed
-its setting after the panel hid it ([The session's colour on its tab](#the-sessions-colour-on-its-tab)). With the bridge
+then uninstall removes `statusLine` and warns with the path. With the bridge
 installed, a command that exits 127 displays
 `status line: <command or script> not found`. Other failures keep its last line.
 
@@ -1099,33 +1074,66 @@ a click it stays away until the agent reports again, or for a minute if the
 pane comes back to its prompt without one. An agent
 that ends with `/exit` leaves no card behind, and omp sessions have no Resume.
 
-## Past sessions
+## History
 
-The heads of **Past sessions**, **Ports**, and **Activity** take clicks on a
-24 px band across the whole row, 6 px into each gutter and 6 px above and
-below the head's line. The hover tint and keyboard focus ring cover that
-band; the compact foot keeps its smaller targets.
+Above the limits, **History** folds open the last week twice over: the
+conversations that have no card now, on its **Sessions** tab, and what Claude
+Code and Codex did, on its **Activity** tab. Folded, History is its head alone,
+with no figures. Open, the two tabs sit side by side in one control under the
+head, the one shown raised. The open fold keeps one height whichever tab shows,
+as tall as Activity's week, and Sessions scrolls inside it. History opens on
+the tab it showed last, which the
+daemon keeps with the panel's settings, so it opens on that tab after a reload
+of the panel or a restart of the daemon. Every window's panel shares that
+setting: a tab picked in one window shows in another once that panel saves a
+setting of its own or reloads.
 
-Above the limits, **Past sessions** folds open a log of the conversations written to
-in the last week that have no card now: a cs session as one entry, named after
-itself, at its newest conversation; any other directory as one entry per
-conversation, its first prompt in dim text after the directory's name. Each
-day has a head that names it **Today**, **Yesterday** or by its weekday, and
-each entry starts with the local time, hours and minutes, that its
-conversation was last written to. The daemon reads
-Claude Code's transcripts under `~/.claude/projects` when the fold opens, not
-with every frame, and leaves out what is open now, what ran in a directory
-that is gone, and what ran inside Claude Code's subagent worktrees or a
-session's own `.cs` folder. The list holds the newest thirty.
+The head of **History** takes clicks on a 24 px band across the whole row,
+6 px into each gutter and 6 px above and below the head's line. The hover
+tint and keyboard focus ring cover that band; the compact foot keeps its
+smaller targets.
+
+Each tab reads its logs the first time it shows after History opens, whether
+a click, a key or another window's choice showed it: opening on Sessions reads
+the transcripts, and the first switch to Activity reads the week's logs. Going
+back to a tab shows what it read without reading again.
+Folding History and opening it again reads the tab it opens on again, with
+what that tab showed kept under the head's gauge and no placeholders. The
+gauge is a hairline under the head that runs while the tab shown reads, and a
+tab shown while the other still reads starts it again from the left.
+
+Tab moves the keyboard focus to the tab shown. The Left and Right arrow keys
+show the other tab and move the focus to it, round the ends, and Home and End
+show the first and the last. From the Sessions tab, the next Tab reaches the
+first entry. While the tab lists no entry, during its first read, with nothing
+to resume or after a failed read, the next Tab puts the focus on the tab's
+content as a whole, where a screen reader reads its note once one shows. If
+entries arrive while the focus is there, the focus stays, and the next Tab
+reaches the first entry. Activity's chart holds nothing that takes the focus, so from the
+Activity tab the next Tab puts the focus on the chart as a whole, and **Show
+the week** after it when that shows. The narrow panel's one-line foot leaves
+History out.
+
+### Sessions
+
+The **Sessions** tab is a log of the conversations written to in the last week
+that have no card now: a cs session as one entry, named after itself, at its
+newest conversation; any other directory as one entry per conversation, its
+first prompt in dim text after the directory's name. Each day has a head that
+names it **Today**, **Yesterday** or by its weekday, and each entry starts with
+the local time, hours and minutes, that its conversation was last written to.
+The daemon reads Claude Code's transcripts under `~/.claude/projects` when the
+tab shows, not with every frame, and leaves out what is open now, what ran in
+a directory that is gone, and what ran inside Claude Code's subagent worktrees
+or a session's own `.cs` folder. The list holds the newest thirty.
 
 An empty reading says "Nothing to resume from the last 7 days; the ones open
 now are on their cards." A failed reading keeps its reason on a separate line.
 
 On the first read, space for a day head and six 24 px entries is present at
-once. The placeholder rows fade in after 180 ms and stay still. A hairline
+once. The placeholder rows fade in after 180 ms and stay still. The hairline
 under the head fills from the left to 88% once over 1.6 seconds, then waits.
-The rows replace the placeholders when the reading arrives. Reopening reads
-again, with the cached rows under the gauge and no placeholders. With reduced
+The rows replace the placeholders when the reading arrives. With reduced
 motion, the placeholders appear after the same delay without a fade or gauge.
 
 The whole entry is the button that resumes it, and **Resume** shows over its
@@ -1141,112 +1149,64 @@ exited agent](#resuming-an-exited-agent)).
 A shell that takes more than ten seconds to appear gets nothing typed,
 and the daemon's log says so. Codex and omp conversations are not listed.
 
-## Ports
+### Activity
 
-Under **Past sessions**, **Ports** folds open a list of the TCP ports
-listening on this Mac and what holds each one. The daemon reads them with
-`lsof` when the fold opens, never on a timer. Listeners under one of the
-panel's sessions come first, by port: each row is the port, the program, the
-card it runs under, how long it has run, and Stop, which shows while the
-pointer is on the row. Every other listener folds
-under one line, **N other listeners**, which opens them below it. When none
-belongs to an agent, that line reads **N listeners, none under an agent**,
-or **1 listener, none under an agent** for one. The whole line takes clicks,
-the hover tint, and the keyboard focus ring. Hover a row
-for its addresses, its pid and its command, with a token, key or password in
-the command shown as `***`.
-
-An empty reading says **No listener found at HH:MM**, using the local time
-the reading arrived, followed by **Look again**. That button reads the ports
-again. Its text uses the action ink and shows a ring on keyboard focus.
-
-The first read reserves three 19 px rows with port pills. The placeholders
-and head gauge use the same delay and motion as Past sessions. A reread keeps
-the cached rows until its answer arrives. A failed reread keeps those rows
-and shows the reason above them.
-
-A row's session is the card whose process tree holds the listener: its agent
-and everything below it, and any Codex job that card's Claude session started
-through the codex plugin, which runs outside that tree. A row names a program
-an interpreter runs by its script, so `python3 serve.py` reads `serve.py`.
-
-Some listeners never show. The fold leaves out the agents' own ports, since
-Claude Code and Codex each listen on a loopback port of their own and stopping
-one ends its session. It leaves out the panel's own server for the same
-reason. `lsof` run as you cannot see a process run as root or as another user,
-so their listeners never show either. A Claude Code or Codex with no card,
-such as one run outside iTerm2 or a Codex that has not taken its first prompt,
-has no agent to leave out, so its own port shows with the other listeners.
-
-Stop sends `SIGTERM` to the row's process after four checks that the process
-is the one the list showed: the row is in the last reading, its process has
-not become a card's agent since, it still listens on that port, and it started
-at the second the reading gave, since another program can take over a freed
-pid. The daemon refuses anything else, and the reason shows under the row.
-Stop sends `SIGTERM` alone, to that one process: it never follows with
-`SIGKILL` and never signals the process group. The fold reads the ports again
-a second after a Stop. A program that ignores `SIGTERM` stays listed, and its
-Stop comes back after 15 seconds. The daemon's log records each Stop it sends.
-
-## Activity
-
-Under **Ports**, **Activity** folds open what Claude Code and Codex did on
-this Mac over the last seven days, read from their own logs. The head line
-gives the days, the prompts and the tokens: a prompt is one typed into Claude
-Code or a Codex turn, and the tokens are both programs' together. When both
-worked in the span, one bar under the head splits the tokens between them, the
-larger part from the left, with each program's name and figure at its own end.
-A bar a day follows, oldest first, as tall as that day's tokens against the
-busiest day's, with the day's total and its weekday under it; today's bar is
-in the text colour. Then come the ten projects with the most tokens, each with
-its folder's own name and its total. Where two of the week's projects end in
-the same folder name, case aside, each name starts with the parent folders
-that tell them apart, in grey, as in `kiln/repo` and `moss/repo`, even when
-only one of them has a row. A cs session's `@variant` follows the name in
-grey. A name too long for the row loses its parent folders first, and never
-its variant. The whole path is in the row's label for assistive tech; the fold
-shows no tooltip. **+N more projects** counts the rest, with their tokens, and
-does not expand. A project in or under `/tmp`, `/private/tmp`, `/var/folders`
-or `/private/var/folders` is a scratch dir: it gets no row, and one grey line,
-**N scratch dirs**, counts them with their tokens; the head, the split and the
-day bars still count them. A project whose week was cache reads alone has no
-tokens here, so the fold leaves it out of the rows and both lines, as a picked
-day leaves out a project with none that day; the head still counts its
+The **Activity** tab shows what Claude Code and Codex did on this Mac over the
+last seven days, read from their own logs. Its first line gives the days, the
+prompts and the tokens: a prompt is one typed into Claude Code or a Codex turn,
+and the tokens are both programs' together. When both worked in the span, one
+bar under that line splits the tokens between them, the larger part from the
+left, with each program's name and figure at its own end. A bar a day follows,
+oldest first, as tall as that day's tokens against the busiest day's, with the
+day's total and its weekday under it; today's bar is in the text colour. Then
+come the ten projects with the most tokens, each with its folder's own name
+and its total. Where two of the week's projects end in the same folder name,
+case aside, each name starts with the parent folders that tell them apart, in
+grey, as in `kiln/repo` and `moss/repo`, even when only one of them has a row.
+A cs session's `@variant` follows the name in grey. A name too long for the
+row loses its parent folders first, and never its variant. The whole path is
+in the row's label for assistive tech; the tab shows no tooltip. **+N more
+projects** counts the rest, with their tokens, and does not expand. A project
+in or under `/tmp`, `/private/tmp`, `/var/folders` or `/private/var/folders`
+is a scratch dir: it gets no row, and one grey line, **N scratch dirs**,
+counts them with their tokens; the first line, the split and the day bars
+still count them. A project whose week was cache reads alone has no tokens
+here, so the tab leaves it out of the rows and both lines, as a picked day
+leaves out a project with none that day; the first line still counts its
 prompts. Work in a worktree under `.claude/worktrees/` counts to the checkout
-it came from. Click a day's bar, figure or name and the fold shows that day
-alone: the head names the day with its prompts and tokens, its bar takes the
-ink and its name an underline, and the rows are the projects that worked that
-day, by that day's tokens, each named as in the week. Click it again for the
-week.
+it came from. Click a day's bar, figure or name and the tab shows that day
+alone: the first line names the day with its prompts and tokens, its bar takes
+the ink and its name an underline, and the rows are the projects that worked
+that day, by that day's tokens, each named as in the week. Click it again for
+the week.
 
-If the whole week has no prompts or tokens, the fold says **No prompts or
+If the whole week has no prompts or tokens, the tab says **No prompts or
 tokens in `~/.claude/projects` or `~/.codex/sessions` over the last 7 days.**
 A warning about logs it could not count in full stays below that note. Picking
 an empty day keeps the week's chart and shows **Nothing on Tuesday · Show the
 week** below it. The weekday is the one you picked. **Show the week** returns
 to the week's figures without reading the logs again and puts the keyboard
-focus on the Activity head.
+focus on the Activity tab.
 
-While the first read runs, the fold holds space for its head, split, seven
-weekday slots and three project rows. After 180 ms the still placeholders
-fade in, and a hairline under the head fills to 88% over seven seconds and
-stays there until the read ends. Later opens keep the previous report visible
-while the hairline runs. If a later read fails, its reason appears below the
-kept report. With reduced motion, the placeholders appear after the same
-delay, with no fade or hairline.
+While the first read runs, the tab holds space for its first line, split,
+seven weekday slots and three project rows. After 180 ms the still
+placeholders fade in, and the hairline under the head fills to 88% over seven
+seconds and stays there until the read ends. Later reads keep the previous
+report visible while the hairline runs. If a later read fails, its reason
+appears below the kept report. With reduced motion, the placeholders appear
+after the same delay, with no fade or hairline.
 
-The daemon reads the logs when the fold opens, never on a timer, and again
-each time it opens. The first open reads every log written in the week, which
-took about nine seconds of CPU on one machine; later opens read only the logs
-written since. The daemon keeps what it read of each log in a small file,
-`~/.claude/agents-sidebar-status/activity.json`, so the fold reads fast after
-a restart too. An update that changes how the daemon reads the logs, a move to
-another time zone or a damaged file makes the next open read every log again.
-The narrow panel's one-line foot leaves the fold out, as it does Past sessions
-and Ports.
+The daemon reads the logs when the tab shows, never on a timer: the first
+time it shows after History opens. The first read covers every log written in
+the week, which took about nine seconds of CPU on one machine; later reads
+cover only the logs written since. The daemon keeps what it read of each log in
+a small file, `~/.claude/agents-sidebar-status/activity.json`, so the tab
+reads fast after a restart too. An update that changes how the daemon reads
+the logs, a move to another time zone or a damaged file makes the daemon read
+every log again the next time.
 
 Claude's tokens are its input, output and cache-write counts, and Codex's are
-its total less its cached input. The fold leaves out cache reads, each
+its total less its cached input. The tab leaves out cache reads, each
 program reading the conversation so far again: on one machine's week they
 were about 98% of all tokens. It shows no dollars. Claude Code's logs carry
 a conversation's cost as one running figure, on lines with no time, so they
@@ -1254,6 +1214,96 @@ hold no cost for a day, and Codex's logs carry token counts and no cost at
 all. A log the report could not read in full shows as **N logs not counted in
 full**, in the warning colour; its label for assistive tech gives each file
 and the reason.
+
+## Ports
+
+A card whose sessions listen on a TCP port shows the port as a pill,
+such as **:5173**, at the right end of its report line, after what the card
+reports there. On a card that reports nothing, the pill ends the facts line. One port
+shows; more fold into one **+N** pill beside it, at every width. The pill takes
+no row of its own: the words on its line stop short of it. A card with
+neither line is the one exception, and gets a line made for the pill. A teammate's ports
+join its card's pill. A listener no card holds is not shown. The compact
+panel's cards are a name and a state, so they show no pill ([A narrow
+panel](#a-narrow-panel)). Nor does a card that asks you a question, which shows
+only its name, the question and the answers: its pill comes back once you
+answer, and a popover open when the question came closes, with the focus on
+the card.
+
+A port's pill takes the colour of the language its server runs: violet for
+JavaScript (`node`, `bun` or `deno`), blue for Python and red for Ruby. Any
+other program, such as a Go server or a database, keeps the grey pill. The
+card's pill takes the colour of the port it shows, and the **+N** pill stays
+grey, since it stands for the rest of the ports. The daemon reads the language off the name
+the kernel gives the listening process. For a script, that name is the
+interpreter's, so `python3 serve.py` is Python and `node server.js` is
+JavaScript. A compiled server's kernel name is its own name, so it stays grey.
+
+The pill is a button, the next stop for Tab after its card's row, with the
+panel's focus ring. A click or Enter opens the card's listeners under it, in
+the menu's slab, and puts the focus on the first **Open**. Each entry is the
+port, the program, how long it has run and where it listens (`all interfaces`
+for `*`, or an address such as `127.0.0.1`), then **Open**, with an arrow out
+of a box, and **Stop**, with a square. An amber globe before the address marks
+a server the network can reach: one on all interfaces, or on an address other
+than loopback. `127.0.0.1` and `[::1]` stay plain. A screen reader hears
+"reachable from the network" in that entry's name instead of the globe.
+**Open** opens `http://localhost:<port>` in your default browser. Escape
+closes the popover and gives the focus back to the pill; a click anywhere
+else closes it too. When the last of a card's listeners goes, its pill goes
+with it, and the focus moves to the card's row.
+
+The daemon reads the listening ports with `lsof` at most every 5 seconds, and
+again a second after a Stop. Between readings, a listener whose process exits
+leaves its card at the next frame. When a reading fails, no card shows a port
+until one works, and `daemon.log` says why once
+([troubleshooting](troubleshooting.md)).
+
+A listener's card is the one whose process tree holds it: the card's agent
+and everything below it, and any Codex job that card's Claude session started
+through the codex plugin, which runs outside that tree. A server an agent
+leaves running with `nohup … &` leaves the tree at once, since launchd takes
+it over, but it keeps the environment it started with. Claude Code puts its
+own pid in that environment as `CLAUDE_PID`, so a listener outside every tree
+goes to the card whose agent that names, if the agent started no later than
+the server did. The daemon reads that one variable from the kernel's copy of
+the process's environment, past its command line, so an argument that reads
+`CLAUDE_PID=…` names no agent; the daemon keeps nothing else from it. Only
+Claude Code sets the variable, so a server a Codex or omp session left running
+shows on no card. Neither does one that is a macOS system program, such as
+`nc`: macOS gives no environment for those. A listener whose environment the
+daemon cannot read shows on no card either, and the daemon log says so once
+([troubleshooting](troubleshooting.md)); the other cards keep their ports. An entry names a program an
+interpreter runs by its script, so `python3 serve.py` reads `serve.py`; one Python
+runs as a module reads the module, so `python3 -m http.server` reads `http.server`.
+
+Some listeners never show. The agents' own ports stay off the cards, since
+Claude Code and Codex each listen on a loopback port of their own and stopping
+one ends its session. The panel's own server stays off them too. `lsof` run as you
+cannot see a process run as root or as another user, so their listeners never
+show either.
+
+**Stop** asks once, in its entry, showing **Stop <program>?** with **Stop**
+and **Cancel**, and puts the focus on that **Stop**. Then it sends `SIGTERM` to the
+listener's process after four checks that the process is the one the card
+showed: the listener is in the daemon's last reading, its process has not
+become a card's agent since, it still listens on that port, and it started at
+the second the reading gave, since another program can take over a freed pid.
+The daemon refuses anything else, and refuses a second Stop of the same
+listener until it has read the ports again. A refusal of a Stop or an Open
+shows under its entry, in the daemon's words. Stop sends `SIGTERM` alone, to
+that one process: it never follows with `SIGKILL` and never signals the
+process group. A program that ignores `SIGTERM` stays on its card, and its
+**Stopping…** turns back into **Stop** after 15 seconds. The daemon's log
+records each Stop it sends.
+
+In a panel under about 300 px wide, an entry's **Open** and **Stop** show only
+their icon, so the address beside them keeps its room. Each keeps its word as
+its tooltip. A screen reader hears the fuller name each has at every width,
+`open localhost:<port> in the browser` or `stop <program> on port <port>`.
+The words come back above 316 px. **Stop <program>?** with its **Stop** and **Cancel**, and
+**Stopping…**, keep their words at every width. As for the compact panel, the
+width is the panel's over Text size.
 
 ## From a script
 

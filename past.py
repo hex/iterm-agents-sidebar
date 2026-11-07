@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.10
-# ABOUTME: Past conversations for the panel's Past sessions fold, read from Claude Code's transcripts.
+# ABOUTME: Past conversations for the Sessions tab of the panel's History fold, read from Claude Code's transcripts.
 # ABOUTME: Local files only; a cs session is one row, any other directory one row per conversation.
 """Claude Code writes one transcript per conversation under
 ~/.claude/projects/<directory with / as ->/<conversation>.jsonl, each line
@@ -96,7 +96,7 @@ def _internal(cwd):
 
 
 def rows(projects_dir, now, live_paths, live_conversations):
-    """The Past sessions fold's rows, newest first: {kind, name, path, conversation, title, at}.
+    """The Sessions tab's rows, newest first: {kind, name, path, conversation, title, at}.
 
     `kind` is "cs" for a directory with a .cs folder, one row per session
     whose `at` is its newest conversation and whose Resume goes through cs,

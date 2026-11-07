@@ -46,7 +46,7 @@ note = NOTES.add
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
   f'aria-label="A card with its folder, agent mark, Working pill, task title, report age, branch, model, context and CPU. '
-  f'A progress bar shows the reported percent and current activity. Then a teammate, running and finished subagents, '
+  f'A progress bar shows the reported percent and current activity, with a port it listens on at that line\'s end. Then a teammate, running and finished subagents, '
   f'a Codex job, the task list, scheduled prompts and background shells. Lines join each part to its explanation.">')
 A('  <title>What a card carries</title>')
 A(f'  <rect width="{W}" height="{H}" rx="16" fill="{BG}"/>')
@@ -83,7 +83,10 @@ note(x + 18 + width_of("1", 12.5) + 14, fy - 4, "Branch, model and effort, then 
 
 bar(TX, CT + 100, CW - 2 * PAD, 140)
 text(TX, CT + 118, "38% \u00b7 Reading code", fill=DIM, size=10)
-note(TX + width_of("38% \u00b7 Reading code", 10) + 14, CT + 114, "Its own estimate of how far it has got, and what it is doing now")
+# A port its session listens on ends the line, as a pill in its language's tint: one note for the line and its pill.
+A(f'  <rect x="{CX + CW - PAD - 38}" y="{CT + 106}" width="38" height="16" rx="4" fill="{mix(KIND_JS, CARD, .14)}"/>')
+text(CX + CW - PAD - 19, CT + 118, ":5173", fill=KIND_JS, size=10, weight=600, extra=' text-anchor="middle"')
+note(CX + CW - PAD + 6, CT + 114, "Its estimate and what it is doing; a port it listens on ends the line")
 fy = CT + 118
 
 # A teammate, with the elbow the panel draws.

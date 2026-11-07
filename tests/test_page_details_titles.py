@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from page_source import function  # noqa: E402
@@ -62,6 +64,15 @@ def test_titles_without_a_reset_a_hog_or_a_single_agent():
     assert titles["CPU"] == "Its processes are using 100% CPU"
     assert titles["Agents"] == "1 subagent running now"
     assert titles["Cache"] == "10% of the prompt came from cache, cold now, 120k to rebuild"
+
+
+@pytest.mark.parametrize("ago, shown", [
+    (59, "59s"), (89, "1m"), (3569, "59m"), (3570, "1h"), (5400, "1h 30m"), (7170, "2h"), (7230, "2h 1m"),
+    (86369, "23h 59m"), (86370, "1d"),
+])
+def test_an_uptime_rounds_to_whole_minutes_before_it_splits_into_hours(ago, shown):
+    """Half a minute short of the hour reads as the hour, never as 60 of the minutes under it."""
+    assert evaluate({"started_at": 1_700_000_000 - ago}, "[p.label, p.value]") == [["Up", shown]]
 
 
 def test_the_scheduled_row_says_how_many_and_when_and_its_hover_has_each_whole_prompt():

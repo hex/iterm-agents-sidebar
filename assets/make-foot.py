@@ -3,7 +3,7 @@
 import pathlib, sys
 from panel_draw import *  # noqa: F401,F403
 
-W, H = 880, 570
+W, H = 880, 526
 PX, PW = 24, 430
 IX, IW = PX + 20, PW - 40      # the content's edges inside the panel
 LX = PX + PW + 40
@@ -51,7 +51,7 @@ def switch(x, y, on, w=20, h=12):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the Past sessions, Ports and Activity fold heads, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account\'s '
+  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the History fold head, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account\'s '
   f'5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, '
   f'Codex\'s own limits, and the bar with the release, the Update button for a newer one, reload and the gear">')
 A('  <title>The foot of the panel</title>')
@@ -79,14 +79,11 @@ note(IX + IW + 12, y + 43, "Who is waiting, oldest first; a click brings one for
 note(IX + IW + 12, y + 59, "What each asks: a question, or a tool to allow")
 
 y += 104
-for label, words in (("Past sessions", "Past sessions resumes conversations with no card"),
-                     ("Ports", "Ports lists listening ports and their Stop controls"),
-                     ("Activity", "Activity shows the week's prompts and tokens")):
-    hairline(y, dotted=label != "Past sessions")
-    mono(IX + 3, y + 17, "›", size=10.5)
-    mono(IX + 11, y + 17, label, size=10.5)
-    note(IX + IW + 12, y + 14, words)
-    y += 22
+hairline(y)
+mono(IX + 3, y + 17, "›", size=10.5)
+mono(IX + 11, y + 17, "History", size=10.5)
+note(IX + IW + 12, y + 14, "History: past sessions and the week's tokens")
+y += 22
 
 # The budget: its head, with the fold and auto-switch, then the account the
 # sessions run on.

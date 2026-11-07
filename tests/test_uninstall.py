@@ -9,6 +9,7 @@ a second run must be quiet, not an error.
 """
 import json
 import os
+import plistlib
 import subprocess
 import uuid
 from pathlib import Path
@@ -364,9 +365,19 @@ def test_uninstall_leaves_a_line_the_panel_never_held(tmp_path, record, said):
     assert said in result.stdout
 
 
-def test_an_underline_that_cannot_be_put_back_is_warned_about_and_the_uninstall_goes_on(tmp_path):
+@pytest.mark.parametrize("kept, verb, complaint, after", [
+    (None, "delete", "Domain ({domain}) not found. Defaults have not been changed.", {}),
+    ({"type": "float", "value": "0.4"}, "write", "Could not write domain {domain}; exiting",
+     {UNDERLINE: 0.4000000059604645}),
+], ids=["delete", "write"])
+def test_an_underline_that_cannot_be_put_back_keeps_its_record_for_another_uninstall(tmp_path, kept, verb, complaint,
+                                                                                      after):
+    """The record holds what goes back, which the panel's other files never do: it stays where a second uninstall,
+    or a reinstalled daemon, looks for it."""
     home = tmp_path / "home"
-    underline_record(home, {"kept": None})
+    underline_record(home, {"kept": kept})
+    status = home / ".claude" / "agents-sidebar-status"
+    (status / "daemon.log").write_text("a line\n")
     locked = tmp_path / "locked"
     locked.mkdir()
     domain = str(locked / "com.googlecode.iterm2")
@@ -374,9 +385,17 @@ def test_an_underline_that_cannot_be_put_back_is_warned_about_and_the_uninstall_
     locked.chmod(0o555)
     result = run("uninstall.sh", home, AGENTS_SIDEBAR_ITERM_PREFS=domain)
     assert (result.returncode, result.stderr) == (
-        0, f"  ! underline   still hidden; defaults delete said Domain ({domain}) not found. "
-           "Defaults have not been changed.\n")
-    assert not (home / ".claude" / "agents-sidebar-status").exists()
+        0, "  ! underline   still hidden, and ~/.claude/agents-sidebar-status/tab-underline.json kept, so running "
+           f"uninstall again tries again; defaults {verb} said {complaint.format(domain=domain)}\n")
+    assert [path.name for path in status.iterdir()] == ["tab-underline.json"]
+    assert json.loads((status / "tab-underline.json").read_text()) == {"kept": kept}
+    locked.chmod(0o755)
+    result = run("uninstall.sh", home, AGENTS_SIDEBAR_ITERM_PREFS=domain)
+    assert (result.returncode, result.stderr) == (0, "")
+    assert "  ✓ underline   iTerm2's line under the selected tab is back\n" in result.stdout
+    plist = Path(domain + ".plist")
+    assert (plistlib.loads(plist.read_bytes()) if plist.exists() else {}) == after
+    assert not status.exists()
 
 
 @pytest.mark.parametrize("kept, why", [

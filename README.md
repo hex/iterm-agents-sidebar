@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents panel docked on the right: one card per session, each with a Working, Waiting or Idle pill, the one waiting on a question turning amber, and under the cards the Past sessions, Ports and Activity folds, then Limits and the release">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents panel docked on the right: one card per session, each with a Working, Waiting or Idle pill, a server a session runs as a port pill in its language's tint at the end of its card's report line, the one waiting on a question turning amber, and under the cards the History fold, then Limits and the release">
 
 # Agents sidebar
 
@@ -68,8 +68,7 @@ the other panel data still goes. It leaves the checkout, the `.before-agents-sid
 the writable directory line in `~/.codex/config.toml`. The command prints a
 quoted command to delete the checkout. Settings shows the uninstall log's path.
 Uninstall restores your saved statusline unless its absolute script path is
-missing; then it removes `statusLine` and warns with that path. It also puts
-back iTerm2's line under the selected tab, unless you hid it yourself or changed it since. You can also
+missing; then it removes `statusLine` and warns with that path. You can also
 run `./uninstall.sh` from the checkout, with `--keep-accounts` to keep logins.
 
 Notifications need `swiftc`, from the Xcode Command Line Tools
@@ -108,11 +107,12 @@ view when it sits out of sight; so does a card whose row under "Waiting on you" 
 | Exited | Faded, with an `Exited` pill and a Resume button: the agent's process died and the pane is back at its shell prompt |
 | Unknown | A grey `No report` pill: a turn silent for five minutes with no command or tool running under it |
 
-A conversation that is over and gone from the list is under **Past sessions** above the limits: the last week's, with Resume in a new tab ([usage](docs/usage.md#past-sessions)).
-A server a session left running is under **Ports**, below Past sessions: the TCP ports listening on this Mac, the sessions' own first, each with Stop ([usage](docs/usage.md#ports)).
-What the agents did this week is under **Activity**, below Ports: prompts and tokens a day, and the projects that used the most, from Claude Code's and Codex's own logs ([usage](docs/usage.md#activity)).
+A conversation that is over and gone from the list is under **History** above the limits, on its Sessions tab: the last week's, with Resume in a new tab ([usage](docs/usage.md#sessions)).
+What the agents did this week is on History's Activity tab: prompts and tokens a day, and the projects that used the most, from Claude Code's and Codex's own logs ([usage](docs/usage.md#activity)). History opens on the tab it showed last ([usage](docs/usage.md#history)).
+A server a session runs shows on its card as a port pill, `:5173`, at the end of its report line, or of the line with its branch and model when the card reports nothing. The pill takes the colour of its server's language: violet for JavaScript (`node`, `bun` or `deno`), blue for Python, red for Ruby and grey for anything else. One grey `+N` pill stands for the rest. The pill opens each one's program, uptime and address, with Open and Stop ([usage](docs/usage.md#ports)).
+In the list the pill opens, an amber globe marks an address the network can reach. A card waiting on you hides its pill while it shows its answers or Yes and No, and the pill comes back once you answer. Under about 300 px, Open and Stop show only their icons.
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="A card with its folder, agent mark, Working pill, task title, report age, branch, model, context and CPU. A progress bar shows the reported percent and current activity. Then a teammate, running and finished subagents, a Codex job, the task list, scheduled prompts and background shells. Lines join each part to its explanation.">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/card-anatomy.svg" width="100%" alt="A card with its folder, agent mark, Working pill, task title, report age, branch, model, context and CPU. A progress bar shows the reported percent and current activity, with a port it listens on at that line's end. Then a teammate, running and finished subagents, a Codex job, the task list, scheduled prompts and background shells. Lines join each part to its explanation.">
 
 Card anatomy in Settings > Look offers Task first, with the folder, state
 pill, active task title and update age, or Name first; new installs use Task
@@ -158,10 +158,8 @@ Each agent's tab says the same under its title: `working`, `needs you` with
 the question, `done`, or `idle`, in the panel's colours ([usage](docs/usage.md#the-status-under-a-tab)).
 A cs session's tab takes a tint of the session's colour, 35% of it over the
 pane's background, on by default. iTerm2 colours a tab from its active pane,
-and a pane with a tab colour of its own keeps it. While the tint is on, the
-panel hides the line iTerm2's Minimal theme draws under the selected tab.
-When iTerm2 saves its settings to a shared folder, every Mac that loads them
-from there loses the line too, and gets it back when the tint goes off ([usage](docs/usage.md#the-sessions-colour-on-its-tab)).
+and a pane with a tab colour of its own keeps it
+([usage](docs/usage.md#the-sessions-colour-on-its-tab)).
 
 An omp session reports its state through the extension the install writes:
 when a turn starts and ends, when an approval or a question waits on you, and
@@ -265,11 +263,11 @@ Some have limits the picture doesn't show:
 | Memory heavy at | 0.5 to 8 GB |
 | Text size | Minus and plus buttons over nine sizes, 0.8 to 1.6 times the size as designed |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the Past sessions, Ports and Activity fold heads, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the History fold head, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
 
 The foot lists the sessions waiting on you, oldest first, each with what it
 asks: the question's header and text, or the tool and its command. Under them are
-the Past sessions, Ports and Activity folds, then your Claude account limits:
+the History fold, then your Claude account limits:
 5-hour, weekly, and per-model weekly, with the time left
 until each resets. The tick on a weekly bar marks where an even spend across
 the week would be right now; a percentage turns warm 15 points past it, and the
@@ -361,19 +359,27 @@ Claude's memory index. The daemon reads:
   free text in a question reads as the agent wrote it.
 - The statusline payload: context, model, effort, cost and limits.
 - The first 64 KB of each transcript under `~/.claude/projects`, for
-  **Past sessions**: the directory and the first prompt, nothing after.
+  History's **Sessions** tab: the directory and the first prompt, nothing after.
 - `ps`, for each session's process tree, and `git` in each session's
   directory, for its branch.
-- `lsof`, when **Ports** opens: each listening TCP socket's address, port
-  and the pid and name of the process that holds it.
+- `lsof`, every 5 seconds at most and again a second after a Stop, for the
+  ports on the cards: each listening
+  TCP socket's address, port and the pid and name of the process that holds
+  it. For a listener outside every card's process tree, the kernel's copy of
+  its environment, from which it keeps `CLAUDE_PID` alone.
 - Claude Code's transcripts under `~/.claude/projects` and Codex's rollouts
-  under `~/.codex/sessions`, when **Activity** opens: each line's time,
+  under `~/.codex/sessions`, when History shows its **Activity** tab: each line's time,
   directory and token counts, which lines are prompts, the client that wrote
   them, and a conversation's cost. It keeps none of the text.
 
 It writes under `~/.claude/agents-sidebar-*`, `~/.config/agents-sidebar` and
 `~/.local/share/agents-sidebar`, readable by your user alone; the list is in
 [docs/development.md](docs/development.md#what-the-panel-keeps-on-disk).
+An earlier release may have left `tab-underline.json`, its record of whether it
+hid iTerm2's line under the selected tab. Where it did, the daemon puts that line
+back once at its start, with `defaults write` or `defaults delete` on
+`com.googlecode.iterm2`, unless you changed it since. Uninstall does the same
+([docs/integrations.md](docs/integrations.md#uninstall)).
 The daemon serves the panel on `127.0.0.1` behind a random token minted at
 every start. It sends nothing anywhere, with three exceptions: the update
 check fetches this repository from GitHub; `ssh` reaches the hosts your panes

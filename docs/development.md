@@ -65,7 +65,7 @@ asks only whether it waits or has exited.
 
 The server also takes `POST /accounts` (switch, add, rename, read), `/update`,
 `/statusline`, `/tab-status` (takes iTerm2's `cc-status` hook out of Claude Code's settings), `/context`, `/link`, `/untie`, `/github` (opens the repository
-or releases page the daemon builds), `/rebuild` (registers the panel again under a fresh URL, so iTerm2 builds its web view anew in every window: the reload button's right-click menu), `/stop-port` (`SIGTERM` to the holder of a port the last `GET /ports` listed, once a fresh `lsof` and `ps` show the same process still holds it) and `/page-error`. No endpoint runs arbitrary code.
+or releases page the daemon builds), `/rebuild` (registers the panel again under a fresh URL, so iTerm2 builds its web view anew in every window: the reload button's right-click menu), `/stop-port` (`SIGTERM` to the holder of a port a card showed in the daemon's last reading, once a fresh `lsof` and `ps` show the same process still holds it), `/open-port` (opens `http://localhost:<port>` for a port a card showed in that reading) and `/page-error`. No endpoint runs arbitrary code.
 `POST /uninstall` checks the token, then accepts an object containing only
 the optional boolean `keep_accounts`. An empty body or `{}` defaults to false.
 Malformed JSON, unknown keys and other value types return 400 before a job or
@@ -182,16 +182,15 @@ read against the source.
   Codex session's reply, read from its rollout.
 - `omp.py`: what an omp session says about itself, read from its own files.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
-- `past.py`: the Past sessions fold's rows, read from Claude Code's transcripts.
-- `ports.py`: the Ports fold's rows, from `lsof`'s listening TCP sockets.
+- `past.py`: the rows of the History fold's Sessions tab, read from Claude Code's transcripts.
+- `ports.py`: the ports on each agent's card: `lsof`'s listening TCP sockets, each under the card whose agent's process tree holds it, or whose agent its environment's `CLAUDE_PID` names, with the language its process runs, read off the kernel's name for it.
 - `statusline.py`: puts the statusline bridge into Claude Code's settings, and takes iTerm2's `cc-status` hook out.
 - `tabstatus.py`: the status under each agent's tab title, written through iTerm2's `set_session_status` and
   taken back when the session exits or goes unreported, the setting goes off or the daemon stops.
 - `tabcolour.py`: each card's tab in its cs session colour, mixed over the pane's own backgrounds, written
   through the session's own profile, put back when it no longer applies, and known by its colours after a restart.
-- `tabunderline.py`: iTerm2's line under the selected tab, held at 0 through `defaults` while the tab tint is on
-  and put back when it goes off, with what goes back in `tab-underline.json`; and the folder iTerm2 shares its
-  settings from.
+- `tabunderline.py`: at the daemon's start, puts back iTerm2's line under the selected tab through `defaults`
+  where `tab-underline.json` says the panel set it to 0, unless the user changed it since, and removes the record.
 - `update.py`: checks the mirror for a newer release and takes it.
 - `links.py`: links between two cards, the one-shot hand-off, through each session's links folder.
 - `partners.py`: partner sessions: the record, each end's `partner.json`, and the tasks between them.
@@ -359,8 +358,9 @@ of a guess.
   each session, with its `.lock` and, for a large state, its `.published` file.
 - `~/.claude/agents-sidebar-tasks/`: each session's task note.
 - `~/.claude/agents-sidebar-status/`: the statusline payloads and lines,
-  `original-statusline`, `daemon.log`, `partners.json`, `activity.json`,
-  `tab-underline.json` and the `tones/` folder.
+  `original-statusline`, `daemon.log`, `partners.json`, `activity.json`, the
+  `tones/` folder and `tab-underline.json`, kept until the daemon has put back
+  iTerm2's line under the selected tab or found it changed.
 - `~/.claude/agents-sidebar-links/<session id>/`: each session's link,
   partner and remote control files.
 - `~/.claude/agents-sidebar-settings.json`: the panel's settings.

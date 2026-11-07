@@ -1,4 +1,4 @@
-"""Past conversations: what the Past sessions fold lists and what Resume opens.
+"""Past conversations: what History's Sessions tab lists and what Resume opens.
 
 Read from Claude Code's transcripts under ~/.claude/projects. A cs session is
 one row however many conversations it held; any other directory is one row
@@ -133,7 +133,7 @@ class Window:
 
 
 def typed_on_resume(row):
-    """What Resume on a Past sessions row types at the shell of the tab it opens."""
+    """What Resume on a Sessions tab row types at the shell of the tab it opens."""
     shell = Shell()
     bridge = sidebar.Bridge(None, None)
     bridge.app = types.SimpleNamespace(current_terminal_window=Window(shell))

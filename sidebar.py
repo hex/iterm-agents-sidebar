@@ -210,6 +210,8 @@ DEFAULT_SETTINGS = {
     # The accounts and limits at the foot, folded to the active account and
     # Codex by a click on their head.
     "limits_folded": False,
+    # The History fold's tab last shown, the one the fold opens on.
+    "history_tab": "sessions",
     # Settings cards whose bodies stay closed across panel restarts.
     "sheet_folds": ["on_card"],
     # A multiplier on the stylesheet's own sizes, so 1.0 means "as designed".
@@ -266,7 +268,8 @@ SETTING_CHOICES = {"provider_mark": ("tag", "corner", "groups", "off"),
                    "order": ("terminal", "name", "attention", "hand"),
                    "shell_font": ("system", "mono", "terminal"),
                    "card_style": ("cards", "hairlines", "air", "inset", "outlines", "serenity"),
-                   "card_anatomy": ("task", "name")}
+                   "card_anatomy": ("task", "name"),
+                   "history_tab": ("sessions", "activity")}
 
 
 def _clean(settings):
@@ -1426,6 +1429,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
                 row["heavy"] = session["heavy"]
             if session.get("usage"):
                 row["usage"] = session["usage"]
+            if session.get("ports"):
+                row["ports"] = session["ports"]
             # A nested row works in its parent's project, whose card shows it.
             if session.get("commits") and not child:
                 row["commits"] = session["commits"]
@@ -3594,21 +3599,22 @@ class Sidebar:
     def __init__(self, token, page_path, snapshot_fn, action_fn,
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
                  context_fn=None, link_fn=None, github_fn=None, untie_fn=None, review_fn=None, hand_over_fn=None,
-                 past_fn=None, reopen_fn=None, ports_fn=None, stop_port_fn=None, rebuild_fn=None, activity_fn=None,
+                 past_fn=None, reopen_fn=None, stop_port_fn=None, open_port_fn=None, rebuild_fn=None, activity_fn=None,
                  log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
         self.snapshot_fn = snapshot_fn
         self.action_fn = action_fn
         self.settings_path = settings_path
-        #: () -> the Past sessions fold's rows; (kind, path, conversation) -> opens one
+        #: () -> the History Sessions tab's rows; (kind, path, conversation) -> opens one
         #: again, raising ValueError with the reason when it will not.
         self.past_fn = past_fn
         self.reopen_fn = reopen_fn
-        #: () -> the Ports fold's rows; (pid, port, started_at) -> SIGTERM to that
-        #: row's holder. Both raise ports.Refused with the reason when they will not.
-        self.ports_fn = ports_fn
+        #: (pid, port, started_at) -> SIGTERM to that listener's holder, and ->
+        #: its page opened in the browser. Both raise ports.Refused with the
+        #: reason when they will not.
         self.stop_port_fn = stop_port_fn
+        self.open_port_fn = open_port_fn
         #: days -> the activity report of the last that many days.
         self.activity_fn = activity_fn
         self.accounts_fn = accounts_fn
@@ -3696,13 +3702,10 @@ class Sidebar:
             return self._json(200, {"rows": self.past_fn() if self.past_fn else []})
         if method == "POST" and path == "/reopen":
             return self._reopen(body)
-        if method == "GET" and path == "/ports":
-            try:
-                return self._json(200, {"rows": self.ports_fn() if self.ports_fn else []})
-            except ports.Refused as refusal:
-                return self._json(409, {"error": str(refusal)})
         if method == "POST" and path == "/stop-port":
-            return self._stop_port(body)
+            return self._port_act(self.stop_port_fn, body)
+        if method == "POST" and path == "/open-port":
+            return self._port_act(self.open_port_fn, body)
         if method == "GET" and path == "/activity":
             return self._activity(target)
 
@@ -3827,18 +3830,19 @@ class Sidebar:
             return self._json(409, {"error": str(refusal)})
         return self._json(200, {"ok": True})
 
-    def _stop_port(self, body):
-        """SIGTERM to a Ports row's holder. Its parts are checked for shape here
-        and against the daemon's last reading and the process table in
-        stop_port_fn: no pid the page sends reaches kill unless it was listed."""
+    def _port_act(self, act, body):
+        """A Stop or an Open on one of a card's listeners. Its parts are checked
+        for shape here and against the daemon's last reading in `act`: no pid
+        the page sends reaches kill, and no port reaches a URL, unless a card
+        showed it."""
         request = self._body(body) or {}
         pid, port, started_at = request.get("pid"), request.get("port"), request.get("started_at")
         whole = lambda value: isinstance(value, int) and not isinstance(value, bool)
         if (not (whole(pid) and whole(port) and whole(started_at)) or pid <= 1 or not 1 <= port <= 65535
-                or self.stop_port_fn is None):
-            return self._json(400, {"error": "unknown row"})
+                or act is None):
+            return self._json(400, {"error": "unknown listener"})
         try:
-            self.stop_port_fn(pid, port, started_at)
+            act(pid, port, started_at)
         except ports.Refused as refusal:
             return self._json(409, {"error": str(refusal)})
         return self._json(200, {"ok": True})
@@ -3912,6 +3916,12 @@ HEARTBEAT_SECONDS = 4
 #: its own poll interval; this only bounds how late a due reading starts.
 ACCOUNT_TICK_SECONDS = 30
 POLL_SECONDS = 2
+#: How often the listening ports are read at most: lsof walks every
+#: process's open files, 0.07 to 0.15 s of wall time measured on a busy Mac.
+PORTS_READ_SECONDS = 5
+#: How long after a Stop the ports are read again: a holder takes a moment
+#: to close its socket once it has the signal.
+STOP_READ_SECONDS = 1
 #: How often the mirror is asked for a newer release.
 RELEASE_CHECK_SECONDS = 24 * 60 * 60
 #: How long a stopping daemon waits for its words to come off the tabs.
@@ -4064,11 +4074,11 @@ class Server:
             return
 
         path = urlsplit(target).path
-        if path in ("/accounts", "/update", "/context", "/github", "/past", "/ports", "/stop-port", "/activity"):
+        if path in ("/accounts", "/update", "/context", "/github", "/past", "/stop-port", "/open-port", "/activity"):
             # Account ops wait on the Keychain, Claude Code's locks and the
             # network, for seconds, an update on a pull and install.sh, a
-            # context read on a fork of claude, a GitHub page on `open`, the
-            # Ports fold and its Stop on lsof and ps, and a cold activity
+            # context read on a fork of claude, a GitHub page and a port's
+            # page on `open`, a port's Stop on lsof and ps, and a cold activity
             # report on every log of its window; off the loop, the heartbeat
             # keeps going.
             status, content_type, payload = await asyncio.to_thread(
@@ -4133,10 +4143,6 @@ class Bridge:
         #: The default profile's font, read once at start: a profile edited
         #: later shows after the daemon restarts.
         self.terminal_font = None
-        #: The folder iTerm2 shares its settings from, home as ~, read once at
-        #: start; None while iTerm2 keeps its own, reads them from a URL,
-        #: never saves to the folder, or was not asked.
-        self.iterm_prefs_folder = None
         #: The front session's background, read each rebuild while the panel
         #: follows it; None when the last read failed.
         self.terminal_background = None
@@ -4160,10 +4166,29 @@ class Bridge:
         self._tmux_unread = {}
         #: The hook session ids that have a card, which the state sweep spares.
         self.live_sessions = set()
-        #: The Past sessions fold's rows as last read; a reopen is checked against them.
+        #: The History Sessions tab's rows as last read; a reopen is checked against them.
         self.past = []
-        #: The Ports fold's rows as last read; a Stop is checked against them.
-        self.ports = []
+        #: The last listener reading, (pid, port) -> what lsof listed then, as
+        #: ports.by_card reads it; None when the last try failed or none was
+        #: made yet, so no card shows a port the daemon cannot vouch for.
+        self.listening = None
+        #: When a reading was last tried (time.monotonic()); None makes the
+        #: next rebuild try one.
+        self.listening_at = None
+        #: (pid, when it began) -> the agent its environment names, for the
+        #: listeners outside every card's tree: each process is asked once.
+        self.inherited = {}
+        #: The reading's failure the log last said, so each is said once.
+        self._listening_failure = None
+        #: The cards' listeners as the last rebuild placed them, by (pid, port,
+        #: started_at); a Stop and an Open are checked against them.
+        self.ports = {}
+        #: The listeners sent SIGTERM since the reading; another Stop of one
+        #: waits for the next reading.
+        self.stopped = set()
+        #: The daemon's loop, set by main: a Stop runs on a request's thread
+        #: and asks the loop to read the ports again.
+        self.loop = None
         #: Each log's figures as the activity report last read them, and the
         #: lock that runs one report at a time over them. None until the first
         #: read of this daemon's life loads what the last one kept.
@@ -4207,8 +4232,6 @@ class Bridge:
         self.status = tabstatus.Writer(invoke=self.invoke_function)
         #: Paints each card's tab in its session colour and puts back what it replaced.
         self.tab_colours = tabcolour.Painter()
-        #: Hides iTerm2's line under the selected tab while the tint is on, and puts back what was there.
-        self.tab_underline = tabunderline.Underline(os.path.join(STATUS_DIR, "tab-underline.json"))
         #: Plays the panel's sounds; main() makes it before the server takes
         #: its first request, since making it writes the tone files.
         self.player = None
@@ -4487,6 +4510,7 @@ class Bridge:
             row["heavy"] = hold_heavy(self._heavy_seen, heavy_on(cpu, rss_kb, settings), pid, now)
             hogs = tree_hogs(resources, commands, pid, roots) if row["heavy"] else {}
             row["usage"] = usage_shown(row["heavy"], cpu, rss_kb, hogs)
+        await self.place_ports(rows, resources, started, args, codex_jobs)
         if settings["commit_heatmap"]:
             await self.read_commits(rows)
         else:
@@ -4555,7 +4579,6 @@ class Bridge:
                                here=local_host())
         self.latest["version"] = version()
         self.latest["terminal_font"] = self.terminal_font
-        self.latest["iterm_prefs_folder"] = self.iterm_prefs_folder
         if settings["follow_terminal"]:
             await self.read_terminal_background()
         else:
@@ -4596,7 +4619,6 @@ class Bridge:
         hooks = statusline.cc_status(CLAUDE_SETTINGS)
         await self.status.step(self.app, agent_rows, self.unseen.sids, settings, hooks, self.log)
         await self.tab_colours.step(self.app, agent_rows, settings, self.log)
-        await self.tab_underline.step(settings["tab_colour"], self.log)
         note = tabstatus.notice(settings, hooks, self.status.available)
         if note:
             self.latest["tab_status"] = note
@@ -4735,7 +4757,7 @@ class Bridge:
         await self.rebuild()
 
     def read_past(self):
-        """The Past sessions fold's rows: conversations written to lately that have no
+        """The History Sessions tab's rows: conversations written to lately that have no
         card now. Read on request, off the loop: it lists every project
         folder Claude Code keeps."""
         live_paths = {row["path"] for row in self.rows if row.get("path")}
@@ -4794,15 +4816,64 @@ class Bridge:
             raise ValueError("nothing to resume")
         asyncio.ensure_future(self.open_tab_and_type(path, command))
 
-    def read_ports(self):
-        """The Ports fold's rows: every TCP port listening on this Mac that this
-        user can see, under the session whose process tree holds it. Read on
-        request, off the loop: lsof walks every process's open files. Raises
-        ports.Refused when lsof or ps cannot be run or read.
+    async def place_ports(self, rows, table, started, args, codex_jobs):
+        """Put on each row the TCP ports its card shows: the listeners its
+        agent's process tree holds, and those its agent left running outside
+        it. Every row gets the key; one with none has an empty list.
 
         A session's tree starts at its card's agent and at each Codex job its
         Claude session has running, which runs outside that tree. The agents'
-        and the jobs' own sockets, and the daemon's, are not listed.
+        and the jobs' own sockets, and the daemon's, are not listed. lsof is
+        read at most once every PORTS_READ_SECONDS, off the loop; each rebuild
+        places that reading over its own process listing, so a listener whose
+        process exited since leaves its card at once.
+        """
+        roots = {row["agent_pid"]: row["session_id"] for row in rows if row["agent_pid"]}
+        by_conversation = {row["conversation"]: row["session_id"] for row in rows if row["conversation"]}
+        for job in codex_jobs:
+            if job["pid"] and job["status"] in ("queued", "running") and job["session"] in by_conversation:
+                roots.setdefault(job["pid"], by_conversation[job["session"]])
+        agents = set(roots)
+        hidden = agents | {os.getpid()}
+        trees = {pid: session for root, session in roots.items() for pid in tree_pids(table, root, agents)}
+        now = time.monotonic()
+        if self.listening_at is None or now - self.listening_at >= PORTS_READ_SECONDS:
+            self.listening_at = now
+            try:
+                self.listening, self.inherited, unread = await asyncio.to_thread(
+                    self.read_listeners, started, trees, hidden)
+            except ports.Refused as failure:
+                self.listening = None
+                if str(failure) != self._listening_failure:
+                    self._listening_failure = str(failure)
+                    self.log("ports not read:", failure)
+            else:
+                self._listening_failure = None
+                for pid, error in unread:
+                    self.log(f"ports: could not read the environment of pid {pid}, so no card shows its ports:", error)
+            self.stopped = set()
+        reading = self.listening or {}
+        processes = {pid: {"started_at": started[pid], "command": args[pid], "program": foreground_command(args[pid])}
+                     for pid, _ in reading if pid in started and pid in args}
+        cards = ports.by_card(reading, processes, trees,
+                              {row["agent_pid"]: (row["session_id"], row["started_at"])
+                               for row in rows if row["agent_pid"]}, hidden)
+        self.ports = {(p["pid"], p["port"], p["started_at"]): p for listed in cards.values() for p in listed}
+        for row in rows:
+            row["ports"] = cards.get(row["session_id"], [])
+
+    def read_listeners(self, started, trees, hidden):
+        """-> (the listener reading place_ports keeps, the agents named by
+        the environments it read, (pid, error) for each environment that
+        could not be read). Runs on a worker thread.
+
+        A listener's start comes off this rebuild's listing, taken just
+        before; one that began after it waits for the next reading. Only a
+        listener outside every card's tree has its environment read, and a
+        process already asked is not asked again, so each failure is given
+        once. A listener whose environment cannot be read names no agent; one
+        whose process exited before it was read is left out. Raises
+        ports.Refused when lsof cannot be run or read.
         """
         try:
             # lsof exits 1 when nothing matches, and also when it could not
@@ -4814,22 +4885,33 @@ class Bridge:
             listeners = ports.parse_listeners(found.stdout)
         except ValueError as error:
             raise ports.Refused(f"could not read lsof: {error}") from error
-        listing = read_process_listing()
-        if not listing:
-            raise ports.Refused("could not run ps")
-        table, args, (_, started, _, _) = parse_resources(listing), parse_args(listing), parse_processes(listing)
-        roots = {row["agent_pid"]: row["session_id"] for row in self.rows if row.get("agent_pid")}
-        by_conversation = {row["conversation"]: row["session_id"] for row in self.rows if row.get("conversation")}
-        for job in read_codex_jobs():
-            if job["pid"] and job["status"] in ("queued", "running") and job["session"] in by_conversation:
-                roots.setdefault(job["pid"], by_conversation[job["session"]])
-        agents = set(roots)
-        owners = {pid: session for root, session in roots.items() for pid in tree_pids(table, root, agents)}
-        processes = {pid: {"started_at": started[pid], "command": masked(args[pid]),
-                           "program": foreground_command(args[pid])}
-                     for pid, _ in listeners if pid in started and pid in args}
-        self.ports = ports.rows(listeners, processes, owners, self.labels(), agents | {os.getpid()})
-        return self.ports
+        reading, inherited, gone, unread = {}, {}, set(), []
+        for (pid, port), listener in listeners.items():
+            if pid in hidden or pid not in started:
+                continue
+            key = (pid, started[pid])
+            if pid not in trees and key not in inherited and key not in gone:
+                if key in self.inherited:
+                    inherited[key] = self.inherited[key]
+                else:
+                    try:
+                        inherited[key] = ports.inherited_agent(pid)
+                    except (OSError, ValueError) as error:
+                        # macOS says EINVAL alike for a pid that is gone and
+                        # one it will not read; signal 0 tells them apart.
+                        try:
+                            os.kill(pid, 0)
+                        except ProcessLookupError:
+                            gone.add(key)
+                            continue
+                        except PermissionError:
+                            pass
+                        inherited[key] = None
+                        unread.append((pid, error))
+            if key in gone:
+                continue
+            reading[(pid, port)] = {**listener, "started_at": started[pid], "agent": inherited.get(key)}
+        return reading, inherited, unread
 
     def labels(self):
         """Session id -> the name its card shows, as of the last frame."""
@@ -4837,14 +4919,19 @@ class Bridge:
 
     def stop_port(self, pid, port, started_at):
         """SIGTERM to the process holding `port`, once it is checked to be the
-        one the fold showed: a row of the last reading, no card's agent since,
-        still listening there, and started when it was. A pid is reused, so
-        the start is what tells the same process from another. Raises
-        ports.Refused with the reason for anything else; nothing escalates.
+        one a card showed: a listener of the last reading not already sent a
+        Stop, no card's agent since, still listening there, and started when
+        it was. A pid is reused, so the start is what tells the same process
+        from another. Raises ports.Refused with the reason for anything else;
+        nothing escalates. The ports are read again STOP_READ_SECONDS later,
+        and the frame that reading changes is pushed.
         """
-        row = next((r for r in self.ports if (r["pid"], r["port"], r["started_at"]) == (pid, port, started_at)), None)
-        if row is None:
-            raise ports.Refused("not in the last reading; open the fold again")
+        key = (pid, port, started_at)
+        listener = self.ports.get(key)
+        if listener is None:
+            raise ports.Refused("not in the last reading")
+        if key in self.stopped:
+            raise ports.Refused("already stopping")
         agent = next((r["session_id"] for r in self.rows if r.get("agent_pid") == pid), None)
         if agent is not None:
             label = self.labels().get(agent)
@@ -4872,8 +4959,28 @@ class Bridge:
             raise ports.Refused("already gone") from error
         except PermissionError as error:
             raise ports.Refused("not yours to stop") from error
-        self.ports = [r for r in self.ports if r is not row]
-        self.log("stop-port", pid, f":{port}", row["program"])
+        self.stopped.add(key)
+        self.log("stop-port", pid, f":{port}", listener["program"])
+        self.loop.call_soon_threadsafe(self.loop.call_later, STOP_READ_SECONDS, self.read_ports_again)
+
+    def read_ports_again(self):
+        """Read the ports at the next rebuild, and run that rebuild now."""
+        self.listening_at = None
+        asyncio.ensure_future(self.rebuild_or_report())
+
+    def open_port(self, pid, port, started_at):
+        """Open http://localhost:<port> in the default browser, for a listener a
+        card showed in the last reading. The daemon builds the URL from the
+        port it checked, so the URL is never the page's to choose."""
+        if (pid, port, started_at) not in self.ports:
+            raise ports.Refused("not in the last reading")
+        url = f"http://localhost:{port}"
+        try:
+            subprocess.run(["open", url], check=True, timeout=update.OPEN_TIMEOUT, capture_output=True, text=True)
+        except subprocess.CalledProcessError as failed:
+            raise ports.Refused(f"could not open {url}: {failed.stderr.strip()}") from failed
+        except (subprocess.TimeoutExpired, OSError) as failed:
+            raise ports.Refused(f"could not open {url}: {failed}") from failed
 
     async def open_tab_and_type(self, path, command):
         """A new tab in `path`, and the command typed once its shell is up.
@@ -4985,16 +5092,6 @@ class Bridge:
             return
         if self.terminal_font is None:
             self.log("terminal font refused:", repr(profile.normal_font))
-
-    async def read_iterm_prefs_folder(self):
-        """Keep the folder iTerm2 shares its settings from, for the tab tint's
-        note. A failed read is logged and leaves None."""
-        try:
-            folder = await tabunderline.settings_folder()
-        except (tabunderline.Failed, OSError) as error:
-            self.log("iTerm2 settings folder not read:", error)
-            return
-        self.iterm_prefs_folder = tilde_path(Path(folder)) if folder else None
 
     async def read_terminal_background(self):
         """Keep the background of the session in front of the key window, for
@@ -5502,8 +5599,8 @@ async def main(connection):
         past_fn=lambda: bridge.read_past(),
         activity_fn=lambda days: bridge.read_activity(days),
         reopen_fn=lambda kind, path, conversation: bridge.reopen(kind, path, conversation),
-        ports_fn=lambda: bridge.read_ports(),
         stop_port_fn=lambda pid, port, started_at: bridge.stop_port(pid, port, started_at),
+        open_port_fn=lambda pid, port, started_at: bridge.open_port(pid, port, started_at),
         link_fn=lambda source, target: bridge.link(source, target),
         untie_fn=lambda pane: bridge.untie(pane),
         review_fn=lambda pane: bridge.review(pane),
@@ -5512,10 +5609,11 @@ async def main(connection):
     )
     server = Server(sidebar, health_fn=lambda: bridge.healthy(), restart_fn=restart)
     bridge = Bridge(connection, server, meters)
+    bridge.loop = asyncio.get_running_loop()
     bridge.player = sound.Player.for_dir(os.path.join(STATUS_DIR, "tones"), bridge.log)
     bridge.app = await iterm2.async_get_app(connection)
     await bridge.read_terminal_font()
-    await bridge.read_iterm_prefs_folder()
+    await tabunderline.put_back(os.path.join(STATUS_DIR, "tab-underline.json"), bridge.log)
     # The tab statuses come off before the daemon goes: a tab still saying
     # working after the panel has stopped is old news passed off as current.
     asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, lambda: asyncio.ensure_future(bridge.stop()))

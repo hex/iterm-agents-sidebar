@@ -30,8 +30,8 @@ def cycle(attr, values, key_times, **kw):
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="100%" '
   f'role="img" aria-label="An iTerm2 window with the Agents panel docked on the right: one card per session, each with a Working, '
-  f'Waiting or Idle pill, the one waiting on a question turning amber, and under the cards the Past sessions, Ports and '
-  f'Activity folds, then Limits and the release">')
+  f'Waiting or Idle pill, a server a session runs as a port pill in its language\'s tint at the end of its card\'s report line, '
+  f'the one waiting on a question turning amber, and under the cards the History fold, then Limits and the release">')
 A('  <title>Agents sidebar</title>')
 A(f'''  <defs>
     <filter id="drop" x="-6%" y="-14%" width="112%" height="140%">
@@ -194,6 +194,9 @@ text(TEXT_X, c1 + 72, "Writing tests", fill=DIM, size=12.5)
 x = middot(TEXT_X + width_of("Writing tests", 12.5), c1 + 72)
 mark("clock", x, c1 + 62, 12, DIM)
 text(x + 16, c1 + 72, "2m", fill=DIM, size=12.5)
+# The port its dev server listens on, at the report line's right end, in JavaScript's tint.
+A(f'  <rect x="{CARD_X + CARD_W - 16 - 46}" y="{c1 + 59}" width="46" height="18" rx="5" fill="{mix(KIND_JS, CARD, .14)}"/>')
+text(CARD_X + CARD_W - 16 - 23, c1 + 72, ":5173", fill=KIND_JS, size=11, weight=600, extra=' text-anchor="middle"')
 A(f'  <g mask="url(#tick)">'
   f'<rect x="{TEXT_X}" y="{c1+80}" width="330" height="5" fill="{FG}" opacity="0.16"/>'
   f'<rect x="{TEXT_X}" y="{c1+80}" width="150" height="5" fill="{LIT}">'
@@ -282,9 +285,9 @@ text(CARD_X + 44, s1 + 57, "~/src/website", fill=FG, size=13)
 text(CARD_X + 44, s1 + 75, "vite dev", fill=DIM, size=11.5, family=MONO)
 
 rule_y = WY + WH - 34
-fy = rule_y - 114
-for label in ("Past sessions", "Ports", "Activity", "Limits"):
-    dash = ' stroke-dasharray="1 2"' if label != "Past sessions" else ""
+fy = rule_y - 78
+for label in ("History", "Limits"):
+    dash = ' stroke-dasharray="1 2"' if label != "History" else ""
     A(f'  <line x1="{PX+14}" y1="{fy}" x2="{PX+PANEL_W-14}" y2="{fy}" stroke="{RULE}"{dash}/>')
     text(PX + 24, fy + 13, "›", fill=DIM, size=10.5, family=MONO)
     text(PX + 36, fy + 13, label, fill=DIM, size=10.5, family=MONO)

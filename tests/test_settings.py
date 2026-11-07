@@ -241,6 +241,30 @@ def test_the_limits_foot_starts_open_and_stays_folded_once_folded(tmp_path):
     assert load_settings(store)["limits_folded"] is True
 
 
+def test_history_opens_on_sessions_until_the_activity_tab_is_shown(tmp_path):
+    """The tab History last showed is the one it opens on, across a reload
+    of the panel and a restart of the daemon."""
+    store = tmp_path / "settings.json"
+    assert load_settings(store)["history_tab"] == "sessions"
+    for tab in ("activity", "sessions"):
+        assert save_settings({"history_tab": tab}, store)["history_tab"] == tab
+        assert load_settings(store)["history_tab"] == tab
+
+
+def test_a_history_tab_that_is_not_one_of_them_is_refused():
+    for junk in ("Activity", "ports", "", None, 1, True, ["activity"]):
+        assert sidebar._clean({"history_tab": junk})["history_tab"] == "sessions"
+
+
+def test_the_shown_history_tab_comes_back_in_the_settings_the_page_takes(tmp_path):
+    """The page replaces its settings with this reply, so a tab the reply
+    left out would snap back to Sessions."""
+    server, store = _server(tmp_path)
+    status, _, body = server.handle("POST", "/settings?token=t", b'{"history_tab": "activity"}')
+    assert status == 200 and json.loads(body)["history_tab"] == "activity"
+    assert json.loads(server.handle("GET", "/settings?token=t", b"")[2])["history_tab"] == "activity"
+
+
 def test_switching_accounts_automatically_is_off_until_asked_for():
     assert DEFAULT_SETTINGS["auto_switch"] is False
 

@@ -1,5 +1,5 @@
-# ABOUTME: Checks the Past sessions fold in the panel foot: a head per day, an entry per row that resumes,
-# ABOUTME: its opening and refusal, and the fold's states. Runs the page's own functions under Node over a stand-in DOM.
+# ABOUTME: Checks History's Sessions tab in the panel foot: a head per day, an entry per row that resumes,
+# ABOUTME: its opening and refusal, and the tab's states. Runs the page's own functions under Node over a stand-in DOM.
 import json
 import os
 import re
@@ -30,8 +30,8 @@ const document = {createElement: node};
 function on(el, type, handler) { (el._on ||= {})[type] = handler; }
 // An element as its class and either its text or its children, in order.
 const shape = n => n.children.length ? [n.className, ...n.children.map(shape)] : [n.className, n.textContent];
-const log = () => pastFold().children[1];
-// Every entry button in the open fold, in order.
+const log = () => pastPanel().children[0];
+// Every entry button in the tab, in order.
 const entries = () => log().children.filter(n => n.className === "past-entries")
   .flatMap(list => list.children.map(item => item.children[0]));
 const every = n => [n, ...n.children.flatMap(every)];
@@ -40,7 +40,7 @@ const every = n => [n, ...n.children.flatMap(every)];
 
 def run(body, state):
     page = "\n".join([re.search(r"\nconst clock = .*?\n\};\n", PAGE, re.S).group(0)]
-                     + [function(PAGE, name) for name in ("waited", "pastDayHead", "pastEntry", "pastFold", "reopenPast", "readPast")])
+                     + [function(PAGE, name) for name in ("waited", "pastDayHead", "pastEntry", "pastPanel", "reopenPast", "readPast")])
     setup = f"""{DOM}
 Date.now = () => {NOW * 1000};
 const TOKEN = "t";
@@ -71,12 +71,9 @@ LAB = {"kind": "claude", "name": "lab", "path": "/work/lab", "conversation": "c-
 ROWS = [SHOP, NOTES, SITE, DOCS, API, LAB]
 
 
-def state(rows=ROWS, opening="[]", open=True, error=None, reading=False):
-    return (f"let pastOpen = {json.dumps(open)}; let pastRows = {json.dumps(rows)}; let pastError = {json.dumps(error)};"
+def state(rows=ROWS, opening="[]", error=None, reading=False):
+    return (f"let pastRows = {json.dumps(rows)}; let pastError = {json.dumps(error)};"
             f" let pastReads = {int(reading)}; const pastOpening = new Map({opening});")
-
-
-TOGGLE = ["lim-toggle", ["chev", "›"], ["", "Past sessions"]]
 
 
 def test_each_day_has_a_head_and_under_it_each_row_is_its_local_time_its_name_and_its_prompt():
@@ -168,70 +165,31 @@ console.log(JSON.stringify([asked, painted, after.map(shape), after.map(b => b.d
     ]
 
 
-def test_the_folded_fold_is_its_head_alone_and_opening_it_reads_the_past():
-    shown = run("""
-const fold = pastFold();
-const asked = [];
-function fetch(url) { asked.push(url); return new Promise(() => {}); }
-fold.children[0]._on.click();
-console.log(JSON.stringify([shape(fold), fold.children[0].attrs["aria-expanded"], pastOpen, asked, painted]));
-""", state(open=False))
-    assert shown == [["past", TOGGLE], "false", True, ["/past?token=t"], 1]
-
-
-def test_the_open_fold_reserves_reading_rows_and_says_why_it_failed_or_that_there_is_nothing():
-    show = "console.log(JSON.stringify(shape(pastFold())));"
+def test_the_tab_reserves_reading_rows_and_says_why_it_failed_or_that_there_is_nothing():
+    show = "console.log(JSON.stringify(shape(pastPanel())));"
     assert run(show, state(rows=None, reading=True)) == [
-        "past", ["lim-toggle reading", ["chev", "›"], ["", "Past sessions"]],
+        "hist-body",
         ["past-log unlit", ["u-day", ["", ""]],
          *[["u-entry", ["w", ""], ["n", ""], ["p", ""]] for _ in range(6)]]]
-    assert run(show, state(rows=None)) == ["past", TOGGLE]
+    assert run(show, state(rows=None)) == ["hist-body", ""]
     assert run(show, state(rows=None, error="read failed (500)")) == [
-        "past", TOGGLE, ["past-list", ["acct-status", "read failed (500)"]]]
+        "hist-body", ["past-list", ["acct-status", "read failed (500)"]]]
     assert run(show, state(rows=[])) == [
-        "past", TOGGLE, ["past-list", ["fold-note", "Nothing to resume from the last 7 days; the ones open now are on their cards."]]]
+        "hist-body", ["past-list", ["fold-note", "Nothing to resume from the last 7 days; the ones open now are on their cards."]]]
 
 
 def test_a_read_that_fails_after_one_that_listed_says_why_over_the_rows_it_listed():
-    assert run("console.log(JSON.stringify(shape(pastFold())));", state(rows=[NOTES], error="read failed (500)")) == [
-        "past", TOGGLE, ["past-list", ["acct-status", "read failed (500)"]],
+    assert run("console.log(JSON.stringify(shape(pastPanel())));", state(rows=[NOTES], error="read failed (500)")) == [
+        "hist-body", ["past-list", ["acct-status", "read failed (500)"]],
         ["past-log", ["past-day", "Today"],
          ["past-entries",
           ["past-item", ["past-entry", ["past-when", "16:31"], ["past-where", "notes"], ["past-resume", "Resume"]]]]],
     ]
 
 
-def test_past_reopening_reads_again_keeps_cached_entries_and_waits_for_both_reads():
-    assert run("""
-const asked = [];
-const answers = [];
-function fetch(url) { asked.push(url); return new Promise(resolve => answers.push(resolve)); }
-const closed = pastFold();
-const before = asked.length;
-closed.children[0]._on.click();
-pastFold().children[0]._on.click();
-pastFold().children[0]._on.click();
-const during = pastFold();
-answers[0]({ok: true, json: async () => ({rows: []})});
-setImmediate(() => {
-  const midway = pastFold().children[0].className;
-  answers.at(-1)({ok: true, json: async () => ({rows: []})});
-  setImmediate(() => console.log(JSON.stringify([before, asked, during.children[0].className,
-    during.children[1].className, during.children[1].children[1].children[0].children[0].children[1].textContent,
-    midway, pastReads > 0, shape(pastFold())])));
-});
-""", state(rows=[NOTES], open=False)) == [
-        0, ["/past?token=t", "/past?token=t"], "lim-toggle reading", "past-log", "notes", "lim-toggle reading", False,
-        ["past", TOGGLE, ["past-list", ["fold-note", "Nothing to resume from the last 7 days; the ones open now are on their cards."]]],
-    ]
-
-
-def test_nothing_in_the_fold_has_a_title_and_the_head_says_what_the_fold_holds_to_a_screen_reader():
+def test_nothing_in_the_tab_has_a_title():
     opening = json.dumps([["/work/shop\nc-shop", {"at": NOW * 1000 - 2000, "error": None}],
                           ["/work/notes\n", {"at": NOW * 1000 - 1000, "error": "the tab did not open"}]])
-    shown = run("""
-const fold = pastFold();
-console.log(JSON.stringify([every(fold).filter(n => n.title).map(n => [n.className, n.title]),
-                            fold.children[0].attrs["aria-label"]]));
-""", state(opening=opening))
-    assert shown == [[], "Past sessions: the last week's with no card"]
+    shown = run("console.log(JSON.stringify(every(pastPanel()).filter(n => n.title).map(n => [n.className, n.title])));",
+                state(opening=opening))
+    assert shown == []
