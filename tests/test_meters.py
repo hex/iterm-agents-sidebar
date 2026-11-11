@@ -166,3 +166,9 @@ def test_the_snapshot_carries_a_switch_with_nowhere_to_go():
     snap = meters_snapshot([A1], {}, active_id="acct-1",
                            next_switch={"to": None, "near": True, "why": "5-hour at 96%"})
     assert snap["next_switch"] == {"to": None, "near": True, "why": "5-hour at 96%"}
+
+
+def test_the_snapshot_names_where_a_full_account_goes_once_it_is_about_to_fill():
+    snap = meters_snapshot([A1, A2], {}, active_id="acct-1", emails={"acct-2": "bob@example.com"},
+                           next_switch={"to": None, "near": True, "why": "weekly at 94%", "later": "acct-2"})
+    assert snap["next_switch"] == {"to": None, "near": True, "why": "weekly at 94%", "later": "bob@example.com"}

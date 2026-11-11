@@ -82,6 +82,40 @@ directory. It leaves the rest of `settings.json` alone, later edits included. Co
 backup over `settings.json` also works, but it throws away every edit made
 since the latest install.
 
+## API credits and settings.json
+
+Otherwise the panel writes `~/.claude/settings.json` only at install, at
+uninstall or on a click: the bridge's `statusLine` above, and the `cc-status`
+hooks that **Remove iTerm2 hooks** takes out after backing the file up to
+`settings.json.before-tab-status`. The file has no lock and no owner field,
+and other tools rewrite it from templates. The API fallback is the one
+exception that writes on its own, and it writes only `apiKeyHelper`, from the
+daemon or from `api-key-helper.sh` when it takes itself out; uninstall takes
+it out too:
+
+- Only that key changes; every other key goes back as the panel read it.
+- The panel reads the file, changes it and replaces it whole, through a
+  temporary file and a rename. It reads it again just before the replace and
+  once after it; a
+  change from anyone else at either point runs the step once more from a
+  fresh read, and a second one stops it, leaves the file as that writer left
+  it, and refuses the move with the reason.
+- The file keeps its mode, a symlink (the write goes through it to the
+  target), and non-ASCII text, which is written as itself. The JSON goes back
+  with two-space indentation, so any other indentation is not kept.
+- A helper is the panel's only when its command is exactly the one the
+  fallback's record says the daemon wrote, or this checkout's own for one of
+  the stored accounts (`api-key-helper.sh <account id>`). Anything else
+  is never touched, even a file also named `api-key-helper.sh`, and the panel
+  never copies another tool's command into anything it shows or logs. The
+  fallback stays off and says "another tool's apiKeyHelper".
+- Losing the key is safe: a template rewrite or a `chezmoi apply` that drops it
+  sends the sessions back to the subscription, where they were.
+
+A plugin's own settings cannot name a helper, and a `--settings` file is read
+only at start, so the user settings file is the one switch that reaches
+running sessions. See [docs/accounts.md](accounts.md#api-credits-when-every-account-is-full).
+
 ## Codex hooks
 
 When `~/.codex` or a `codex` binary exists, the install registers the state
@@ -302,11 +336,19 @@ Uninstall stops the daemon and removes:
 - the `agents-sidebar` link, when it points at this checkout, and the
   daemon's `endpoint.json`
 - the bridge from `settings.json`, putting back only the `statusLine` key
+- `apiKeyHelper` from `settings.json`, while its command is exactly this
+  checkout's own for a stored account or the one the fallback's record says the
+  daemon wrote; another tool's stays, and the `api key` line says so
 - our entries from `~/.codex/hooks.json`, through `codex-hooks.sh --remove`
 - the omp extension, through `omp-extension.sh --remove`, while its third line
   is still the panel's marker
 - the panel's settings, state and linked-cards folder
-- by default, the account store and the Keychain items of every stored login
+- by default, the account store and the Keychain items of every stored login,
+  and each stored account's API key (`api-key:<account id>`); an item named
+  plain `api-key` belongs to another launcher and stays. They go from the
+  Keychain `security` searches unless `AGENTS_SIDEBAR_KEYCHAIN` names a keychain file; when
+  that file does not exist, the `accounts` line warns `keychain not found at
+  <path>; logins and keys left alone` and uninstall deletes no Keychain item
 
 Where the panel's record, `tab-underline.json`, says it set iTerm2's line
 under the selected tab to 0, uninstall puts back what
@@ -325,7 +367,8 @@ status folder. If the line is still hidden after either of those, bring it
 back with `defaults delete com.googlecode.iterm2 MinimalSelectedTabUnderlineProminence`.
 
 With **Keep my account logins** or `--keep-accounts`, it leaves
-`~/.config/agents-sidebar/accounts.json` and its Keychain items. Other files
+`~/.config/agents-sidebar/accounts.json` and its Keychain items, the
+accounts' API keys among them. Other files
 in that directory, including account locks, still go. The command reports
 where it kept the logins.
 

@@ -51,6 +51,16 @@
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks-handlers/emit-state.py StopFailure"
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "hooks": [

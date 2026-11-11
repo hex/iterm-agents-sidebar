@@ -109,6 +109,49 @@ else
   skip statusline "no settings.json"
 fi
 
+# The API fallback's apiKeyHelper, only while it is exactly the command this
+# checkout runs for one of the stored accounts, or the one the fallback's
+# record says the daemon wrote.
+if [ -f "$settings" ]; then
+  said=$(python3 -I -c '
+import json
+import sys
+sys.path.insert(0, sys.argv[1])
+import accounts
+import statusline
+path, helper, record, store = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+try:
+    ids = [account["id"] for account in accounts.load_store(store)]
+except accounts.StoreError:
+    ids = []
+ours = {statusline.helper_command(helper, ident) for ident in ids if accounts.is_account_id(ident)}
+try:
+    written = json.load(open(record, encoding="utf-8")).get("command")
+except (OSError, ValueError, AttributeError):
+    written = None
+if isinstance(written, str):
+    ours.add(written)
+state = statusline.api_key_helper_state(path, ours)
+if state == "ours":
+    try:
+        statusline.drop_api_key_helper(path, ours)
+    except ValueError as refusal:
+        print(refusal)
+        sys.exit(2)
+    print("apiKeyHelper taken out of ~/.claude/settings.json")
+    sys.exit(0)
+print("apiKeyHelper is not the panel'"'"'s; left alone" if state == "foreign" else
+      "settings.json unreadable; apiKeyHelper left alone" if state == "unreadable" else "no apiKeyHelper set")
+sys.exit(3 if state != "unreadable" else 2)
+' "$repo" "$settings" "$repo/api-key-helper.sh" "$HOME/.claude/agents-sidebar-status/api-fallback.json" \
+    "$HOME/.config/agents-sidebar/accounts.json" 2>&1) && outcome=0 || outcome=$?
+  case "$outcome" in
+    0) ok "api key" "$said" ;;
+    3) skip "api key" "$said" ;;
+    *) warn "api key" "$said" ;;
+  esac
+fi
+
 # iTerm2's line under the selected tab, where tab-underline.json says the panel
 # set it to 0: back to what was there, unless it changed since. `defaults`
 # ignores HOME, so AGENTS_SIDEBAR_ITERM_PREFS names another domain for tests.
@@ -205,25 +248,56 @@ else
 fi
 
 # The panel's own data: settings, the state the hooks kept, and the account
-# store with the Keychain items behind it.
+# store with the Keychain items behind it: each stored account's login, its
+# `.login` block and its API key, api-key:<account id>. The item named plain
+# api-key belongs to another launcher and stays. Every deletion names the
+# keychain AGENTS_SIDEBAR_KEYCHAIN gives, the tests' own; `security` given a
+# path that does not exist looks in the login keychain, so one that is named
+# and missing deletes nothing at all.
 store="$HOME/.config/agents-sidebar/accounts.json"
 items=0
+keychain=${AGENTS_SIDEBAR_KEYCHAIN:-}
 if [ "$keep_accounts" = 0 ] && [ -f "$store" ]; then
-  items=$(python3 - "$store" <<'PY'
+  if [ -n "$keychain" ] && [ ! -f "$keychain" ]; then
+    warn accounts "keychain not found at $keychain; logins and keys left alone"
+  else
+    items=$(python3 - "$store" "$keychain" <<'PY'
 import json, subprocess, sys
 try:
     accounts = json.load(open(sys.argv[1])).get("accounts", [])
 except (ValueError, AttributeError):
     accounts = []
+named = [sys.argv[2]] if sys.argv[2] else []
 removed = 0
 for account in accounts:
     for item in (account["id"], account["id"] + ".login"):
         gone = subprocess.run(["/usr/bin/security", "delete-generic-password", "-a", item,
-                               "-s", "agents-sidebar-accounts"], capture_output=True)
+                               "-s", "agents-sidebar-accounts", *named], capture_output=True)
         removed += gone.returncode == 0
 print(removed)
 PY
-  )
+    )
+    keys=$(python3 -I - "$repo" "$store" "$keychain" <<'PY'
+import subprocess, sys
+sys.path.insert(0, sys.argv[1])
+import accounts
+try:
+    ids = [account["id"] for account in accounts.load_store(sys.argv[2])]
+except accounts.StoreError:
+    ids = []
+named = [sys.argv[3]] if sys.argv[3] else []
+removed = 0
+for ident in ids:
+    if not accounts.is_account_id(ident):
+        continue
+    gone = subprocess.run(["/usr/bin/security", "delete-generic-password", "-a", "api-key:" + ident,
+                           "-s", "agents-sidebar-accounts", *named], capture_output=True)
+    removed += gone.returncode == 0
+print(removed)
+PY
+    )
+    if [ "$keys" -gt 0 ]; then ok "api key" "$keys API keys deleted"; else skip "api key" "no API key stored"; fi
+  fi
 fi
 # Not ~/.local/share/agents-sidebar itself: the one-line install keeps its
 # checkout in there, and this script may be running from it.

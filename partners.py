@@ -313,6 +313,7 @@ class Partners:
                 task = pair.open
                 self._answer(task.source_agent, task, ended(
                     task, None, f"the panel restarted while {quoted(task.target_label)} had the task"))
+                self._clear(task)
                 pair.open = None
                 count += 1
         if count:

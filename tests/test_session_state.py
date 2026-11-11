@@ -200,6 +200,30 @@ def test_a_compaction_resume_leaves_running_subagents_alone():
     assert emit_state.live_agents(doc) == 1
 
 
+def test_an_automatic_compaction_leaves_the_turn_working(tmp_path, monkeypatch):
+    """An auto-compact fires in the middle of a turn, and the turn goes on
+    after it to its own Stop. Reading its SessionStart as the parent done put
+    the card at idle in the middle of the work. Each event is its own hook
+    process, so what PreCompact said reaches SessionStart only through the file.
+    """
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    emit_state.update("s1", "UserPromptSubmit", {"prompt": "go"}, "working")
+    emit_state.update("s1", "PreCompact", {"trigger": "auto"}, "working")
+    doc = emit_state.update("s1", "SessionStart", {"source": "compact"}, "idle")
+    assert emit_state.aggregate(doc) == "working"
+    doc = emit_state.update("s1", "Stop", {"stop_hook_active": False}, "idle")
+    assert emit_state.aggregate(doc) == "idle"
+
+
+def test_a_manual_compaction_still_ends_idle(tmp_path, monkeypatch):
+    """/compact is typed at the prompt and no Stop follows it, so its
+    SessionStart is the only end it has."""
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    emit_state.update("s1", "PreCompact", {"trigger": "manual"}, "working")
+    doc = emit_state.update("s1", "SessionStart", {"source": "compact"}, "idle")
+    assert emit_state.aggregate(doc) == "idle"
+
+
 def test_a_fresh_session_start_drops_a_crashed_session_s_leftovers():
     doc = blank()
     doc = emit_state.apply_event(doc, "SubagentStart", {"agent_id": "a1"}, "working")
@@ -743,6 +767,36 @@ def test_a_new_prompt_forgets_background_tasks():
         ("Stop", {"stop_hook_active": False}, "idle"),
     ])
     assert emit_state.aggregate(doc) == "idle"
+
+
+def test_a_resumed_session_holds_no_task_or_scheduled_prompt_of_the_process_before():
+    """Background tasks and the prompts a session scheduled live in its
+    process, so a session started again has none until its own Stop lists
+    them. Holding the last list kept a resumed session working and showed
+    prompts nothing would send."""
+    for source in ("startup", "resume", "clear"):
+        doc = _turn(blank(), [
+            ("UserPromptSubmit", {"prompt": "go"}, "working"),
+            ("Stop", {"stop_hook_active": False, "background_tasks": [SHELL_TASK],
+                      "session_crons": [{"id": "b63d99f2", "schedule": "*/5 * * * *", "prompt": "check",
+                                         "recurring": True}]}, "idle"),
+            ("SessionStart", {"source": source}, "idle"),
+        ])
+        assert emit_state.aggregate(doc) == "idle", source
+        assert doc["background"] == [], source
+        assert doc["crons"] is None and doc["crons_at"] is None, source
+
+
+def test_a_compaction_resume_keeps_the_background_tasks():
+    """A compaction keeps the process, and every task running in it."""
+    doc = _turn(blank(), [
+        ("UserPromptSubmit", {"prompt": "go"}, "working"),
+        ("Stop", {"stop_hook_active": False, "background_tasks": [SHELL_TASK]}, "idle"),
+        ("PreCompact", {"trigger": "manual"}, "working"),
+        ("SessionStart", {"source": "compact"}, "idle"),
+    ])
+    assert doc["background"] == [{"type": "shell", "description": "tail logs"}]
+    assert emit_state.aggregate(doc) == "working"
 
 
 def test_a_subagent_stop_does_not_hold_the_parent_for_the_parent_s_tasks():

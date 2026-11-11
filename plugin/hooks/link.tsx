@@ -175,8 +175,11 @@ async function keepRemote($: EngineInterface, path: string, now: number): Promis
   // No state file naming this session yet is waited out like a busy one: a read can land mid-rewrite, and for a
   // moment after /clear the file still names the old id.
   const state = await ownState($)
+  if (now > remote.expires * 1000) {
+    const reason = !state ? 'no session state file' : state.status !== 'idle' ? 'the session did not go idle' : 'the ask expired'
+    return remoteDone($, 'failed', reason)
+  }
   if (!state || state.status !== 'idle') {
-    if (now > remote.expires * 1000) return remoteDone($, 'failed', state ? 'the session did not go idle' : 'no session state file')
     remote.running = false
     return
   }
@@ -648,7 +651,6 @@ async function partnerHeldPrompt($: EngineInterface, e: PromptSubmitInput): Prom
     $.ui.toast(`“${working.from}”'s task is running; send this when it ends`)
     return `“${working.from}”'s task is running`
   }
-  if (yours) yoursNext = true
   return null
 }
 
@@ -787,6 +789,8 @@ export const register: Register = on => {
       if (held !== null) return { drop: held }
       const result = await next(e)
       if (result.drop !== undefined) return result
+      // Yours only once every hook beneath has let it through: a dropped prompt starts no turn.
+      if (yours) yoursNext = true
       const told = await partnerTold($)
       return told === null ? result : { ...result, context: [...(result.context ?? []), told] }
     }

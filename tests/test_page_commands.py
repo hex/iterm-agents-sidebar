@@ -42,7 +42,7 @@ def test_the_daemons_refusal_is_kept_with_its_reason_for_the_card():
 def test_the_reason_shows_for_a_few_seconds_and_is_then_painted_away():
     page = PAGE.read_text(encoding="utf-8")
     assert "const REFUSAL_SHOWN_MS = 4000;" in page
-    assert "setTimeout(() => render(LATEST), REFUSAL_SHOWN_MS + 50);" in function(page, "prompt")
+    assert "setTimeout(() => render(LATEST, false, true), REFUSAL_SHOWN_MS + 50);" in function(page, "prompt")
     lapsed = function(page, "refusalLine").split("if (refusal.until <= Date.now()) {", 1)[1]
     assert lapsed.startswith("\n    refusedPrompts.delete(sessionId);\n    return null;\n  }")
 

@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents panel docked on the right: one card per session, each with a Working, Waiting or Idle pill, a server a session runs as a port pill in its language's tint at the end of its card's report line, the one waiting on a question turning amber, and under the cards the History fold, then Limits and the release">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/banner.svg" width="100%" alt="An iTerm2 window with the Agents panel docked on the right: one card per session, each with a Working, Waiting or Idle pill, a server a session runs as a port pill in its language's tint at the end of its card's report line, the one waiting on a question turning amber, and under the cards the History fold, then Accounts and the release">
 
 # Agents sidebar
 
@@ -59,9 +59,10 @@ Through the one-liner, a flag goes after `bash -s --`. See
 any of it. Run `agents-sidebar uninstall`, or choose **Uninstall the panel…**
 at the bottom of Settings and confirm. Both remove the script, the hook,
 our entries from Codex's hooks, the omp extension,
-the notifier, the `agents-sidebar` command, and the panel's settings, state and
-account store with the Keychain items
-behind it by default. To keep saved logins, turn on **Keep my account logins**
+the notifier, the `agents-sidebar` command, the panel's own `apiKeyHelper` in
+`~/.claude/settings.json` (another tool's stays, and uninstall says so), and the
+panel's settings, state and account store with the Keychain items
+behind it, the account logins and API keys, by default. To keep saved logins, turn on **Keep my account logins**
 in the confirmation, or run `agents-sidebar uninstall --keep-accounts`.
 This keeps `~/.config/agents-sidebar/accounts.json` and its Keychain items;
 the other panel data still goes. It leaves the checkout, the `.before-agents-sidebar` backups and
@@ -215,7 +216,7 @@ installed gets a card for the Claude Code session there: its state, the host
 it runs on, its folder, and a question you can answer from the card. Answer
 a question whose options show previews in its pane, since picking there
 takes Enter. A row
-under the Limits head then names each machine the panes reach, with its
+under the Accounts head then names each machine the panes reach, with its
 agent count and whether a pane here holds its connection. Model, context,
 tasks and replies wait for a later release. See
 [docs/usage.md](docs/usage.md#sessions-on-another-machine).
@@ -234,7 +235,7 @@ The banner can answer for you, so a session in another tab doesn't wait.
 
 ### Settings
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental and Repository. Every setting with its default, On a card expanded, and the button to show the foot's offers again">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/settings.svg" width="100%" alt="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental, Accounts and Repository. Every setting with its default, On a card expanded, and the button to show the foot's offers again">
 
 The gear opens the drawer. On a card starts folded and remembers whether you
 open it; the figure shows it expanded. Sound and notification options hide
@@ -252,6 +253,7 @@ offer stays dismissed.
 | On a card | Branch, Task (under it What it is doing, How old the report is (Name first), Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded) |
 | Rows | Warn above, CPU heavy at, Memory heavy at, Order, Show the foot's offers again (while an offer stays dismissed) |
 | Experimental | Link cards, Keep remote control after a switch, Commit heatmap and Hand Codex Claude's memory index, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control), [Commit heatmap](docs/usage.md#commit-heatmap) and [Claude's memory index in Codex](docs/usage.md#claudes-memory-index-in-codex) |
+| Accounts | When every account is full, use API credits, and per account its API key and that key's Cap: see [API credits](docs/usage.md#api-credits) |
 | Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |
 
 Some have limits the picture doesn't show:
@@ -263,7 +265,7 @@ Some have limits the picture doesn't show:
 | Memory heavy at | 0.5 to 8 GB |
 | Text size | Minus and plus buttons over nine sizes, 0.8 to 1.6 times the size as designed |
 
-<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the History fold head, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
+<img src="https://raw.githubusercontent.com/hex/iterm-agents-sidebar/main/assets/foot.svg" width="100%" alt="The panel's foot: two sessions waiting, one on a question and one on a Bash command, the History fold head, the Accounts head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account's 5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, Codex's own limits, and the bar with the release, the Update button for a newer one, reload and the gear">
 
 The foot lists the sessions waiting on you, oldest first, each with what it
 asks: the question's header and text, or the tool and its command. Under them are
@@ -275,13 +277,26 @@ row's hover says both figures. Store a login with **Add <your email>** and you c
 between accounts from there. Auto-switch, off by default, spends first the
 quota that resets soonest and leaves an account before a limit stops your
 sessions. Only the limits of the models your sessions run, or ran in the last
-ten minutes, count, and a model
-limit full on every account stops counting, since no switch frees it.
+ten minutes, decide when to leave an account, and a model
+limit full on every account stops counting, since no switch frees it. Leaving an
+account near its limit, Auto-switch judges the account it moves to on every
+model used in the last two hours.
 While Auto-switch is on, you have two or more accounts and a switch is near,
-a chip reads the account's name and `soon`, and gives the reason on hover. Codex's own limits sit under them, read from
+a chip reads the account's name and `soon`, or `near 100%` when every other
+account is over 90% too, and gives the reason on hover; [docs/accounts.md](docs/accounts.md#switching-on-its-own)
+lists its other readings. With **When every account is full, use API credits** on in Settings, a key saved on an account
+and the statusline bridge installed, the sessions
+move to API credits when every account is full, or every model they run is full
+on every account, and back at the first reading
+that shows room, each move asked with a notice and **Not now** first. They use the
+active account's key, or the next account's in list order, each key under a
+soft spend cap of its own. A key at its cap, out of credits or refused hands
+over to the next key at once, and with none left the sessions go back at once
+([docs/accounts.md](docs/accounts.md#api-credits-when-every-account-is-full)).
+Codex's own limits sit under them, read from
 its session log: a 5-hour and a weekly window, or weekly alone, depending on
 the plan, and a row for the fallback allowance while Codex draws on one, such
-as Luna Reserve. Click **Limits**, or its head outside Auto-switch and its
+as Luna Reserve. Click **Accounts**, or its head outside Auto-switch and its
 chip, to fold the lot to a tile per
 account and Codex, each with its fullest window as one bar. An account's bar
 passes over a model limit full on every account for the next limit with room,
@@ -381,12 +396,17 @@ back once at its start, with `defaults write` or `defaults delete` on
 `com.googlecode.iterm2`, unless you changed it since. Uninstall does the same
 ([docs/integrations.md](docs/integrations.md#uninstall)).
 The daemon serves the panel on `127.0.0.1` behind a random token minted at
-every start. It sends nothing anywhere, with three exceptions: the update
+every start. It sends nothing anywhere, with four exceptions: the update
 check fetches this repository from GitHub; `ssh` reaches the hosts your panes
-already reach; and once you store an account, the panel keeps that login's
+already reach; once you store an account, the panel keeps that login's
 refresh token in its own Keychain item and calls Anthropic's token and usage
 endpoints with it, which [docs/accounts.md](docs/accounts.md#before-you-store-anything)
-explains before you do. The panel sends no telemetry.
+explains before you do; and once you save an API key on an account, the panel calls the
+API's models list with it when you save it and before each move to credits or to that key.
+While sessions run on credits, it also writes `apiKeyHelper` into
+`~/.claude/settings.json`
+([docs/integrations.md](docs/integrations.md#api-credits-and-settingsjson)).
+The panel sends no telemetry.
 
 Hand Codex Claude's memory index, under Experimental and off until you turn it
 on, makes the Codex hook read the project's Claude Code memory index,

@@ -167,6 +167,60 @@ def repository_card(x, y):
     return REPOSITORY_H
 
 
+# The API fallback's card, above Repository: its switch, then the key table, a
+# header and a row per stored account, here one account with no key yet, so its
+# field spans Key, Spent and Cap and its Save is the floppy disk.
+ACCOUNTS_NOTE = ("While every account is full, puts apiKeyHelper in ~/.claude/settings.json. "
+                 "If that file syncs to other machines, they get the line too. "
+                 "Needs an API key on an account first.")
+ACCOUNTS_ROW = {"label": "When every account is full, use API credits", "note": ACCOUNTS_NOTE}
+ACCOUNT_NAMES = ["Account 1"]
+# The table's columns as page.html's colgroup sizes them, the name's taking the rest.
+KEY_COLS = {"lamp": 22, "key": 40, "spent": 56, "cap": 44, "act": 28}
+KEY_HEAD_H, KEY_ROW_H = 21, 30
+ACCOUNTS_H = TITLE_H + row_height(ACCOUNTS_ROW) + KEY_HEAD_H + KEY_ROW_H * len(ACCOUNT_NAMES)
+
+
+def rule(x, y):
+    A(f'  <line x1="{x}" y1="{y}" x2="{x+COL_W}" y2="{y}" stroke="{FG}" opacity="0.14" stroke-dasharray="1 2"/>')
+
+
+def accounts_card(x, y):
+    A(f'  <rect x="{x}" y="{y}" width="{COL_W}" height="{ACCOUNTS_H}" rx="8" fill="{CARD}" stroke="{CARD_BORDER}"/>')
+    text(x + 10, y + 21, "Accounts", fill=FG, size=12.5, weight=600)
+    right = x + COL_W - 10
+    ry = y + TITLE_H
+    rule(x, ry)
+    text(x + 10, ry + PLAIN_H / 2 + 4, ACCOUNTS_ROW["label"], fill=FG, size=12)
+    # With no key on any account the switch is disabled, and the page draws it at .4.
+    A('  <g opacity="0.4">')
+    switch(right, ry + PLAIN_H / 2, DEFAULT_SETTINGS["api_fallback"])
+    A('  </g>')
+    for k, words in enumerate(note_lines(ACCOUNTS_ROW)):
+        text(x + 10, ry + PLAIN_H - 4 + NOTE_SIZE + k * NOTE_LINE, words, fill=DIM, size=NOTE_SIZE)
+    ry += row_height(ACCOUNTS_ROW)
+    rule(x, ry)
+    name_x = x + KEY_COLS["lamp"] + 3
+    figures_x = x + COL_W - KEY_COLS["act"] - KEY_COLS["cap"] - KEY_COLS["spent"] - KEY_COLS["key"]
+    text(name_x, ry + 15, "Account", fill=DIM, size=9.5, weight=500)
+    edge = figures_x
+    for word, col in (("Key", "key"), ("Spent", "spent"), ("Cap", "cap")):
+        edge += KEY_COLS[col]
+        text(edge - 2, ry + 15, word, fill=DIM, size=9.5, weight=500, extra=' text-anchor="end"')
+    ry += KEY_HEAD_H
+    for name in ACCOUNT_NAMES:
+        A(f'  <line x1="{x}" y1="{ry}" x2="{x+COL_W}" y2="{ry}" stroke="{FG}" opacity="0.10" stroke-dasharray="1 2"/>')
+        mid = ry + KEY_ROW_H / 2
+        text(name_x, mid + 4, name, fill=FG, size=12)
+        width = KEY_COLS["key"] + KEY_COLS["spent"] + KEY_COLS["cap"] - 4
+        A(f'  <rect x="{figures_x + 2}" y="{mid-11}" width="{width}" height="22" rx="5" fill="{FG}" opacity="0.06"/>')
+        A(f'  <rect x="{figures_x + 2}" y="{mid-11}" width="{width}" height="22" rx="5" fill="none" stroke="{FG}" opacity="0.22" stroke-width="0.5"/>')
+        text(figures_x + 8, mid + 3.5, "sk-ant-\u2026", fill=DIM, size=11, family=MONO)
+        mark("save", x + COL_W - 4 - 24 + 5, mid - 7, 14, DIM)
+        ry += KEY_ROW_H
+    return ACCOUNTS_H
+
+
 # Group the rows as settingsBody does: a head opens a card, a master row sits
 # in its title, and rows follow until the next head.
 cards = []
@@ -186,11 +240,11 @@ while i < len(rows):
 tallest = max(cards, key=lambda card: card_height(card[2]))
 left, right = [card for card in cards if card is not tallest], [tallest]
 H = 24 + 20 + max(sum(card_height(kids) + 9 for _, _, kids in col)
-                  + (REPOSITORY_H + 9 if col is left else 0)
+                  + (ACCOUNTS_H + 9 + REPOSITORY_H + 9 if col is left else 0)
                   for col in (left, right)) + 30
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental and Repository. '
+  f'aria-label="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental, Accounts and Repository. '
   f'Every setting with its default, On a card expanded, and the button to show the foot\'s offers again">')
 A('  <title>Settings</title>')
 A(f'''  <defs>
@@ -206,6 +260,7 @@ for col, x in ((left, COLS[0]), (right, COLS[1])):
     for title, master, kids in col:
         y += sheet_card(x, y, title, master, kids) + 9
     if col is left:
+        y += accounts_card(x, y) + 9
         repository_card(x, y)
 A('</svg>')
 pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else

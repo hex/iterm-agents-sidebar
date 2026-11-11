@@ -343,6 +343,15 @@ def test_a_restart_answers_every_open_task_as_cut_off(book, tmp_path):
     assert json.loads((tmp_path / "partners.json").read_text())[0]["open"] is None
 
 
+def test_a_restart_takes_the_cut_off_task_out_of_the_partners_folder(book, tmp_path):
+    drop = run_task(book, tmp_path)
+    (folder(tmp_path, "b-id") / f"started-{drop['link']}.json").write_text("{}")
+    again = partners.Partners(tmp_path / "partners.json", tmp_path / "links")
+    again.load(200.0)
+    again.restart(200.0)
+    assert sorted(p.name for p in folder(tmp_path, "b-id").iterdir()) == ["partner.json"]
+
+
 SHA = "0123456789abcdef0123456789abcdef01234567"
 ASKER = end("p1", "a-id", "alpha", cwd="/work/my app", branch="wip/login")
 REVIEW_ENDS = {"p1": ASKER, "p2": B}

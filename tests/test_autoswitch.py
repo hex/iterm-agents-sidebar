@@ -78,8 +78,8 @@ def state(reading, fetched_at=NOW, earlier=None, earlier_at=None, outcome="ok", 
 A, B, C = ({"id": "acct-1"}, {"id": "acct-2"}, {"id": "acct-3"})
 
 
-def decide(states, accounts=(A, B, C), last_switch=None):
-    return switch_decision("acct-1", states, list(accounts), NOW, last_switch)
+def decide(states, accounts=(A, B, C), last_switch=None, models=None, recent=None):
+    return switch_decision("acct-1", states, list(accounts), NOW, last_switch, models, recent)
 
 
 def test_a_full_active_account_moves_to_the_emptiest_one():
@@ -162,14 +162,20 @@ def test_a_target_whose_window_has_reset_is_read_again_first():
 def test_a_target_that_was_just_tried_and_is_still_old_is_passed_over():
     tried = state(usage(20, 20, 20), fetched_at=NOW - 400, outcome="failed", tried_at=NOW - 20)
     assert decide({"acct-1": state(usage(92, 10, 10)), "acct-2": tried}, (A, B)) == {
-        "act": "blocked", "why": "the other accounts cannot be read"}
+        "act": "blocked", "why": "the other accounts cannot be read", "reason": "unreadable"}
 
 
 def test_nowhere_emptier_is_said_not_acted_on():
     states = {"acct-1": state(usage(96, 10, 10)), "acct-2": state(usage(97, 10, 10)),
               "acct-3": state(usage(5, 5, 5))}
     accounts = (A, B, dict(C, needsLogin=True))
-    assert decide(states, accounts) == {"act": "blocked", "why": "every account is full"}
+    assert decide(states, accounts) == {"act": "blocked", "why": "every account is full", "reason": "full"}
+
+
+def test_a_lone_full_account_is_blocked_because_every_account_is_full():
+    """The API fallback asks without auto-switch's two-account minimum."""
+    assert decide({"acct-1": state(usage(96, 10, 10))}, (A,)) == {
+        "act": "blocked", "why": "every account is full", "reason": "full"}
 
 
 def test_an_old_reading_of_the_active_account_decides_nothing():
@@ -201,6 +207,17 @@ def test_the_outlook_says_a_switch_is_near_when_a_window_is_on_course():
 def test_the_outlook_has_nowhere_to_go_when_every_account_is_full():
     states = {"acct-1": state(usage(96, 10, 10)), "acct-2": state(usage(20, 20, 100))}
     assert outlook(states, (A, B)) == {"to": None, "near": True, "why": "5-hour at 96%"}
+
+
+def test_the_outlook_names_where_a_full_account_goes_once_it_is_about_to_fill():
+    states = {"acct-1": state(usage(10, 94, 10)), "acct-2": state(usage(10, 91, 10))}
+    assert outlook(states, (A, B)) == {"to": None, "near": True, "why": "weekly at 94%", "later": "acct-2"}
+
+
+def test_the_outlook_judges_a_target_on_a_model_that_ran_in_the_last_two_hours():
+    states = {"acct-1": state(usage(10, 93, 40)), "acct-2": state(usage(10, 80, 100))}
+    assert switch_outlook("acct-1", states, [A, B], NOW, {"opus"}, {"opus", "fable"}) == {
+        "to": None, "near": True, "why": "weekly at 93%"}
 
 
 def test_the_outlook_names_an_emptier_account_held_back_by_its_login():
@@ -262,7 +279,7 @@ def test_an_account_that_needs_a_login_does_not_hold_a_model_back_from_exhausted
 
 def test_sessions_only_on_an_exhausted_model_have_nothing_to_switch_for():
     assert switch_decision("acct-1", ALL_FABLE_FULL, [A, B, C], NOW, models={"fable"}) == {
-        "act": "blocked", "why": "Fable is full on every account"}
+        "act": "blocked", "why": "Fable is full on every account", "reason": "model_full"}
 
 
 def test_an_exhausted_model_leaves_the_other_windows_to_decide():
@@ -276,8 +293,11 @@ def test_the_outlook_names_an_exhausted_model():
     assert got["exhausted"] == [{"model": "Fable", "resets_at": NOW + 19 * HOUR, "account_id": "acct-3"}]
 
 
-def test_the_strip_of_2026_09_22_moves_to_the_emptier_fable_limit():
-    states = {"acct-1": state(usage(49, 63, 94, week_reset=NOW + 2 * DAY)),
+def test_the_strip_of_2026_09_22_moves_to_the_emptier_fable_limit_once_it_is_about_to_fill():
+    """Asked 2026-09-22: 94 moves to the account at 90. Since 2026-11-10 it
+    waits until its Fable is on course for 100, here in three minutes."""
+    states = {"acct-1": state(usage(49, 63, 94, week_reset=NOW + 2 * DAY),
+                              earlier=usage(49, 63, 90, week_reset=NOW + 2 * DAY), earlier_at=NOW - 120),
               "acct-2": state(usage(0, 51, 90)),
               "acct-3": state(usage(0, 81, 100, week_reset=NOW + 19 * HOUR))}
     assert switch_decision("acct-1", states, [A, B, C], NOW, models={"fable"}) == {
@@ -287,7 +307,7 @@ def test_the_strip_of_2026_09_22_moves_to_the_emptier_fable_limit():
 def test_a_full_account_never_moves_to_one_just_as_full():
     states = {"acct-1": state(usage(95, 10, 10)), "acct-2": state(usage(95, 10, 10)),
               "acct-3": state(usage(20, 20, 100))}
-    assert decide(states) == {"act": "blocked", "why": "every account is full"}
+    assert decide(states) == {"act": "blocked", "why": "every account is full", "reason": "full"}
 
 
 def test_between_roomy_targets_the_weekly_quota_that_returns_sooner_is_spent_first():
@@ -328,6 +348,20 @@ def test_a_small_gain_is_not_worth_a_balance():
 def test_a_balance_only_goes_to_an_account_under_the_amber_band():
     states = dict(CALM, **{"acct-2": state(usage(75, 30, 30, week_reset=NOW + 3 * DAY))})
     assert decide(states, (A, B)) == STAY_ACT
+
+
+def test_a_balance_never_goes_to_an_account_with_a_full_model_limit():
+    """Fable is idle, so its limit does not decide, but the next Fable session
+    would leave that account straight away."""
+    states = dict(CALM, **{"acct-2": state(usage(10, 30, 100, week_reset=NOW + 3 * DAY))})
+    assert decide(states, (A, B), models={"opus"}) == STAY_ACT
+
+
+def test_a_model_full_on_every_account_does_not_hold_a_balance_back():
+    states = {"acct-1": state(usage(20, 60, 100, week_reset=NOW + 3 * DAY)),
+              "acct-2": state(usage(10, 30, 100, week_reset=NOW + 3 * DAY))}
+    assert decide(states, (A, B), models={"opus"}) == {
+        "act": "balance", "account_id": "acct-2", "why": "weekly: 70% left for 3d there, 40% for 3d here"}
 
 
 def test_a_plan_without_a_five_hour_window_still_balances():
@@ -400,6 +434,36 @@ def test_two_nearly_full_accounts_do_not_trade_the_login_back_and_forth():
     pickup, and the next reading could send it straight back."""
     states = {"acct-1": state(usage(96, 10, 10)), "acct-2": state(usage(95, 10, 10))}
     assert decide(states, (A, B)) == STAY_ACT
+
+
+def test_a_target_is_judged_on_a_model_that_ran_in_the_last_two_hours():
+    """2026-11-09: Fable ran in bursts, and between them the panel moved onto
+    the account whose Fable was spent, then left it at "Fable at 100%" on the
+    next burst. The emptier weekly there does not make it a target while Fable
+    still comes and goes, and with it nothing is emptier, so the panel stays."""
+    states = {"acct-1": state(usage(10, 93, 40)), "acct-2": state(usage(10, 80, 100)),
+              "acct-3": state(usage(10, 94, 40))}
+    assert decide(states, models={"opus"}, recent={"opus", "fable"}) == STAY_ACT
+
+
+def test_a_model_that_ran_hours_ago_no_longer_holds_a_target_back():
+    states = {"acct-1": state(usage(10, 93, 40)), "acct-2": state(usage(10, 80, 100))}
+    assert decide(states, (A, B), models={"opus"}, recent={"opus"}) == {
+        "act": "switch", "account_id": "acct-2", "why": "weekly at 93%"}
+
+
+def test_two_accounts_over_the_line_do_not_trade_the_login_while_neither_is_about_to_fill():
+    """2026-11-09: 91% to 97% on every account, and the login moved every few
+    minutes for three points of room, each move costing every session its
+    cache and, on some models, its earlier reasoning."""
+    states = {"acct-1": state(usage(10, 94, 10)), "acct-2": state(usage(10, 91, 10))}
+    assert decide(states, (A, B)) == STAY_ACT
+
+
+def test_an_account_about_to_fill_moves_to_one_emptier_even_over_the_line():
+    rising = state(usage(10, 95, 10), earlier=usage(10, 90, 10), earlier_at=NOW - 120)
+    states = {"acct-1": rising, "acct-2": state(usage(10, 91, 10))}
+    assert decide(states, (A, B)) == {"act": "switch", "account_id": "acct-2", "why": "weekly at 95%"}
 
 
 # Codex review of 2026-09-23: cases the first build got wrong.

@@ -1652,6 +1652,72 @@
     grid-row: 2; grid-column: 1 / -1; justify-self: stretch;
     color: var(--dim); font-size: 11px; line-height: 1.35;
   }
+  /* Settings > Accounts: a table under the switch, a row per account, every
+     row 30px whatever it shows. The header is a measurement label, and the
+     figures are right-aligned mono so they stack. */
+  table.keys { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px;
+    border-top: 1px dotted color-mix(in srgb, var(--fg) 14%, transparent); }
+  .keys col.lamp { width: 22px; } .keys col.key { width: 40px; } .keys col.spent { width: 56px; }
+  .keys col.cap { width: 44px; } .keys col.act { width: 28px; }
+  .keys th { padding: 5px 2px 3px; font: 500 9.5px/normal -apple-system, sans-serif; color: var(--dim);
+    text-align: left; white-space: nowrap; }
+  .keys td { box-sizing: border-box; height: 30px; padding: 0 2px; vertical-align: middle; white-space: nowrap;
+    border-top: 1px dotted color-mix(in srgb, var(--fg) 10%, transparent); }
+  .keys .num { text-align: right; }
+  .keys .lamp { padding-inline: 10px 0; }
+  .keys .who { padding-inline: 3px 5px; }
+  .keys td.act { padding-inline: 0 4px; line-height: 0; text-align: right; }
+  .keys [hidden] { display: none !important; }
+  .key-lamp { display: inline-grid; place-items: center; width: 12px; height: 12px; vertical-align: middle; }
+  .key-lamp .mi { width: 12px; height: 12px; opacity: 1; }
+  .key-lamp[data-tone="on"] { color: var(--lit-ink); }
+  .key-lamp[data-tone="held"] { color: var(--alert); }
+  /* The name, then one word: what the row just said, else the key's state.
+     The word gives way first; either ends in an ellipsis rather than spill. */
+  .key-line { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+  .key-name { flex: none; max-width: 62%; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+  .key-word { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 10px; color: var(--dim); }
+  .key-word[data-tone="on"] { color: var(--lit-ink); }
+  .key-word:is([data-tone="held"], [data-tone="bad"], [data-tone="ask"]) { color: var(--alert); }
+  .key-num { font: 400 10px/normal ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; color: var(--dim); }
+  .key-spent[data-tone="held"] { color: var(--alert); }
+  .key-money { display: inline-flex; align-items: baseline; vertical-align: middle; }
+  /* The cap reads as a figure, dotted under, until it is hovered or focused;
+     its width follows what is typed in it. */
+  .key-cap { box-sizing: content-box; field-sizing: content; min-width: 2ch; height: 16px; padding: 0 2px 0 1px;
+    margin: 0; border: 0;
+    border-bottom: 1px dotted color-mix(in srgb, var(--fg) 35%, transparent); border-radius: 3px 3px 0 0;
+    background: none; color: var(--fg); text-align: right;
+    font: 400 10px/normal ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums;
+    transition: background-color var(--quick) ease; }
+  .key-cap:hover { background: var(--tint-ctl); }
+  .key-cap:focus { outline: 1.5px solid var(--hot); outline-offset: 0; border-radius: 3px;
+    border-bottom-color: transparent; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .key-cap[aria-invalid="true"] { outline: 1.5px solid var(--alert); outline-offset: 0; border-radius: 3px;
+    border-bottom-color: transparent; color: var(--alert); }
+  .key-in { box-sizing: border-box; width: 100%; height: 22px; padding: 0 6px;
+    border: .5px solid color-mix(in srgb, var(--fg) 22%, transparent); border-radius: 5px;
+    background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg);
+    font: 400 11px/normal ui-monospace, Menlo, monospace; }
+  .key-in::placeholder { color: color-mix(in srgb, var(--dim) 80%, transparent); }
+  .key-in:focus-visible { outline: 1.5px solid var(--hot); outline-offset: -1px; }
+  .key-icon { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0;
+    border-radius: 5px; background: none; color: var(--dim); cursor: default; vertical-align: middle;
+    transition: background-color var(--quick) ease, color var(--quick) ease; }
+  .key-icon .mi { width: 14px; height: 14px; opacity: 1; }
+  .key-icon:hover:not(:disabled) { background: var(--tint-ctl); color: var(--fg); }
+  .key-icon:focus-visible { outline: 1.5px solid var(--hot); outline-offset: -1px; color: var(--fg); }
+  .key-icon:disabled .mi { opacity: .4; }
+  .key-icon.armed { color: var(--alert); background: var(--alert-bg); }
+  @media (prefers-reduced-motion: reduce) { .key-icon, .key-cap { transition: none; } }
+  /* Narrow, under KEYS_FOLD_BELOW: the Key column folds to nothing, its cells kept so no
+     cell slides into another's column, and Spent and Cap take only what their
+     figures need, which leaves a name room for "cap reached" after it. */
+  html.keys-fold .keys col.key { width: 0; }
+  html.keys-fold .keys col.spent { width: 45px; }
+  html.keys-fold .keys col.cap { width: 36px; }
+  html.keys-fold .keys .key { padding: 0; font-size: 0; }
+  html.keys-fold .keys td.key > * { display: none; }
   /* A row that opens a page: the whole row is the button, its arrow where a
      control would sit. */
   button.set.out {
@@ -1881,7 +1947,7 @@
   }
   body.stale #budget { opacity: .55; }
   #budget .win {
-    display: grid; grid-template-columns: 38px minmax(0, 1fr) 28px 34px;
+    display: grid; grid-template-columns: 38px minmax(0, 1fr) 28px 38px;
     align-items: center; gap: 6px; height: 15px;
   }
   #budget .win .pct, #budget .win .at { text-align: right; }
@@ -2148,6 +2214,19 @@
   #budget .autosw .next-chip { margin-right: auto; padding: 2px 6px; border-radius: 5px; cursor: default;
     font: 600 10px/1 -apple-system, sans-serif; color: var(--sev-crit);
     background: color-mix(in srgb, var(--sev-crit) 12%, transparent); }
+  /* The API fallback's chip in the same pill: the accent while a flip is
+     pending or sessions run on credits, the alert colour for a hold. Not now
+     is plain text inside it, tinted on hover. */
+  #budget .fb-chip { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  #budget .fb-chip.pending { color: var(--hot); background: color-mix(in srgb, var(--hot) 12%, transparent); }
+  #budget .fb-chip .fb-act { margin: -2px -4px -2px 0; padding: 2px 4px; border: 0; border-radius: 4px;
+    background: none; font: inherit; color: inherit; cursor: default; }
+  #budget .fb-chip .fb-act:hover { background: var(--tint-ctl); }
+  #budget .fb-chip .fb-act:focus-visible { outline: 1px solid var(--hot); outline-offset: 0; }
+  /* The chip is wider than a next switch's: on a narrow foot it takes a line
+     of its own under Accounts rather than running over it. */
+  #budget .lim-head:has(.fb-chip) { flex-wrap: wrap; row-gap: 4px; }
+  #budget .lim-head:has(.fb-chip) .autosw { flex: 1 1 auto; flex-wrap: wrap; row-gap: 4px; margin-bottom: 0; }
   /* The foot's head: what folds it on the left, the auto-switch setting on
      the right. The chevron turns the way the shells' fold line's does. */
   #budget .lim-head { position: relative; isolation: isolate; display: flex; align-items: center; gap: 5px;
@@ -2417,7 +2496,7 @@
   html.compact #budget .cfoot-line.climbing .cpct { color: var(--sev-warn); opacity: 1; }
   html.compact #budget .cfoot-line.near .cpct { color: var(--sev-crit); opacity: 1; }
   html.compact #budget .cfoot-next { height: auto; margin-top: 4px; }
-  /* Tiny: the whole line is the Limits handle, the bar a hairline (the
+  /* Tiny: the whole line is the Accounts handle, the bar a hairline (the
      release number's room goes to the buttons, in paintVersion). */
   /* An update on offer, or what became of taking it, gets a line of its own
      above the two buttons: beside them there is no room for it. */
@@ -2433,6 +2512,9 @@
     padding: 2px 6px; border-radius: 5px; cursor: default;
     font: 600 10px/1 -apple-system, sans-serif; color: var(--sev-crit);
     background: color-mix(in srgb, var(--sev-crit) 12%, transparent);
+  }
+  html.compact #budget .cfoot-next .fb-chip.pending {
+    color: var(--hot); background: color-mix(in srgb, var(--hot) 12%, transparent);
   }
   /* Card styles: how a session row stands on the canvas, named on the root
      by applyCardStyle. Cards, the default, has no rules here: it is the
@@ -2807,7 +2889,7 @@ const META_ICONS = {
   branch: '<path d="M232,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H96a23.84,23.84,0,0,0-8,1.38V95a32,32,0,1,0-16,0v66a32,32,0,1,0,16,0V144a8,8,0,0,1,8-8h88a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,232,64ZM64,64A16,16,0,1,1,80,80,16,16,0,0,1,64,64ZM96,192a16,16,0,1,1-16-16A16,16,0,0,1,96,192ZM200,80a16,16,0,1,1,16-16A16,16,0,0,1,200,80Z"/>',
   uptime: '<path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216Zm45.66-93.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32L152,132.69V88a8,8,0,0,1,16,0v34.34ZM88,16a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H96A8,8,0,0,1,88,16Z"/>',
   cache: '<path d="M128,24C74.17,24,32,48.6,32,80v96c0,31.4,42.17,56,96,56s96-24.6,96-56V80C224,48.6,181.83,24,128,24Zm80,104c0,9.62-7.88,19.43-21.61,26.92C170.93,163.35,150.19,168,128,168s-42.93-4.65-58.39-13.08C55.88,147.43,48,137.62,48,128V111.36c17.06,15,46.23,24.64,80,24.64s62.94-9.68,80-24.64Zm-21.61,74.92C170.93,211.35,150.19,216,128,216s-42.93-4.65-58.39-13.08C55.88,195.43,48,185.62,48,176V159.36c17.06,15,46.23,24.64,80,24.64s62.94-9.68,80-24.64V176C208,185.62,200.12,195.43,186.39,202.92Z"/>',
-  clock: '<path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216Zm45.66-93.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32L152,132.69V80a8,8,0,0,1,16,0v58.34ZM128,72a8,8,0,0,1-8-8V32a8,8,0,0,1,16,0V64A8,8,0,0,1,128,72Z"/>',
+  clock: '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/>',
   gauge: '<path d="M207.06,72.67A111.24,111.24,0,0,0,128,40h-.4C66.07,40.21,16,90.6,16,152v40a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V152A111.25,111.25,0,0,0,207.06,72.67ZM224,192H32V152a95.35,95.35,0,0,1,88-95.71V80a8,8,0,0,0,16,0V56.29A95.36,95.36,0,0,1,224,152Zm-90.34-88.34a8,8,0,0,0-11.32,0l-32,32a8,8,0,0,0,11.32,11.32l32-32A8,8,0,0,0,133.66,103.66Z"/>',
   cost: '<path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm12-88.84V152a8,8,0,0,1-16,0v-.29a24,24,0,0,1-8.65-11.06,8,8,0,1,1,15.3-4.72c.53,1.6,2.2,4.07,5.35,4.07,3.86,0,7-2.24,7-5s-3.14-5-7-5c-12.68,0-23-9.42-23-21s10.32-21,23-21V80a8,8,0,0,1,16,0v.29a24,24,0,0,1,8.65,11.06,8,8,0,0,1-15.3,4.72c-.53-1.6-2.2-4.07-5.35-4.07-3.86,0-7,2.24-7,5s3.14,5,7,5c12.68,0,23,9.42,23,21S140,127.16,140,127.16Z"/>',
   lines: '<path d="M112,152a8,8,0,0,0-8,8v28.69L66.34,151A8,8,0,0,1,64,145.37V95a32,32,0,1,0-16,0v50.38a23.85,23.85,0,0,0,7,17L92.69,200H64a8,8,0,0,0,0,16h48a8,8,0,0,0,8-8V160A8,8,0,0,0,112,152ZM40,64A16,16,0,1,1,56,80,16,16,0,0,1,40,64Zm168,97V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/>',
@@ -2833,6 +2915,10 @@ const META_ICONS = {
   host: '<path d="M216,72a8,8,0,0,1-8,8H176a8,8,0,0,1,0-16h32A8,8,0,0,1,216,72Zm-8,24H176a8,8,0,0,0,0,16h32a8,8,0,0,0,0-16Zm40-48V208a16,16,0,0,1-16,16H152a16,16,0,0,1-16-16V192H96v16h16a8,8,0,0,1,0,16H64a8,8,0,0,1,0-16H80V192H32A24,24,0,0,1,8,168V96A24,24,0,0,1,32,72H136V48a16,16,0,0,1,16-16h80A16,16,0,0,1,248,48ZM136,176V88H32a8,8,0,0,0-8,8v72a8,8,0,0,0,8,8Zm96,32V48H152V208h80Zm-40-40a12,12,0,1,0,12,12A12,12,0,0,0,192,168Z"/>',
   // A docked worktree: forked from the session above it.
   fork: '<path d="M224,64a32,32,0,1,0-40,31v17a8,8,0,0,1-8,8H80a8,8,0,0,1-8-8V95a32,32,0,1,0-16,0v17a24,24,0,0,0,24,24h40v25a32,32,0,1,0,16,0V136h40a24,24,0,0,0,24-24V95A32.06,32.06,0,0,0,224,64ZM48,64A16,16,0,1,1,64,80,16,16,0,0,1,48,64Zm96,128a16,16,0,1,1-16-16A16,16,0,0,1,144,192ZM192,80a16,16,0,1,1,16-16A16,16,0,0,1,192,80Z"/>',
+  // Keep what was typed: an account's API key, in its settings row.
+  save: '<path d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"/>',
+  // Forget a key; its own row asks once more first.
+  trash: '<path d="M216,48H176V40a24,24,0,0,0-24-24H104A24,24,0,0,0,80,40v8H40a8,8,0,0,0,0,16h8V208a16,16,0,0,0,16,16H192a16,16,0,0,0,16-16V64h8a8,8,0,0,0,0-16ZM96,40a8,8,0,0,1,8-8h48a8,8,0,0,1,8,8v8H96Zm96,168H64V64H192ZM112,104v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm48,0v64a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Z"/>',
   // A listener's two acts: open its page, and stop it, with the filled
   // square a player's stop wears, from Phosphor's fill weight.
   open: '<path d="M224,104a8,8,0,0,1-16,0V59.32l-66.33,66.34a8,8,0,0,1-11.32-11.32L196.68,48H152a8,8,0,0,1,0-16h64a8,8,0,0,1,8,8Zm-40,24a8,8,0,0,0-8,8v72H48V80h72a8,8,0,0,0,0-16H48A16,16,0,0,0,32,80V208a16,16,0,0,0,16,16H176a16,16,0,0,0,16-16V136A8,8,0,0,0,184,128Z"/>',
@@ -2994,6 +3080,10 @@ const TINY_ABOVE = 136;
 // question beside them keep their room.
 const BARE_ACTS_BELOW = 300;
 const BARE_ACTS_ABOVE = 316;
+// Under 264px of panel the Accounts card is under 240px, too narrow for its
+// key table's Key column, which folds away. A class on <html>, not a container
+// query, which this WebKit stops matching under the text size's zoom.
+const KEYS_FOLD_BELOW = 264;
 let compact = false;
 let tiny = false;
 let bareActs = false;
@@ -3002,11 +3092,12 @@ function syncCompact() {
   const next = compact ? width <= COMPACT_ABOVE : width < COMPACT_BELOW;
   const nextTiny = next && (tiny ? width <= TINY_ABOVE : width < TINY_BELOW);
   const nextBare = bareActs ? width <= BARE_ACTS_ABOVE : width < BARE_ACTS_BELOW;
+  document.documentElement.classList.toggle("keys-fold", width < KEYS_FOLD_BELOW);
   if (next === compact && nextTiny === tiny && nextBare === bareActs) return;
   compact = next;
   tiny = nextTiny;
   bareActs = nextBare;
-  // The whole Limits opened at compact width is a look for now: the next time
+  // The whole Accounts opened at compact width is a look for now: the next time
   // the panel narrows, the foot is one line again.
   if (!compact) compactLimitsOpen = false;
   document.documentElement.classList.toggle("compact", compact);
@@ -3219,8 +3310,9 @@ function prompt(sessionId, text) {
     .then(reply => {
       if (!reply?.error) return;
       refusedPrompts.set(sessionId, {text: `not sent: ${reply.error}`, until: Date.now() + REFUSAL_SHOWN_MS});
-      render(LATEST);
-      setTimeout(() => render(LATEST), REFUSAL_SHOWN_MS + 50);
+      // Now: the daemon refuses while the session waits on you, which is when the pointer holds its card.
+      render(LATEST, false, true);
+      setTimeout(() => render(LATEST, false, true), REFUSAL_SHOWN_MS + 50);
     })
     .catch(err => console.log("sidebar: prompt failed", err));
 }
@@ -3260,6 +3352,12 @@ function remoteRefusalLine(row) {
 function remoteLostLine(row) {
   if (row.remote !== "lost") return null;
   return statusLine("remote-lost", "Remote control did not come back: run /remote-control");
+}
+
+// The line under a card whose last turn failed, naming the error until the next prompt.
+function stopFailureLine(row) {
+  if (row.state !== "idle" || !row.stop_error) return null;
+  return statusLine("stop-failure", `Turn failed: ${row.stop_error}`);
 }
 
 const typed = cmd => row => prompt(row.session_id, cmd + "\n");
@@ -3833,7 +3931,11 @@ function readContext(sessionId) {
 
 function repaintBreakdown(sessionId) {
   const box = card.querySelector(".ctx");
-  if (card.hidden || card.dataset.row !== sessionId || !box) return;
+  if (card.hidden || card.dataset.row !== sessionId || !box) {
+    // Nothing on screen to fade in, so a later opening shows the read at once.
+    delete contextReads.get(sessionId)?.landing;
+    return;
+  }
   paintBreakdown(box, sessionId);
   clampCard();
 }
@@ -4841,13 +4943,13 @@ function postLink(from, to) {
     .then(({status, reply}) => {
       if (status === 409 && reply?.error) {
         refusedPrompts.set(from.session_id, {text: `not linked: ${reply.error}`, until: Date.now() + REFUSAL_SHOWN_MS});
-        render(LATEST);
-        setTimeout(() => render(LATEST), REFUSAL_SHOWN_MS + 50);
+        render(LATEST, false, true);
+        setTimeout(() => render(LATEST, false, true), REFUSAL_SHOWN_MS + 50);
       } else if (status === 200 && reply?.ok) {
         if (!reply.link?.partnership) {
           linkSent.set(to.session_id, {text: `Sent · from ${quotedLabel(from.label)}`, until: Date.now() + LINK_SENT_MS});
-          render(LATEST);
-          setTimeout(() => render(LATEST), LINK_SENT_MS + 50);
+          render(LATEST, false, true);
+          setTimeout(() => render(LATEST, false, true), LINK_SENT_MS + 50);
         }
       } else {
         console.log("sidebar: link not made", status, reply);
@@ -4909,8 +5011,8 @@ function postReview(pane) {
     .then(({status, reply}) => {
       if (status === 409 && reply?.error) {
         refusedPrompts.set(pane, {text: `not asked: ${reply.error}`, until: Date.now() + REFUSAL_SHOWN_MS});
-        render(LATEST);
-        setTimeout(() => render(LATEST), REFUSAL_SHOWN_MS + 50);
+        render(LATEST, false, true);
+        setTimeout(() => render(LATEST, false, true), REFUSAL_SHOWN_MS + 50);
       } else if (status !== 200) {
         console.log("sidebar: review refused", status, reply);
       }
@@ -5635,6 +5737,9 @@ const BUDGET_WINDOWS = [
   {label: "Weekly", used: "seven_day", at: "seven_day_at", seconds: 7 * 86400},
 ];
 let accountNotice = "";
+// What an add or rename came to stays for a few seconds, as a card's refusal does;
+// the next one starting keeps the lapse from taking its "...".
+let accountNoticeTimer = null;
 
 const clock = at => {
   const when = new Date(at * 1000);
@@ -5651,9 +5756,13 @@ function duration(seconds) {
   return "<1m";
 }
 
-// How long until a reset: "5d", "2h", "14m", or "now" once it has passed.
+// How long until a reset: "5d 3h", "2d", "2h", "14m", or "now" once it has
+// passed. Whole days alone would call anything from 24 to 47 hours "1d".
 function untilReset(at, now) {
-  return at - now <= 0 ? "now" : duration(at - now);
+  const left = at - now;
+  if (left <= 0) return "now";
+  const hours = Math.floor(left % 86400 / 3600);
+  return left >= 86400 && hours ? `${duration(left)} ${hours}h` : duration(left);
 }
 
 // The pace tick in words: what it marks and how far the fill sits from it.
@@ -5714,19 +5823,28 @@ function accountMeters(account) {
 // Why an account's figures are not current, in words, or "" when they are.
 function accountStatus(account) {
   if (account.needs_login) return `log in to ${account.name} again`;
+  // The token refresh failed without the server refusing the login, so it
+  // tries again; "no reading yet" would hide that it keeps failing.
+  if (account.outcome === "refresh_failed") {
+    return account.fetched_at == null ? "can't refresh its login" : `as of ${clock(account.fetched_at)}, can't refresh its login`;
+  }
   if (account.fetched_at == null) return account.outcome ? "no reading yet" : "reading...";
   if (account.outcome && account.outcome !== "ok") return `as of ${clock(account.fetched_at)}`;
   return "";
 }
 
 function addAccount() {
+  clearTimeout(accountNoticeTimer);
   accountNotice = "adding...";
   paintBudget(lastSnapshot);
   fetch(`/accounts?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify({op: "add"})})
     .then(r => r.json())
     .then(reply => { accountNotice = reply.error ? `could not add: ${reply.error}` : `added ${reply.account.name}`; })
     .catch(() => { accountNotice = "could not add: the panel lost its daemon"; })
-    .finally(() => paintBudget(lastSnapshot));
+    .finally(() => {
+      paintBudget(lastSnapshot);
+      accountNoticeTimer = setTimeout(() => { accountNotice = ""; paintBudget(lastSnapshot); }, REFUSAL_SHOWN_MS);
+    });
 }
 
 let armedSwitch = null;
@@ -5751,6 +5869,7 @@ function switchButton(account) {
       return;
     }
     armedSwitch = null;
+    const seen = lastSnapshot.accounts.last_switch?.at ?? null;
     localSwitch = {kind: "pending", text: `switching to ${account.name}...`};
     paintBudget(lastSnapshot);
     fetch(`/accounts?token=${encodeURIComponent(TOKEN)}`,
@@ -5758,11 +5877,16 @@ function switchButton(account) {
       .then(r => r.json())
       .then(reply => {
         // A made switch is the daemon's to report; its next snapshot carries it.
-        localSwitch = reply.error ? {kind: "refused", text: `not switched: ${reply.error}`}
-          : {kind: "switched", to: reply.account.name, at: Date.now() / 1000, why: null};
+        localSwitch = reply.error ? {kind: "refused", text: `not switched: ${reply.error}`, until: Date.now() + REFUSAL_SHOWN_MS}
+          : {kind: "switched", to: reply.account.name, at: Date.now() / 1000, why: null, seen};
       })
-      .catch(() => { localSwitch = {kind: "refused", text: "not switched: the panel lost its daemon"}; })
-      .finally(() => paintBudget(lastSnapshot));
+      .catch(() => {
+        localSwitch = {kind: "refused", text: "not switched: the panel lost its daemon", until: Date.now() + REFUSAL_SHOWN_MS};
+      })
+      .finally(() => {
+        paintBudget(lastSnapshot);
+        if (localSwitch?.kind === "refused") setTimeout(() => paintBudget(lastSnapshot), REFUSAL_SHOWN_MS + 50);
+      });
   });
   return button;
 }
@@ -5773,6 +5897,7 @@ let renamingAccount = null;
 
 function renameAccount(account, text) {
   renamingAccount = null;
+  clearTimeout(accountNoticeTimer);
   accountNotice = "renaming...";
   paintBudget(lastSnapshot);
   fetch(`/accounts?token=${encodeURIComponent(TOKEN)}`,
@@ -5780,7 +5905,10 @@ function renameAccount(account, text) {
     .then(r => r.json())
     .then(reply => { accountNotice = reply.error ? `not renamed: ${reply.error}` : `renamed to ${reply.account.name}`; })
     .catch(() => { accountNotice = "not renamed: the panel lost its daemon"; })
-    .finally(() => paintBudget(lastSnapshot));
+    .finally(() => {
+      paintBudget(lastSnapshot);
+      accountNoticeTimer = setTimeout(() => { accountNotice = ""; paintBudget(lastSnapshot); }, REFUSAL_SHOWN_MS);
+    });
 }
 
 // An account's name; clicking it turns it into a field. Enter saves, Escape
@@ -5832,14 +5960,18 @@ function addButton(live) {
 // The account the sessions run on, then every other stored account with its
 // own meters. Figures come from the daemon's own readings.
 // The switch this page asked for, until the daemon's snapshot says the same:
-// {kind: "pending"|"refused", text} or {kind: "switched", to, at, why}.
+// {kind: "pending", text}, {kind: "refused", text, until} or
+// {kind: "switched", to, at, why, seen}. `seen` is the daemon's last_switch.at
+// when the switch was asked, so a record other than that one is the daemon's
+// word on it, or on a later switch, read on the daemon's clock alone.
 let localSwitch = null;
 
 // The last switch as one line: arrows, where to, why, a chip when the daemon
 // chose, and how long ago. A switch this page is making, or that was
-// refused, wins over the snapshot's.
+// refused, wins over the snapshot's; a refusal for a few seconds, as a card's does.
 function switchLine(last) {
-  if (localSwitch && (localSwitch.kind !== "switched" || !last || last.at < localSwitch.at)) {
+  if (localSwitch?.kind === "refused" && localSwitch.until <= Date.now()) localSwitch = null;
+  if (localSwitch && (localSwitch.kind !== "switched" || !last || last.at === localSwitch.seen)) {
     last = localSwitch;
   } else {
     localSwitch = null;
@@ -5887,6 +6019,9 @@ function autoSwitchRow() {
 // since an outlook nobody acts on is noise; and a sentence here ran off the
 // panel's edge with the reason, so the chip keeps the name and gives the
 // rest on hover.
+// The models whose thinking the API ties to the account that produced it:
+// after a switch it drops their earlier reasoning from every request.
+const SWITCH_DROPS_REASONING = "A switch drops the earlier reasoning of sessions on Fable 5.2, Sonnet 5.5 and Haiku 5.5.";
 function nextSwitchChip(next) {
   if (!SETTINGS?.auto_switch) return null;
   if (!next?.near) return null;
@@ -5895,7 +6030,11 @@ function nextSwitchChip(next) {
   const chip = Object.assign(document.createElement("span"), {className: "next-chip"});
   if (next.to) {
     chip.textContent = `\u2192 ${next.to} soon`;
-    chip.title = `${next.why}; switches at 90% or when a window is on course for 100%`;
+    chip.title = `${next.why}; switches at 90% or when a window is on course for 100%. ${SWITCH_DROPS_REASONING}`;
+  } else if (next.later) {
+    chip.textContent = `\u2192 ${next.later} near 100%`;
+    chip.title = `${next.why}; every other account is over 90% too, so this one stays until it is about to fill, `
+      + `then moves to ${next.later}. ${SWITCH_DROPS_REASONING}`;
   } else if (next.login) {
     chip.textContent = `log in to ${next.login}`;
     chip.title = `${next.why}; ${next.login} is emptier but needs a login before it can take over`;
@@ -5906,24 +6045,113 @@ function nextSwitchChip(next) {
   return chip;
 }
 
+// The API fallback's place in the head, in place of the next switch: a flip
+// about to happen with its countdown and Not now, sessions on credits with
+// their estimated spend, or a hold in the alert colour with its reason. At
+// rest, and for an install that never turned it on, nothing.
+function fallbackChip(fb, now = Date.now() / 1000) {
+  if (!fb) return null;
+  const chip = Object.assign(document.createElement("span"), {className: "next-chip fb-chip"});
+  if (fb.phase === "entering" || fb.phase === "leaving") {
+    const to = fb.phase === "entering" ? "API" : "subscription";
+    const left = Object.assign(document.createElement("span"), {className: "fb-left"});
+    left.dataset.deadline = fb.deadline;
+    left.dataset.to = to;
+    left.textContent = fallbackCountdown(to, fb.deadline, now);
+    const not = Object.assign(document.createElement("button"), {type: "button", className: "fb-act", textContent: "Not now"});
+    not.title = fb.phase === "entering" ? "Stay on the full account until one has room"
+      : "Stay on API credits; asks again in 30 minutes";
+    on(not, "click", fallbackNotNow);
+    const reread = fb.reread_tokens ? `; the sessions re-read about ${Math.round(fb.reread_tokens / 1000)}k tokens` : "";
+    chip.title = (fb.phase === "entering" ? "Every account is full, so sessions move to API credits"
+      : "An account has room, so sessions go back to the subscription") + reread;
+    chip.classList.add("pending");
+    chip.append(left, not);
+    return chip;
+  }
+  if (fb.phase === "on") {
+    const inUse = fb.keys.find(key => key.id === fb.key_account);
+    chip.textContent = `on API \u00b7 ${fb.key_name} \u00b7 $${fb.spent_usd.toFixed(2)}`;
+    chip.title = `Sessions run on API credits since ${clock(fb.since)}, now on ${fb.key_name}'s key: `
+      + `$${inUse.spent_usd.toFixed(2)} of its $${inUse.cap_usd} cap. $${fb.spent_usd.toFixed(2)} is an estimate `
+      + "from each session's cost on every key of this fallback; the Console holds the true spend. "
+      + "Off while on credits: claude.ai connectors and Remote Control.";
+    chip.classList.add("pending");
+    return chip;
+  }
+  if (fb.retrying && fb.enabled) {
+    chip.textContent = "API \u00b7 trying again";
+    chip.title = `${fb.retrying}; the key could not be checked, so sessions stay on the subscription and the panel tries again`;
+    chip.classList.add("held");
+    return chip;
+  }
+  if (fb.hold && fb.enabled) {
+    chip.textContent = `API \u00b7 ${fallbackHoldWord(fb.hold.reason)}`;
+    const sooner = {cap: " or a key is usable again", billing_error: " or a key is usable again",
+                    authentication_failed: " or a key is usable again", refused: " or a key is saved",
+                    no_bridge: " or the bridge is installed"}[fb.hold.reason] || "";
+    chip.title = `${fb.hold.why}; sessions stay on the subscription until an account has room${sooner}`;
+    chip.classList.add("held");
+    return chip;
+  }
+  return null;
+}
+// The few words a hold, the fallback's or one key's, is shown with.
+function fallbackHoldWord(reason) {
+  return {not_now: "not now", cap: "cap reached", billing_error: "credits ran out",
+          authentication_failed: "key refused", refused: "refused", helper_gone: "helper removed",
+          no_bridge: "needs the bridge"}[reason] || reason;
+}
+function fallbackCountdown(to, deadline, now = Date.now() / 1000) {
+  return `\u2192 ${to} in ${Math.max(0, Math.ceil(deadline - now))} s`;
+}
+function fallbackNotNow() {
+  fallbackPost({op: "not_now"});
+}
+function fallbackPost(body) {
+  return fetch(`/api-fallback?token=${encodeURIComponent(TOKEN)}`, {method: "POST", body: JSON.stringify(body)})
+    .then(r => r.json());
+}
+
+// A flip to API credits or back, as the switch line records a switch.
+function flipLine(flip) {
+  const line = Object.assign(document.createElement("div"), {className: "switched"});
+  const text = Object.assign(document.createElement("span"), {className: "sw-text"});
+  const where = flip.to === "api" ? "On API credits" : "Back on the subscription";
+  text.append(document.createTextNode(where),
+    Object.assign(document.createElement("span"), {className: "sw-sep"}),
+    Object.assign(document.createElement("span"), {className: "sw-reason", textContent: flip.why}));
+  text.title = `${where}: ${flip.why}`;
+  const age = Object.assign(document.createElement("span"), {className: "sw-age"});
+  age.append(metaIcon("clock"), document.createTextNode(reportAge(flip.at)));
+  age.title = clock(flip.at);
+  line.append(metaIcon("switch"), text, age);
+  return line;
+}
+
 // The foot's head: a click folds the foot or opens it, and the auto-switch
-// setting, with where a near switch would go, sits beside it.
-function limitsHead(store) {
+// setting, with where a near switch would go, sits beside it. The API
+// fallback's chip takes the next switch's place, with one account too.
+function limitsHead(store, fallback) {
   const head = Object.assign(document.createElement("div"), {className: "lim-head"});
   const toggle = Object.assign(document.createElement("button"), {type: "button", className: "lim-toggle"});
   const folded = !compact && !!SETTINGS?.limits_folded;
   toggle.setAttribute("aria-expanded", String(!folded));
   toggle.append(Object.assign(document.createElement("span"), {className: "chev", textContent: "›"}),
-                Object.assign(document.createElement("span"), {textContent: "Limits"}));
+                Object.assign(document.createElement("span"), {textContent: "Accounts"}));
   on(toggle, "click", () => {
     if (compact) { compactLimitsOpen = false; paintBudget(lastSnapshot); }
     else push({limits_folded: !SETTINGS?.limits_folded});
   });
   head.append(toggle);
+  const next = fallbackChip(fallback) || (store?.accounts?.length > 1 ? nextSwitchChip(store.next_switch) : null);
   if (store?.accounts?.length > 1) {
     const row = autoSwitchRow();
-    const next = nextSwitchChip(store.next_switch);
     if (next) row.prepend(next);
+    head.append(row);
+  } else if (next) {
+    const row = Object.assign(document.createElement("div"), {className: "autosw"});
+    row.append(next);
     head.append(row);
   }
   return head;
@@ -5973,7 +6201,8 @@ function foldTile(icon, name, windows, {active = false, status = "", exhausted =
   for (const kind of ["climbing", "near", "ahead"]) if (row.classList.contains(kind)) tile.classList.add(kind);
   if (fullest.reserve) tile.classList.add("reserve");
   const fig = Object.assign(document.createElement("span"), {className: "fold-fig"});
-  const when = status || [foldShort(fullest.label), row.querySelector(".at").textContent].filter(Boolean).join(" ");
+  // A quarter of the panel holds one unit of the reset: "wk 1d", not "wk 1d 2h".
+  const when = status || [foldShort(fullest.label), row.querySelector(".at").textContent.split(" ")[0]].filter(Boolean).join(" ");
   fig.append(row.querySelector(".pct"), Object.assign(document.createElement("span"), {className: "when", textContent: when}));
   tile.append(row.querySelector(".track"), fig);
   tile.title = [[name, ...windows.map(w => `${w.label} ${Math.round(w.used)}%`), status].filter(Boolean).join(" \u00b7 "),
@@ -5986,7 +6215,7 @@ function foldTile(icon, name, windows, {active = false, status = "", exhausted =
 // figure, the reset only once the window is tight, and a near switch on a line
 // of its own. Codex gets a line of the same
 // shape only while its fullest window is tight. The chevron opens the whole
-// Limits for this page only, so the fold kept for the full width stays as it
+// Accounts for this page only, so the fold kept for the full width stays as it
 // was set. At tiny width the foot is the chevron and a hairline for that
 // window in the meter's colours, its figure only once it is tight, and the rest in the line's title.
 const COMPACT_TIGHT_USED = 80;
@@ -5995,7 +6224,7 @@ const tightWindow = (w, now) => w.used >= COMPACT_TIGHT_USED
   || (w.resets_at != null && w.resets_at - now < COMPACT_TIGHT_SECONDS);
 const fullestWindow = windows => windows.reduce((a, w) => (a && a.used >= w.used ? a : w), null);
 let compactLimitsOpen = false;
-function compactFoot(store, codex) {
+function compactFoot(store, codex, fallback) {
   const el = (tag, cls, text) => Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
   const now = Date.now() / 1000;
   const said = (name, windows) => [name, ...windows.map(w => `${w.label} ${Math.round(w.used)}%`
@@ -6022,7 +6251,7 @@ function compactFoot(store, codex) {
   const open = () => { compactLimitsOpen = true; paintBudget(lastSnapshot); };
   const active = store.accounts.find(a => a.active);
   const windows = accountWindows(active);
-  const next = nextSwitchChip(store.next_switch);
+  const next = fallbackChip(fallback) || nextSwitchChip(store.next_switch);
   const theirs = codex ? codexWindows(codex) : [];
   if (tiny) {
     const box = el("div", "cfoot hair");
@@ -6037,7 +6266,7 @@ function compactFoot(store, codex) {
     line.title = [windows.length ? said(active.name, windows) : `${active.name}: ${accountStatus(active)}`,
                   ...standing.passedOver.map(passedOverSaid),
                   next?.textContent, theirs.length ? said("Codex", theirs) : null,
-                  "Limits: every window and account"].filter(Boolean).join("\n");
+                  "Accounts: every account and its windows"].filter(Boolean).join("\n");
     on(line, "click", open);
     box.append(line);
     return box;
@@ -6092,7 +6321,7 @@ function foldedCodexTile(limits) {
   return foldTile(providerIcon("openai", "OpenAI"), "Codex", codexWindows(limits));
 }
 
-function paintAccounts(strip, store) {
+function paintAccounts(strip, store, fallback) {
   const active = store.accounts.find(a => a.active);
   const head = Object.assign(document.createElement("div"), {className: "acct-line"});
   head.append(providerIcon("claude", "Claude"), active ? accountName(active, "acct-name")
@@ -6113,7 +6342,11 @@ function paintAccounts(strip, store) {
     if (status) strip.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: status}));
     strip.append(...accountMeters(active));
   }
-  const switched = switchLine(store.last_switch);
+  // The latest of a switch and a flip to API credits or back; a switch this
+  // page is making wins, as it does over the daemon's own record.
+  const flip = fallback?.last_flip;
+  const switched = flip && !localSwitch && !(store.last_switch?.at > flip.at)
+    ? flipLine(flip) : switchLine(store.last_switch);
   if (switched) strip.append(switched);
 
   const list = Object.assign(document.createElement("div"), {className: "acct-list"});
@@ -6324,6 +6557,9 @@ setInterval(() => { if (LATEST.groups.length) render(LATEST); }, 60000);
 // The report ages tick every second on their own: a snapshot arrives only
 // when something changed, and a fresh report counts up in seconds.
 setInterval(() => {
+  for (const left of document.querySelectorAll(".fb-left[data-deadline]")) {
+    left.textContent = fallbackCountdown(left.dataset.to, Number(left.dataset.deadline));
+  }
   for (const when of document.querySelectorAll(".task-age[data-since]")) {
     const since = Number(when.dataset.since);
     when.lastChild.textContent = reportAge(since);
@@ -6358,7 +6594,7 @@ function buildBudget(snapshot) {
     .map(r => r.details).filter(Boolean);
   const store = snapshot.accounts;
   if (compact && !compactLimitsOpen && !store?.error && store?.accounts?.some(a => a.active)) {
-    strip.append(compactFoot(store, snapshot.codex));
+    strip.append(compactFoot(store, snapshot.codex, snapshot.api_fallback));
     return strip;
   }
 
@@ -6371,7 +6607,7 @@ function buildBudget(snapshot) {
     strip.append(Object.assign(document.createElement("div"), {className: "acct-status",
       textContent: `accounts hidden: ${store.error}`}));
   } else if (store?.accounts?.length) {
-    if (tiles) tiles.append(...foldedAccountTiles(store)); else paintAccounts(strip, store);
+    if (tiles) tiles.append(...foldedAccountTiles(store)); else paintAccounts(strip, store, snapshot.api_fallback);
   } else {
     paintSessionBudget(strip, reporting, tiles);
     if (store) {
@@ -6386,7 +6622,7 @@ function buildBudget(snapshot) {
   if (tiles && !tiles.childElementCount) tiles.remove();
   if (!compact && !folded && snapshot.hosts?.length) strip.prepend(devicesRow(snapshot.hosts));
 
-  if (strip.childElementCount) strip.prepend(limitsHead(store));
+  if (strip.childElementCount) strip.prepend(limitsHead(store, snapshot.api_fallback));
   // Above the limits: the cards are sessions, History the week's other
   // sessions and what they all did, and the account's figures are the foot.
   strip.prepend(historyFold());
@@ -7587,6 +7823,7 @@ function paint(snapshot) {
   // A session that closed took its menu with it, and a card whose listeners
   // all left took its popover.
   if (openMenuKey && !root.querySelector(`[data-session-id="${CSS.escape(openMenuKey)}"]`)) closeMenu();
+  if (!card.hidden && !root.querySelector(`[data-session-id="${CSS.escape(card.dataset.row)}"]`)) hideCard();
   if (portsOpenFor && !root.querySelector(".port-pop")) portsOpenFor = null;
   root.querySelector(".port-pop:not(:popover-open)")?.showPopover();
   showOpenShell(root);
@@ -8268,6 +8505,7 @@ function buildGroups(snapshot) {
 
       const linked = pairLine(row, snapshot.partners) || linkLine(row, snapshot.links);
       const lost = remoteLostLine(row);
+      const failed = stopFailureLine(row);
       const standing = questionStandingLine(row);
       const refusal = refusalLine(row.session_id);
       if (row.depth && li === card) {
@@ -8282,6 +8520,7 @@ function buildGroups(snapshot) {
           }
           if (refusal) li.append(refusal);
           if (lost) li.append(lost);
+          if (failed) li.append(failed);
           continue;
         }
         // A teammate: one line inside its parent's card, above the shells.
@@ -8290,6 +8529,7 @@ function buildGroups(snapshot) {
         const kids = childrenOf(card);
         kids.insertBefore(b, kids.querySelector(":scope > .tail"));
         if (lost) b.after(lost);
+        if (failed) b.after(failed);
         if (standing) b.after(standing);
         if (refusal) b.after(refusal);
         if (linked) b.after(linked);
@@ -8328,6 +8568,7 @@ function buildGroups(snapshot) {
       }
       if (refusal) li.append(refusal);
       if (lost) li.append(lost);
+      if (failed) li.append(failed);
       if (standing) li.append(standing);
       if (linked) li.append(linked);
       // Gathered by agent, the daemon sends each agent's cards together; a
@@ -8515,12 +8756,16 @@ function buildGroups(snapshot) {
       // memory it never publishes, so they are read off the process tree.
       // Folded into one line that opens them; clicking a shell row shows its
       // whole command.
-      const shells = SETTINGS?.show_shells !== false ? row.shells || [] : [];
+      // The linger follows the shells the session has, not the ones shown, so
+      // hiding them is never read as their finishing.
+      const showShells = SETTINGS?.show_shells !== false;
+      const running = row.shells || [];
+      const shells = showShells ? running : [];
       const key = row.session_id;
-      if (shells.length) { shellsEndedAt.delete(key); shellsHad.set(key, shells.length); }
+      if (running.length) { shellsEndedAt.delete(key); shellsHad.set(key, running.length); }
       else if (shellsHad.has(key)) { shellsEndedAt.set(key, [Date.now(), shellsHad.get(key)]); shellsHad.delete(key); }
       const [endedAt, hadN] = shellsEndedAt.get(key) ?? [-Infinity, 0];
-      const lingering = !shells.length && Date.now() - endedAt < SHELL_LINGER_MS;
+      const lingering = showShells && !running.length && Date.now() - endedAt < SHELL_LINGER_MS;
       if (lingering && lists) {
         const sum = Object.assign(document.createElement("div"), {className: "shell-sum quiet"});
         sum.dataset.childKey = "shells";
@@ -8902,9 +9147,283 @@ function settingsBody() {
       body.append(kids.kids);
     }
   }
+  box.append(apiFallbackCard());
   box.append(repositoryCard());
   box.append(uninstallRow());
   syncSettings();
+}
+
+function makeEl(tag, cls, text) {
+  return Object.assign(document.createElement(tag), {className: cls, textContent: text ?? ""});
+}
+// A saved key's standing on its row: the word after the account's name, the
+// lamp before it, and for a held key why, which a screen reader hears.
+function apiKeyState(key, inUse) {
+  if (key.hold) return {word: fallbackHoldWord(key.hold.reason), tone: "held", icon: "warning",
+                        detail: `${key.hold.why}; skipped until an account has room or `
+                          + (key.hold.reason === "cap" ? "its cap is raised" : "its key is saved again")};
+  if (inUse) return {word: "in use", tone: "on", icon: "checked", detail: ""};
+  return null;
+}
+// What this fallback spent on a key, in cents up to $1000 and in whole dollars
+// from there, so the figure keeps to its column.
+function apiKeySpent(dollars) {
+  return dollars < 1000 ? `$${dollars.toFixed(2)}` : `$${Math.round(dollars)}`;
+}
+// A cap as a sentence says it: no cents it does not have.
+function apiKeyCap(dollars) {
+  return `$${Number.isInteger(dollars) ? dollars : dollars.toFixed(2)}`;
+}
+
+// Settings > Accounts: the API fallback's switch, which waits for a key on
+// some account; then a table with a row per stored account: its key, sent to
+// the daemon once and shown after by its last four, what this fallback spent
+// on it and its spend cap. Built once and repainted from each frame; a row
+// lives as long as its account, so a field being typed in keeps its text and
+// its focus.
+function apiFallbackCard() {
+  const card = settingCard("Accounts");
+  card.id = "set-api";
+  const line = makeEl("label", "set plain");
+  const note = makeEl("span", "set-note");
+  note.id = "set-note-api_fallback";
+  const sw = makeEl("button", "sw");
+  sw.type = "button";
+  sw.setAttribute("role", "switch");
+  sw.setAttribute("aria-label", "When every account is full, use API credits");
+  sw.setAttribute("aria-describedby", note.id);
+  sw.addEventListener("click", () => push({api_fallback: !SETTINGS.api_fallback}));
+  line.append(makeEl("span", "", "When every account is full, use API credits"), note, sw);
+
+  const table = makeEl("table", "keys");
+  const estimate = makeEl("span", "offscreen",
+    "Spent is this panel's estimate of what the fallback spent on each key; the Console holds the true spend.");
+  estimate.id = "set-api-estimate";
+  table.setAttribute("aria-describedby", estimate.id);
+  const cols = makeEl("colgroup", "");
+  for (const cls of ["lamp", "who", "key", "spent", "cap", "act"]) cols.append(makeEl("col", cls));
+  const head = makeEl("tr", "");
+  head.append(makeEl("td", "lamp"));
+  for (const [text, cls] of [["Account", "who"], ["Key", "num key"], ["Spent", "num"], ["Cap", "num"], ["", "act"]]) {
+    const th = makeEl("th", cls, text);
+    th.scope = "col";
+    if (!text) th.setAttribute("aria-label", "Actions");
+    head.append(th);
+  }
+  const thead = makeEl("thead", "");
+  thead.append(head);
+  const rows = makeEl("tbody", "");
+  table.append(makeEl("caption", "offscreen", "API keys by account"), cols, thead, rows);
+  card.append(line, table, estimate);
+  card._api = {sw, note, rows, byId: new Map()};
+  SETTING_SYNC.push(() => paintApiFallback(card, LATEST));
+  return card;
+}
+// One account's row: a lamp, the name with a word after it, and either the
+// key's last four, its spend and its cap with Forget, or a field for the key
+// across those three columns with Save. Every request names the account. What
+// the row says goes in the word, and in full to a polite live region.
+function apiKeyRow(accountId) {
+  const row = makeEl("tr", "key-row");
+  row.dataset.account = accountId;
+  const cell = (cls, ...kids) => { const td = makeEl("td", cls); td.append(...kids); return td; };
+  const lamp = makeEl("span", "key-lamp");
+  lamp.setAttribute("aria-hidden", "true");
+  const name = makeEl("span", "key-name");
+  const word = makeEl("span", "key-word");
+  const detail = makeEl("span", "offscreen");
+  const line = makeEl("span", "key-line");
+  line.append(name, word, detail);
+  const last = makeEl("span", "key-num");
+  const spent = makeEl("span", "key-num key-spent");
+  const cap = makeEl("input", "key-cap");
+  Object.assign(cap, {type: "text", inputMode: "decimal", name: `cap-${accountId}`, autocomplete: "off", spellcheck: false});
+  const money = makeEl("span", "key-money");
+  money.append(makeEl("span", "key-num", "$"), cap);
+  const field = makeEl("input", "key-in");
+  Object.assign(field, {type: "password", name: `api-key-${accountId}`, placeholder: "sk-ant-…",
+                        autocomplete: "off", spellcheck: false});
+  const icon = kind => {
+    const button = makeEl("button", "key-icon");
+    button.type = "button";
+    button.append(metaIcon(kind));
+    return button;
+  };
+  const save = icon("save");
+  const forget = icon("trash");
+  const live = makeEl("span", "offscreen");
+  live.setAttribute("role", "status");
+  const figures = [cell("num key", last), cell("num", spent), cell("num", money)];
+  const fieldCell = cell("field", field);
+  fieldCell.colSpan = 3;
+  row.append(cell("lamp", lamp), cell("who", line), ...figures, fieldCell, cell("act", forget, save, live));
+
+  const api = {name, lamp, last, spent, cap, field, save, forget, figures, fieldCell,
+               who: "", forgetLabel: "", capUsd: 0, state: null, said: null};
+  api.showWord = () => {
+    const shown = api.said || api.state;
+    word.textContent = shown?.word || "";
+    word.dataset.tone = shown?.tone || "";
+    detail.textContent = api.said ? "" : api.state?.detail || "";
+  };
+  const say = (said, sentence) => {
+    api.said = said;
+    api.showWord();
+    live.textContent = sentence;
+  };
+  const refused = (word, sentence) => say({word, tone: "bad"}, sentence);
+
+  const submit = () => {
+    const key = field.value.trim();
+    if (!key) { refused("no key typed", `Type or paste ${api.who}'s key first.`); return; }
+    save.disabled = true;
+    save.setAttribute("aria-busy", "true");
+    save.setAttribute("aria-label", `Checking the key for ${api.who}…`);
+    say({word: "checking…", tone: "busy"}, `Checking ${api.who}'s key…`);
+    fallbackPost({op: "save_key", account_id: accountId, key})
+      .then(r => {
+        if (r.error) { refused(r.error, `Not saved: ${r.error}`); return; }
+        field.value = "";
+        say(null, `${api.who}'s key is saved.`);
+      })
+      .catch(() => refused("no daemon", "Not saved: the panel lost its daemon."))
+      .finally(() => {
+        save.disabled = false;
+        save.removeAttribute("aria-busy");
+        save.setAttribute("aria-label", `Save the key for ${api.who}`);
+      });
+  };
+  save.addEventListener("click", submit);
+  field.addEventListener("keydown", event => {
+    if (event.key !== "Enter" || save.disabled) return;
+    event.preventDefault();
+    submit();
+  });
+  // A pasted key is the whole key: it saves once the paste has landed.
+  field.addEventListener("paste", () => setTimeout(() => { if (!save.disabled) submit(); }, 0));
+  field.addEventListener("input", () => { if (api.said?.tone === "bad") say(null, ""); });
+
+  // Forget asks once more, and stops asking after 4 s or when focus leaves.
+  let armed = 0;
+  const disarm = () => {
+    clearTimeout(armed);
+    armed = 0;
+    forget.classList.toggle("armed", false);
+    forget.replaceChildren(metaIcon("trash"));
+    forget.setAttribute("aria-label", api.forgetLabel);
+    if (api.said?.tone === "ask") say(null, "");
+  };
+  forget.addEventListener("click", () => {
+    if (!armed) {
+      forget.classList.add("armed");
+      forget.replaceChildren(metaIcon("check"));
+      forget.setAttribute("aria-label", `Forget ${api.who}'s key: press again to confirm`);
+      say({word: "forget?", tone: "ask"}, `Press again to forget ${api.who}'s key.`);
+      armed = setTimeout(disarm, 4000);
+      return;
+    }
+    disarm();
+    fallbackPost({op: "forget_key", account_id: accountId})
+      .then(r => r.error ? refused(r.error, `Not forgotten: ${r.error}`) : say(null, `${api.who}'s key is forgotten.`))
+      .catch(() => refused("no daemon", "Not forgotten: the panel lost its daemon."));
+  });
+  forget.addEventListener("blur", () => { if (armed) disarm(); });
+
+  // The cap is free text, checked when it is committed: a cap of nothing is
+  // refused and stays in the field to be fixed, and the cap in force stays.
+  let sent = null;
+  const commitCap = () => {
+    const text = cap.value.trim().replace(/^\$/, "");
+    const dollars = Number(text);
+    if (!(dollars > 0)) {
+      cap.setAttribute("aria-invalid", "true");
+      refused(text && !Number.isNaN(dollars) ? "too low" : "not a number",
+              `The cap on ${api.who}'s key must be more than $0. It stays ${apiKeyCap(api.capUsd)}.`);
+      return;
+    }
+    cap.removeAttribute("aria-invalid");
+    if (api.said?.tone === "bad") say(null, "");
+    if (dollars === api.capUsd || dollars === sent) return;
+    sent = dollars;
+    fallbackPost({op: "set_cap", account_id: accountId, cap_usd: dollars})
+      .then(r => {
+        if (!r.error) { say(null, `${api.who}'s cap is ${apiKeyCap(dollars)}.`); return; }
+        sent = null;
+        refused(r.error, `Cap not set: ${r.error}`);
+      })
+      .catch(() => { sent = null; refused("no daemon", "Cap not set: the panel lost its daemon."); });
+  };
+  cap.addEventListener("change", commitCap);
+  cap.addEventListener("keydown", event => {
+    if (event.key === "Enter") { event.preventDefault(); commitCap(); }
+    if (event.key === "Escape") {
+      cap.value = String(api.capUsd);
+      cap.removeAttribute("aria-invalid");
+      say(null, "");
+      cap.blur();
+    }
+  });
+  row._api = api;
+  return row;
+}
+function paintApiFallback(card, snapshot) {
+  const {sw, note, rows, byId} = card._api;
+  const fb = snapshot.api_fallback;
+  // The fallback's own list carries keys and caps; without it no account has a
+  // key yet, and the accounts' list names the rows.
+  const keys = fb?.keys || (snapshot.accounts?.accounts || []).map(a => ({id: a.id, name: a.name, last4: null}));
+  const anyKey = keys.some(key => key.last4);
+  sw.setAttribute("aria-checked", String(!!SETTINGS.api_fallback));
+  const noBridge = fb?.bridge === false;
+  sw.disabled = (!anyKey || noBridge) && !SETTINGS.api_fallback;
+  const active = fb?.phase === "on" || fb?.phase === "leaving";
+  note.textContent = (active ? "apiKeyHelper is in ~/.claude/settings.json now, and comes out when an account has room."
+    : "While every account is full, puts apiKeyHelper in ~/.claude/settings.json.")
+    + " If that file syncs to other machines, they get the line too."
+    + (noBridge ? " Needs the statusline bridge first: the spend cap reads each session's cost from it." : "")
+    + (anyKey ? "" : " Needs an API key on an account first.");
+  const order = keys.map(key => key.id);
+  for (const id of [...byId.keys()]) if (!order.includes(id)) byId.delete(id);
+  for (const key of keys) {
+    if (!byId.has(key.id)) byId.set(key.id, apiKeyRow(key.id));
+    paintApiKeyRow(byId.get(key.id), key, active && fb.key_account === key.id);
+  }
+  // Only a changed list is put back, so a field in a row keeps its focus.
+  if ([...rows.children].map(row => row.dataset.account).join() !== order.join()) {
+    rows.replaceChildren(...order.map(id => byId.get(id)));
+  }
+}
+// One row from a frame. Only whether the key is saved decides its cells, never
+// what the row is saying, so every row stays as wide as the header.
+function paintApiKeyRow(row, key, inUse) {
+  const api = row._api;
+  const saved = !!key.last4;
+  api.who = key.name;
+  api.name.textContent = key.name;
+  for (const td of api.figures) td.hidden = !saved;
+  api.fieldCell.hidden = saved;
+  api.save.hidden = saved;
+  api.forget.hidden = !saved;
+  api.field.setAttribute("aria-label", `Anthropic API key for ${key.name}`);
+  if (!api.save.hasAttribute("aria-busy")) api.save.setAttribute("aria-label", `Save the key for ${key.name}`);
+  api.forgetLabel = `Forget ${key.name}'s key${saved ? ` ending ${key.last4}` : ""}`;
+  if (!api.forget.classList.contains("armed")) api.forget.setAttribute("aria-label", api.forgetLabel);
+  api.cap.setAttribute("aria-label", `Spend cap on ${key.name}'s key, in dollars`);
+  api.state = saved ? apiKeyState(key, inUse) : null;
+  if ((api.lamp.dataset.tone || "") !== (api.state?.tone || "")) {
+    api.lamp.replaceChildren(...(api.state ? [metaIcon(api.state.icon)] : []));
+    api.lamp.dataset.tone = api.state?.tone || "";
+  }
+  api.showWord();
+  if (!saved) return;
+  api.last.textContent = key.last4;
+  api.spent.textContent = key.spent_usd || inUse ? apiKeySpent(key.spent_usd) : "";
+  api.spent.dataset.tone = key.hold ? "held" : "";
+  api.capUsd = key.cap_usd;
+  // A cap being typed, or refused and waiting to be fixed, is not written over.
+  if (document.activeElement !== api.cap && api.cap.getAttribute("aria-invalid") !== "true") {
+    api.cap.value = String(key.cap_usd);
+  }
 }
 
 let UNINSTALL = {state: "idle"};
@@ -9186,6 +9705,8 @@ const offerState = {};
 
 function paintOffers(snapshot) {
   for (const offer of OFFERS) paintOffer(offer, snapshot);
+  const api = document.getElementById("set-api");
+  if (api) paintApiFallback(api, snapshot);
   const note = document.getElementById("set-note-tab_status");
   if (note) tabStatusNote(note, snapshot);
 }
@@ -9425,12 +9946,15 @@ function onSnapshot(data) {
   refusedFrame = null;
   LATEST = frame;
   render(LATEST, true);
+  // Again once painted: a paint that recovered from a failure clears STALE now, not at the next heartbeat.
+  markFresh();
 }
 function paintRefused() {
   if (!refusedFrame || frameIsStale(refusedFrame)) return;
   LATEST = refusedFrame;
   refusedFrame = null;
   render(LATEST, true);
+  markFresh();
 }
 connectEvents();
 markFresh();

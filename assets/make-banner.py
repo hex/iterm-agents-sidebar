@@ -31,7 +31,7 @@ def cycle(attr, values, key_times, **kw):
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="100%" '
   f'role="img" aria-label="An iTerm2 window with the Agents panel docked on the right: one card per session, each with a Working, '
   f'Waiting or Idle pill, a server a session runs as a port pill in its language\'s tint at the end of its card\'s report line, '
-  f'the one waiting on a question turning amber, and under the cards the History fold, then Limits and the release">')
+  f'the one waiting on a question turning amber, and under the cards the History fold, then Accounts and the release">')
 A('  <title>Agents sidebar</title>')
 A(f'''  <defs>
     <filter id="drop" x="-6%" y="-14%" width="112%" height="140%">
@@ -286,7 +286,7 @@ text(CARD_X + 44, s1 + 75, "vite dev", fill=DIM, size=11.5, family=MONO)
 
 rule_y = WY + WH - 34
 fy = rule_y - 78
-for label in ("History", "Limits"):
+for label in ("History", "Accounts"):
     dash = ' stroke-dasharray="1 2"' if label != "History" else ""
     A(f'  <line x1="{PX+14}" y1="{fy}" x2="{PX+PANEL_W-14}" y2="{fy}" stroke="{RULE}"{dash}/>')
     text(PX + 24, fy + 13, "›", fill=DIM, size=10.5, family=MONO)

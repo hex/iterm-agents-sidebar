@@ -29,6 +29,7 @@ The unseen mark a finished turn leaves on its card could go wrong too:
 - it depends on the alert settings, or only one pane of a conversation gets it.
 """
 import alerts
+from test_session_state import emit_state
 
 ON = {"sound": True, "sound_blocked": True, "sound_done": True,
       "notify": True, "notify_blocked": True, "notify_done": True,
@@ -252,3 +253,23 @@ def test_both_panes_of_one_conversation_are_marked():
                 reading(("a", "idle", None), ("b", "idle", None)),
                 conversations={"a": "conv-1", "b": "conv-1"})
     assert out == [set(), {"a", "b"}]
+
+
+def test_an_automatic_compaction_mid_turn_finishes_the_turn_once_at_its_stop():
+    """The hook's readings of one turn that compacts itself on the way, each
+    fed to the watch as the daemon would read them: the compaction is no end,
+    and the Stop that does end the turn says so."""
+    doc = emit_state.blank_state()
+    out = []
+    watch = alerts.Watch()
+    for event, payload in [("UserPromptSubmit", {"prompt": "go"}),
+                           ("PreToolUse", {"tool_use_id": "t1"}),
+                           ("PostToolUse", {"tool_use_id": "t1"}),
+                           ("PreCompact", {"trigger": "auto"}),
+                           ("SessionStart", {"source": "compact"}),
+                           ("PreToolUse", {"tool_use_id": "t2"}),
+                           ("PostToolUse", {"tool_use_id": "t2"}),
+                           ("Stop", {"stop_hook_active": False})]:
+        doc = emit_state.apply_event(doc, event, payload, emit_state.state_for(event, payload))
+        out.append(watch.step(reading(("a", emit_state.aggregate(doc), emit_state.working_since(doc))), ON, {}))
+    assert out[1:] == [[], [], [], [], [], [], [("sound", "a", "done"), ("notify", "a", "done")]]

@@ -836,6 +836,39 @@ def test_a_codex_card_stops_waiting_once_its_approved_command_runs(monkeypatch):
     assert row["agent_state"] == "working"
 
 
+class CodexAskingAtAGate(CodexAsking):
+    """That pane, typed into, with the gate id its Yes button names."""
+    def __init__(self):
+        self.typed = []
+
+    async def async_get_variable(self, name):
+        value = await super().async_get_variable(name)
+        return json.dumps(dict(json.loads(value), question=dict(GATED, id="f" * 32))) if name == "user.codexState" else value
+
+    async def async_send_text(self, text):
+        self.typed.append(text)
+
+
+def test_a_stale_click_on_a_codex_card_is_not_typed_once_its_approved_command_runs(monkeypatch, tmp_path):
+    """The row still names the gate, and "y" would land in the running Codex."""
+    b = bridge(monkeypatch, [])
+    monkeypatch.setattr(sidebar, "STATUS_DIR", str(tmp_path))
+    monkeypatch.setattr(sidebar, "read_system", lambda: (
+        ({}, {SHELL: ASKED_AT + 8}, {}, {}), {},
+        {SHELL: (DAEMON, 0.0, 0, None), DAEMON: (1, 0.0, 0, None)}, {DAEMON: "codex"},
+        {SHELL: "/bin/zsh -lc bash tests/codex-watcher/run.sh"}, {}))
+    pane = CodexAskingAtAGate()
+    b.app = one_session(pane)
+    b.app.get_session_by_id = lambda session_id: pane if session_id == pane.session_id else None
+    asyncio.run(b._rebuild_once())
+    [row] = [row for group in b.latest["groups"] for row in group["rows"]]
+    assert (row["state"], row["question"]["id"]) == ("working", "f" * 32)
+    click = json.dumps({"gate": "yes", "id": "f" * 32})
+    asyncio.run(b.act("s7", "answer", click))
+    assert pane.typed == []
+    assert (tmp_path / "daemon.log").read_text().splitlines()[-1].split(" ", 2)[2] == f"answer refused s7 {click!r}"
+
+
 def file_state(directory, session, text):
     """As the hook files one: written beside its name, then renamed over it."""
     path = os.path.join(directory, session + ".published")
@@ -958,6 +991,44 @@ async def test_state_writes_that_land_during_a_rebuild_fold_into_one_more(monkey
     try:
         await asyncio.sleep(0.3)
         assert len(readings) == 2
+    finally:
+        task.cancel()
+
+
+class LayoutMonitorQueue:
+    """iTerm2's LayoutChangeMonitor as the watch meets it: three changes waiting."""
+    def __init__(self, connection):
+        self.queue = asyncio.Queue()
+        for _ in range(3):
+            self.queue.put_nowait(None)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def async_get(self):
+        return await self.queue.get()
+
+
+async def test_a_rebuild_that_fails_leaves_the_layout_watch_running(monkeypatch, capsys):
+    """Losing the watch costs instant window and tab updates for the daemon's life."""
+    monkeypatch.setitem(sys.modules, "iterm2", types.SimpleNamespace(LayoutChangeMonitor=LayoutMonitorQueue))
+    readings = []
+    b = bridge(monkeypatch, readings)
+
+    def fails_once():
+        readings.append(1)
+        if len(readings) == 1:
+            raise RuntimeError("listing failed")
+        return ({}, {}, {}, {}), {}, {}, {}, {}, {}
+    monkeypatch.setattr(sidebar, "read_system", fails_once)
+    task = asyncio.ensure_future(b.watch_layout())
+    try:
+        await asyncio.sleep(0.3)
+        assert len(readings) == 3
+        assert capsys.readouterr().out == "sidebar: rebuild failed: RuntimeError('listing failed')\n"
     finally:
         task.cancel()
 

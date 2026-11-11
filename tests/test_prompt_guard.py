@@ -1,4 +1,5 @@
-# ABOUTME: Guards the prompt verb: text meant as an agent's next input is refused where it cannot land.
+# ABOUTME: Guards what reaches a pane: a notice's response, a card's click, and the prompt verb, whose text
+# ABOUTME: meant as an agent's next input is refused where it cannot land.
 # ABOUTME: A waiting prompt would take the text as its answer, a gone or exited agent leaves a shell, and a
 # ABOUTME: program in front of the agent (outside its tty's foreground group) would take the text instead.
 import asyncio
@@ -296,3 +297,133 @@ def test_a_remote_row_takes_only_a_digit_y_or_escape(key):
 @pytest.mark.parametrize("key", ["1", "9", "0", "y", "\x1b"])
 def test_a_remote_row_takes_each_answer_key(key):
     assert typing_refusal(REMOTE, [key]) is None
+
+
+# --- a notice's response, read after its sender has exited -------------------
+
+ASKED = {"header": "Icon", "question": "Which icon?", "options": ["Dots", "Square"], "multi": False, "more": 0}
+
+
+def asking_bridge(monkeypatch, tmp_path):
+    """A Bridge whose last frame shows "abc" waiting on ASKED."""
+    b = bridge_over(monkeypatch, tmp_path, "blocked")
+    b.latest["groups"][0]["rows"][0]["question"] = ASKED
+    return b
+
+
+async def exited_sender(line):
+    """A real process that printed `line` and exited, its exit already seen when the line is read."""
+    sender = await asyncio.create_subprocess_exec(
+        "/bin/sh", "-c", 'printf "%s\\n" "$1"', "sender", line, stdout=asyncio.subprocess.PIPE)
+    await sender.wait()
+    return sender
+
+
+async def waiting_sender():
+    """A real process standing behind a notice, as a sender does until the notice is acted on."""
+    return await asyncio.create_subprocess_exec("/bin/sleep", "30", stdout=asyncio.subprocess.PIPE)
+
+
+def log_lines(tmp_path):
+    return [line.split(" ", 2)[2] for line in (tmp_path / "daemon.log").read_text().splitlines()]
+
+
+async def test_a_response_read_after_its_sender_exited_still_acts(monkeypatch, tmp_path):
+    """The sender prints the response and exits at once, so its exit can be seen first."""
+    b = asking_bridge(monkeypatch, tmp_path)
+    sender = await exited_sender('{"action": "2"}')
+    b.notices.replace("abc", sender, "blocked", ASKED)
+    await b.answer("abc", sender)
+    assert b.app.pane.typed == ["2"]
+    assert log_lines(tmp_path) == ["""notice answered abc {"action": "2"} -> send '2'"""]
+    assert b.notices.standing("abc") is None
+
+
+async def test_a_response_from_a_sender_that_was_replaced_answers_nothing(monkeypatch, tmp_path):
+    """Its buttons were built for the notice it posted, not for the one standing now."""
+    b = asking_bridge(monkeypatch, tmp_path)
+    old = await exited_sender('{"action": "2"}')
+    b.notices.replace("abc", old, "blocked", ASKED)
+    standing = await waiting_sender()
+    b.notices.replace("abc", standing, "blocked", ASKED)
+    try:
+        await b.answer("abc", old)
+        assert b.app.pane.typed == []
+        assert log_lines(tmp_path) == ["""notice answered abc {"action": "2"} but nothing stands for it"""]
+        assert b.notices.standing("abc") is standing
+    finally:
+        standing.terminate()
+        await standing.wait()
+
+
+async def test_a_response_another_sender_carries_answers_the_notice_it_names(monkeypatch, tmp_path):
+    """macOS hands every response to one running sender, so the line arrives through another session's process."""
+    b = asking_bridge(monkeypatch, tmp_path)
+    owner = await waiting_sender()
+    b.notices.replace("abc", owner, "blocked", ASKED)
+    carrier = await exited_sender('{"action": "2", "id": "abc"}')
+    b.notices.replace("carrier", carrier, "done", None)
+    await b.answer("carrier", carrier)
+    assert b.app.pane.typed == ["2"]
+    assert await owner.wait() == -15
+    assert b.notices.standing("abc") is None
+
+
+# --- a card's click, once the row has stopped waiting -------------------------
+
+@pytest.mark.parametrize("state", ["working", "idle", "unknown", "exited"])
+def test_a_card_click_types_nothing_into_a_row_no_longer_waiting(monkeypatch, tmp_path, state):
+    """The row can keep its question after the wait is over: an agent that exited while
+    asking leaves a shell in the pane, where the digit would be typed at a prompt."""
+    b = bridge_over(monkeypatch, tmp_path, state)
+    b.latest["groups"][0]["rows"][0]["question"] = ASKED
+    click = json.dumps({"pick": 2, "question": "Which icon?"})
+    asyncio.run(b.act("abc", "answer", click))
+    assert b.app.pane.typed == [] and b.answered == {}
+    assert log_lines(tmp_path) == [f"answer refused abc {click!r}"]
+
+
+def test_a_card_click_types_its_digit_into_a_row_waiting_on_that_question(monkeypatch, tmp_path):
+    b = bridge_over(monkeypatch, tmp_path, "blocked")
+    b.latest["groups"][0]["rows"][0]["question"] = ASKED
+    asyncio.run(b.act("abc", "answer", json.dumps({"pick": 2, "question": "Which icon?"})))
+    assert b.app.pane.typed == ["2"]
+
+
+# --- what the card remembers typing -------------------------------------------
+
+class DroppedLinkPane(Pane):
+    """A pane whose first write fails, as iTerm2's API does when it loses the session."""
+    def __init__(self):
+        super().__init__()
+        self.dropped = False
+
+    async def async_send_text(self, text):
+        if not self.dropped:
+            self.dropped = True
+            raise ConnectionError("iTerm2 closed the connection")
+        await super().async_send_text(text)
+
+
+def test_a_click_whose_typing_failed_can_be_clicked_again(monkeypatch, tmp_path):
+    """Nothing reached the pane, so the question is still open to the card."""
+    b = bridge_over(monkeypatch, tmp_path, "blocked")
+    b.latest["groups"][0]["rows"][0]["question"] = ASKED
+    b.app.pane = DroppedLinkPane()
+    click = json.dumps({"pick": 2, "question": "Which icon?"})
+    with pytest.raises(ConnectionError):
+        asyncio.run(b.act("abc", "answer", click))
+    assert b.app.pane.typed == [] and b.answered == {}
+    asyncio.run(b.act("abc", "answer", click))
+    assert b.app.pane.typed == ["2"]
+
+
+async def test_a_double_click_types_once_though_the_first_is_still_typing(monkeypatch, tmp_path):
+    """Each click is its own task and typing pauses between strokes, so the second arrives mid-typing."""
+    b = bridge_over(monkeypatch, tmp_path, "blocked")
+    b.latest["groups"][0]["rows"][0]["question"] = ASKED
+    click = json.dumps({"pick": 2, "question": "Which icon?"})
+    await asyncio.gather(b.act("abc", "answer", click), b.act("abc", "answer", click))
+    assert b.app.pane.typed == ["2"]
+    assert log_lines(tmp_path) == [f"answer refused abc {click!r}", "answer abc '2'"]
+

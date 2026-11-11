@@ -1736,3 +1736,86 @@ def test_a_new_codex_conversation_is_handed_the_memory_index(tmp_path, source):
 def test_only_the_start_of_a_codex_conversation_is_handed_the_memory_index(tmp_path, args, payload):
     code, out, _ = memory_session_start(tmp_path, args, **payload)
     assert (code, out) == (0, "{}")
+
+
+def test_a_stop_failure_is_filed_with_its_error_and_kept_by_later_events(tmp_path, monkeypatch):
+    """The daemon ends the API fallback on billing_error or authentication_failed, read from here on its
+    own clock, so the filed failure outlives the next prompt; what is said on the card does not."""
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    emit_state.update("s-7", "UserPromptSubmit", {}, "working")
+    filed = emit_state.update("s-7", "StopFailure", {"error": "billing_error"}, "idle")["stop_failure"]
+    assert filed["error"] == "billing_error"
+    assert abs(filed["at"] - time.time()) < 5
+    assert emit_state.update("s-7", "PreToolUse", {"tool_name": "Bash"}, "working")["stop_failure"] == filed
+    assert emit_state.update("s-7", "UserPromptSubmit", {}, "working")["stop_failure"] == filed
+    assert emit_state.read_state("s-7")["stop_failure"] == filed
+
+
+def test_a_turn_that_ends_in_a_stop_failure_goes_idle_and_says_the_error_until_the_next_prompt(tmp_path):
+    session = {"session_id": "s-failed", "cwd": "/tmp/example"}
+    published_by_handler(tmp_path, "UserPromptSubmit", {**session, "prompt": "go"})
+    working = published_by_handler(tmp_path, "PreToolUse", {**session, "tool_name": "Bash", "tool_use_id": "t1"})
+    assert (working["state"], working.get("stop_error")) == ("working", None)
+    failed = published_by_handler(tmp_path, "StopFailure", {**session, "error": "billing_error"})
+    assert (failed["state"], failed["stop_error"]) == ("idle", "billing_error")
+    next_turn = published_by_handler(tmp_path, "UserPromptSubmit", {**session, "prompt": "try again"})
+    assert (next_turn["state"], next_turn.get("stop_error")) == ("working", None)
+
+
+def test_a_stop_failure_ends_the_turn_as_stop_does(tmp_path, monkeypatch):
+    """Nothing of the failed turn is still running, and its gates close, but the
+    payload lists no background tasks, so those it held stay in flight."""
+    monkeypatch.setattr(emit_state, "STATE_DIR", str(tmp_path))
+    emit_state.update("s-8", "UserPromptSubmit", {}, "working")
+    emit_state.update("s-8", "PreToolUse", {"tool_name": "Bash", "tool_use_id": "t1"}, "working")
+    emit_state.update("s-8", "Stop", {"background_tasks": [{"type": "shell", "description": "dev server"}]}, "idle")
+    emit_state.update("s-8", "UserPromptSubmit", {}, "working")
+    doc = emit_state.update("s-8", "StopFailure", {"error": "rate_limit"}, "idle")
+    assert (emit_state.aggregate(doc), doc["running"], doc["gates"]) == ("working", {}, {}), "the background task still runs"
+    assert doc["background"] == [{"type": "shell", "description": "dev server"}]
+    assert emit_state.state_for("StopFailure", {"error": "rate_limit"}) == "idle"
+
+
+def test_stop_failure_reaches_the_handler():
+    hooks = json.loads((HANDLER.parent.parent / "hooks" / "hooks.json").read_text())["hooks"]
+    assert hooks["StopFailure"] == [{"hooks": [{
+        "type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks-handlers/emit-state.py StopFailure"}]}]
+
+
+ON_API = "This session now runs on API credits; claude.ai connectors and Remote Control are unavailable until it returns to the subscription."
+BACK = "This session is back on its subscription; claude.ai connectors and Remote Control work again."
+
+
+def test_the_api_line_comes_once_per_flip():
+    on = {"phase": "on", "flips": 1}
+    assert emit_state.api_context(on, None) == (ON_API, 1), "a session that has heard nothing hears it"
+    assert emit_state.api_context(on, 1) == (None, 1), "once"
+    assert emit_state.api_context({"phase": "off", "flips": 2}, 1) == (BACK, 2)
+    assert emit_state.api_context({"phase": "leaving", "flips": 1}, 1) == (None, 1), "leaving is still on credits"
+    assert emit_state.api_context({"phase": "entering", "flips": 2}, 2) == (None, 2)
+
+
+def test_a_session_that_starts_on_the_subscription_hears_nothing_of_earlier_flips():
+    assert emit_state.api_context({"phase": "off", "flips": 4}, None) == (None, 4)
+
+
+def test_no_record_says_nothing():
+    assert emit_state.api_context(None, None) == (None, None)
+    assert emit_state.api_context(None, 3) == (None, 3)
+
+
+def test_a_prompt_hears_the_api_line_once_and_a_subagent_never(tmp_path):
+    record = tmp_path / ".claude" / "agents-sidebar-status" / "api-fallback.json"
+    record.parent.mkdir(parents=True)
+    record.write_text(json.dumps({"phase": "on", "flips": 1}))
+    said = lambda out: json.loads(out).get("hookSpecificOutput", {}).get("additionalContext") or ""
+    payload = {"session_id": "s-3", "prompt": "go"}
+    _, out, _ = run_handler(tmp_path, ["UserPromptSubmit"], dict(payload, agent_id="agent-1"))
+    assert ON_API not in said(out), "a subagent"
+    _, out, _ = run_handler(tmp_path, ["UserPromptSubmit"], payload)
+    assert said(out) == ON_API
+    _, out, _ = run_handler(tmp_path, ["UserPromptSubmit"], payload)
+    assert ON_API not in said(out)
+    record.write_text(json.dumps({"phase": "off", "flips": 2}))
+    _, out, _ = run_handler(tmp_path, ["UserPromptSubmit"], payload)
+    assert said(out) == BACK

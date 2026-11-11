@@ -63,7 +63,9 @@ node launcher does. Both come off the rebuild's one process listing. For a row
 with no agent pid, such as a Codex that has published nothing yet, the daemon
 asks only whether it waits or has exited.
 
-The server also takes `POST /accounts` (switch, add, rename, read), `/update`,
+The server also takes `POST /accounts` (switch, add, rename, read), `/api-fallback`
+(`not_now`, and `save_key`, `forget_key` and `set_cap`, which name a stored
+account by `account_id`; a reply carries at most a key's last four characters), `/update`,
 `/statusline`, `/tab-status` (takes iTerm2's `cc-status` hook out of Claude Code's settings), `/context`, `/link`, `/untie`, `/github` (opens the repository
 or releases page the daemon builds), `/rebuild` (registers the panel again under a fresh URL, so iTerm2 builds its web view anew in every window: the reload button's right-click menu), `/stop-port` (`SIGTERM` to the holder of a port a card showed in the daemon's last reading, once a fresh `lsof` and `ps` show the same process still holds it), `/open-port` (opens `http://localhost:<port>` for a port a card showed in that reading) and `/page-error`. No endpoint runs arbitrary code.
 `POST /uninstall` checks the token, then accepts an object containing only
@@ -159,6 +161,14 @@ carries an email address. `RELEASE_SCRUB="word word"` adds words that fail it
 too, and so does `.cs/local/release-scrub`, one word per line, which stays
 out of git and so out of every release.
 
+Until the push starts, any exit, Ctrl-C included, takes the release back: the
+bump on main, `public`, the local tag and the check worktree. A push that
+reports a failure may still have landed, so once the push has started the
+script asks the remote with `git ls-remote` first. With no tag there, it takes
+the release back the same way. With the tag there, it keeps everything and
+says to make the release page by hand. When it cannot ask the remote, it
+keeps everything and says to check the remote before running it again.
+
 Before each release, check the docs against what changed since the last tag:
 
 ```sh
@@ -178,13 +188,20 @@ read against the source.
 - `sidebar.py`: the daemon, run by iTerm2; the rows, the server and the notices.
 - `page.html`: the panel itself, one page with its own script and styles.
 - `accounts.py`: account usage meters, switching and the Keychain logins.
+- `api_fallback.py`: the API fallback's record, the pure step that moves it
+  between off, entering, on and leaving and from one account's key to the next,
+  each account's key in the Keychain and its check against the models list.
+- `api-key-helper.sh`: Claude Code's `apiKeyHelper` while sessions run on API
+  credits; prints the key of the account it names, and takes itself out when the daemon is down
+  or it cannot read the key from the Keychain.
 - `codex.py`: Codex rate limits, read from Codex's own session logs, and a linked
   Codex session's reply, read from its rollout.
 - `omp.py`: what an omp session says about itself, read from its own files.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
 - `past.py`: the rows of the History fold's Sessions tab, read from Claude Code's transcripts.
 - `ports.py`: the ports on each agent's card: `lsof`'s listening TCP sockets, each under the card whose agent's process tree holds it, or whose agent its environment's `CLAUDE_PID` names, with the language its process runs, read off the kernel's name for it.
-- `statusline.py`: puts the statusline bridge into Claude Code's settings, and takes iTerm2's `cc-status` hook out.
+- `statusline.py`: puts the statusline bridge into Claude Code's settings, takes iTerm2's `cc-status` hook out,
+  and puts the API fallback's `apiKeyHelper` in and out, that key alone.
 - `tabstatus.py`: the status under each agent's tab title, written through iTerm2's `set_session_status` and
   taken back when the session exits or goes unreported, the setting goes off or the daemon stops.
 - `tabcolour.py`: each card's tab in its cs session colour, mixed over the pane's own backgrounds, written
@@ -215,8 +232,9 @@ read against the source.
 - `release.sh`: cuts a release to the public mirror.
 - `assets/`: the README figures and their scripts, and the notifier's source
   (`notifier.swift`) and icon.
-- `tests/`: the test suite; `tests/live/` holds manual scripts that drive a
-  real iTerm2 and are not collected.
+- `tests/`: the test suite; `tests/live/` holds manual scripts that are not
+  collected: most drive a real iTerm2, and `api_fallback_check.py` drives the
+  installed Claude Code.
 
 ## The tool identifier
 
@@ -300,8 +318,8 @@ tools are waiting on you, and a session's state comes from that record, not
 from the last event that fired. It has to, because a parent and all its
 subagents write to the same terminal. A gate closes when the tool that
 opened it runs, fails or is denied, when your next prompt comes, or when the
-turn ends: a `Stop`, an `idle_prompt` notification or a `SessionStart` clears
-every open gate. Claude Code can also end a gated tool with no hook at all: a
+turn ends: a `Stop`, a `StopFailure`, an `idle_prompt` notification or a
+`SessionStart` clears every open gate. Claude Code can also end a gated tool with no hook at all: a
 prompt it times out itself, as for a teammate that cannot prompt, leaves only
 the tool's error result in the transcript. While a gate is open, each event
 looks for that result in the last megabyte of the transcript (a subagent's
@@ -356,11 +374,23 @@ of a guess.
 
 - `~/.claude/agents-sidebar-subagents/<session id>`: the hook's record for
   each session, with its `.lock` and, for a large state, its `.published` file.
+  A record also keeps the error and time of the session's last `StopFailure`
+  (`stop_failure`) and the count of fallback moves the hook has told the
+  session about (`api_told`). The daemon reads every record there for failures at each
+  step of the API fallback.
 - `~/.claude/agents-sidebar-tasks/`: each session's task note.
 - `~/.claude/agents-sidebar-status/`: the statusline payloads and lines,
   `original-statusline`, `daemon.log`, `partners.json`, `activity.json`, the
   `tones/` folder and `tab-underline.json`, kept until the daemon has put back
-  iTerm2's line under the selected tab or found it changed.
+  iTerm2's line under the selected tab or found it changed; `api-fallback.json`,
+  the API fallback's record, `api-fallback-orphaned`, the marker the helper
+  leaves when it took itself out while the daemon was down or the key was
+  unreadable, and `api-key-fetches/<claude pid>`, one `<epoch> <account id>`
+  line per key the helper handed that Claude Code process, never the key;
+  the daemon deletes a process's file once that process has ended.
+- The Keychain: each stored account's API key, service
+  `agents-sidebar-accounts`, account `api-key:<account id>`, beside the
+  account logins `accounts.py` keeps there.
 - `~/.claude/agents-sidebar-links/<session id>/`: each session's link,
   partner and remote control files.
 - `~/.claude/agents-sidebar-settings.json`: the panel's settings.
@@ -388,6 +418,17 @@ settings. An autouse fixture in `tests/conftest.py` points
 `tabunderline.DOMAIN` at a plist in each test's own folder, and sets
 `AGENTS_SIDEBAR_ITERM_PREFS`, which `uninstall.sh` reads, to the same path.
 
+A spare home reaches this Mac's keychains too. On macOS, `tests/conftest.py`
+makes a scratch keychain for the run, kept unlocked, and sets
+`AGENTS_SIDEBAR_KEYCHAIN`, which `uninstall.sh` and `api-key-helper.sh` read,
+to it. The API key's Keychain calls use the service `agents-sidebar-test`. If
+any of this machine's own `agents-sidebar-accounts` items in the login
+keychain went missing during the run, the run fails at its end and names
+them. `api-key-helper.sh` also takes `AGENTS_SIDEBAR_ENDPOINT`,
+`AGENTS_SIDEBAR_CLAUDE_SETTINGS`, `AGENTS_SIDEBAR_STATUS_DIR` and
+`AGENTS_SIDEBAR_AUTOLAUNCH`, so a test names its own endpoint file, settings
+file, status folder and AutoLaunch stub.
+
 `Bridge` is the only part that talks to iTerm2, and its tests pin how it takes
 its readings (`tests/test_rebuild.py`: one process listing per rebuild, read in
 a thread, a burst of layout events folded into one more rebuild, a session's
@@ -395,8 +436,12 @@ variables fetched together, a filed state read at once). The rest of `Bridge` ge
 live iTerm2. `tests/live/` holds the scripts for that: each opens a throwaway
 window on a bare shell, drives the daemon or the iTerm2 API, prints a PASS or
 FAIL line per expectation and closes the window. Run them with iTerm2's own
-python and its cookie, as their docstrings say; they are not collected by
-pytest.
+python and its cookie, as their docstrings say. `tests/live/api_fallback_check.py`
+is the one that uses no iTerm2: run it with plain `python3`. It drives the
+installed Claude Code (`claude -p`) under a scratch `CLAUDE_CONFIG_DIR` and
+never writes the real `settings.json`. `--bad-key` adds a check of about four
+minutes, and `--real-key` one Haiku turn on the first stored account's key,
+about $0.005. Pytest collects none of these scripts.
 
 ## Measuring what the machine executes
 
@@ -415,7 +460,11 @@ event that changes a pane's state costs one more of each. It also runs the
 notifier in `~/.local/share/agents-sidebar/Agents.app` once per notice and once
 at start to sweep old notices, and `git ls-remote` once a day for updates.
 `accounts.py` runs `/usr/bin/security` each time it reads or writes a login
-in the Keychain. The statusline bridge execs `mv` and `mkdir` on every tick,
+or an API key in the Keychain. While sessions run on API credits, Claude Code
+runs `api-key-helper.sh` each time it fetches the key. Every run execs
+`dirname` and `security`. A run that read the key adds up to `mkdir`, `date`,
+`plutil` and `ps`, and `grep` when the daemon's command names the AutoLaunch
+stub; a run that takes itself out adds `mkdir` and `python3`. The statusline bridge execs `mv` and `mkdir` on every tick,
 and on a tick that renders also `sh` for your own statusline, a second `mv`
 and `rmdir`: five, plus whatever your statusline runs. While a partner task
 is out, the mod execs `sleep` every two seconds, for up to ten minutes.
@@ -549,6 +598,10 @@ on since, so read the source for what runs now.
   moving a cs session to another machine from its card, after the remote relay; nothing built.
 - [superpowers/specs/2026-10-31-refined-cards-design.md](superpowers/specs/2026-10-31-refined-cards-design.md):
   the task-first card with a folder line, a state pill and a recency line, picked from real-page renders, with its decisions; built behind Card anatomy.
+- [superpowers/specs/2026-11-09-api-fallback-design.md](superpowers/specs/2026-11-09-api-fallback-design.md):
+  running sessions on API credits while every account is full, with its measured probes and rulings.
+- [superpowers/plans/2026-11-09-api-fallback.md](superpowers/plans/2026-11-09-api-fallback.md): the step-by-step
+  plan for the API fallback.
 - [superpowers/plans/2026-09-18-account-autoswitch.md](superpowers/plans/2026-09-18-account-autoswitch.md): the step-by-step
   plan that built the automatic switch.
 - [superpowers/plans/2026-10-07-drag-order.md](superpowers/plans/2026-10-07-drag-order.md): the step-by-step

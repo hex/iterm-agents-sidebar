@@ -82,7 +82,7 @@
   <text x="62.1" y="365" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">open · 1 started · 5 done</text>
   <text x="410" y="366" fill="#98989d" font-size="13" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">›</text>
   <line x1="34" y1="374" x2="418" y2="374" stroke="#3a3a3c" stroke-dasharray="1 2"/>
-  <g transform="translate(36,382) scale(0.0391)" fill="#98989d"><path d="M128,40a96,96,0,1,0,96,96A96.11,96.11,0,0,0,128,40Zm0,176a80,80,0,1,1,80-80A80.09,80.09,0,0,1,128,216Zm45.66-93.66a8,8,0,0,1,0,11.32l-40,40a8,8,0,0,1-11.32-11.32L152,132.69V80a8,8,0,0,1,16,0v58.34ZM128,72a8,8,0,0,1-8-8V32a8,8,0,0,1,16,0V64A8,8,0,0,1,128,72Z"/></g>
+  <g transform="translate(36,382) scale(0.0391)" fill="#98989d"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm64-88a8,8,0,0,1-8,8H128a8,8,0,0,1-8-8V72a8,8,0,0,1,16,0v48h48A8,8,0,0,1,192,128Z"/></g>
   <text x="52" y="391" fill="#f2f2f7" font-size="11" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">2</text>
   <text x="62" y="391" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">scheduled</text>
   <text x="410" y="392" fill="#98989d" font-size="13" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">›</text>

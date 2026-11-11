@@ -536,6 +536,13 @@ def test_git_head_reads_no_file_outside_the_refs_and_passes_off_no_text_as_a_com
     assert git_head(str(tmp_path / "repo")) is None
 
 
+def test_parse_stop_error():
+    assert sidebar.parse_stop_error(json.dumps({"stop_error": "billing_error"})) == "billing_error"
+    for raw in (None, "", "not json", json.dumps({"state": "idle"}), json.dumps({"stop_error": ""}),
+                json.dumps({"stop_error": 42}), json.dumps(["stop_error"])):
+        assert sidebar.parse_stop_error(raw) is None, raw
+
+
 def test_parse_tasks():
     from sidebar import parse_tasks
     tasks = [{"id": "3", "status": "in_progress", "subject": "Registry flags", "doing": "Building"}]

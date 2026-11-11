@@ -837,6 +837,11 @@ def test_agent_rows_carry_their_open_tasks_only_when_there_are_some():
     assert "tasks" not in bare
 
 
+def test_an_agent_row_carries_the_error_its_turn_failed_on():
+    assert snapshot([dict(LIVE[1], agent_state="idle", stop_error="billing_error")])["groups"][0]["rows"][0]["stop_error"] == "billing_error"
+    assert "stop_error" not in snapshot([dict(LIVE[1], agent_state="idle")])["groups"][0]["rows"][0]
+
+
 def test_agent_rows_carry_completed_task_counts_only_when_published():
     for count in [40, 0]:
         got = snapshot([dict(LIVE[1], agent_state="idle", tasks=[], tasks_done=count)])["groups"][0]["rows"][0]
@@ -993,6 +998,17 @@ def test_a_model_counts_for_ten_minutes_after_its_last_use_even_once_its_record_
     assert models == {"opus", "fable"}
     models, seen = held_models({"opus": NOW + 596}, seen, NOW + 596)
     assert models == {"opus"}
+
+
+def test_a_model_judges_switch_targets_for_two_hours_after_its_last_use():
+    """2026-11-09: Fable ran in bursts more than ten minutes apart, and between
+    them the panel moved the login to the account whose Fable was spent."""
+    from sidebar import held_models, recent_models
+    _, seen = held_models({"opus": NOW, "fable": NOW}, {}, NOW)
+    models, seen = held_models({"opus": NOW + 601}, seen, NOW + 601)
+    assert (models, recent_models(seen, NOW + 601)) == ({"opus"}, {"opus", "fable"})
+    models, seen = held_models({"opus": NOW + 7201}, seen, NOW + 7201)
+    assert (models, recent_models(seen, NOW + 7201)) == ({"opus"}, {"opus"})
 
 
 def test_nothing_is_held_without_a_claude_session_and_unknown_models_stay_unknown():

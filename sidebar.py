@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import accounts  # noqa: E402
 import activity  # noqa: E402
+import api_fallback  # noqa: E402
 import alerts  # noqa: E402
 import codex  # noqa: E402
 import context_usage  # noqa: E402
@@ -114,6 +115,9 @@ VERBS = ("focus", "send", "close",
 
 #: What the page may do with accounts. Nothing here removes one.
 ACCOUNT_OPS = ("add", "switch", "rename", "read")
+API_FALLBACK_OPS = ("not_now", "save_key", "forget_key", "set_cap")
+#: The ops that act on one stored account's key, named by its account_id.
+API_FALLBACK_KEY_OPS = ("save_key", "forget_key", "set_cap")
 
 #: Settings live in a file, not in the page. The daemon takes an ephemeral
 #: port, so the page's origin changes on every restart and anything stored
@@ -178,6 +182,10 @@ DEFAULT_SETTINGS = {
     "notify_done": True,
     # Leave an account that is filling up, without being asked.
     "auto_switch": False,
+    # When every account is full, run the Claude sessions on API credits
+    # through apiKeyHelper, until an account has room. Each account's key and
+    # its spend cap live with the account, in its store.
+    "api_fallback": False,
     "context_threshold": 40,
     # A session tree at or over either reads as heavy: percent of one core,
     # and gigabytes resident.
@@ -708,6 +716,15 @@ class Notices:
         """(kind, question) the standing notice was built from, or None."""
         return self._asked.get(session_id) if self.standing(session_id) else None
 
+    def asked_of(self, session_id, sender):
+        """(kind, question) `sender`'s own notice was built from, or None once
+        that notice was replaced or taken down.
+
+        By identity: a sender prints its response and exits at once, so its
+        exit can be seen before its line is read.
+        """
+        return self._asked.get(session_id) if self._procs.get(session_id) is sender else None
+
     def replace(self, session_id, proc, kind, question):
         self.clear(session_id)
         self._procs[session_id] = proc
@@ -779,6 +796,10 @@ def statusline_offer(state, settings):
 #: find an account with Fable room, and balancing should not return to one
 #: without it meanwhile.
 MODEL_HOLD_SECONDS = 600
+#: How long a model still counts against a switch target after its last use:
+#: one that runs in bursts must not send the login to an account whose limit
+#: for it is spent, only to leave it again on the next burst.
+RECENT_MODEL_SECONDS = 2 * 3600
 
 
 def model_use(snapshot, now):
@@ -809,15 +830,22 @@ def model_use(snapshot, now):
 def held_models(used, seen, now):
     """The families switching counts, and `seen` brought up to date: each in
     `used`, and each used within MODEL_HOLD_SECONDS, which outlasts the
-    finished subagents the next prompt clears. No Claude session counts
+    finished subagents the next prompt clears. `seen` keeps each for
+    RECENT_MODEL_SECONDS, for `recent_models`. No Claude session counts
     nothing, and models not known yet stay None."""
     if used is None:
         return None, seen
     if not used:
         return set(), seen
     merged = {**seen, **{family: max(at, seen.get(family, at)) for family, at in used.items()}}
-    seen = {family: at for family, at in merged.items() if now - at <= MODEL_HOLD_SECONDS}
-    return set(seen), seen
+    seen = {family: at for family, at in merged.items() if now - at <= RECENT_MODEL_SECONDS}
+    return {family for family, at in seen.items() if now - at <= MODEL_HOLD_SECONDS}, seen
+
+
+def recent_models(seen, now):
+    """The families used within RECENT_MODEL_SECONDS, from `held_models`'
+    record: what a switch target is judged on."""
+    return {family for family, at in seen.items() if now - at <= RECENT_MODEL_SECONDS}
 
 
 def notifies_itself(row):
@@ -1399,6 +1427,8 @@ def snapshot(sessions, order="terminal", group_by_provider=False, now=None, hand
                 row["tasks"] = session["tasks"]
             if session.get("tasks_done") is not None:
                 row["tasks_done"] = session["tasks_done"]
+            if session.get("stop_error"):
+                row["stop_error"] = session["stop_error"]
             # A list reported empty has nothing for a card to show.
             if session.get("crons"):
                 row["crons"] = scheduled(session["crons"], session.get("crons_at"), now)
@@ -2722,6 +2752,15 @@ def parse_tasks(raw):
     return listed if isinstance(listed, list) else []
 
 
+def parse_stop_error(raw):
+    """The claudeState payload -> the error its last turn failed on, or None."""
+    try:
+        error = json.loads(raw).get("stop_error")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return error if isinstance(error, str) and error else None
+
+
 def parse_tasks_done(raw):
     """The claudeState payload -> its completed-task count, or None."""
     try:
@@ -2961,6 +3000,165 @@ ACTIVITY_FILE = "activity.json"
 CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
 #: The bridge in this checkout, which is what install.sh points settings at.
 BRIDGE = str(Path(__file__).resolve().parent / "plugin" / "statusline-bridge.sh")
+#: The API fallback's apiKeyHelper, run from this checkout: the plugin copy is
+#: absent for a moment during an update, and a helper that fails fails the turn.
+API_KEY_HELPER = str(Path(__file__).resolve().parent / "api-key-helper.sh")
+#: In the status folder: the fallback's record, and the marker the helper
+#: leaves when it took itself out while the daemon was down.
+API_FALLBACK_RECORD = "api-fallback.json"
+API_FALLBACK_ORPHANED = "api-fallback-orphaned"
+#: The folder api-key-helper.sh files each key fetch in, one file per Claude Code pid.
+API_KEY_FETCHES = "api-key-fetches"
+#: The one standing notice for the fallback, answered like a session's.
+FALLBACK_NOTICE_ID = "api-fallback"
+#: Sessions whose context counts toward the re-read a flip costs.
+ACTIVE_SESSION_SECONDS = 300
+
+
+def _local_claude(rows):
+    return [row for row in rows if row.get("provider") == "claude" and not row.get("host")]
+
+
+def fallback_costs(rows):
+    """{conversation: total_cost_usd} for this machine's Claude sessions: the
+    ones apiKeyHelper reaches, by the id that outlives their process."""
+    return {row["conversation"]: row["details"]["cost"] for row in _local_claude(rows)
+            if row.get("conversation") and isinstance((row.get("details") or {}).get("cost"), (int, float))}
+
+
+def reread_tokens(rows, now):
+    """The tokens a flip makes the active sessions write to the cache again: the
+    sum of each one's cold-cache figure, for sessions at work or at rest under
+    ACTIVE_SESSION_SECONDS. None when none of them reports one."""
+    active = [row for row in _local_claude(rows)
+              if row.get("agent_state") in ("working", "blocked")
+              or (row.get("idle_since") or 0) >= now - ACTIVE_SESSION_SECONDS]
+    figures = [row["details"]["recache"] for row in active
+               if isinstance((row.get("details") or {}).get("recache"), (int, float))]
+    return sum(figures) if figures else None
+
+
+def stop_failures_since(directory, after):
+    """The StopFailures hooks filed after `after`, each {error, pid, at} with the
+    failing Claude Code's pid or None. -> (failures, the newest one's time)."""
+    errors, newest = [], after
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return errors, newest
+    for name in names:
+        if not _SESSION_FILE.match(name):
+            continue
+        try:
+            with open(os.path.join(directory, name), encoding="utf-8") as fh:
+                doc = json.load(fh)
+            failure = doc.get("stop_failure")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if not isinstance(failure, dict) or not isinstance(failure.get("error"), str):
+            continue
+        at = failure.get("at")
+        if isinstance(at, (int, float)) and at > after:
+            pid = doc.get("pid")
+            errors.append({"error": failure["error"], "pid": pid if isinstance(pid, int) else None, "at": at})
+            newest = max(newest, at)
+    errors.sort(key=lambda failure: failure["at"])
+    return errors, newest
+
+
+def key_fetches(directory):
+    """Which account's key each running Claude Code process took, and when, from
+    the notes api-key-helper.sh files under its pid: {pid: [(at, account id)]},
+    oldest first. A note of a process that has ended is deleted; a line that is
+    not a time and an account id is skipped."""
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return {}
+    fetches = {}
+    for name in names:
+        if not name.isdigit():
+            continue
+        path = os.path.join(directory, name)
+        pid = int(name)
+        try:
+            if pid <= 0:
+                raise ProcessLookupError(pid)
+            os.kill(pid, 0)          # signal 0 tests existence, sends nothing
+        except ProcessLookupError:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            continue
+        except PermissionError:
+            pass                     # alive, just not ours to signal
+        try:
+            with open(path, encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except OSError:
+            continue
+        taken = []
+        for line in lines:
+            parts = line.split()
+            if len(parts) == 2 and parts[0].isdigit() and accounts.is_account_id(parts[1]):
+                taken.append((float(parts[0]), parts[1]))
+        fetches[int(name)] = sorted(taken)
+    return fetches
+
+
+def _thousands(tokens):
+    return f"{round(tokens / 1000)}k" if tokens >= 1000 else str(tokens)
+
+
+def fallback_notice_argv(app, effect):
+    """agents-notifier's argv for one of the fallback's notices. Entry and exit
+    carry a Not now button, so the choice stands with the panel closed."""
+    exe = str(Path(app) / "Contents" / "MacOS" / "agents-notifier")
+    reread = (f"; they re-read about {_thousands(effect['tokens'])} tokens"
+              if effect.get("tokens") else "")
+    title, body = {
+        "entry": ("Sessions move to API credits", f"Every account is full. In 60 s, unless Not now{reread}."),
+        "exit": ("Sessions go back to the subscription", f"An account has room. In 60 s, unless Not now{reread}."),
+        "refused": ("API credits refused", effect.get("why")),
+        "unavailable": ("API credits unavailable", f"{effect.get('why')}. Trying again while every account stays full."),
+        "moved": (f"Sessions now use {effect.get('name')}'s API key", f"{effect.get('why')} on the last key."),
+    }.get(effect["which"], ("Sessions are back on the subscription", effect.get("why")))
+    argv = [exe, "post", "--id", FALLBACK_NOTICE_ID, "--title", title, "--body", body or ""]
+    return argv + (["--button", "not_now=Not now"] if effect["which"] in ("entry", "exit") else [])
+
+
+def own_helper_command(account_id):
+    """This checkout's apiKeyHelper command for one account's key."""
+    return statusline.helper_command(API_KEY_HELPER, account_id)
+
+
+def own_helper_commands(keys):
+    """This checkout's command for each stored account in `keys`, the panel's to
+    take out whichever key it ran; an id not in the store's format has none."""
+    return [own_helper_command(key["id"]) for key in keys if accounts.is_account_id(key["id"])]
+
+
+def any_api_key(store_path):
+    """Whether any stored account has an API key, which the fallback's switch needs."""
+    try:
+        return any(account.get("apiKeyLast4") for account in accounts.load_store(store_path))
+    except accounts.StoreError:
+        return False
+
+
+def fallback_snapshot(record, settings, reread, bridge, keys):
+    """What the panel and other readers get about the fallback. Never a key: the
+    store holds each account's last four and nothing else of it. `keys` is the
+    meters' fallback view of the stored accounts, in list order."""
+    shown = [{"id": key["id"], "name": key["name"], "last4": key["last4"], "cap_usd": key["cap_usd"],
+              "spent_usd": round(record["spend"].get(key["id"], 0), 2), "hold": record["key_holds"].get(key["id"])}
+             for key in keys]
+    in_use = next((key["name"] for key in keys if key["id"] == record["key_account"]), None)
+    return {"enabled": settings["api_fallback"], "phase": record["phase"], "deadline": record["deadline"],
+            "since": record["since"], "spent_usd": round(api_fallback.spent(record), 2), "hold": record["hold"],
+            "key_account": record["key_account"], "key_name": in_use, "keys": shown,
+            "reread_tokens": reread, "last_flip": record["last_flip"], "retrying": record["retrying"], "bridge": bridge}
 
 #: Where task.py keeps each session's own note about its work, by session id.
 TASKS_DIR = os.path.expanduser("~/.claude/agents-sidebar-tasks")
@@ -3600,6 +3798,7 @@ class Sidebar:
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
                  context_fn=None, link_fn=None, github_fn=None, untie_fn=None, review_fn=None, hand_over_fn=None,
                  past_fn=None, reopen_fn=None, stop_port_fn=None, open_port_fn=None, rebuild_fn=None, activity_fn=None,
+                 api_fallback_fn=None, bridge_fn=lambda: False, keys_fn=lambda: False,
                  log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
@@ -3618,6 +3817,14 @@ class Sidebar:
         #: days -> the activity report of the last that many days.
         self.activity_fn = activity_fn
         self.accounts_fn = accounts_fn
+        #: (op, request) -> what the page may see of the API fallback's key;
+        #: raises ValueError or KeychainError with why a key was not kept.
+        self.api_fallback_fn = api_fallback_fn
+        #: () -> whether the statusline bridge is installed; the API fallback's
+        #: spend cap reads each session's cost from it, so the setting needs it.
+        self.bridge_fn = bridge_fn
+        #: () -> whether any stored account has an API key; the setting needs one too.
+        self.keys_fn = keys_fn
         #: () -> (ok, text): takes the release the panel was offered.
         self.update_fn = update_fn
         #: () -> the statusline it displaced; raises ValueError when it may not.
@@ -3659,12 +3866,16 @@ class Sidebar:
                     changes = json.loads(body or b"{}")
                 except ValueError:
                     return self._json(400, {"error": "malformed body"})
+                if changes.get("api_fallback") and not (self.bridge_fn() and self.keys_fn()):
+                    changes = {key: value for key, value in changes.items() if key != "api_fallback"}
                 return self._json(200, save_settings(changes, self.settings_path))
             return self._json(200, load_settings(self.settings_path))
         if method == "POST" and path == "/action":
             return self._action(body)
         if method == "POST" and path == "/accounts":
             return self._accounts(body)
+        if method == "POST" and path == "/api-fallback":
+            return self._api_fallback(body)
         if method == "POST" and path == "/update":
             if self.update_fn is None:
                 return self._json(400, {"error": "this daemon cannot update itself"})
@@ -3906,6 +4117,25 @@ class Sidebar:
             return self._json(409, {"error": str(refusal)})
         return self._json(200, {"ok": True, "account": result})
 
+    def _api_fallback(self, body):
+        """Not now, or an account's key saved or forgotten, or its cap set. A key
+        travels this way once and never back: a reply carries its last four at most."""
+        request = self._body(body)
+        if request is None or request.get("op") not in API_FALLBACK_OPS or self.api_fallback_fn is None:
+            return self._json(400, {"error": "unknown api fallback op"})
+        op = request["op"]
+        if op in API_FALLBACK_KEY_OPS and not accounts.is_account_id(request.get("account_id")):
+            return self._json(400, {"error": f"{op} needs an account_id"})
+        if op == "save_key" and not isinstance(request.get("key"), str):
+            return self._json(400, {"error": "save_key needs a key"})
+        if op == "set_cap" and not accounts.is_positive_dollars(request.get("cap_usd")):
+            return self._json(400, {"error": "set_cap needs a positive cap_usd"})
+        try:
+            result = self.api_fallback_fn(request["op"], request)
+        except (ValueError, accounts.KeychainError) as refusal:
+            return self._json(409, {"error": str(refusal)})
+        return self._json(200, {"ok": True, **result})
+
     @staticmethod
     def _json(status, payload):
         return (status, "application/json", json.dumps(payload).encode())
@@ -4074,13 +4304,14 @@ class Server:
             return
 
         path = urlsplit(target).path
-        if path in ("/accounts", "/update", "/context", "/github", "/past", "/stop-port", "/open-port", "/activity"):
+        if path in ("/accounts", "/update", "/context", "/github", "/past", "/stop-port", "/open-port", "/activity",
+                    "/api-fallback"):
             # Account ops wait on the Keychain, Claude Code's locks and the
             # network, for seconds, an update on a pull and install.sh, a
             # context read on a fork of claude, a GitHub page and a port's
-            # page on `open`, a port's Stop on lsof and ps, and a cold activity
-            # report on every log of its window; off the loop, the heartbeat
-            # keeps going.
+            # page on `open`, a port's Stop on lsof and ps, a cold activity
+            # report on every log of its window, and the API key's save on the
+            # network and the Keychain; off the loop, the heartbeat keeps going.
             status, content_type, payload = await asyncio.to_thread(
                 self.sidebar.handle, method, target, body)
         else:
@@ -4222,6 +4453,23 @@ class Bridge:
         #: This checkout's GitHub repository page, or None; set by watch_releases.
         self.repository = None
         self.notices = Notices()
+        #: The API fallback's record, as last saved; only step_fallback moves it.
+        self.fallback, problem = api_fallback.load(os.path.join(STATUS_DIR, API_FALLBACK_RECORD))
+        if problem:
+            self.log(problem)
+        #: Inputs for the next step from routes and notices: record changes a
+        #: key save or forget makes, and a Not now. Routes run on worker threads,
+        #: so these two change only under this lock.
+        self.fallback_inputs = threading.Lock()
+        self.fallback_changes = []
+        self.fallback_answer = None
+        self.fallback_lock = asyncio.Lock()
+        #: The stored accounts as the last step read them, for the snapshot:
+        #: each one's name, its key's last four and its cap.
+        self.fallback_keys = []
+        #: StopFailures filed after this are news to the next step.
+        self.failures_after = self.fallback["since"] if self.fallback["phase"] in api_fallback.HELPER_IN \
+            else time.time()
         #: Decides each alert from successive rebuilds.
         self.watch = alerts.Watch()
         #: The sessions whose turn ended while you were looking elsewhere.
@@ -4455,6 +4703,7 @@ class Bridge:
                         "question": question,
                         "tasks": parse_tasks(raw),
                         "tasks_done": parse_tasks_done(raw),
+                        "stop_error": parse_stop_error(raw),
                         "crons": parse_crons(raw),
                         "crons_at": parse_crons_at(raw),
                         "working_since": parse_working_since(raw),
@@ -4585,7 +4834,8 @@ class Bridge:
             self.terminal_background = None
         self.latest["terminal_background"] = self.terminal_background
         self.answered = still_answered(self.answered, self.latest)
-        if statusline_offer(statusline.state(CLAUDE_SETTINGS, BRIDGE), settings):
+        bridge_state = statusline.state(CLAUDE_SETTINGS, BRIDGE)
+        if statusline_offer(bridge_state, settings):
             self.latest["statusline"] = "missing"
         if self.update:
             self.latest["update"] = self.update
@@ -4593,6 +4843,12 @@ class Bridge:
             self.latest["repository"] = self.repository
         if self.meters is not None:
             self.latest["accounts"] = self.meters.snapshot()
+        # An install that never stored a key nor turned the fallback on sends what it always did.
+        if settings["api_fallback"] or self.fallback != api_fallback.blank() or any(
+                key["last4"] for key in self.fallback_keys):
+            self.latest["api_fallback"] = fallback_snapshot(self.fallback, settings,
+                                                            reread_tokens(self.rows, time.time()),
+                                                            bridge_state == "installed", self.fallback_keys)
         # A few file reads; kept off the loop like every other disk or Keychain read.
         self.latest["codex"] = await asyncio.to_thread(codex.read_limits, codex.SESSIONS_DIR, time.time())
         if self.latest["codex"] is not None:
@@ -5032,7 +5288,9 @@ class Bridge:
         so a second click types nothing until a different question stands.
         """
         row = find_row(self.latest, session_id)
-        standing = (row or {}).get("question")
+        # A row can keep its question once the wait is over: a Codex prompt
+        # seen answered, an agent that exited while asking.
+        standing = (row or {}).get("question") if (row or {}).get("state") == "blocked" else None
         keys = answer_keys(text, standing, self.answered.get(session_id), (row or {}).get("provider"))
         # Asked before the click is remembered: a key a remote pane may not
         # take now leaves the question open to the next click.
@@ -5043,9 +5301,20 @@ class Bridge:
         if refusal:
             self.log("answer refused", session_id[:8], refusal)
             return
-        self.answered[session_id] = next_answered(standing, self.answered.get(session_id))
-        await self.type_keys(session, session_id, keys, pause=0.05)
-        self.log("answer", session_id[:8], repr("".join(keys)))
+        # Remembered before the typing, as `resume` holds its click: each click
+        # is its own task, and a second one lands in the pauses between strokes.
+        before = self.answered.get(session_id)
+        self.answered[session_id] = next_answered(standing, before)
+        typed = False
+        try:
+            typed = await self.type_keys(session, session_id, keys, pause=0.05)
+        finally:
+            if not typed and before is None:
+                self.answered.pop(session_id, None)      # a rebuild may have dropped it meanwhile
+            elif not typed:
+                self.answered[session_id] = before
+        if typed:
+            self.log("answer", session_id[:8], repr("".join(keys)))
 
     async def read_tmux_tables(self, ids):
         """Each of these tmux connections' own pane table, asked through iTerm2.
@@ -5352,7 +5621,10 @@ class Bridge:
             if not line:
                 break
             target = response_target(line, session_id)
-            asked = self.notices.asked(target)
+            if target == FALLBACK_NOTICE_ID:
+                self.fallback_response(line)
+                continue
+            asked = self.notices.asked_of(target, poster) if target == session_id else self.notices.asked(target)
             if asked is None:
                 self.log("notice answered", target[:8], line, "but nothing stands for it")
                 continue
@@ -5374,6 +5646,192 @@ class Bridge:
         await poster.wait()
         self.notices.forget(session_id, poster)
 
+    def queue_fallback_change(self, change):
+        with self.fallback_inputs:
+            self.fallback_changes.append(change)
+
+    def queue_fallback_answer(self, answer):
+        with self.fallback_inputs:
+            self.fallback_answer = answer
+
+    def fallback_response(self, line):
+        """A line from any sender that answers the fallback's notice: Not now
+        is taken by the next step, which runs at once."""
+        try:
+            action = json.loads(line).get("action")
+        except (ValueError, TypeError, AttributeError):
+            return
+        self.log("api fallback notice answered", action)
+        if action == "not_now":
+            self.queue_fallback_answer("not_now")
+            asyncio.ensure_future(self.step_fallback_or_log())
+
+    def fallback_op(self, op, request):
+        """The panel's route: not_now, or for one stored account save_key
+        (checked against the API, then stored), forget_key or set_cap. Runs on
+        the server's worker thread, so it only queues the record's change and
+        asks the loop for a step, which reads the store again. Raises ValueError
+        or KeychainError with the reason a key or cap was not kept."""
+        result = {}
+        store_path = self.meters.store_path
+        account_id = request.get("account_id")
+        if op == "save_key":
+            accounts.stored_account(store_path, account_id)
+            problem = api_fallback.validate_key(request.get("key"))
+            if problem:
+                raise ValueError(problem.why)
+            last4 = api_fallback.store_key(store_path, account_id, request["key"])
+            self.queue_fallback_change(lambda record: api_fallback.key_saved(record, account_id))
+            self.log(f"api fallback: a key was saved for {account_id}")
+            result = {"last4": last4}
+        elif op == "forget_key":
+            api_fallback.forget_key(store_path, account_id)
+            self.log(f"api fallback: {account_id}'s key was forgotten")
+        elif op == "set_cap":
+            api_fallback.set_cap(store_path, account_id, request["cap_usd"])
+            self.log(f"api fallback: {account_id}'s cap set to ${request['cap_usd']:g}")
+        else:
+            self.queue_fallback_answer("not_now")
+        self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self.step_fallback_or_log()))
+        return result
+
+    async def fallback_idle(self):
+        """Wait out a step under way."""
+        async with self.fallback_lock:
+            return
+
+    async def step_fallback_or_log(self):
+        try:
+            await self.step_fallback()
+        except Exception as error:               # noqa: BLE001
+            self.log(f"api fallback step failed: {error!r}")
+
+    def save_fallback(self, record):
+        """Save first, then keep: a record that could not be saved is not the one acted on.
+        An unchanged record writes nothing, so a quiet tick leaves the file alone."""
+        if record == self.fallback:
+            return
+        api_fallback.save(os.path.join(STATUS_DIR, API_FALLBACK_RECORD), record)
+        self.fallback = record
+
+    async def step_fallback(self):
+        """One step of the API fallback: build the reading, move the record,
+        save it, then carry out the effects, settings.json last of all.
+
+        Runs after each meter tick and at once on a route or notice answer,
+        one at a time. A marker the helper left when it took itself out ends
+        a fallback whose helper is gone with no hold, before the step would
+        read that absence as another tool's doing.
+        """
+        async with self.fallback_lock:
+            now = time.time()
+            settings = load_settings()
+            record = self.fallback
+            with self.fallback_inputs:
+                changes, self.fallback_changes = self.fallback_changes, []
+                answer, self.fallback_answer = self.fallback_answer, None
+            for change in changes:
+                record = change(record)
+            view = (await asyncio.to_thread(self.meters.fallback_view, now, settings["auto_switch"])
+                    if self.meters is not None else {"blocked": None, "room": False, "active": None, "keys": []})
+            self.fallback_keys = view["keys"]
+            own = own_helper_commands(view["keys"])
+            helper, helper_command = await asyncio.to_thread(statusline.api_key_helper, CLAUDE_SETTINGS,
+                                                             api_fallback.owned_commands(record, own))
+            marker = os.path.join(STATUS_DIR, API_FALLBACK_ORPHANED)
+            if os.path.exists(marker):
+                if record["phase"] in api_fallback.HELPER_IN and helper == "absent":
+                    record = api_fallback.orphaned(record, now)
+                    self.log("api fallback off: the helper took itself out")
+                self.save_fallback(record)
+                os.remove(marker)
+            failures, self.failures_after = await asyncio.to_thread(stop_failures_since, HOOK_STATE_DIR,
+                                                                    self.failures_after)
+            fetches = await asyncio.to_thread(key_fetches, os.path.join(STATUS_DIR, API_KEY_FETCHES))
+            failures = (api_fallback.failures_on_key(failures, fetches, record["key_account"])
+                        if record["key_account"] else [])
+            reading = {"enabled": settings["api_fallback"], "blocked": view["blocked"], "room": view["room"],
+                       "active": view["active"],
+                       "accounts": [{"id": key["id"], "name": key["name"], "key": key["last4"] is not None,
+                                     "cap_usd": key["cap_usd"], "command": own_helper_command(key["id"])}
+                                    for key in view["keys"] if accounts.is_account_id(key["id"])],
+                       "helper": helper, "helper_command": helper_command, "costs": fallback_costs(self.rows),
+                       "stop_failures": failures, "answer": answer, "reread_tokens": reread_tokens(self.rows, now),
+                       "bridge": await asyncio.to_thread(statusline.state, CLAUDE_SETTINGS, BRIDGE) == "installed"}
+            record, effects = api_fallback.step(record, reading, now)
+            self.save_fallback(record)
+            await self.carry_out_all(effects, reading, now)
+
+    async def carry_out_all(self, effects, reading, now):
+        """The effects of a step in order. A write's outcome may ask for another
+        key's write, at most once per stored account, so these are a queue."""
+        queue, writes = list(effects), 0
+        while queue:
+            effect = queue.pop(0)
+            if effect["do"] == "helper_in":
+                writes += 1
+                if writes > len(reading["accounts"]) + 1:
+                    raise ValueError(f"api fallback asked for more writes than there are keys: {effect!r}")
+                problem = await asyncio.to_thread(self.put_helper_in, self.fallback, reading)
+                record, later = api_fallback.checked(self.fallback, reading, effect, problem, now)
+                self.save_fallback(record)
+                queue = later + queue
+            else:
+                await self.carry_out(effect, reading)
+
+    async def carry_out(self, effect, reading):
+        """One effect of a step other than a write, which carry_out_all checks first."""
+        if effect["do"] == "log":
+            self.log(effect["line"])
+        elif effect["do"] == "notice":
+            await self.notify_fallback(effect)
+        elif effect["do"] == "notice_down":
+            await self.notices.retire(FALLBACK_NOTICE_ID)
+        elif effect["do"] == "helper_out":
+            try:
+                await asyncio.to_thread(statusline.drop_api_key_helper, CLAUDE_SETTINGS,
+                                        api_fallback.owned_commands(self.fallback, own_helper_commands(reading["accounts"])))
+            except (ValueError, OSError) as refusal:
+                self.log(f"api fallback: apiKeyHelper not taken out: {refusal}")
+        else:
+            raise ValueError(f"unknown api fallback effect {effect!r}")
+
+    def put_helper_in(self, record, reading):
+        """Check the key in use against the API, then write its command into
+        apiKeyHelper. -> None, or a KeyProblem."""
+        account_id = record["key_account"]
+        try:
+            key = api_fallback.read_key(account_id)
+        except accounts.KeychainError as error:
+            return api_fallback.KeyProblem("local", f"the Keychain could not be read ({error})")
+        if key is None:
+            return api_fallback.KeyProblem("refused", f"no API key is stored for {account_id}")
+        problem = api_fallback.validate_key(key)
+        if problem:
+            return problem
+        try:
+            statusline.set_api_key_helper(CLAUDE_SETTINGS, record["command"],
+                                          api_fallback.owned_commands(record, own_helper_commands(reading["accounts"])))
+        except (ValueError, OSError) as refusal:
+            return api_fallback.KeyProblem("local", str(refusal))
+        return None
+
+    async def notify_fallback(self, effect):
+        """Post the fallback's notice in place of the one standing, while notices are on."""
+        argv = fallback_notice_argv(NOTIFIER_APP, effect)
+        if not load_settings()["notify"] or not os.access(argv[0], os.X_OK):
+            return
+        await self.notices.retire(FALLBACK_NOTICE_ID)
+        try:
+            poster = await asyncio.create_subprocess_exec(
+                *argv, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL)
+        except OSError as error:
+            self.log(f"notify api fallback: {error!r}")
+            return
+        self.notices.replace(FALLBACK_NOTICE_ID, poster, "api-fallback", None)
+        asyncio.ensure_future(self.answer(FALLBACK_NOTICE_ID, poster))
+
     async def watch_layout(self):
         import iterm2
 
@@ -5381,7 +5839,7 @@ class Bridge:
             async with iterm2.LayoutChangeMonitor(self.connection) as monitor:
                 while True:
                     await monitor.async_get()
-                    await self.rebuild()
+                    await self.rebuild_or_report()
         except Exception as error:                   # noqa: BLE001
             # Losing this only costs instant window and tab updates -- poll
             # still runs -- but say so rather than dying at GC time with an
@@ -5466,18 +5924,19 @@ class Bridge:
             result = self.meters.rename(request["account_id"], request["alias"])
         else:
             result = self.meters.switch(request["account_id"], time.time())
-        self.meters.tick(time.time(), models=self.models_for_switching())
+        self.meters.tick(time.time(), False, *self.models_for_switching())
         return result
 
     def models_for_switching(self):
-        """The families switching should count, or None before the first
-        rebuild has said which sessions there are. Each call records what
-        the sessions use now, which the hold measures from."""
+        """The families switching should count, and those a switch target is
+        judged on, a superset: (None, None) before the first rebuild has said
+        which sessions there are. Each call records what the sessions use
+        now, which the hold measures from."""
         if self.last_ok is None:
-            return None
+            return None, None
         now = time.time()
         models, self.models_seen = held_models(model_use(self.latest, now), self.models_seen, now)
-        return models
+        return models, None if models is None else models | recent_models(self.models_seen, now)
 
     async def watch_accounts(self):
         """Read account usage in the background; rebuild picks the result up.
@@ -5489,13 +5948,14 @@ class Bridge:
         while True:
             try:
                 auto = load_settings()["auto_switch"]
-                events = await asyncio.to_thread(self.meters.tick, time.time(), auto, self.models_for_switching())
+                events = await asyncio.to_thread(self.meters.tick, time.time(), auto, *self.models_for_switching())
                 for event in events:
                     self.log(switch_log_line(event))
                     if event["kind"] == "switched":
                         await self.notify_switch(event["name"], event["why"])
             except Exception as error:               # noqa: BLE001
                 print(f"sidebar: account meters failed: {error!r}", flush=True)
+            await self.step_fallback_or_log()
             await asyncio.sleep(ACCOUNT_TICK_SECONDS)
 
     async def sweep_status(self):
@@ -5592,6 +6052,9 @@ async def main(connection):
         action_fn=lambda session_id, verb, text: asyncio.ensure_future(
             bridge.act(session_id, verb, text)),
         accounts_fn=lambda op, request: bridge.account_op(op, request),
+        api_fallback_fn=lambda op, request: bridge.fallback_op(op, request),
+        bridge_fn=lambda: statusline.state(CLAUDE_SETTINGS, BRIDGE) == "installed",
+        keys_fn=lambda: any_api_key(accounts.STORE_PATH),
         update_fn=lambda: update.take(here, bridge.update),
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
         hand_over_fn=lambda: statusline.drop_cc_status(CLAUDE_SETTINGS),

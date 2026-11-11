@@ -1,5 +1,5 @@
-# ABOUTME: Checks the bar the Limits foot draws for each account, folded and at compact width, and the chips in its head.
-# ABOUTME: Runs page.html's Limits functions under Node over a stand-in DOM, fed an accounts store the daemon's own code shapes.
+# ABOUTME: Checks the bar the Accounts foot draws for each account, folded and at compact width, and the chips in its head.
+# ABOUTME: Runs page.html's Accounts functions under Node over a stand-in DOM, fed an accounts store the daemon's own code shapes.
 import json
 import os
 import re
@@ -17,7 +17,7 @@ PAGE = (ROOT / "page.html").read_text(encoding="utf-8")
 NOW = 1793880000
 H, D = 3600, 86400
 
-# Elements as plain objects: enough for the Limits builders to set text,
+# Elements as plain objects: enough for the Accounts builders to set text,
 # classes, data and attributes, find a child by its class and append or
 # prepend, and for `words` to read back what shows.
 DOM = """
@@ -112,7 +112,7 @@ SET_ASIDE = "Fable is at 100% on every account; back when home resets in 15h 10m
 
 def test_a_model_full_on_every_account_leaves_each_bar_to_the_next_limit_with_room_and_the_head_to_auto_switch():
     shown = run(FOLDED, FABLE_FULL_EVERYWHERE)
-    assert shown["head"] == ["›", "Limits", "Auto-switch"]
+    assert shown["head"] == ["›", "Accounts", "Auto-switch"]
     assert shown["tiles"] == [["work", "67%", "wk 1d"], ["home", "83%", "wk 15h"], ["spare", "72%", "wk 5d"],
                               ["Codex", "88%", "wk 18h"]]
 
@@ -128,7 +128,7 @@ def test_a_tile_whose_bar_passed_over_a_full_model_says_so_on_hover_beside_every
 
 def test_with_auto_switch_off_the_bars_set_the_same_limit_aside():
     shown = run(FOLDED, FABLE_FULL_EVERYWHERE, auto=False)
-    assert shown["head"] == ["›", "Limits", "Auto-switch"]
+    assert shown["head"] == ["›", "Accounts", "Auto-switch"]
     assert shown["tiles"] == [["work", "67%", "wk 1d"], ["home", "83%", "wk 15h"], ["spare", "72%", "wk 5d"],
                               ["Codex", "88%", "wk 18h"]]
 
@@ -173,14 +173,14 @@ def test_a_near_switch_keeps_its_chip_beside_a_model_full_everywhere():
     near = store((92, 67, 100), (None, 83, 100), (3, 72, 100))
     assert (near["next_switch"]["near"], near["next_switch"]["to"]) == (True, "spare")
     shown = run(FOLDED, near)
-    assert shown["head"] == ["›", "Limits", "→ spare soon", "Auto-switch"]
+    assert shown["head"] == ["›", "Accounts", "→ spare soon", "Auto-switch"]
     assert shown["tiles"][0] == ["work", "92%", "5h 3h"]
 
 
 def test_the_compact_foot_shows_the_next_limit_with_room_and_no_chip_line():
     assert run(COMPACT, FABLE_FULL_EVERYWHERE, compact=True) == {
         "lines": [["›", "work", "wk", "67%"], ["Codex", "wk", "88%", "18h"]],
-        "titles": ["work · 5-hour 12%, resets in 3h · Weekly 67%, resets in 1d · Fable 100%, resets in 1d"
+        "titles": ["work · 5-hour 12%, resets in 3h · Weekly 67%, resets in 1d 2h · Fable 100%, resets in 1d 2h"
                    f"\n{SET_ASIDE}",
                    "Codex · Weekly 88%, resets in 18h"],
     }
@@ -194,6 +194,47 @@ def test_the_compact_foot_keeps_a_near_switch_on_its_own_line():
 def test_the_tiny_foot_draws_the_next_limit_with_room_and_says_why_on_hover():
     assert run(COMPACT, FABLE_FULL_EVERYWHERE, compact=True, tiny=True) == {
         "lines": [["›"]],
-        "titles": ["work · 5-hour 12%, resets in 3h · Weekly 67%, resets in 1d · Fable 100%, resets in 1d"
-                   f"\n{SET_ASIDE}\nCodex · Weekly 88%, resets in 18h\nLimits: every window and account"],
+        "titles": ["work · 5-hour 12%, resets in 3h · Weekly 67%, resets in 1d 2h · Fable 100%, resets in 1d 2h"
+                   f"\n{SET_ASIDE}\nCodex · Weekly 88%, resets in 18h\nAccounts: every account and its windows"],
     }
+
+
+def account_status(account):
+    script = "\n".join([HELPERS[0], function(PAGE, "accountStatus"),
+                        f"console.log(JSON.stringify(accountStatus({json.dumps(account)})));"])
+    result = subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True, timeout=10,
+                            env={**os.environ, "TZ": "UTC"})
+    return json.loads(result.stdout)
+
+
+def test_an_account_whose_login_cannot_be_refreshed_says_so_rather_than_waiting():
+    assert account_status({"name": "work", "outcome": "refresh_failed", "fetched_at": None}) == "can't refresh its login"
+    assert account_status({"name": "work", "outcome": "refresh_failed", "fetched_at": NOW - 600}) == \
+        "as of 11:50, can't refresh its login"
+    assert account_status({"name": "work", "outcome": "rate_limited", "fetched_at": None}) == "no reading yet"
+
+
+CHIP = """
+const chip = nextSwitchChip(STORE.next_switch);
+console.log(JSON.stringify({text: chip.textContent, title: chip.title}));
+"""
+REASONING = "A switch drops the earlier reasoning of sessions on Fable 5.2, Sonnet 5.5 and Haiku 5.5."
+
+
+def test_a_near_switch_says_on_hover_what_it_costs_those_models():
+    assert run(CHIP, store((92, 67, 30), (None, 83, 40), (3, 72, 55))) == {
+        "text": "→ spare soon",
+        "title": f"5-hour at 92%; switches at 90% or when a window is on course for 100%. {REASONING}"}
+
+
+def test_with_every_account_over_the_line_the_chip_names_where_it_goes_once_this_one_is_about_to_fill():
+    assert run(CHIP, store((10, 94, 10), (None, 91, 10), (10, 96, 10))) == {
+        "text": "→ home near 100%",
+        "title": "weekly at 94%; every other account is over 90% too, so this one stays until it is about to "
+                 f"fill, then moves to home. {REASONING}"}
+
+
+def test_with_nowhere_emptier_the_chip_says_so_and_names_no_cost():
+    assert run(CHIP, store((10, 94, 10), (None, 95, 10), (10, 96, 10))) == {
+        "text": "no better account",
+        "title": "weekly at 94%; no other account is at least 3 points emptier, so this one stays until one is"}

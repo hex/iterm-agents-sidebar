@@ -1,5 +1,5 @@
-# ABOUTME: Claude Code's settings.json for the panel: puts the statusline bridge in, keeping the user's
-# ABOUTME: own line, and hands iTerm2's status hook over; shared by install.sh and the panel's buttons.
+# ABOUTME: Claude Code's settings.json for the panel: puts the statusline bridge in, keeping the user's own
+# ABOUTME: line, hands iTerm2's status hook over, and puts the API fallback's apiKeyHelper in and out.
 """The statusline payload is the only place Claude Code publishes a session's
 context window, model, effort, cost and limits, and the bridge is what copies
 it out for the panel. The user's own statusline goes on running inside it,
@@ -14,9 +14,13 @@ prints "already", or "set" and then the command it displaced (maybe empty).
 """
 import json
 import os
+import shlex
 import shutil
+import stat
 import sys
 from pathlib import Path
+
+import accounts
 
 #: The bridge's own file name, whichever checkout it lives in.
 BRIDGE_NAME = "statusline-bridge.sh"
@@ -150,6 +154,116 @@ def drop_cc_status(settings_path):
     shutil.copyfile(settings_path, str(settings_path) + ".before-tab-status")
     _write(settings_path, settings)
     return removed
+
+
+def helper_command(helper_path, account_id):
+    """The apiKeyHelper command that runs the script at `helper_path` for one
+    account's key: quoted, because Claude Code runs it through a shell and a
+    checkout's path may hold a space. Raises ValueError for an account id not in
+    the store's format, which never reaches the shell."""
+    if not accounts.is_account_id(account_id):
+        raise ValueError(f"{account_id!r} is not an account id")
+    return f"{shlex.quote(str(helper_path))} {shlex.quote(account_id)}"
+
+
+def _helper_of(settings):
+    """settings.json's apiKeyHelper, or None; anything but text is someone else's."""
+    command = settings.get("apiKeyHelper")
+    return command if command is None or isinstance(command, str) else repr(command)
+
+
+def api_key_helper(settings_path, ours):
+    """-> (state, command): "ours" with the command when apiKeyHelper is exactly one
+    of the commands in `ours`; otherwise "absent", "foreign" when anything else is
+    set, or "unreadable" when settings.json is not a JSON object, each with None,
+    so another tool's command is never handed on."""
+    try:
+        command = _helper_of(_read(settings_path))
+    except ValueError:
+        return "unreadable", None
+    if command is None:
+        return "absent", None
+    return ("ours", command) if command in ours else ("foreign", None)
+
+
+def api_key_helper_state(settings_path, ours):
+    """api_key_helper's state alone."""
+    return api_key_helper(settings_path, ours)[0]
+
+
+def _text(path):
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+
+
+def _edit_helper(settings_path, change):
+    """Read settings.json, apply `change` (settings -> the settings to write, or
+    None for nothing to write), and replace the file, changing no other key.
+
+    settings.json has no lock and other tools rewrite it, so the file is read
+    again just before the replace and once after it: a change from anyone
+    else at either point runs the step once more from a fresh read, and a
+    second one stops it, leaving the file as that writer left it. The write
+    keeps the file's shape for whoever else reads it: a symlink's target is
+    what gets replaced, its mode stays, and non-ASCII text stays as text.
+    """
+    settings_path = Path(os.path.realpath(settings_path))
+    for _ in range(2):
+        before = _text(settings_path)
+        settings = _read(settings_path) if before is not None else {}
+        intended = change(settings)
+        if intended is None:
+            return
+        settings_path.parent.mkdir(parents=True, exist_ok=True)
+        # Its own name per process: helpers in several sessions may drop at once.
+        staged = settings_path.with_name(f"{settings_path.name}.agents-sidebar.{os.getpid()}.tmp")
+        with open(staged, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(intended, indent=2, ensure_ascii=False) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        if before is not None:
+            os.chmod(staged, stat.S_IMODE(settings_path.stat().st_mode))
+        if _text(settings_path) != before:
+            staged.unlink()
+            continue
+        os.replace(staged, settings_path)
+        try:
+            if _read(settings_path) == intended:
+                return
+        except ValueError:
+            pass
+    raise ValueError(f"{settings_path} changed while the panel wrote it, twice; left as it is")
+
+
+def _refuse_foreign(settings_path, settings, ours):
+    command = _helper_of(settings)
+    if command is not None and command not in ours:
+        raise ValueError(f"{settings_path} sets another tool's apiKeyHelper; left unchanged")
+    return command
+
+
+def set_api_key_helper(settings_path, command, ours):
+    """Point apiKeyHelper at `command`. Raises ValueError, writing nothing, when a
+    helper other than `command` or one of `ours` is set, or settings.json is not a
+    JSON object."""
+    def change(settings):
+        if _refuse_foreign(settings_path, settings, {*ours, command}) == command:
+            return None
+        return {**settings, "apiKeyHelper": command}
+    _edit_helper(settings_path, change)
+
+
+def drop_api_key_helper(settings_path, ours):
+    """Take apiKeyHelper out when it is one of `ours`; with none set, nothing is
+    written. Raises ValueError, writing nothing, when any other helper is set or
+    settings.json is not a JSON object."""
+    def change(settings):
+        if _refuse_foreign(settings_path, settings, ours) is None:
+            return None
+        return {key: value for key, value in settings.items() if key != "apiKeyHelper"}
+    _edit_helper(settings_path, change)
 
 
 if __name__ == "__main__":

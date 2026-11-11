@@ -293,7 +293,8 @@ phones, and no longer in the old one's.
 If it does not come back, the card says `Remote control did not come back:
 run /remote-control` for up to ten minutes, and `daemon.log` says why: the
 session stayed busy for five minutes, it never found its own state file in
-that time, the plugin is not loaded there, the session took the request and
+that time, the ask expired before the idle session ran the command,
+the plugin is not loaded there, the session took the request and
 never answered, Claude Code refused the command (with its message), or the
 command ran and did not connect. The panel leaves alone a session you
 disconnected yourself before the switch. One you disconnect in the two
@@ -405,7 +406,7 @@ state goes unknown and it takes no answer. Under Eternal Terminal a pane
 closed here can leave the session running on the other machine, where the
 panel no longer sees it.
 
-While a pane reaches another machine, a row under the **Limits** head names
+While a pane reaches another machine, a row under the **Accounts** head names
 each machine: this Mac first, then the others in the order the panel lists
 their first pane. A chip shows the machine's name and how many agents run
 there. A dot on another machine's chip means at
@@ -413,7 +414,7 @@ least one pane here runs `ssh` or `et` to it in the foreground. A ring means
 no pane does, and the tooltip then gives the card's reason, `the connection
 to <host> is not in front here`. The tooltip also gives the age of the
 machine's last event, by that machine's clock. The row shows only in the
-open foot of a full-width panel: folded Limits and the compact panel leave
+open foot of a full-width panel: folded Accounts and the compact panel leave
 it out.
 
 A machine gets a chip only from what a pane already carries: an agent's
@@ -705,17 +706,18 @@ pill, the subagent rows, the task list and the background shells stay off the
 card.
 
 Waiting on you goes from the foot, since each waiting card carries its own
-question. Limits is one line: the account your sessions run on, its fullest
+question. Accounts is one line: the account your sessions run on, its fullest
 window as a bar and a figure, and the time to its reset once that window is
 tight, at 80% or within 30 minutes of the reset. Like a folded tile, it passes
 over a model limit full on every account for the next limit with room. Hover
-the line for every window, and for when a model passed over returns. A switch Auto-switch would make soon gets a line of its own, and Codex
+the line for every window, and for when a model passed over returns. A switch Auto-switch would make soon gets a line of its own,
+and the API fallback's chip takes that line in its place while it shows. Codex
 gets a line of the same shape only while its own fullest window is tight. The
-chevron opens the whole Limits. Clicking Limits or the free space in the Limits head folds it back to one line,
+chevron opens the whole Accounts. Clicking Accounts or the free space in the Accounts head folds it back to one line,
 and so does the panel narrowing again after it has widened. Without an active
 account, or when the account store fails, the foot keeps its full layout.
 
-The Limits head takes the hover tint and keyboard focus ring across the row
+The Accounts head takes the hover tint and keyboard focus ring across the row
 on the same 24 px band as History's head, 3 px above and below its own 18 px
 head.
 Its switch and chip stay separate from the fold target. The tint drops over
@@ -855,7 +857,7 @@ panel's words:
 | The card says | Under the tab | Dot and text | Detail |
 |---|---|---|---|
 | Working | `working` | iTerm2's own working orange | What the agent says it is doing, when it says |
-| Waiting on you | `needs you` | The panel's amber | The question, or the tool asking for permission and what it wants, else what it was doing |
+| Waiting on you | `needs you` | Blue, so it never reads as working's orange | The question, or the tool asking for permission and what it wants, else what it was doing |
 | Done (finished while you looked elsewhere) | `done` | The panel's done green | Nothing |
 | Idle | `idle` | The panel's grey | Nothing |
 | Exited, no report | Nothing | Nothing | Nothing |
@@ -977,6 +979,56 @@ or responding to the pointer. This opens a fresh view in every window.
 For a `STALE` banner or a blank panel after Update, see
 [Troubleshooting](troubleshooting.md).
 
+## API credits
+
+Settings > Accounts holds the API fallback ([docs/accounts.md](accounts.md#api-credits-when-every-account-is-full)):
+
+- **When every account is full, use API credits**, off by default, and greyed until a key is saved on
+  an account and the statusline bridge is installed; the note says which it waits for.
+  The line under it says whether `apiKeyHelper` is in `~/.claude/settings.json` now,
+  and that a synced `settings.json` takes the line to other machines too.
+- Under it, a table with the columns **Account**, **Key**, **Spent** and **Cap**, and a row
+  per stored account, named as the foot names it, in the accounts' order. Below a panel width
+  of 264px, at your text size, the **Key** column folds away.
+- An account without a key has a password field across Key, Spent and Cap, and a save icon
+  (a floppy disk). Pasting a key saves it, and so do Enter and the save icon. While the panel
+  checks the key, `checking…` shows after the name. A key that fails the check stays out,
+  whether the API refuses it, the panel cannot reach the API or gets no answer, or the text
+  is no Anthropic API key, and the reason shows after the name.
+- A saved key shows its last four characters under **Key**. Under **Spent** is what the
+  current or last fallback spent on that key, an estimate. Under **Cap** is its cap in
+  dollars, 50 unless you change it: type a figure and press Enter or leave the field. The panel
+  refuses a cap of 0 or less (`too low`), or anything that is not a number: the field stays as typed, outlined, so
+  you can fix it, and Escape puts the cap in force back. The trash icon forgets the key. It asks
+  first: one press turns it into a check and shows `forget?`, and a second press within
+  4 seconds forgets the key.
+- After the name, the key's state, with a lamp before the name: a green check and `in use` for
+  the key the sessions run on, or a warning sign and why a key is passed over (`cap reached`,
+  `credits ran out`, `key refused`, `refused`) until an account has room; raising the cap lifts
+  `cap reached`, and saving the key again lifts the rest. A word too long for a
+  narrow panel ends in `…`; a screen reader hears the whole word.
+
+While the fallback has something to say, a chip in the Accounts head takes the
+place of the next-switch chip, with one account too. It takes its own line under
+the head when the panel is narrow:
+
+| Chip | Means |
+| --- | --- |
+| `→ API in 42 s` and **Not now** | Every account is full, or every model the sessions run is full on every account; the sessions move to credits when the count ends |
+| `on API · alice · $1.84` | The sessions run on credits with alice's key; the figure is the estimated spend on every key of this fallback. Point at it for when it started, that key's spend against its cap, and what is off: claude.ai connectors and Remote Control |
+| `→ subscription in 42 s` and **Not now** | An account has room; the sessions go back when the count ends. Not now asks again in 30 minutes |
+| `API · trying again` | In the alert colour: the panel could not get a verdict on the key from the API, so the sessions stay on the subscription and the panel tries again at each reading. Point at it for the reason |
+| `API · cap reached`, `credits ran out`, `key refused`, `refused`, `helper removed`, `needs the bridge`, `not now` | In the alert colour: the panel moved back, or would not move, and does not move to credits again until an account has room. `cap reached`, `credits ran out` and `key refused` also end once a key is usable again, `refused` once you save a key, and `needs the bridge` once you install the bridge. Point at it for the reason |
+
+The line under the active account's bars records each move to credits and back
+as it records a switch: `On API credits · every account is full`,
+`On API credits · the running models are full on every account`, or
+`Back on the subscription · cap reached`, with how long ago.
+
+A turn that ends in a `StopFailure`, on credits or not, goes idle as after any
+other turn, and the card's line names the error: `Turn failed: billing_error`.
+The next prompt clears it.
+
 ## Updating
 
 The bar's left end names the release the panel runs, or reads
@@ -1043,6 +1095,10 @@ It deletes saved logins by default. Run `agents-sidebar uninstall --keep-account
 to keep them, or `./uninstall.sh --keep-accounts` from the checkout.
 It prints the checkout path and a quoted command to delete it. See
 [what uninstall removes and keeps](integrations.md#uninstall).
+
+Uninstall takes the panel's own `apiKeyHelper` out of `~/.claude/settings.json`,
+and leaves another tool's there and says so. Deleting the logins also deletes
+each account's API key from the Keychain.
 
 Your saved statusline comes back unless its absolute script path is missing;
 then uninstall removes `statusLine` and warns with the path. With the bridge

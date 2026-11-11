@@ -51,7 +51,7 @@ def switch(x, y, on, w=20, h=12):
 
 
 A(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" role="img" '
-  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the History fold head, the Limits head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account\'s '
+  f'aria-label="The panel\'s foot: two sessions waiting, one on a question and one on a Bash command, the History fold head, the Accounts head that folds it and the Auto-switch control with a chip naming the account it would switch to soon, the active account\'s '
   f'5-hour, weekly and Fable meters, the last switch, a second account with its Switch button, the Add button, '
   f'Codex\'s own limits, and the bar with the release, the Update button for a newer one, reload and the gear">')
 A('  <title>The foot of the panel</title>')
@@ -91,14 +91,14 @@ hairline(y, dotted=True)
 # The head's chevron, turned down while the foot is open.
 A(f'  <text x="{IX + 3}" y="{y + 13}" fill="{DIM}" font-size="10.5" font-family="{MONO}" '
   f'transform="rotate(90 {IX + 3} {y + 12.5})" text-anchor="middle">›</text>')
-mono(IX + 11, y + 17, "Limits", size=10.5)
+mono(IX + 11, y + 17, "Accounts", size=10.5)
 text(IX + IW - 28, y + 17, "Auto-switch", fill=DIM, size=10.5, extra=' text-anchor="end"')
 switch(IX + IW - 20, y + 8, True)
 # The chip that stands while a switch is near, in the alert colour; the
 # reason is its tooltip, so the figure names only the target.
-A(f'  <rect x="{IX + 60}" y="{y + 5}" width="82" height="15" rx="5" fill="{ALERT}" fill-opacity="0.12"/>')
-text(IX + 66, y + 16, "→ spare soon", fill=ALERT, size=10, weight=600)
-note(IX + IW + 12, y + 14, "Click Limits to fold; Auto-switch leaves a filling account")
+A(f'  <rect x="{IX + 72}" y="{y + 5}" width="82" height="15" rx="5" fill="{ALERT}" fill-opacity="0.12"/>')
+text(IX + 78, y + 16, "→ spare soon", fill=ALERT, size=10, weight=600)
+note(IX + IW + 12, y + 14, "Click Accounts to fold; Auto-switch leaves a filling account")
 note(IX + IW + 12, y + 30, "While a switch is near: where it would go; hover for why")
 
 ay = y + 48

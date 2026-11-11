@@ -61,6 +61,18 @@ def test_one_pass_reads_every_account_and_marks_a_dead_inactive_login(world):
     assert load_store(world["store"])[1].get("needsLogin") is True
 
 
+def test_an_inactive_account_whose_stored_login_is_gone_asks_for_a_login(world):
+    """Nothing to refresh is no passing fault: the panel asks for the login again rather than
+    saying, reading after reading, that it cannot refresh one."""
+    write_secret(SCRATCH_SERVICE, world["live"], _credential("live"))
+    delete_secret(SCRATCH_SERVICE, world["accounts"][1]["id"])
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"])
+    meters.tick(now=1000)
+    assert meters.snapshot()["accounts"][1]["needs_login"]
+    assert load_store(world["store"])[1].get("needsLogin") is True
+
+
 def test_one_pass_copies_a_rotated_active_token_into_the_panels_item(world):
     from accounts import read_secret
     rotated = _credential("rotated-by-claude-code")
@@ -280,3 +292,73 @@ def test_a_model_full_on_every_account_reaches_the_panel_with_switching_off_and_
     assert snap["next_switch"] is None
     assert snap["exhausted"] == [{"model": "Fable", "resets_at": now + 15 * 3600, "account_id": home,
                                   "account": "home"}]
+
+
+def _unreadable_refresh(world, monkeypatch):
+    """One pass in which the home account's refresh reply cannot be read."""
+    monkeypatch.setattr("accounts.request_refresh", lambda blob, now_ms: ("unreadable", "<html>maintenance</html>"))
+    write_secret(SCRATCH_SERVICE, world["live"], _credential("live"))
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"])
+    meters.tick(now=1000)
+    return meters
+
+
+def test_an_unreadable_refresh_reply_asks_for_a_login(world, monkeypatch):
+    meters = _unreadable_refresh(world, monkeypatch)
+    home = world["accounts"][1]["id"]
+    reply = Path(world["store"]).parent / "pending" / f"{home}.reply"
+    assert reply.read_text() == "<html>maintenance</html>"
+    assert load_store(world["store"])[1].get("needsLogin") is True
+    assert meters.snapshot()["accounts"][1]["needs_login"] is True
+
+
+def test_a_switch_stopped_by_an_unreadable_refresh_reply_asks_for_a_login(world, tmp_path, monkeypatch):
+    from accounts import SwitchRefused, login_item
+    monkeypatch.setattr("accounts.request_refresh", lambda blob, now_ms: ("unreadable", "<html>maintenance</html>"))
+    write_secret(SCRATCH_SERVICE, world["live"], _credential("live"))
+    home = world["accounts"][1]["id"]
+    write_secret(SCRATCH_SERVICE, login_item(home), json.dumps({"accountUuid": "uuid-other"}))
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"], claude_dir=str(claude_dir))
+    with pytest.raises(SwitchRefused, match=f"it is kept in pending/{home}.reply and home needs a login$"):
+        meters.switch(home, now=1000)
+    assert load_store(world["store"])[1]["needsLogin"] is True
+
+
+def _stuck(world, account_id):
+    """An account left with an unreadable reply and a stale successor, and flagged for a login."""
+    from accounts import save_pending
+    store_dir = str(Path(world["store"]).parent)
+    save_pending(store_dir, account_id, "<html>maintenance</html>", suffix=".reply")
+    save_pending(store_dir, account_id, _credential("stale-successor"))
+    save_store(world["store"], [dict(a, needsLogin=True) if a["id"] == account_id else a
+                                for a in world["accounts"]])
+    return Path(store_dir) / "pending"
+
+
+def test_adding_an_account_again_clears_what_an_unreadable_reply_left(world):
+    from accounts import read_secret, refresh_account
+    work = world["accounts"][0]["id"]
+    pending = _stuck(world, work)
+    write_secret(SCRATCH_SERVICE, world["live"], _credential("logged-in-again"))
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"])
+    meters.add(now=1000)
+    assert sorted(p.name for p in pending.iterdir()) == []
+    assert load_store(world["store"])[0].get("needsLogin") is None
+    assert refresh_account(str(pending.parent), SCRATCH_SERVICE, work, now_ms=0) == "invalid_grant"
+    assert read_secret(SCRATCH_SERVICE, work) == _credential("logged-in-again")
+
+
+def test_a_fresh_login_in_claude_code_clears_what_an_unreadable_reply_left(world):
+    work = world["accounts"][0]["id"]
+    pending = _stuck(world, work)
+    write_secret(SCRATCH_SERVICE, world["live"], _credential("logged-in-again"))
+    meters = AccountMeters(world["store"], SCRATCH_SERVICE, (SCRATCH_SERVICE, world["live"]),
+                           world["claude_json"])
+    meters.tick(now=1000)
+    assert sorted(p.name for p in pending.iterdir()) == []
+    assert load_store(world["store"])[0]["needsLogin"] is False

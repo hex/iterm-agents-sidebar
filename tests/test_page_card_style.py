@@ -153,6 +153,8 @@ function push(value) { saved.push(value); Object.assign(SETTINGS, value); SETTIN
         function(PAGE, "settingsBody"), function(PAGE, "syncSettings"),
         function(PAGE, "repositoryCard"), function(PAGE, "githubRow"), function(PAGE, "paintRepository"),
         function(PAGE, "uninstallRow"), function(PAGE, "paintUninstall"),
+        function(PAGE, "apiFallbackCard"), function(PAGE, "paintApiFallback"), function(PAGE, "fallbackPost"),
+        function(PAGE, "makeEl"),
         """
 settingsBody();
 const card = drawer.children[1].children[0];

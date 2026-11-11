@@ -27,7 +27,7 @@ def test_fold_heads_cover_the_row_and_its_gutters():
     assert "height: 12px" not in head
     assert "width: calc(100% + 12px)" not in declarations("#budget .lim-toggle")
     assert "outline-offset: -1px" in declarations("#budget .lim-head > .lim-toggle:focus-visible::before")
-    # The Limits head's tint is the same band: the head is 18px, so its tint
+    # The Accounts head's tint is the same band: the head is 18px, so its tint
     # reaches 3px past it above and below, with the fold heads' corners.
     limits = declarations("#budget .lim-head > .lim-toggle::before")
     for value in ("inset: -3px 0", "border-radius: 6px"):

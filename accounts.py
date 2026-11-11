@@ -5,8 +5,10 @@
 import argparse
 import fcntl
 import json
+import math
 import os
 import random
+import re
 import ssl
 import subprocess
 import sys
@@ -43,6 +45,10 @@ CONFIG_LOCK_STALE_SECONDS = 10
 STORE_PATH = os.path.expanduser("~/.config/agents-sidebar/accounts.json")
 PANEL_SERVICE = "agents-sidebar-accounts"
 LIVE_SERVICE = "Claude Code-credentials"
+#: The ids add_account gives: anything else is never put into a command or an item name.
+ACCOUNT_ID = re.compile(r"acct-[0-9]+")
+#: What the API fallback may spend on an account's key while its cap is unset.
+API_KEY_CAP_DEFAULT_USD = 50.0
 
 
 def live_item():
@@ -159,9 +165,28 @@ def parse_store(text):
             raise StoreError(f"account id {ident} appears twice")
         if uuid in uuids:
             raise StoreError(f"account {uuid} is stored twice")
+        last4 = account.get("apiKeyLast4")
+        if last4 is not None and not (isinstance(last4, str) and len(last4) == 4):
+            raise StoreError(f"account {ident} has an apiKeyLast4 that is not four characters")
+        if "apiKeyCapUsd" in account and not is_positive_dollars(account["apiKeyCapUsd"]):
+            raise StoreError(f"account {ident} has an apiKeyCapUsd that is not a positive number")
         ids.add(ident)
         uuids.add(uuid)
     return accounts
+
+
+def is_account_id(text):
+    return isinstance(text, str) and ACCOUNT_ID.fullmatch(text) is not None
+
+
+def is_positive_dollars(value):
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value > 0)
+
+
+def api_key_cap(account):
+    """The spend cap on a stored account's key, in dollars."""
+    return float(account.get("apiKeyCapUsd", API_KEY_CAP_DEFAULT_USD))
 
 
 def next_poll(interval, outcome, now, moved=False, active=False, reset_at=None, jitter=JITTER):
@@ -375,13 +400,19 @@ def _why(mine, out, age):
     return f"{out['window']} on course for 100% in {minutes} min"
 
 
-def switch_decision(active_id, states, accounts, now, last_switch=None, models=None):
+def switch_decision(active_id, states, accounts, now, last_switch=None, models=None, recent=None):
     """What the daemon should do about the active account now.
 
     {"act": "stay"}, {"act": "read", account_id} when a figure the decision
     rests on is too old to act on, {"act": "switch", account_id, why}, or
-    {"act": "blocked", why} when the account should be left and nothing
-    emptier exists.
+    {"act": "blocked", why, reason} when the account should be left and
+    nothing emptier exists, `reason` being "full", "model_full" or
+    "unreadable" for a reader that must not parse `why`.
+
+    `models` are the families in use now, and decide when to leave; `recent`,
+    a superset, those used within the last two hours, and a target is judged
+    on those too: a model that runs in bursts would otherwise send the login
+    to an account whose limit for it is spent, and back on its next burst.
     """
     state = states.get(active_id) or {}
     fetched = state.get("fetched_at")
@@ -390,11 +421,12 @@ def switch_decision(active_id, states, accounts, now, last_switch=None, models=N
     exhausted = exhausted_models(states, accounts, now)
     running = models
     models = _deciding(models, exhausted, states)
+    judged = models if recent is None or models is None else models | _deciding(recent, exhausted, states)
     if running == set():
         return STAY                  # no Claude session to serve
     if running and not models:
         return {"act": "blocked", "why": " and ".join(m["model"] for m in exhausted)
-                + " is full on every account"}
+                + " is full on every account", "reason": "model_full"}
     mine = binding(state["usage"], now, models)
     if mine is None:
         return {"act": "read", "account_id": active_id}
@@ -409,33 +441,40 @@ def switch_decision(active_id, states, accounts, now, last_switch=None, models=N
     on_course = out is not None and out["seconds"] - age <= PROJECTION_HORIZON_SECONDS
     returns_soon = mine["resets_at"] is not None and mine["resets_at"] - now <= RESET_NEAR_SECONDS
     if not (on_course or (mine["figure"] >= SWITCH_THRESHOLD and not returns_soon)):
-        return _balance(active_id, state, states, accounts, now, since, models)
+        return _balance(active_id, state, states, accounts, now, since, models, exhausted)
     if not emergency and since is not None and since < SWITCH_COOLDOWN_SECONDS:
         return STAY
 
-    candidates, passed_over = [], False
+    candidates, emptier_now, passed_over = [], False, False
     for account in accounts:
         other = states.get(account["id"]) or {}
         if account["id"] == active_id or account.get("needsLogin") or other.get("usage") is None:
             continue
-        theirs = binding(other["usage"], now, models)
+        theirs = binding(other["usage"], now, judged)
         if theirs is None or now - other["fetched_at"] > POLL_FLOOR_SECONDS:
             held = other.get("outcome") == "rate_limited" and other.get("next_at", 0) > now
             if held or now - other.get("tried_at", 0) < POLL_FLOOR_SECONDS:
                 passed_over = True
                 continue
             return {"act": "read", "account_id": account["id"]}
-        if _filling(other, now, models):
+        # Emptier for the models running now is room, not "every account is
+        # full", even when a recent model keeps it from being a target: the
+        # API fallback reads "full" as its cue to spend credits.
+        now_figure = binding(other["usage"], now, models)
+        emptier_now = emptier_now or (now_figure is not None and now_figure["figure"] < mine["figure"]
+                                      and not _filling(other, now, models))
+        if _filling(other, now, judged):
             continue
-        candidates.append((account["id"], theirs, runway(other["usage"], now, models),
+        candidates.append((account["id"], theirs, runway(other["usage"], now, judged),
                            _five_hour(other["usage"])))
 
-    target = _target(mine, candidates, emergency)
+    target = _target(mine, candidates, emergency, on_course)
     if target is None:
-        if any(c[1]["figure"] < mine["figure"] for c in candidates):
+        if emptier_now:
             return STAY
-        why = "the other accounts cannot be read" if passed_over else "every account is full"
-        return {"act": "blocked", "why": why}
+        if passed_over:
+            return {"act": "blocked", "why": "the other accounts cannot be read", "reason": "unreadable"}
+        return {"act": "blocked", "why": "every account is full", "reason": "full"}
     return {"act": "switch", "account_id": target, "why": _why(mine, out, age)}
 
 
@@ -502,20 +541,24 @@ def _best(fit):
     return min(near, key=lambda c: (c[2]["resets_at"], c[3] is None, c[3] or 0))[0]
 
 
-def _target(mine, candidates, emergency):
+def _target(mine, candidates, emergency, filling=False):
     """The account id a switch from `mine` would go to, or None when none fits.
 
     Ordinarily a target sits under the threshold and a margin under the active
     account. When none does, one a few points emptier and not full will do: it
-    gives the session more room than it has. In an emergency any emptier one
-    will. Among those that fit, `_best` picks.
+    gives the session more room than it has. One over the threshold itself
+    does only once the active account is `filling`, on course for 100 within
+    the projection horizon: until then a move between two nearly full accounts
+    buys a few points and costs every session its cache. In an emergency any
+    emptier one will. Among those that fit, `_best` picks.
     """
     emptier = [c for c in candidates if c[1]["figure"] < mine["figure"] and c[1]["figure"] < FULL]
     if emergency:
         return _best(emptier) if emptier else None
     fit = ([c for c in emptier if c[1]["figure"] < SWITCH_THRESHOLD
             and c[1]["figure"] <= mine["figure"] - SWITCH_MARGIN_POINTS]
-           or [c for c in emptier if c[1]["figure"] <= mine["figure"] - FALLBACK_MARGIN_POINTS])
+           or [c for c in emptier if c[1]["figure"] <= mine["figure"] - FALLBACK_MARGIN_POINTS
+               and (filling or c[1]["figure"] < SWITCH_THRESHOLD)])
     return _best(fit) if fit else None
 
 
@@ -525,6 +568,9 @@ def _target(mine, candidates, emergency):
 BALANCE_RATIO = 1.25
 BALANCE_COOLDOWN_SECONDS = 1800
 BALANCE_READING_MAX_AGE_SECONDS = 900
+#: A week returning this soon is spent even on an account with a full model
+#: limit: the next session on that model leaves it, but the quota is lost otherwise.
+BALANCE_EXPIRING_WEEK_SECONDS = DAY_SECONDS
 
 
 def _filling(state, now, models):
@@ -544,7 +590,13 @@ def _span(seconds):
     return f"{hours}h" if hours < 24 else f"{round(hours / 24)}d"
 
 
-def _balance(active_id, state, states, accounts, now, since, models):
+def _holds_a_full_model(usage, exhausted):
+    """Whether a model's own limit is full here while another account has room in it."""
+    gone = {m["model"] for m in exhausted}
+    return any(m["used"] >= FULL and m["name"] not in gone for m in usage.get("models") or [])
+
+
+def _balance(active_id, state, states, accounts, now, since, models, exhausted):
     """While nothing is full: {"act": "balance", account_id, why} when another
     account under the line, with room in its 5-hour window, has clearly more
     weekly runway a day than the active one, else STAY. Quota that returns sooner is spent before quota that
@@ -564,7 +616,9 @@ def _balance(active_id, state, states, accounts, now, since, models):
         theirs = binding(other["usage"], now, models)
         room = runway(other["usage"], now, models)
         candidate = (account["id"], theirs, room, _five_hour(other["usage"]))
-        if theirs is not None and room is not None and _band(candidate) == 0 and not _filling(other, now, models):
+        if (theirs is not None and room is not None and _band(candidate) == 0 and not _filling(other, now, models)
+                and not (_holds_a_full_model(other["usage"], exhausted)
+                         and room["resets_at"] - now > BALANCE_EXPIRING_WEEK_SECONDS)):
             candidates.append(candidate)
     if not candidates:
         return STAY
@@ -594,12 +648,14 @@ def confirm_balance(streak, decision, reading_at):
 NEAR_POINTS = 10
 
 
-def switch_outlook(active_id, states, accounts, now, models=None):
+def switch_outlook(active_id, states, accounts, now, models=None, recent=None):
     """Where a switch would go now, and whether one is near: {to, near, why}, or None.
 
     The same ranking as `switch_decision`, without its gates: it says what the
     panel can expect, not what the daemon is about to do. `to` is None when no
-    stored account fits; `why` names the window that makes a switch near.
+    stored account fits; `why` names the window that makes a switch near;
+    `later`, when only an account over the line fits, the one it goes to once
+    the active account is about to fill.
     """
     state = states.get(active_id) or {}
     fetched = state.get("fetched_at")
@@ -608,6 +664,7 @@ def switch_outlook(active_id, states, accounts, now, models=None):
     exhausted = exhausted_models(states, accounts, now)
     running = models
     models = _deciding(models, exhausted, states)
+    judged = models if recent is None or models is None else models | _deciding(recent, exhausted, states)
     if running and not models:
         # Only an exhausted model runs, and no switch serves it.
         return {"to": None, "near": False, "why": None, "exhausted": exhausted}
@@ -625,16 +682,20 @@ def switch_outlook(active_id, states, accounts, now, models=None):
         other = states.get(account["id"]) or {}
         if account["id"] == active_id or other.get("usage") is None:
             continue
-        theirs = binding(other["usage"], now, models)
+        theirs = binding(other["usage"], now, judged)
         if theirs is not None:
             (logged_out if account.get("needsLogin") else candidates).append(
-                (account["id"], theirs, runway(other["usage"], now, models), _five_hour(other["usage"])))
-    outlook = {"to": _target(mine, candidates, emergency=False), "near": near,
+                (account["id"], theirs, runway(other["usage"], now, judged), _five_hour(other["usage"])))
+    outlook = {"to": _target(mine, candidates, emergency=False, filling=on_course), "near": near,
                "why": _why(mine, out, age) if near else None}
+    if outlook["to"] is None and near:
+        later = _target(mine, candidates, emergency=False, filling=True)
+        if later is not None:
+            outlook["later"] = later
     # An account that would be the target but for its login is named, so the
     # panel can ask for the login instead of saying nothing fits.
     if outlook["to"] is None and near and logged_out:
-        held = _target(mine, logged_out, emergency=False)
+        held = _target(mine, logged_out, emergency=False, filling=on_course)
         if held is not None:
             outlook["login"] = held
     if exhausted:
@@ -1061,6 +1122,22 @@ def recover_pending(store_dir, service, only=None):
     return moved
 
 
+def clear_pending(store_dir, account_id):
+    """Drop an account's saved successor and unreadable reply, under its refresh lock.
+
+    For a fresh login: its credential supersedes both, and an outstanding
+    reply would otherwise refuse every refresh of the new token.
+    """
+    locks = os.path.join(store_dir, "locks")
+    os.makedirs(locks, mode=0o700, exist_ok=True)
+    pending = os.path.join(store_dir, "pending", account_id)
+    with open(os.path.join(locks, account_id + ".lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        for suffix in (".json", ".reply"):
+            if os.path.exists(pending + suffix):
+                os.remove(pending + suffix)
+
+
 def refresh_account(store_dir, service, account_id, now_ms):
     """Spend one stored account's refresh token and keep its successor. Returns the outcome.
 
@@ -1224,6 +1301,7 @@ def add_live_account(store_path, service, live_item, claude_json, now):
         accounts, account = add_account(load_store(store_path), login, now)
         write_secret(service, account["id"], credential)
         write_secret(service, login_item(account["id"]), json.dumps(login))
+        clear_pending(os.path.dirname(store_path), account["id"])
         save_store(store_path, accounts)
     return account
 
@@ -1313,9 +1391,10 @@ def meters_snapshot(accounts, states, active_id, error=None, emails=None, last_s
         to = next_switch["to"]
         target = next((a for a in accounts if a["id"] == to), {"id": to}) if to else None
         outlook = dict(next_switch, to=_name(target, emails.get(to)) if target else None)
-        if next_switch.get("login"):
-            held = next((a for a in accounts if a["id"] == next_switch["login"]), {"id": next_switch["login"]})
-            outlook["login"] = _name(held, emails.get(held["id"]))
+        for named in ("login", "later"):
+            if next_switch.get(named):
+                held = next((a for a in accounts if a["id"] == next_switch[named]), {"id": next_switch[named]})
+                outlook[named] = _name(held, emails.get(held["id"]))
         if next_switch.get("exhausted"):
             outlook["exhausted"] = [with_account(gone) for gone in next_switch["exhausted"]]
     return {"active": active_id, "accounts": shaped, "error": error, "last_switch": shown,
@@ -1336,6 +1415,25 @@ def update_account(store_path, account_id, **fields):
         if not any(a["id"] == account_id for a in accounts):
             return
         save_store(store_path, [dict(a, **fields) if a["id"] == account_id else a for a in accounts])
+
+
+def stored_account(store_path, account_id):
+    """The stored entry for `account_id`; ValueError when no account has that id."""
+    found = next((a for a in load_store(store_path) if a["id"] == account_id), None)
+    if found is None:
+        raise ValueError(f"no stored account {account_id}")
+    return found
+
+
+def edit_account(store_path, account_id, change):
+    """Replace one stored account with change(account), under the store lock.
+    ValueError when no account has that id, so a change is never lost unseen."""
+    with _store_lock(store_path) as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        accounts = load_store(store_path)
+        if not any(a["id"] == account_id for a in accounts):
+            raise ValueError(f"no stored account {account_id}")
+        save_store(store_path, [change(a) if a["id"] == account_id else a for a in accounts])
 
 
 def _live_login(claude_json):
@@ -1395,18 +1493,22 @@ class AccountMeters:
         #: The model families the running sessions use, or None when unknown;
         #: the daemon sets it from its snapshot before each tick.
         self.models = None
+        #: Those used within the last two hours, a superset that switch
+        #: targets are judged on; None when unknown.
+        self.recent = None
 
     def snapshot(self):
         return self._snapshot
 
-    def tick(self, now, auto=False, models=None):
+    def tick(self, now, auto=False, models=None, recent=None):
         """Read what is due; with `auto`, leave a full account. -> what happened, for the log.
 
         `models` are the families the running sessions use, or None when not
-        known; only their own limits decide.
+        known; only their own limits decide. `recent` adds those used within
+        the last two hours, which a switch target is judged on too.
         """
         with self._one_at_a_time:
-            self.models = models
+            self.models, self.recent = models, recent
             self._tick(now)
             return self._decide(now) if auto else []
 
@@ -1418,14 +1520,15 @@ class AccountMeters:
         active = account_for(accounts, _live_login(self.claude_json))
         if active is None or len(accounts) < 2:
             return []
-        decision = switch_decision(active["id"], self.states, accounts, now, self.last_switch, self.models)
+        decision = switch_decision(active["id"], self.states, accounts, now, self.last_switch, self.models,
+                                   self.recent)
         for _ in accounts:
             if decision["act"] != "read":
                 break
             self.states[decision["account_id"]] = dict(self.states.get(decision["account_id"]) or {}, next_at=0)
             self._tick(now)
             decision = switch_decision(active["id"], self.states, load_store(self.store_path), now,
-                                       self.last_switch, self.models)
+                                       self.last_switch, self.models, self.recent)
         self._balance, confirmed = confirm_balance(self._balance, decision,
                                                    (self.states.get(active["id"]) or {}).get("fetched_at"))
         if confirmed:
@@ -1442,6 +1545,54 @@ class AccountMeters:
             return self._once({"kind": "blocked", "why": decision["why"]})
         self._said = None
         return []
+
+    def fallback_view(self, now, auto):
+        """What the API fallback reads from the meters: {blocked, room, active, keys}.
+
+        `blocked` is the reason of a gate-free `switch_decision`, `full`,
+        `model_full` or `unreadable`, or None: neither the auto-switch setting
+        nor its two-account minimum stands between a full account and the
+        fallback. A "full" resting on a projection alone, with the active
+        account's own figure under the line, is not one the fallback enters
+        on; a model full everywhere is at FULL by its definition. `room` is
+        the active account's binding figure under the line on a fresh reading
+        that is not itself blocked, or, with `auto`, a switch auto-switch
+        would make. Never a decision that merely stays. `active` is the active
+        account's id, and `keys` every stored account in list order with its
+        name, its key's last four (None without one) and its cap.
+        """
+        with self._one_at_a_time:
+            try:
+                accounts = load_store(self.store_path)
+            except StoreError:
+                return {"blocked": None, "room": False, "active": None, "keys": []}
+            keys = [{"id": a["id"], "name": _name(a, self.emails.get(a["id"])), "last4": a.get("apiKeyLast4"),
+                     "cap_usd": api_key_cap(a)} for a in accounts]
+            active = account_for(accounts, _live_login(self.claude_json))
+            if active is None:
+                return {"blocked": None, "room": False, "active": None, "keys": keys}
+            decision = switch_decision(active["id"], self.states, accounts, now, self.last_switch, self.models,
+                                       self.recent)
+            figure = self._active_figure(active["id"], accounts, now)
+            if decision["act"] == "blocked":
+                projected_only = decision["reason"] == "full" and (figure is None or figure < SWITCH_THRESHOLD)
+                return {"blocked": None if projected_only else decision["reason"], "room": False,
+                        "active": active["id"], "keys": keys}
+            under_the_line = figure is not None and figure < SWITCH_THRESHOLD
+            return {"blocked": None, "room": (auto and decision["act"] == "switch") or under_the_line,
+                    "active": active["id"], "keys": keys}
+
+    def _active_figure(self, account_id, accounts, now):
+        """The binding figure on a fresh good reading of the account, or None."""
+        state = self.states.get(account_id) or {}
+        fetched = state.get("fetched_at")
+        if state.get("outcome") != "ok" or fetched is None or now - fetched > ACTIVE_READING_MAX_AGE_SECONDS:
+            return None
+        models = _deciding(self.models, exhausted_models(self.states, accounts, now), self.states)
+        if self.models and not models:
+            return None
+        mine = binding(state["usage"], now, models)
+        return mine["figure"] if mine else None
 
     def _once(self, event):
         """An event the first time it is true, nothing while it stays true."""
@@ -1463,6 +1614,7 @@ class AccountMeters:
             write_secret(self.service, active["id"], live_text)
             # A new token from Claude Code is a login that works: whatever
             # refusal marked this account, the token it refused is gone.
+            clear_pending(os.path.dirname(self.store_path), active["id"])
             fresh = {"needsLogin": False} if active.get("needsLogin") else {}
             update_account(self.store_path, active["id"], lastSynced=now, **fresh)
         if active:
@@ -1484,7 +1636,8 @@ class AccountMeters:
                 outcome, usage = self._read_inactive(account["id"], now)
             self.states[account["id"]] = record(self.states.get(account["id"]), outcome, usage, now,
                                                 active=account is active)
-        outlook = switch_outlook(active["id"], self.states, accounts, now, self.models) if active else None
+        outlook = (switch_outlook(active["id"], self.states, accounts, now, self.models, self.recent)
+                   if active else None)
         self._snapshot = meters_snapshot(load_store(self.store_path), self.states,
                                          active["id"] if active else None, emails=self.emails,
                                          last_switch=self.last_switch, next_switch=outlook,
@@ -1560,7 +1713,9 @@ class AccountMeters:
     def _refresh(self, account_id, now):
         result = refresh_account(os.path.dirname(self.store_path), self.service, account_id,
                                  now_ms=int(now * 1000))
-        if result == "invalid_grant":
+        # A login the server refused, or one no longer in the Keychain, takes a
+        # fresh login; anything else may pass on its own.
+        if result in ("invalid_grant", "unreadable_reply", "no_credential"):
             update_account(self.store_path, account_id, needsLogin=True)
         return result == "ok"
 
@@ -1606,6 +1761,7 @@ def run_switch(plan, store_path, service, live_item, claude_json, now,
                     update_account(store_path, step[1], needsLogin=True)
                     raise SwitchRefused(f"log in to {name(step[1])} again")
                 if result == "unreadable_reply":
+                    update_account(store_path, step[1], needsLogin=True)
                     raise SwitchRefused(f"a refresh reply for {name(step[1])} could not be read; it is kept in "
                                         f"pending/{step[1]}.reply and {name(step[1])} needs a login")
                 if result != "ok":

@@ -107,7 +107,7 @@ async def main(connection):
         await writer.step(mine, [dict(row, state="blocked", question={"question": QUESTION, "options": ["Yes", "No"]})],
                           set(), ON, "absent", logged.append)
         expect("needs you, quote and backslash kept", await status(),
-               {"status": "needs you", "detail": QUESTION, "dot_color": "#ff9f0a", "text_color": "#ff9f0a",
+               {"status": "needs you", "detail": QUESTION, "dot_color": "#0a84ff", "text_color": "#0a84ff",
                 "background_tasks": 0})
         await shot("needs-you")
         await writer.step(mine, [dict(row, state="idle")], {sid}, ON, "absent", logged.append)
@@ -116,7 +116,10 @@ async def main(connection):
         await shot("done")
         blank = {"status": None, "detail": None, "dot_color": None, "text_color": None, "background_tasks": 0}
         await writer.step(mine, [dict(row, state="idle")], set(), ON, "absent", logged.append)
-        expect("idle clears every field", await status(), blank)
+        expect("idle", await status(), {"status": "idle", "detail": None, "dot_color": "#98989d",
+                                        "text_color": "#98989d", "background_tasks": 0})
+        await writer.step(mine, [dict(row, state="exited")], set(), ON, "absent", logged.append)
+        expect("exited clears every field", await status(), blank)
 
         await writer.step(mine, [dict(row, state="working")], set(), ON, "absent", logged.append)
         await writer.clear_all(logged.append)

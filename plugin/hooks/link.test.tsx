@@ -293,6 +293,18 @@ for (const role of ['ask', 'deliver'] as const) {
   })
 }
 
+test('a prompt you sent that a later hook drops starts no turn of yours, so the next turn files no reply', async ($, on) => {
+  const w = world(on)
+  mock.clock(on, { now: 1_000_000 })
+  await start($)
+  w.refuse = 'a hook said no'
+  expect(await typed($, 'what changed?')).toEqual({ drop: 'a hook said no' })
+  w.refuse = null
+  await turnStart($, 't1', 'A background task finished.')
+  await turnEnd($, 't1', 'The build is green.')
+  expect(w.files.has(`${F}/reply.json`)).toBe(false)
+})
+
 test("a delivery's turn starting marks it started", async ($, on) => {
   const w = world(on)
   const clock = mock.clock(on, { now: 1_000_000 })
@@ -596,6 +608,18 @@ test('a job taken before a reload is picked up again and runs once', async ($, o
   await clock.advance(3000)
   expect(w.commands).toEqual(['remote-control'])
   expect(JSON.parse(w.files.get(RESULT)!)).toEqual({ switch_at: 100, outcome: 'done', reason: '' })
+  expect(w.files.has(`${F}/remote-control-taken.json`)).toBe(false)
+})
+
+test('a job taken before a reload and past its expiry files failed and runs nothing, though the session is idle', async ($, on) => {
+  const w = world(on)
+  const clock = mock.clock(on, { now: 1_000_000 })
+  sessionState(w, 'idle')
+  w.files.set(`${F}/remote-control-taken.json`, JSON.stringify({ switch_at: 100, expires: 999 }))
+  await start($)
+  await clock.advance(1000)
+  expect(w.commands).toEqual([])
+  expect(JSON.parse(w.files.get(RESULT)!)).toEqual({ switch_at: 100, outcome: 'failed', reason: 'the ask expired' })
   expect(w.files.has(`${F}/remote-control-taken.json`)).toBe(false)
 })
 

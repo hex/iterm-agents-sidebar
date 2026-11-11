@@ -35,8 +35,16 @@ not guesswork:
                                               session_crons list, when it
                                               has one, replaces the prompts
                                               scheduled to wake it
+    StopFailure                            -> the parent is done, as after
+                                              Stop; files its error for the
+                                              panel, which ends the API
+                                              fallback on billing_error or
+                                              authentication_failed, and
+                                              names it on the card until the
+                                              next prompt
     PreCompact                            -> working
-    SessionStart                           -> the parent is done
+    SessionStart                           -> the parent is done, unless it
+                                              ends an automatic compaction
     SubagentStart / SubagentStop           -> adds or removes one child
     SessionEnd                             -> cleared
 
@@ -131,7 +139,8 @@ def blank_state():
     return {"parent_active": False, "agents": {}, "finished": {}, "agent_types": {},
             "agent_info": {}, "gates": {}, "gate_agents": {}, "last_tool": None,
             "last_tool_agent": None, "last_tool_ran": False, "turn_started": None, "idle_since": None, "reminded": 0, "question": None, "asks": {},
-            "background": [], "running": {}, "plan": [], "crons": None, "crons_at": None}
+            "background": [], "running": {}, "plan": [], "crons": None, "crons_at": None,
+            "compact_trigger": None}
 
 
 def live_agents(doc):
@@ -490,8 +499,14 @@ def apply_event(doc, event, payload, said, codex=False, answered=()):
            "running": dict(doc.get("running") or {}),
            "plan": list(doc.get("plan") or []),
            "crons": doc.get("crons"),
-           "crons_at": doc.get("crons_at")}
+           "crons_at": doc.get("crons_at"),
+           "compact_trigger": doc.get("compact_trigger"),
+           "stop_failure": doc.get("stop_failure"),
+           "api_told": doc.get("api_told")}
     now = round(time.time(), 3)
+
+    if event == "StopFailure" and isinstance(payload.get("error"), str):
+        doc["stop_failure"] = {"error": payload["error"], "at": now}
 
     for key in answered:
         if key in doc["gates"]:
@@ -505,6 +520,15 @@ def apply_event(doc, event, payload, said, codex=False, answered=()):
         # The one event that starts a turn; tool calls inside it keep this clock.
         doc["turn_started"] = now
 
+    # Whether the compaction under way was typed or came on its own: only
+    # PreCompact says, and only the SessionStart that ends it needs to know.
+    automatic_compaction = event == "SessionStart" and payload.get("source") == "compact" \
+        and doc["compact_trigger"] == "auto"
+    if event == "PreCompact":
+        doc["compact_trigger"] = payload.get("trigger")
+    elif event == "SessionStart":
+        doc["compact_trigger"] = None
+
     if is_fresh_start(event, payload):
         # A subagent sent to the background runs on through the next prompt;
         # only a launch finds none, since none survives the process.
@@ -517,6 +541,12 @@ def apply_event(doc, event, payload, said, codex=False, answered=()):
         doc["asks"] = {}
         doc["last_tool"] = None
         doc["running"] = {}
+        if event == "SessionStart":
+            # Background tasks and scheduled prompts live in the process, and
+            # this one starts with none; its first Stop lists what it has.
+            doc["background"] = []
+            doc["crons"] = None
+            doc["crons_at"] = None
 
     if event == "PreToolUse":
         # The id a gate will need. PermissionRequest carries tool_name and
@@ -593,16 +623,20 @@ def apply_event(doc, event, payload, said, codex=False, answered=()):
         doc["parent_active"] = True
     elif said == "idle":
         # The parent's own turn ended. Its children may well outlive it, which
-        # is why this is one input to aggregate and not the answer.
-        doc["parent_active"] = False
+        # is why this is one input to aggregate and not the answer. An
+        # automatic compaction ends nothing: it fires in the middle of a turn,
+        # which goes on to its own Stop. A typed /compact has no Stop after it.
+        if not automatic_compaction:
+            doc["parent_active"] = False
         # Nor are its background tasks over: a Stop while any run is a pause,
         # and the task's end wakes the session for another turn. Stop lists the
         # whole in-flight set each time, and nothing fires when one task ends,
         # so the list is replaced, never added to.
-        if event == "Stop":
+        if event in ("Stop", "StopFailure"):
             # The turn is over, so no tool of it is still running; one the
             # user interrupted never reported its own end.
             doc["running"] = {}
+        if event == "Stop":
             doc["background"] = [{"type": t.get("type"), "description": t.get("description")}
                                  for t in payload.get("background_tasks") or []]
             # A subagent in the foreground cannot outlive the turn, and the
@@ -711,7 +745,11 @@ def read_state(session_id):
             "plan": doc.get("plan") if isinstance(doc.get("plan"), list) else [],
             "crons": doc.get("crons") if isinstance(doc.get("crons"), list) else None,
             "crons_at": doc.get("crons_at")
-                        if isinstance(doc.get("crons_at"), (int, float)) else None}
+                        if isinstance(doc.get("crons_at"), (int, float)) else None,
+            "compact_trigger": doc.get("compact_trigger")
+                               if isinstance(doc.get("compact_trigger"), str) else None,
+            "stop_failure": doc.get("stop_failure") if isinstance(doc.get("stop_failure"), dict) else None,
+            "api_told": doc.get("api_told") if type(doc.get("api_told")) is int else None}
 
 
 def update(session_id, event, payload, said, codex=False):
@@ -883,6 +921,41 @@ def hook_output(event, text):
     if not text:
         return {}
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}
+
+
+#: The panel's API fallback record: whether sessions run on API credits, and
+#: how many times they have moved, which a session's api_told is measured by.
+FALLBACK_RECORD = os.path.expanduser("~/.claude/agents-sidebar-status/api-fallback.json")
+API_LINES = {True: "This session now runs on API credits; claude.ai connectors and Remote Control are "
+                   "unavailable until it returns to the subscription.",
+             False: "This session is back on its subscription; claude.ai connectors and Remote Control work again."}
+
+
+def read_fallback(path=None):
+    """{phase, flips} from the panel's record, or None when there is none to read."""
+    try:
+        with open(path or FALLBACK_RECORD, encoding="utf-8") as fh:
+            record = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict) or type(record.get("flips")) is not int:
+        return None
+    return {"phase": record.get("phase"), "flips": record["flips"]}
+
+
+def api_context(record, told):
+    """-> (the line a prompt adds about API credits or None, the flip count it leaves told).
+
+    Once per flip: a session told up to the record's count hears nothing. One
+    that has heard nothing hears that it runs on credits only while it does;
+    earlier flips back to the subscription are no news to it.
+    """
+    if record is None:
+        return None, told
+    on = record["phase"] in ("on", "leaving")
+    if told == record["flips"] or (told is None and not on):
+        return None, record["flips"]
+    return API_LINES[on], record["flips"]
 
 
 def link_context(session_id, now, root=None):
@@ -1168,10 +1241,10 @@ def state_for(event, payload):
         if kind == "idle_prompt":
             return "idle"
         return None
-    if event == "Stop":
+    if event in ("Stop", "StopFailure"):
         # Whatever stop_hook_active says: a turn a Stop hook kept going, or
         # a hook woke, carries it on every Stop including its last, and that
-        # one is the only end the turn reports.
+        # one is the only end the turn reports. A failed turn ends the same way.
         return "idle"
     if event == "PreCompact":
         # /compact emits no UserPromptSubmit, so without this the row reads
@@ -1420,6 +1493,18 @@ def open_steps(tool_input):
     return steps
 
 
+def stop_error(doc):
+    """The error a turn that failed ended on, until the next prompt starts a turn.
+
+    Derived from when each happened, not cleared: the daemon reads the same filed
+    failure on its own clock, and a prompt typed before its next tick must not
+    hide a billing_error from it."""
+    failure = doc.get("stop_failure")
+    if not isinstance(failure, dict) or failure.get("at", 0) <= (doc.get("turn_started") or 0):
+        return None
+    return failure.get("error")
+
+
 def published(doc, pid, payload, codex, now, tasks=True, front=None):
     """The JSON the session variable carries, from the folded state document.
 
@@ -1449,6 +1534,9 @@ def published(doc, pid, payload, codex, now, tasks=True, front=None):
     # count is what keeps a long wait from reading as a session gone quiet.
     # Left out at zero: the variable has a ceiling, and a blocked state with
     # its question sits near it.
+    # Left out when there is none, as the variable has a ceiling.
+    if stop_error(doc):
+        value["stop_error"] = stop_error(doc)
     waited_on = sum(1 for t in doc.get("background") or [] if t.get("type") not in WAITERS)
     if codex:
         waited_on += len(doc.get("running") or {})
@@ -1759,6 +1847,14 @@ def main():
         if os.path.exists(ENDPOINT) else None
     if context:
         mark_reminded(session_id, time.time())
+    # Whether this session now runs on API credits, once per flip; a subagent
+    # works inside a session that has heard it.
+    if agent == "claude" and event == "UserPromptSubmit" and not payload.get("agent_id"):
+        line, told = api_context(read_fallback(), doc.get("api_told"))
+        if told != doc.get("api_told"):
+            _remember(session_id, "api_told", told)
+        if line:
+            context = f"{context}\n\n{line}" if context else line
     if codex and event == "UserPromptSubmit":
         linked = link_context(session_id, time.time())
         if linked:

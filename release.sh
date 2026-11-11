@@ -57,14 +57,29 @@ version="$month.$(( ${last:-0} + 1 ))"
 
 echo "release $version"
 
-# Until the push lands, any exit (a failed step, a failed push, Ctrl-C)
-# takes everything back: the bump on main, public, the local tag, the check
-# worktree. Otherwise a re-run counts the unpushed tag and skips a number.
+# Until the push lands, any exit (a failed step, a push the remote never
+# took, Ctrl-C) takes everything back: the bump on main, public, the local
+# tag, the check worktree. Otherwise a re-run counts the unpushed tag and skips a number.
 public_before="$(git rev-parse public)"
-bumped=0; published=0; check=""
+bumped=0; published=0; pushing=0; check=""
 take_back() {
   [ "$published" = 1 ] && return
   unset GIT_INDEX_FILE
+  # A push can land and still exit non-zero (a dropped connection). Once it
+  # has started, the remote decides: a tag already there is a public release,
+  # and a remote that cannot be asked may hold one, so neither is taken back.
+  if [ "$pushing" = 1 ]; then
+    found=0
+    git ls-remote --exit-code --tags "$remote" "v$version" >/dev/null || found=$?
+    if [ "$found" = 0 ]; then
+      echo "v$version is on $remote although the push reported a failure: kept the tag, public and the bump; make the release page by hand" >&2
+      return
+    fi
+    if [ "$found" != 2 ]; then
+      echo "could not check $remote for v$version (git ls-remote exit $found): kept the tag, public and the bump; check $remote before re-running" >&2
+      return
+    fi
+  fi
   if [ -n "$check" ]; then
     git worktree remove --force "$check" 2>/dev/null || true
     git branch -q -D "release-check-$version" 2>/dev/null || true
@@ -161,6 +176,7 @@ check=""
 
 git branch -f public "$commit"
 git tag -a "v$version" -m "$summary" "$commit"
+pushing=1
 git push -q --atomic "$remote" public:main "v$version"
 published=1
 echo "published $version as $(git rev-parse --short "$commit") -> $remote"

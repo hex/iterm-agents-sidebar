@@ -1,12 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1487" width="880" role="img" aria-label="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental and Repository. Every setting with its default, On a card expanded, and the button to show the foot's offers again">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 1660" width="880" role="img" aria-label="The settings drawer: Alerts, When a session waits for you, When one finishes, Look, On a card, Rows, Experimental, Accounts and Repository. Every setting with its default, On a card expanded, and the button to show the foot's offers again">
   <title>Settings</title>
   <defs>
     <pattern id="tickmask" width="6" height="4" patternUnits="userSpaceOnUse">
       <rect width="3" height="4" fill="#ffffff"/>
     </pattern>
-    <mask id="tick"><rect width="880" height="1487" fill="url(#tickmask)"/></mask>
+    <mask id="tick"><rect width="880" height="1660" fill="url(#tickmask)"/></mask>
   </defs>
-  <rect width="880" height="1487" rx="16" fill="#242426"/>
+  <rect width="880" height="1660" rx="16" fill="#242426"/>
   <text x="26" y="30" fill="#f2f2f7" font-size="11.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Settings</text>
   <rect x="24" y="44" width="404" height="122" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
   <text x="34" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Alerts</text>
@@ -187,14 +187,36 @@
   <path d="M404 1294.5 l3 3 l3 -3 M404 1298.5 l3 -3 l3 3" fill="none" stroke="#98989d" stroke-width="1.2" transform="translate(0,-0.5)"/>
   <line x1="24" y1="1313" x2="428" y2="1313" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
   <text x="34" y="1332.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Show the foot's offers again</text>
-  <rect x="24" y="1353" width="404" height="95" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
-  <text x="34" y="1374" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Repository</text>
+  <rect x="24" y="1353" width="404" height="164" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="1374" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Accounts</text>
   <line x1="24" y1="1386" x2="428" y2="1386" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="1405.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">github.com/hex/iterm-agents-sidebar</text>
-  <path transform="translate(406 1395.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
-  <line x1="24" y1="1417" x2="428" y2="1417" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
-  <text x="34" y="1436.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Release notes</text>
-  <path transform="translate(406 1426.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
+  <text x="34" y="1405.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">When every account is full, use API credits</text>
+  <g opacity="0.4">
+  <rect x="390" y="1393.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
+  <circle cx="398.5" cy="1401.5" r="6.5" fill="#ffffff"/>
+  </g>
+  <text x="34" y="1424" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">While every account is full, puts apiKeyHelper in</text>
+  <text x="34" y="1439" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">~/.claude/settings.json. If that file syncs to other machines,</text>
+  <text x="34" y="1454" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">they get the line too. Needs an API key on an account first.</text>
+  <line x1="24" y1="1466" x2="428" y2="1466" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="49" y="1481" fill="#98989d" font-size="9.5" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Account</text>
+  <text x="298" y="1481" fill="#98989d" font-size="9.5" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="end">Key</text>
+  <text x="354" y="1481" fill="#98989d" font-size="9.5" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="end">Spent</text>
+  <text x="398" y="1481" fill="#98989d" font-size="9.5" font-weight="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="end">Cap</text>
+  <line x1="24" y1="1487" x2="428" y2="1487" stroke="#f2f2f7" opacity="0.10" stroke-dasharray="1 2"/>
+  <text x="49" y="1506.0" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Account 1</text>
+  <rect x="262" y="1491.0" width="136" height="22" rx="5" fill="#f2f2f7" opacity="0.06"/>
+  <rect x="262" y="1491.0" width="136" height="22" rx="5" fill="none" stroke="#f2f2f7" opacity="0.22" stroke-width="0.5"/>
+  <text x="268" y="1505.5" fill="#98989d" font-size="11" font-weight="400" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace">sk-ant-…</text>
+  <g transform="translate(405,1495.0) scale(0.0547)" fill="#98989d"><path d="M219.31,72,184,36.69A15.86,15.86,0,0,0,172.69,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V83.31A15.86,15.86,0,0,0,219.31,72ZM168,208H88V152h80Zm40,0H184V152a16,16,0,0,0-16-16H88a16,16,0,0,0-16,16v56H48V48H172.69L208,83.31ZM160,72a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h56A8,8,0,0,1,160,72Z"/></g>
+  <rect x="24" y="1526" width="404" height="95" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <text x="34" y="1547" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Repository</text>
+  <line x1="24" y1="1559" x2="428" y2="1559" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="1578.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">github.com/hex/iterm-agents-sidebar</text>
+  <path transform="translate(406 1568.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
+  <line x1="24" y1="1590" x2="428" y2="1590" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="34" y="1609.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Release notes</text>
+  <path transform="translate(406 1599.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
   <rect x="452" y="44" width="404" height="353" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
   <text x="462" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Experimental</text>
   <line x1="452" y1="77" x2="856" y2="77" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>

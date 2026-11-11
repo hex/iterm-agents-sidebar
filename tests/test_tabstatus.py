@@ -91,16 +91,18 @@ def test_a_detail_reaches_the_call_as_one_literal_line():
         "dot_color": "#ff9501", "text_color": "#ff9501", "background_tasks": 0}
 
 
-def test_the_faces_are_the_panels_dark_colours_and_none_is_cc_statuss():
+def test_done_and_idle_wear_the_panels_dark_colours_and_none_is_cc_statuss():
     """The tab bar cannot follow the panel's theme, so a tab wears the dark
-    values; and the daemon knows its own dots only while cc-status uses none."""
+    values; needs you wears its own blue, not the panel's amber, which reads
+    as working's orange in the tab bar; and the daemon knows its own dots
+    only while cc-status uses none."""
     page = (Path(__file__).resolve().parent.parent / "page.html").read_text(encoding="utf-8")
     dark = page[page.index("@media (prefers-color-scheme: dark)"):]
 
     def token(name):
         return re.search(rf"--{name}:\s*(#[0-9a-f]{{6}})", dark).group(1)
-    assert (tabstatus.FACES["needs you"], tabstatus.FACES["done"], tabstatus.FACES["idle"]) == (
-        token("blocked-border"), token("sev-ok"), token("dim"))
+    assert (tabstatus.FACES["done"], tabstatus.FACES["idle"]) == (token("sev-ok"), token("dim"))
+    assert tabstatus.FACES["needs you"] == "#0a84ff"
     assert tabstatus.SIGNATURE.isdisjoint(tabstatus.CC_PALETTE)
 
 
@@ -210,7 +212,7 @@ def run(writer, app, rows, unseen, settings, hooks, log):
     asyncio.run(writer.step(app, rows, unseen, settings, hooks, log))
 
 
-def needs_you(detail, background=0, colour="#ff9f0a"):
+def needs_you(detail, background=0, colour="#0a84ff"):
     return {"status": "needs you", "detail": detail, "dot_color": colour, "text_color": colour, "background_tasks": background}
 
 
@@ -223,7 +225,7 @@ def test_a_card_that_needs_you_shows_its_question_and_idle_replaces_it_with_the_
     assert term.calls == [
         (GET, {"session_id": "a"}),
         (SET, {"session_id": "a", "status": "needs you", "detail": "Ship it?",
-               "dot_color": "#ff9f0a", "text_color": "#ff9f0a", "background_tasks": 0}),
+               "dot_color": "#0a84ff", "text_color": "#0a84ff", "background_tasks": 0}),
         (SET, {"session_id": "a", "status": "idle", "detail": "",
                "dot_color": "#98989d", "text_color": "#98989d", "background_tasks": 0}),
     ]

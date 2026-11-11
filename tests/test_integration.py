@@ -225,11 +225,15 @@ async def test_action_reaches_the_handler_over_http(tmp_path):
     assert calls == [("abc", "focus", None)]
 
 
-@pytest.mark.asyncio
-async def test_a_slow_account_op_does_not_hold_up_other_requests(tmp_path):
-    """A switch waits on Claude Code's locks and a token refresh for seconds; on
-    the event loop that would stall every other request and the heartbeat, and
-    the panel would flag itself stale in the middle of a switch."""
+def post_json(port, path, body):
+    request = urllib.request.Request(f"http://127.0.0.1:{port}{path}?token={TOKEN}", data=body, method="POST")
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return response.status
+
+
+async def page_timed_behind(tmp_path, ask, handler_name, slow_answer):
+    """Serve the page while a slow route's handler holds its request open: -> the
+    page's (status, seconds it took), and what the slow route answered."""
     import threading
     import time
     page = tmp_path / "page.html"
@@ -237,65 +241,60 @@ async def test_a_slow_account_op_does_not_hold_up_other_requests(tmp_path):
     # A thread event: a loop-side signal could not be delivered while the loop is blocked.
     started = threading.Event()
 
-    def slow_switch(op, request):
+    def slow(*_):
         started.set()
         time.sleep(1.5)
-        return {"id": "acct-2", "name": "home"}
+        return slow_answer
 
     sidebar = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: PAYLOAD,
-                      action_fn=lambda *a: None, accounts_fn=slow_switch)
+                      action_fn=lambda *a: None, **{handler_name: slow})
     port = await Server(sidebar).start()
 
-    def post():
-        request = urllib.request.Request(f"http://127.0.0.1:{port}/accounts?token={TOKEN}",
-                                         data=b'{"op": "switch", "account_id": "acct-2"}', method="POST")
-        with urllib.request.urlopen(request, timeout=5) as response:
-            return response.status
-
-    def page_while_switching():
+    def page_while_busy():
         # Timed entirely off the loop: awaiting anything would wait for the loop too.
         assert started.wait(2)
         began = time.monotonic()
         status, _ = get(f"http://127.0.0.1:{port}/?token={TOKEN}")
         return status, time.monotonic() - began
 
-    switching = asyncio.ensure_future(asyncio.to_thread(post))
-    status, took = await asyncio.to_thread(page_while_switching)
+    asked = asyncio.ensure_future(asyncio.to_thread(ask, port))
+    timed = await asyncio.to_thread(page_while_busy)
+    return timed, await asked
+
+
+@pytest.mark.asyncio
+async def test_a_slow_account_op_does_not_hold_up_other_requests(tmp_path):
+    """A switch waits on Claude Code's locks and a token refresh for seconds; on
+    the event loop that would stall every other request and the heartbeat, and
+    the panel would flag itself stale in the middle of a switch."""
+    (status, took), answered = await page_timed_behind(
+        tmp_path, lambda port: post_json(port, "/accounts", b'{"op": "switch", "account_id": "acct-2"}'),
+        "accounts_fn", {"id": "acct-2", "name": "home"})
     assert status == 200
     assert took < 0.5, f"the page waited {took:.2f}s behind the switch"
-    assert await switching == 200
+    assert answered == 200
 
 
 @pytest.mark.asyncio
 async def test_a_cold_activity_report_does_not_hold_up_other_requests(tmp_path):
     """A week's report reads every transcript written in it, for seconds the first time;
     on the event loop the heartbeat would stop and the panel flag itself stale."""
-    import threading
-    import time
-    page = tmp_path / "page.html"
-    page.write_text("<h1>agents</h1>")
-    started = threading.Event()
-
-    def slow_report(days):
-        started.set()
-        time.sleep(1.5)
-        return {"generated_at": 1, "days": []}
-
-    sidebar = Sidebar(token=TOKEN, page_path=page, snapshot_fn=lambda: PAYLOAD,
-                      action_fn=lambda *a: None, activity_fn=slow_report)
-    port = await Server(sidebar).start()
-
-    def page_while_reading():
-        assert started.wait(2)
-        began = time.monotonic()
-        status, _ = get(f"http://127.0.0.1:{port}/?token={TOKEN}")
-        return status, time.monotonic() - began
-
-    reading = asyncio.ensure_future(asyncio.to_thread(get, f"http://127.0.0.1:{port}/activity?token={TOKEN}"))
-    status, took = await asyncio.to_thread(page_while_reading)
+    (status, took), answered = await page_timed_behind(
+        tmp_path, lambda port: get(f"http://127.0.0.1:{port}/activity?token={TOKEN}"),
+        "activity_fn", {"generated_at": 1, "days": []})
     assert status == 200
     assert took < 0.5, f"the page waited {took:.2f}s behind the report"
-    assert await reading == (200, b'{"generated_at": 1, "days": []}')
+    assert answered == (200, b'{"generated_at": 1, "days": []}')
+
+
+@pytest.mark.asyncio
+async def test_saving_an_api_key_does_not_hold_up_other_requests(tmp_path):
+    """Saving a key waits on the API and the Keychain for up to ten seconds."""
+    (status, took), answered = await page_timed_behind(
+        tmp_path, lambda port: post_json(port, "/api-fallback", b'{"op": "not_now"}'), "api_fallback_fn", {})
+    assert status == 200
+    assert took < 0.5, f"the page waited {took:.2f}s behind the key check"
+    assert answered == 200
 
 
 async def update_over_http(tmp_path, result):

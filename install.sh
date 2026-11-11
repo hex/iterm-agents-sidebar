@@ -91,11 +91,19 @@ next+=("Open it:    View > Toolbelt > Agents (cmd-B shows the Toolbelt)")
 # touches nothing shared, and uninstall is one command.
 plugin_dir="$HOME/.claude/skills/agents-sidebar"
 if [ -d "$repo/plugin" ]; then
-  rm -rf "$plugin_dir"
-  mkdir -p "$plugin_dir"
+  # Running sessions call their hooks from this folder on every event, so the
+  # copy is unpacked beside it and renamed in: it is never half-written, and
+  # it is absent only between two renames. Unpacked outside skills/, where
+  # Claude Code would read it as a plugin.
+  stage="$HOME/.claude/.agents-sidebar.staging.$$"; old="$HOME/.claude/.agents-sidebar.old.$$"
+  rm -rf "$stage" "$old"
+  mkdir -p "$stage" "$(dirname "$plugin_dir")"
   # --exclude keeps __pycache__ out; the tests import the handler directly.
   # omp's extension is written into omp's own directory below, not here.
-  (cd "$repo/plugin" && /usr/bin/tar cf - --exclude __pycache__ --exclude ./omp .) | (cd "$plugin_dir" && tar xf -)
+  (cd "$repo/plugin" && /usr/bin/tar cf - --exclude __pycache__ --exclude ./omp .) | (cd "$stage" && tar xf -)
+  if [ -e "$plugin_dir" ]; then mv "$plugin_dir" "$old"; fi
+  mv "$stage" "$plugin_dir"
+  rm -rf "$old"
   ok hook "$(tilde "$plugin_dir")"
   next+=("Hooks load in sessions started from now on; /reload-plugins for a running one.")
   undo+=("hook        claude plugin disable agents-sidebar@skills-dir")

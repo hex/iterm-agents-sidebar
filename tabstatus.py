@@ -14,9 +14,10 @@ Word = Literal["working", "needs you", "done", "idle"]
 #: The one table of words and colours, dark-theme values as the tab bar
 #: cannot follow the panel's theme. Working is iTerm2's own working orange,
 #: one unit off cc-status's #ff9500 so the signature still tells the two
-#: dots apart; needs you is the panel's --blocked-border; done its --sev-ok;
-#: idle its --dim, a grey a shade off cc-status's.
-FACES: dict = {"working": "#ff9501", "needs you": "#ff9f0a", "done": "#30d158", "idle": "#98989d"}
+#: dots apart; needs you is macOS's dark system blue, far from working's
+#: orange in a tab bar where both sit side by side; done is the panel's
+#: --sev-ok; idle its --dim, a grey a shade off cc-status's.
+FACES: dict = {"working": "#ff9501", "needs you": "#0a84ff", "done": "#30d158", "idle": "#98989d"}
 #: The longest detail written: one line under a tab title.
 DETAIL_MOST = 60
 

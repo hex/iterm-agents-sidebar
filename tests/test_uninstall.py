@@ -78,19 +78,25 @@ def installed_home(tmp_path):
 
 
 @pytest.fixture
-def account():
-    """An account name for the store, whose Keychain item, should the
-    uninstall under test leave it, goes with the test whatever its outcome."""
+def account(throwaway_keychain):
+    """An account name for the store, whose Keychain items, in the login
+    keychain and the throwaway one, go with the test whatever its outcome."""
     account = f"test-uninstall-{uuid.uuid4().hex[:8]}"
     yield account
     accounts.delete_secret(SERVICE, account)
+    subprocess.run(["/usr/bin/security", "delete-generic-password", "-a", account, "-s", SERVICE,
+                    throwaway_keychain], capture_output=True)
 
 
 @pytest.mark.parametrize("keep_accounts", [False, True])
-def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, account, keep_accounts):
+def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, account, unlocked_keychain,
+                                                                    keep_accounts):
+    """The logins go from the keychain the run names, here the throwaway one;
+    an item of the same name in the login keychain is not the run's to take."""
     home = installed_home(tmp_path)
-    subprocess.run(["/usr/bin/security", "add-generic-password", "-a", account, "-s", SERVICE, "-w", "x",
-                    LOGIN_KEYCHAIN], check=True)
+    for keychain in (unlocked_keychain, LOGIN_KEYCHAIN):
+        subprocess.run(["/usr/bin/security", "add-generic-password", "-a", account, "-s", SERVICE, "-w", "x",
+                        keychain], check=True)
     config = home / ".config" / "agents-sidebar"
     (config / "locks").mkdir(parents=True)
     (config / "locks" / "store.lock").write_text("")
@@ -126,7 +132,8 @@ def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, acc
     assert hooks == {"hooks": {"SessionStart": [{"hooks": [
         {"command": "bash '/Users/jane/.codex/other-tool-state.sh' session", "timeout": 10, "type": "command"}]}]}}
     gone = subprocess.run(["/usr/bin/security", "find-generic-password", "-a", account, "-s", SERVICE,
-                           LOGIN_KEYCHAIN], capture_output=True)
+                           unlocked_keychain], capture_output=True)
+    assert item_in(LOGIN_KEYCHAIN, account), "an uninstall naming a keychain reached the login keychain"
     if keep_accounts:
         assert store.read_text() == stored
         assert sorted(p.name for p in config.iterdir()) == ["accounts.json"]
@@ -411,3 +418,123 @@ def test_an_underline_record_the_panel_did_not_write_is_warned_about_and_left(tm
     record = home / ".claude" / "agents-sidebar-status" / "tab-underline.json"
     assert (result.returncode, result.stderr, iterm_prefs()) == (
         0, f"  ! underline   {record} unreadable: {why}; left as it is\n", {UNDERLINE: 0.0})
+
+
+HELPER = str(REPO / "api-key-helper.sh")
+#: This checkout's command for alice's key, as the daemon writes it.
+HELPER_COMMAND = f"{HELPER} acct-1"
+#: What another launcher keeps under the panel's service as the single item `api-key`.
+LAUNCHERS = "sk-ant-test-launcher-not-a-real-key"
+
+
+def item_in(keychain, account):
+    return subprocess.run(["/usr/bin/security", "find-generic-password", "-a", account, "-s", SERVICE, keychain],
+                          capture_output=True).returncode == 0
+
+
+def store_item(keychain, account, value="sk-ant-test-not-a-real-key"):
+    subprocess.run(["/usr/bin/security", "add-generic-password", "-U", "-a", account, "-s", SERVICE,
+                    "-w", value, keychain], check=True)
+
+
+def store_accounts(home, ids):
+    """An account store naming `ids`, with no login items behind them: only their keys are the test's."""
+    config = home / ".config" / "agents-sidebar"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "accounts.json").write_text(json.dumps({"version": 1, "accounts": [
+        {"id": ident, "accountUuid": f"uuid-{ident}", "apiKeyLast4": "-key"} for ident in ids]}))
+
+
+def test_uninstall_takes_the_panels_key_helper_out_and_leaves_the_rest(tmp_path, unlocked_keychain):
+    home = installed_home(tmp_path)
+    settings = home / ".claude" / "settings.json"
+    store_accounts(home, ["acct-1"])
+    settings.write_text(json.dumps(dict(json.loads(settings.read_text()), apiKeyHelper=HELPER_COMMAND)))
+    result = run("uninstall.sh", home)
+    assert result.returncode == 0, result.stderr
+    assert "apiKeyHelper" not in json.loads(settings.read_text())
+    assert json.loads(settings.read_text())["theme"] == "dark"
+    assert "  ✓ api key     apiKeyHelper taken out of ~/.claude/settings.json\n" in result.stdout
+
+
+def test_uninstall_leaves_a_helper_that_only_shares_the_file_name(tmp_path, unlocked_keychain):
+    home = installed_home(tmp_path)
+    settings = home / ".claude" / "settings.json"
+    settings.write_text(json.dumps(dict(json.loads(settings.read_text()), apiKeyHelper="/opt/acme/api-key-helper.sh")))
+    result = run("uninstall.sh", home)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(settings.read_text())["apiKeyHelper"] == "/opt/acme/api-key-helper.sh"
+    assert "  - api key     apiKeyHelper is not the panel's; left alone\n" in result.stdout
+
+
+def test_uninstall_takes_out_the_command_the_record_says_was_written(tmp_path, unlocked_keychain):
+    """A checkout that moved left this command behind; the record says it is the panel's."""
+    home = installed_home(tmp_path)
+    settings = home / ".claude" / "settings.json"
+    moved = "/elsewhere/agents-sidebar/api-key-helper.sh"
+    settings.write_text(json.dumps(dict(json.loads(settings.read_text()), apiKeyHelper=moved)))
+    status = home / ".claude" / "agents-sidebar-status"
+    status.mkdir(exist_ok=True)
+    (status / "api-fallback.json").write_text(json.dumps({"command": moved}))
+    result = run("uninstall.sh", home)
+    assert result.returncode == 0, result.stderr
+    assert "apiKeyHelper" not in json.loads(settings.read_text())
+
+
+def test_uninstall_leaves_another_tools_key_helper_and_says_so(tmp_path, unlocked_keychain):
+    home = installed_home(tmp_path)
+    settings = home / ".claude" / "settings.json"
+    settings.write_text(json.dumps(dict(json.loads(settings.read_text()), apiKeyHelper="/usr/local/bin/print-my-key")))
+    result = run("uninstall.sh", home)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(settings.read_text())["apiKeyHelper"] == "/usr/local/bin/print-my-key"
+    assert "  - api key     apiKeyHelper is not the panel's; left alone\n" in result.stdout
+
+
+@pytest.mark.parametrize("keep_accounts", [False, True])
+def test_each_accounts_key_is_deleted_unless_logins_are_kept_and_the_launchers_item_never(
+        tmp_path, unlocked_keychain, keep_accounts):
+    """The keys go with the logins of the accounts the store names. The single item `api-key` belongs
+    to another launcher: uninstall leaves it whatever it is told about logins."""
+    home = installed_home(tmp_path)
+    store_accounts(home, ["acct-1", "acct-2"])
+    for account in ("api-key:acct-1", "api-key:acct-2", "api-key:acct-3"):
+        store_item(unlocked_keychain, account)
+    store_item(unlocked_keychain, "api-key", LAUNCHERS)
+    try:
+        result = run("uninstall.sh", home, *(["--keep-accounts"] if keep_accounts else []))
+        assert result.returncode == 0, result.stderr
+        assert [item_in(unlocked_keychain, f"api-key:acct-{n}") for n in (1, 2)] == [keep_accounts] * 2
+        assert item_in(unlocked_keychain, "api-key:acct-3"), "an account the store does not name is not the panel's to take"
+        assert item_in(unlocked_keychain, "api-key")
+        if not keep_accounts:
+            assert "  ✓ api key     2 API keys deleted\n" in result.stdout
+    finally:
+        for account in ("api-key:acct-1", "api-key:acct-2", "api-key:acct-3", "api-key"):
+            subprocess.run(["/usr/bin/security", "delete-generic-password", "-a", account, "-s", SERVICE,
+                            unlocked_keychain], capture_output=True)
+
+
+def test_a_keychain_named_that_does_not_exist_deletes_nothing(tmp_path, account):
+    """`security` given a path that is not there looks in the login keychain, where the real logins and
+    keys are."""
+    home = installed_home(tmp_path)
+    store_accounts(home, [account, "acct-1"])
+    subprocess.run(["/usr/bin/security", "add-generic-password", "-a", account, "-s", SERVICE, "-w", "x",
+                    LOGIN_KEYCHAIN], check=True)
+    missing = tmp_path / "no-such.keychain-db"
+    result = run("uninstall.sh", home, AGENTS_SIDEBAR_KEYCHAIN=str(missing))
+    assert result.returncode == 0, result.stderr
+    assert item_in(LOGIN_KEYCHAIN, account), "the login went from the login keychain"
+    assert f"  ! accounts    keychain not found at {missing}; logins and keys left alone\n" in result.stderr
+
+
+def test_the_fallback_record_goes_with_the_status_folder(tmp_path, unlocked_keychain):
+    home = installed_home(tmp_path)
+    status = home / ".claude" / "agents-sidebar-status"
+    status.mkdir(exist_ok=True)
+    (status / "api-fallback.json").write_text("{}")
+    (status / "api-fallback-orphaned").write_text("")
+    assert run("uninstall.sh", home).returncode == 0
+    assert not (status / "api-fallback.json").exists()
+    assert not (status / "api-fallback-orphaned").exists()

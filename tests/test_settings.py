@@ -367,3 +367,15 @@ def test_a_new_setting_takes_its_default_on_an_install_that_saved_before_it(tmp_
     store.write_text('{"mark_badge": false, "offer_statusline": false}')
     s = load_settings(store)
     assert (s["tab_status"], s["offer_tab_status"], s["tab_colour"], s["mark_badge"]) == (True, True, True, False)
+
+
+def test_api_credits_are_off_until_asked_for(tmp_path):
+    """The spec's promise: nothing changes for an install that never turns it on."""
+    assert load_settings(tmp_path / "nope.json")["api_fallback"] is False
+
+
+def test_the_spend_cap_is_no_panel_setting(tmp_path):
+    """Each account's key carries its own cap, in the account store."""
+    store = tmp_path / "settings.json"
+    saved = save_settings({"api_fallback": True, "api_fallback_cap_usd": 12.5}, store)
+    assert (saved["api_fallback"], "api_fallback_cap_usd" in saved) == (True, False)
