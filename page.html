@@ -1959,10 +1959,21 @@
     position: absolute; inset: 0 auto 0 0; width: var(--pct); border-radius: 1.5px;
     background: var(--sev-ok);
   }
-  /* claude-swap's bands: amber from 70%, red from 90%. */
+  /* claude-swap's bands: amber from 70%, red from 90%. From a shown 98% the
+     window is full: the bar and figure pulse once as it gets there, and keep
+     pulsing, in step with a waiting badge's breath, on the account sessions
+     run on. */
   #budget .win.climbing .fill { background: var(--sev-warn); }
   #budget .win.near .fill { background: var(--sev-crit); }
   #budget .win.near .pct, #budget .win.near.ahead .pct { color: var(--sev-crit); font-weight: 600; }
+  @media (prefers-reduced-motion: no-preference) {
+    #budget :is(.win, .fold-tile, .cfoot-line).full :is(.fill, .pct, .cpct) { animation: meter-full .9s ease-in-out 1; }
+    #budget :is(.win, .fold-tile, .cfoot-line).full.active :is(.fill, .pct, .cpct) {
+      animation: meter-full 1.9s ease-in-out infinite; animation-delay: var(--breathe-delay, 0ms);
+    }
+    html.hidden-page #budget :is(.win, .fold-tile, .cfoot-line).full.active :is(.fill, .pct, .cpct) { animation-play-state: paused; }
+    @keyframes meter-full { 0%, 100% { opacity: 1; } 35% { opacity: .2; } }
+  }
   /* Where the window's clock is: used past the tick means ahead of pace. */
   #budget .tick {
     position: absolute; top: -2px; left: var(--pct); width: 1px; height: 6px;
@@ -5784,6 +5795,7 @@ function meterRow(label, used, at, {tick = null, ahead = false} = {}) {
   fill.dataset.pct = Math.round(used);
   if (used >= 90) row.classList.add("near");
   else if (used >= 70) row.classList.add("climbing");
+  if (Math.round(used) >= 98) row.classList.add("full");
   track.append(fill);
   if (tick != null) {
     const mark = Object.assign(document.createElement("span"), {className: "tick"});
@@ -5807,6 +5819,7 @@ function meterRow(label, used, at, {tick = null, ahead = false} = {}) {
 
 // An account's windows: the 5-hour with its reset time, then every weekly
 // window, the overall one and each per-model limit, with cswap's pace rule.
+// The rows of the account sessions run on are marked active.
 function accountMeters(account) {
   const rows = [];
   if (account.five_hour) rows.push(meterRow("5-hour", account.five_hour.used, account.five_hour.resets_at));
@@ -5817,6 +5830,7 @@ function accountMeters(account) {
     rows.push(meterRow(label, w.used, w.resets_at,
       {tick: w.pace?.expected ?? null, ahead: !!w.pace?.ahead}));
   }
+  if (account.active) for (const row of rows) row.classList.add("active");
   return rows;
 }
 
@@ -6113,6 +6127,18 @@ function fallbackPost(body) {
     .then(r => r.json());
 }
 
+// How long a move back to the subscription holds the line before it goes back
+// to the last switch; a move to credits holds it while the sessions stay there.
+const FLIP_LINE_SECONDS = 3600;
+
+// The latest of a switch and a flip to API credits or back; a switch this
+// page is making wins, as it does over the daemon's own record.
+function movesLine(lastSwitch, flip, now = Date.now() / 1000) {
+  const shown = flip && !localSwitch && !(lastSwitch?.at > flip.at)
+    && (flip.to === "api" || now - flip.at < FLIP_LINE_SECONDS);
+  return shown ? flipLine(flip) : switchLine(lastSwitch);
+}
+
 // A flip to API credits or back, as the switch line records a switch.
 function flipLine(flip) {
   const line = Object.assign(document.createElement("div"), {className: "switched"});
@@ -6198,7 +6224,7 @@ function foldTile(icon, name, windows, {active = false, status = "", exhausted =
   }
   const row = meterRow(fullest.label, fullest.used, fullest.resets_at,
                        {tick: fullest.pace?.expected ?? null, ahead: !!fullest.pace?.ahead});
-  for (const kind of ["climbing", "near", "ahead"]) if (row.classList.contains(kind)) tile.classList.add(kind);
+  for (const kind of ["climbing", "near", "full", "ahead"]) if (row.classList.contains(kind)) tile.classList.add(kind);
   if (fullest.reserve) tile.classList.add("reserve");
   const fig = Object.assign(document.createElement("span"), {className: "fold-fig"});
   // A quarter of the panel holds one unit of the reset: "wk 1d", not "wk 1d 2h".
@@ -6233,7 +6259,7 @@ function compactFoot(store, codex, fallback) {
   const track = (line, fullest) => {
     const row = meterRow(fullest.label, fullest.used, fullest.resets_at,
                          {tick: fullest.pace?.expected ?? null, ahead: !!fullest.pace?.ahead});
-    for (const kind of ["climbing", "near", "ahead"]) if (row.classList.contains(kind)) line.classList.add(kind);
+    for (const kind of ["climbing", "near", "full", "ahead"]) if (row.classList.contains(kind)) line.classList.add(kind);
     return row.querySelector(".track");
   };
   const figure = fullest => el("span", "cpct", Math.round(fullest.used) + "%");
@@ -6279,6 +6305,7 @@ function compactFoot(store, codex, fallback) {
   toggle.append(el("span", "chev", "›"), el("span", "cacct", active.name));
   on(toggle, "click", open);
   const line = footLine(toggle, active.name, windows, store.exhausted);
+  line.classList.add("active");
   if (!windows.length) line.append(el("span", "acct-status", accountStatus(active)));
   box.append(line);
   if (next) {
@@ -6342,11 +6369,7 @@ function paintAccounts(strip, store, fallback) {
     if (status) strip.append(Object.assign(document.createElement("div"), {className: "acct-status", textContent: status}));
     strip.append(...accountMeters(active));
   }
-  // The latest of a switch and a flip to API credits or back; a switch this
-  // page is making wins, as it does over the daemon's own record.
-  const flip = fallback?.last_flip;
-  const switched = flip && !localSwitch && !(store.last_switch?.at > flip.at)
-    ? flipLine(flip) : switchLine(store.last_switch);
+  const switched = movesLine(store.last_switch, fallback?.last_flip);
   if (switched) strip.append(switched);
 
   const list = Object.assign(document.createElement("div"), {className: "acct-list"});
@@ -7783,7 +7806,7 @@ function moved(node) {
 // The phased motions: a shimmer and a breath start where the clock says the
 // sweep has reached, so every one on the page moves in step. Written when a
 // node is adopted, moved or changes class, never on a frame that kept it.
-const PHASED = [[".word.idle, .shimmer", syncShimmer], [".word.blocked", syncBreathe]];
+const PHASED = [[".word.idle, .shimmer", syncShimmer], [".word.blocked, .full.active", syncBreathe]];
 function syncPhases(node) {
   if (node.nodeType !== 1) return;
   for (const [selector, sync] of PHASED) {

@@ -151,6 +151,31 @@ def test_read_limits_falls_back_past_a_new_rollout_with_no_reading_yet(tmp_path)
     assert read_limits(str(tmp_path), now=NOW)["windows"][0]["used"] == 27.0
 
 
+# Shaped as each session Codex started and refused once the weekly window
+# was spent, on 2026-11-10: one reading, on another limit, with no window.
+REFUSED = {"limit_id": "premium", "limit_name": None, "primary": None, "secondary": None,
+           "credits": {"has_credits": False, "unlimited": False, "balance": None},
+           "rate_limit_reached_type": "workspace_owner_credits_depleted"}
+
+
+def test_read_limits_keeps_a_spent_window_past_the_sessions_codex_refused(tmp_path):
+    spent = dict(WEEKLY_ONLY, primary=dict(WEEKLY_ONLY["primary"], used_percent=100.0))
+    _rollout(tmp_path, "14", "spent", [_token_count(spent)], mtime=NOW - 86400)
+    for n in range(5):
+        _rollout(tmp_path, "15", f"refused-{n}", [_turn("gpt-6.1-sol"), _token_count(REFUSED)], mtime=NOW - 600 + n)
+    [window] = read_limits(str(tmp_path), now=NOW)["windows"]
+    assert (window["label"], window["used"], window["resets_at"]) == ("Weekly", 100.0, 1789843280)
+
+
+def test_read_limits_reads_again_a_rollout_that_had_no_reading_once_it_grows_one(tmp_path):
+    path = _rollout(tmp_path, "15", "starting", ['{"type": "session_meta"}'], mtime=NOW - 60)
+    assert read_limits(str(tmp_path), now=NOW) is None
+    with open(path, "a") as f:
+        f.write(_token_count(WEEKLY_ONLY) + "\n")
+    os.utime(path, (NOW - 60, NOW - 60))
+    assert [w["used"] for w in read_limits(str(tmp_path), now=NOW)["windows"]] == [27.0]
+
+
 def test_read_limits_finds_the_last_reading_of_a_long_rollout(tmp_path):
     filler = [json.dumps({"type": "response_item", "payload": {"text": "x" * 1000}})] * 400
     _rollout(tmp_path, "15", "long", [_token_count(FIVE_HOUR_AND_WEEKLY)] + filler + [_token_count(WEEKLY_ONLY)],

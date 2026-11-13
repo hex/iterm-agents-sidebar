@@ -80,7 +80,7 @@ const visible = node => node.hidden || node.className.split(' ').includes('offsc
 const columns = row => row.children.filter(td => !td.hidden).reduce((n, td) => n + (td.colSpan || 1), 0);
 const labelled = (node, start) => all(node).find(n => n.attrs['aria-label']?.startsWith(start));
 """
-NAMES = ("fallbackChip", "fallbackCountdown", "fallbackNotNow", "fallbackHoldWord", "flipLine", "apiFallbackCard",
+NAMES = ("fallbackChip", "fallbackCountdown", "fallbackNotNow", "fallbackHoldWord", "flipLine", "movesLine", "switchLine", "apiFallbackCard",
          "apiKeyRow", "paintApiFallback", "paintApiKeyRow", "fallbackPost", "stopFailureLine", "statusLine",
          "makeEl", "apiKeyState", "apiKeySpent", "apiKeyCap")
 NOW = 1_000_000
@@ -176,6 +176,24 @@ const there = flipLine({at: 5, to: 'api', why: 'every account is full'});
 const back = flipLine({at: 9, to: 'subscription', why: 'cap reached'});
 console.log(JSON.stringify([texts(there), texts(back)]));
 """) == [["On API credits", "every account is full", "age 5"], ["Back on the subscription", "cap reached", "age 9"]]
+
+
+def test_a_move_back_to_the_subscription_gives_the_line_back_to_the_last_switch_after_an_hour():
+    hour = 3600
+    switch = {"at": NOW - 3 * 86400, "to": "bob", "why": "alice is full", "auto": True}
+    back = {"at": NOW - 2 * 86400, "to": "subscription", "why": "API credits ran out"}
+    page_const = re.search(r"\nconst FLIP_LINE_SECONDS = .*;\n", PAGE).group(0)
+    shown = run(page_const + f"""
+let localSwitch = null;
+const line = (last, flip, now) => {{ const l = movesLine(last, flip, now); return l && texts(l)[0]; }};
+console.log(JSON.stringify([
+  line({json.dumps(switch)}, {json.dumps(dict(back, at=NOW - hour + 60))}, {NOW}),
+  line({json.dumps(switch)}, {json.dumps(back)}, {NOW}),
+  line(null, {json.dumps(back)}, {NOW}),
+  line({json.dumps(switch)}, {json.dumps(dict(back, to="api", why="every account is full"))}, {NOW}),
+]));
+""")
+    assert shown == ["Back on the subscription", "Switched to bob", None, "On API credits"]
 
 
 #: The meters' accounts, which name the rows while no account has a key and no fallback block is sent.

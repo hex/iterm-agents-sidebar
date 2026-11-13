@@ -238,3 +238,17 @@ def test_with_nowhere_emptier_the_chip_says_so_and_names_no_cost():
     assert run(CHIP, store((10, 94, 10), (None, 95, 10), (10, 96, 10))) == {
         "text": "no better account",
         "title": "weekly at 94%; no other account is at least 3 points emptier, so this one stays until one is"}
+
+
+def test_a_full_window_carries_its_tier_onto_the_folded_tile_and_the_compact_line():
+    """A tile and a compact line wear the meter's tiers; from a shown 98% that is full."""
+    figures = store((12, 67, 98), (None, 83, 97.4), (3, 72, 55))
+    tiers = """
+const tiers = el => ["climbing", "near", "full"].filter(kind => el.classList.contains(kind));
+"""
+    assert run(tiers + """
+console.log(JSON.stringify(foldedAccountTiles(STORE).map(tiers)));
+""", figures) == [["near", "full"], ["near"], ["climbing"]]
+    assert run(tiers + """
+console.log(JSON.stringify(tiers(compactFoot(STORE, CODEX).children[0])));
+""", figures, compact=True) == ["near", "full"]

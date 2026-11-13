@@ -57,6 +57,7 @@ the time left until each resets (`14m`, `2h`, `1d 17h`; a folded tile shows only
 | Green bar | Under 70% of the window used |
 | Amber bar | 70% or more used |
 | Red bar and red percentage | 90% or more used |
+| A red bar that pulses | The window reached 98% shown and has no room left. On the account your sessions run on it keeps pulsing until the window resets or you switch; on another account it pulses once. Never with Reduce motion on |
 | A tick on a weekly line | Where an even spend across the week would be right now: fill short of it means you could spend more before the reset, past it means you run out first. None in the first day after a reset. The row's hover names the tick's figure and the gap |
 | A warm percentage | 15 points or more past that tick |
 | `as of 14:02` | The last reading failed; these are the figures from then |
@@ -104,7 +105,8 @@ write, the panel puts the old login back and says so.
 Under the active account's bars, one line says where the last switch went, why,
 and how long ago. A chip marks a switch the panel made on its own. When a move
 to API credits or back (below) is newer than the last switch, the line says
-`On API credits · <why>` or `Back on the subscription · <why>` instead.
+`On API credits · <why>` or `Back on the subscription · <why>` instead. A move
+back holds the line for an hour, then the line names the last switch again.
 
 ## Switching on its own
 

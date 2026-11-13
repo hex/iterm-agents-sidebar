@@ -961,6 +961,17 @@ async def test_a_watch_that_stops_while_watching_is_said_and_left_to_the_poll(mo
         f"OSError(5, 'Input/output error')\n")
 
 
+async def readings_settle(readings, want, deadline=10.0, hold=0.3):
+    """Waits for `want` readings, however slow the rebuilds' thread hops run
+    under load, then holds a little more so a reading past it still shows."""
+    loop = asyncio.get_running_loop()
+    give_up = loop.time() + deadline
+    while len(readings) < want and loop.time() < give_up:
+        await asyncio.sleep(0.02)
+    await asyncio.sleep(hold)
+    return len(readings)
+
+
 class QueuedMonitor:
     """iTerm2's VariableMonitor as the watch meets it: changes wait in a
     queue until asked for, however long the asker was busy."""
@@ -989,8 +1000,7 @@ async def test_state_writes_that_land_during_a_rebuild_fold_into_one_more(monkey
     readings = []
     task = asyncio.ensure_future(bridge(monkeypatch, readings).watch_state("user.claudeState"))
     try:
-        await asyncio.sleep(0.3)
-        assert len(readings) == 2
+        assert await readings_settle(readings, 2) == 2
     finally:
         task.cancel()
 
@@ -1026,8 +1036,7 @@ async def test_a_rebuild_that_fails_leaves_the_layout_watch_running(monkeypatch,
     monkeypatch.setattr(sidebar, "read_system", fails_once)
     task = asyncio.ensure_future(b.watch_layout())
     try:
-        await asyncio.sleep(0.3)
-        assert len(readings) == 3
+        assert await readings_settle(readings, 3) == 3
         assert capsys.readouterr().out == "sidebar: rebuild failed: RuntimeError('listing failed')\n"
     finally:
         task.cancel()

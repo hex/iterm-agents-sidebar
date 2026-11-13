@@ -19,8 +19,6 @@ MODELS_CACHE = os.path.expanduser("~/.codex/models_cache.json")
 STATE_DB = os.path.expanduser("~/.codex/state_5.sqlite")
 #: How much of a rollout's end to read; readings repeat every turn, so the last one is near the end.
 TAIL_BYTES = 256 * 1024
-#: Newest rollouts to look through when the newest has no reading yet.
-ROLLOUTS_TO_TRY = 3
 
 
 def _label(minutes):
@@ -197,8 +195,8 @@ def _children(path, descending=True):
         return []
 
 
-def newest_rollouts(sessions_dir, count=ROLLOUTS_TO_TRY):
-    """The most recently written rollout logs, newest first.
+def newest_rollouts(sessions_dir):
+    """The rollout logs of the scanned day folders, most recently written first.
 
     Codex files them under year/month/day; only the newest day folders are
     listed, so the cost stays flat as the archive grows.
@@ -212,7 +210,7 @@ def newest_rollouts(sessions_dir, count=ROLLOUTS_TO_TRY):
                     rollouts.append((os.path.getmtime(path), path))
                 except OSError:
                     continue
-    return [path for _, path in sorted(rollouts, reverse=True)[:count]]
+    return [path for _, path in sorted(rollouts, reverse=True)]
 
 
 def _tail_lines(path, size=TAIL_BYTES):
@@ -227,15 +225,38 @@ def _tail_lines(path, size=TAIL_BYTES):
         return f.read().decode("utf-8", errors="replace").splitlines()
 
 
+#: Rollouts last read with no limits reading in them, each with the size and
+#: modification time it had then, so an unchanged one is not read again.
+_without_reading = {}
+
+
 def read_limits(sessions_dir, now):
-    """Codex's latest limits from its newest rollouts, or None when there are none to read."""
-    for path in newest_rollouts(sessions_dir):
+    """Codex's latest limits from the newest rollout that holds a reading, or None when none does.
+
+    Once a limit is spent, Codex starts and refuses a session at every try,
+    each logging one reading with no window, so the last reading that has one
+    can sit behind any number of newer rollouts.
+    """
+    rollouts = newest_rollouts(sessions_dir)
+    listed = set(rollouts)
+    for path in list(_without_reading):
+        if path not in listed:
+            del _without_reading[path]
+    for path in rollouts:
+        try:
+            info = os.stat(path)
+        except OSError:
+            continue
+        version = (info.st_size, info.st_mtime_ns)
+        if _without_reading.get(path) == version:
+            continue
         try:
             limits = limits_from_lines(_tail_lines(path), now)
         except OSError:
             continue
         if limits is not None:
             return limits
+        _without_reading[path] = version
     return None
 
 

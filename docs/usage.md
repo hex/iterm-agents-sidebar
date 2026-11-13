@@ -1023,7 +1023,8 @@ the head when the panel is narrow:
 The line under the active account's bars records each move to credits and back
 as it records a switch: `On API credits · every account is full`,
 `On API credits · the running models are full on every account`, or
-`Back on the subscription · cap reached`, with how long ago.
+`Back on the subscription · cap reached`, with how long ago. A move back
+holds the line for an hour, then the line names the last switch again.
 
 A turn that ends in a `StopFailure`, on credits or not, goes idle as after any
 other turn, and the card's line names the error: `Turn failed: billing_error`.

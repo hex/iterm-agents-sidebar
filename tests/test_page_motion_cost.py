@@ -77,7 +77,8 @@ def endless_css():
 
 
 def test_the_page_has_endless_css_animations_to_judge():
-    assert {name for _, name in endless_css()} == {"bob", "sweep-across", "sweep-hold", "breathe", "pair-breathe"}
+    assert {name for _, name in endless_css()} == {"bob", "sweep-across", "sweep-hold", "breathe", "pair-breathe",
+                                                   "meter-full"}
 
 
 def test_every_endless_css_animation_moves_only_transform_or_opacity():
@@ -97,12 +98,26 @@ def test_every_endless_css_animation_pauses_while_the_page_is_hidden():
     assert missing == []
 
 
+# The accounts strip sits in the sticky foot, on screen whenever the panel
+# shows and hidden whole while Settings is open, so it has no row to scroll
+# out of the list's view.
+ALWAYS_IN_VIEW = "#budget "
+
+
 def test_every_endless_css_animation_pauses_while_its_row_is_out_of_view():
     # `.busy.out-of-view i` pauses `.busy i`, `.out-of-view > .sweep` pauses `.sweep`.
     unmarked = {re.sub(r"\s+", " ", p.replace(".out-of-view > ", "").replace(".out-of-view", "")).strip()
                 for p in paused() if ".out-of-view" in p}
-    missing = [selector for selector, _ in endless_css() if selector not in unmarked]
+    missing = [selector for selector, _ in endless_css()
+               if selector not in unmarked and not selector.startswith(ALWAYS_IN_VIEW)]
     assert missing == []
+
+
+def test_the_accounts_strip_stays_in_the_sticky_foot():
+    text = page()
+    foot = text[text.index('<div id="foot">'):text.index('<div id="scrim"')]
+    assert '<div id="budget" hidden></div>' in foot
+    assert "#foot { position: sticky;" in text
 
 
 def closing(text, at):

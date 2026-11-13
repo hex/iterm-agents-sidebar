@@ -296,7 +296,8 @@ over to the next key at once, and with none left the sessions go back at once
 Codex's own limits sit under them, read from
 its session log: a 5-hour and a weekly window, or weekly alone, depending on
 the plan, and a row for the fallback allowance while Codex draws on one, such
-as Luna Reserve. Click **Accounts**, or its head outside Auto-switch and its
+as Luna Reserve. A spent window stays at 100% until it resets, also while
+Codex refuses every new session. Click **Accounts**, or its head outside Auto-switch and its
 chip, to fold the lot to a tile per
 account and Codex, each with its fullest window as one bar. An account's bar
 passes over a model limit full on every account for the next limit with room,

@@ -350,8 +350,9 @@ async function band($: any): Promise<{ align: unknown; parts: Part[] } | undefin
   const drawn = await $.ui.mount({ plugin: 'agents-sidebar', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
   const leaves = (await drawn.findAll({ type: 'Text' })).filter((text: any) => text.children.every((child: unknown) => typeof child === 'string'))
   if (leaves.length === 0) return undefined
-  const row = await drawn.find({ type: 'Box' })
-  return { align: row.props.justifyContent, parts: leaves.map((text: any) => ({ text: text.text, background: text.props.backgroundColor })) }
+  // The band's row spans the body; the host may wrap a surface in boxes of its own.
+  const row = (await drawn.findAll({ type: 'Box' })).find((box: any) => box.props.width === PROPS.bodyColumns)
+  return { align: row?.props.justifyContent, parts: leaves.map((text: any) => ({ text: text.text, background: text.props.backgroundColor })) }
 }
 
 // A session with no colour of its own, or one the panel does not know, wears a neutral grey.
