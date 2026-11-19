@@ -12,11 +12,27 @@ def test_no_icon_is_classed_by_assigning_className():
     assert assigned == []
 
 
+#: Marks the foot draws that no agent wears.
+FOOT_MARKS = {"antigravity"}
+
+
+def provider_marks(source):
+    """The keys of the page's PROVIDER_ICONS, in their order."""
+    listed = re.search(r"const PROVIDER_ICONS = \{(.*?)\n\};", source, re.S).group(1)
+    return re.findall(r"^\s*(\w+): '", listed, re.M)
+
+
 def test_every_agent_the_daemon_names_has_a_mark():
+    source = PAGE.read_text(encoding="utf-8")
+    assert [kind for kind in provider_marks(source) if kind not in FOOT_MARKS] == ["claude", "openai", "omp"]
+
+
+def test_antigravitys_quota_has_a_mark_of_its_own_for_the_foot():
     """Antigravity's marks only its quota in the foot: no card runs it."""
     source = PAGE.read_text(encoding="utf-8")
-    listed = re.search(r"const PROVIDER_ICONS = \{(.*?)\n\};", source, re.S).group(1)
-    assert re.findall(r"^\s*(\w+): '", listed, re.M) == ["claude", "openai", "omp", "antigravity"]
+    assert "antigravity" in provider_marks(source)
+    programs = re.search(r"const PROGRAMS = \{(.*?)\n\};", source, re.S).group(1)
+    assert "antigravity" not in re.findall(r"^\s*(\w+): \{", programs, re.M)
 
 
 def test_an_agent_without_a_mark_of_its_own_gets_the_plain_one():
