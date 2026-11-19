@@ -276,6 +276,28 @@ def test_an_ask_while_another_is_in_flight_skips_rather_than_queue_another_agy()
     assert (agy.runs, agy.most_in_flight) == (1, 1)
 
 
+def test_a_snapshot_reads_what_the_foot_draws_once_while_an_ask_may_replace_it():
+    reading = quota_from_reply(json.dumps(REPLY), NOW)
+
+    class Racing(Quota):
+        """The first look at what shows finds the reading and the next finds none, as when an
+        ask in another thread clears it between the two."""
+        looks = 0
+
+        @property
+        def _shown(self):
+            self.looks += 1
+            return (reading, NOW, False) if self.looks == 1 else None
+
+        @_shown.setter
+        def _shown(self, value):
+            self.stored = value
+
+    snap = Racing(find=lambda: "/bin/agy", run=Agy()).snapshot(NOW)
+    assert [g["name"] for g in snap["groups"]] == ["Gemini Models", "Claude and GPT models", "Gemini 4 Argon"]
+    assert "as_of" not in snap
+
+
 def test_a_step_after_a_reload_waits_for_the_reloads_interval():
     agy = Agy((0, json.dumps(REPLY)), (0, json.dumps(REPLY)), (0, json.dumps(REPLY)))
     quota = Quota(find=lambda: "/bin/agy", run=agy)

@@ -173,13 +173,31 @@ class Quota:
         self.find = find or (lambda: find_agy())
         self.run = run or (lambda agy: run_agy(agy))
         self.log = log
-        self.reading = None      # {"groups": [...]} from the last good reply
-        self.read_at = None      # when that reply came
-        self.failed = False      # whether the latest ask failed after it
+        # What the foot draws, replaced whole so a snapshot taken while an ask
+        # ends never mixes two asks: None, or (reading, read_at, failed).
+        self._shown = None
         self.no_quota = False    # agy said the login has no account quota
         self.asked_at = None
         self.next_at = 0.0
         self._lock = threading.Lock()
+
+    @property
+    def reading(self):
+        """{"groups": [...]} from the last good reply, or None."""
+        shown = self._shown
+        return shown[0] if shown else None
+
+    @property
+    def read_at(self):
+        """When that reply came, or None."""
+        shown = self._shown
+        return shown[1] if shown else None
+
+    @property
+    def failed(self):
+        """Whether the latest ask failed after that reply."""
+        shown = self._shown
+        return shown[2] if shown else False
 
     def step(self, now):
         """Ask agy if a reading is due. Returns whether the snapshot may have changed."""
@@ -199,8 +217,8 @@ class Quota:
                 return False
             agy = self.find()
             if agy is None:
-                changed = self.reading is not None or self.no_quota
-                self.reading, self.read_at, self.failed, self.no_quota = None, None, False, False
+                changed = self._shown is not None or self.no_quota
+                self._shown, self.no_quota = None, False
                 self.next_at = now + READ_SECONDS
                 return changed
             self.asked_at = now
@@ -211,8 +229,8 @@ class Quota:
             except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as error:
                 return self._failed(now, f"agy did not answer: {error!r}")
             if code == NO_QUOTA_EXIT:
-                changed = self.reading is not None or not self.no_quota
-                self.reading, self.read_at, self.failed, self.no_quota = None, None, False, True
+                changed = self._shown is not None or not self.no_quota
+                self._shown, self.no_quota = None, True
                 self.next_at = now + NO_QUOTA_SECONDS
                 return changed
             try:
@@ -221,7 +239,7 @@ class Quota:
                 return self._failed(now, f"agy's reply could not be read: {error!r}")
             if quota is None:
                 return self._failed(now, f"agy /quota exited {code} without a quota")
-            self.reading, self.read_at, self.failed, self.no_quota = quota, now, False, False
+            self._shown, self.no_quota = (quota, now, False), False
             self.next_at = now + READ_SECONDS
             return True
         finally:
@@ -230,9 +248,12 @@ class Quota:
     def _failed(self, now, why):
         self.log("antigravity quota not read:", why)
         self.next_at = now + READ_SECONDS
-        changed = not self.failed
-        self.failed = True
-        return changed
+        shown = self._shown
+        # With no reading nothing shows, failed or not.
+        if shown is None or shown[2]:
+            return False
+        self._shown = (shown[0], shown[1], True)
+        return True
 
     def snapshot(self, now):
         """What the foot draws, or None with nothing to show.
@@ -240,7 +261,9 @@ class Quota:
         {"groups": [...]} with each window as of `now` (a passed reset reads
         0%), and "as_of", the reading's time, while the latest ask failed.
         """
-        if self.reading is None:
+        shown = self._shown
+        if shown is None:
             return None
-        groups = [{**g, "windows": [_expired(w, now) for w in g["windows"]]} for g in self.reading["groups"]]
-        return {"groups": groups, **({"as_of": self.read_at} if self.failed else {})}
+        reading, read_at, failed = shown
+        groups = [{**g, "windows": [_expired(w, now) for w in g["windows"]]} for g in reading["groups"]]
+        return {"groups": groups, **({"as_of": read_at} if failed else {})}
