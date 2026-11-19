@@ -162,8 +162,10 @@ def _expired(window, now):
 class Quota:
     """The last quota agy reported, and when to ask it again.
 
-    `step` runs on the daemon's account loop and `reload` on the server's
-    worker thread, so one lock keeps two asks from overlapping.
+    `step` runs in a worker thread of watch_antigravity and `reload` in a
+    thread of its own for each press of reload. One lock keeps two asks from
+    overlapping: an ask that finds another in flight skips, and whether one
+    is due is decided under the lock.
     """
 
     def __init__(self, find=None, run=None, log=lambda *words: None):
@@ -181,18 +183,20 @@ class Quota:
 
     def step(self, now):
         """Ask agy if a reading is due. Returns whether the snapshot may have changed."""
-        if now < self.next_at:
-            return False
-        return self._ask(now)
+        return self._ask(now, lambda: now >= self.next_at)
 
     def reload(self, now):
         """The reload button: ask now unless the last ask was moments ago."""
-        if self.asked_at is not None and now - self.asked_at < RELOAD_FLOOR_SECONDS:
-            return False
-        return self._ask(now)
+        return self._ask(now, lambda: self.asked_at is None or now - self.asked_at >= RELOAD_FLOOR_SECONDS)
 
-    def _ask(self, now):
-        with self._lock:
+    def _ask(self, now, due):
+        # An ask in flight gets the answer this one would, so this one skips
+        # rather than wait and start a second agy.
+        if not self._lock.acquire(blocking=False):
+            return False
+        try:
+            if not due():
+                return False
             agy = self.find()
             if agy is None:
                 changed = self.reading is not None or self.no_quota
@@ -220,6 +224,8 @@ class Quota:
             self.reading, self.read_at, self.failed, self.no_quota = quota, now, False, False
             self.next_at = now + READ_SECONDS
             return True
+        finally:
+            self._lock.release()
 
     def _failed(self, now, why):
         self.log("antigravity quota not read:", why)

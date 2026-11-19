@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -228,6 +229,59 @@ def test_reload_asks_at_once_unless_the_last_ask_was_a_moment_ago():
     assert quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS - 1) is False
     assert agy.asks == 1
     quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS)
+    assert agy.asks == 2
+
+
+class HeldAgy:
+    """Stands in for an agy that answers only once `answer` is set, counting its runs."""
+
+    def __init__(self):
+        self.answer, self.started = threading.Event(), threading.Event()
+        self.runs = self.in_flight = self.most_in_flight = 0
+        self._count = threading.Lock()
+
+    def __call__(self, path):
+        with self._count:
+            self.runs += 1
+            self.in_flight += 1
+            self.most_in_flight = max(self.most_in_flight, self.in_flight)
+        self.started.set()
+        self.answer.wait(timeout=10)
+        with self._count:
+            self.in_flight -= 1
+        return 0, json.dumps(REPLY)
+
+
+def test_an_ask_while_another_is_in_flight_skips_rather_than_queue_another_agy():
+    agy = HeldAgy()
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    first = threading.Thread(target=quota.reload, args=(NOW,))
+    first.start()
+    assert agy.started.wait(timeout=5)
+    said = {}
+    helpers = [
+        threading.Thread(target=lambda: said.update(step=quota.step(NOW + agy_quota.READ_SECONDS))),
+        threading.Thread(target=lambda: said.update(reload=quota.reload(NOW + 2 * agy_quota.RELOAD_FLOOR_SECONDS))),
+    ]
+    for helper in helpers:
+        helper.start()
+        helper.join(timeout=1)
+    waiting = [helper.is_alive() for helper in helpers]
+    runs_while_held = agy.runs
+    agy.answer.set()
+    for thread in [first, *helpers]:
+        thread.join(timeout=5)
+    assert (waiting, runs_while_held) == ([False, False], 1)
+    assert said == {"step": False, "reload": False}
+    assert (agy.runs, agy.most_in_flight) == (1, 1)
+
+
+def test_a_step_after_a_reload_waits_for_the_reloads_interval():
+    agy = Agy((0, json.dumps(REPLY)), (0, json.dumps(REPLY)), (0, json.dumps(REPLY)))
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW)
+    assert quota.reload(NOW + agy_quota.READ_SECONDS - 1) is True
+    assert quota.step(NOW + agy_quota.READ_SECONDS) is False
     assert agy.asks == 2
 
 
