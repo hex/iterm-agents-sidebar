@@ -308,11 +308,15 @@ Inspect Element.
 - **Antigravity's quota:** `agy -p /quota --output-format json`, run by
   `watch_antigravity` on the account loop's 30-second tick whenever
   `agy_quota.Quota` says a reading is due (every 5 minutes, an hour after agy
-  exits with code 2), in a thread, from the temporary folder, with
-  `--log-file /dev/null`. agy reports how much of each window is left; the panel
-  draws how much is used, as it does for accounts. The rebuild only copies the
-  last reading into the snapshot, so it never waits on agy. Tests never start
-  agy: an autouse fixture in `tests/conftest.py` makes `find_agy` find none.
+  exits with code 2), in a thread, with `--log-file /dev/null` and the
+  daemon's environment. agy treats the folder it starts in as a project and
+  reads its `.agents/hooks.json`, so each run starts in a new empty folder of
+  its own under `~/.local/share/agents-sidebar/agy`, removed after the run.
+  agy reports how much of each window is left; the panel draws how much is
+  used, as it does for accounts. The rebuild only copies the last reading into
+  the snapshot, so it never waits on agy. Tests never start agy: an autouse
+  fixture in `tests/conftest.py` makes `find_agy` find none and points
+  `AGY_FOLDER` into the test's own folder.
 - **CPU and memory:** one `ps` listing per rebuild, summed over each session's
   process tree by parent pid, stopping at any pid that is another card so a
   teammate is not counted twice. CPU is `ps %cpu` summed. Only the verdict
@@ -407,6 +411,9 @@ of a guess.
 - `~/.config/agents-sidebar/accounts.json`: the accounts the panel knows.
 - `~/.local/share/agents-sidebar/endpoint.json`: the running daemon's port,
   token and pid, for `agents-sidebar`.
+- `~/.local/share/agents-sidebar/agy/`: a folder only your user can open,
+  with a new empty folder for each `agy -p /quota` run to start in, removed
+  when that run ends.
 
 ## Tests
 

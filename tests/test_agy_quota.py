@@ -4,15 +4,23 @@ REPLY is the shape agy 1.5.12 printed on a personal Google login, with its
 descriptions shortened; its figures are kept as they came.
 """
 import json
+import os
+import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import agy_quota
 from agy_quota import Quota, find_agy, quota_from_reply
+
+#: Read at import, before the suite's fixture points it into each test's folder.
+DEFAULT_AGY_FOLDER = agy_quota.AGY_FOLDER
 
 NOW = 1795124000  # 2026-11-19T21:33:20Z
 REPLY = {
@@ -222,6 +230,64 @@ def test_agy_runs_quietly_out_of_any_project_with_its_log_kept_out_of_its_folder
     assert seen["env"]["AGY_CLI_DISABLE_AUTO_UPDATE"] == "1"
     assert seen["timeout"] == agy_quota.TIMEOUT_SECONDS
     assert seen["stdin"] == subprocess.DEVNULL
+
+
+def test_each_run_starts_in_a_new_empty_folder_of_the_panels_own_and_leaves_none(tmp_path, monkeypatch):
+    """agy reads .agents/hooks.json in the folder it starts in, so that folder is never one another
+    program can write to."""
+    folder = tmp_path / "share" / "agy"
+    monkeypatch.setattr(agy_quota, "AGY_FOLDER", str(folder))
+    cwds = []
+
+    def fake_run(argv, **kwargs):
+        cwd = kwargs["cwd"]
+        cwds.append(cwd)
+        assert Path(cwd).parent == folder
+        assert os.listdir(cwd) == []
+        assert stat.S_IMODE(os.stat(cwd).st_mode) == 0o700
+        assert stat.S_IMODE(os.stat(folder).st_mode) == 0o700
+        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(agy_quota.subprocess, "run", fake_run)
+    assert agy_quota.run_agy("/bin/agy") == (0, "{}")
+    assert len(cwds) == 1 and not os.path.exists(cwds[0])
+
+
+def test_a_run_that_times_out_still_takes_its_folder_away(tmp_path, monkeypatch):
+    folder = tmp_path / "share" / "agy"
+    monkeypatch.setattr(agy_quota, "AGY_FOLDER", str(folder))
+    cwds = []
+
+    def fake_run(argv, **kwargs):
+        cwds.append(kwargs["cwd"])
+        raise subprocess.TimeoutExpired(argv, agy_quota.TIMEOUT_SECONDS)
+
+    monkeypatch.setattr(agy_quota.subprocess, "run", fake_run)
+    with pytest.raises(subprocess.TimeoutExpired):
+        agy_quota.run_agy("/bin/agy")
+    assert len(cwds) == 1 and Path(cwds[0]).parent == folder
+    assert not os.path.exists(cwds[0])
+
+
+def test_a_folder_for_agy_that_is_a_link_is_refused_and_agy_never_runs(tmp_path, monkeypatch):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    folder = tmp_path / "share" / "agy"
+    folder.parent.mkdir()
+    folder.symlink_to(elsewhere)
+    monkeypatch.setattr(agy_quota, "AGY_FOLDER", str(folder))
+    runs = []
+    monkeypatch.setattr(agy_quota.subprocess, "run", lambda argv, **kwargs: runs.append(argv))
+    with pytest.raises(OSError):
+        agy_quota.run_agy("/bin/agy")
+    assert runs == [] and os.listdir(elsewhere) == []
+
+
+def test_the_panels_folder_for_agy_is_not_under_the_shared_temporary_folder():
+    temporary = os.path.realpath(tempfile.gettempdir())
+    folder = os.path.realpath(DEFAULT_AGY_FOLDER)
+    assert os.path.commonpath([folder, temporary]) != temporary
+    assert DEFAULT_AGY_FOLDER == os.path.expanduser("~/.local/share/agents-sidebar/agy")
 
 
 def test_a_daemons_quota_looks_agy_up_at_each_ask(monkeypatch):

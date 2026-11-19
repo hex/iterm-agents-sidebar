@@ -413,10 +413,20 @@ its own login, which the panel never reads, keeps or sends. Each run takes about
 three seconds. agy writes its log to `/dev/null` for these runs, so they leave
 nothing in `~/.gemini/antigravity-cli/log`, and the panel sets
 `AGY_CLI_DISABLE_AUTO_UPDATE` for them, since a run that only reads the quota
-has no reason to update agy.
+has no reason to update agy. agy runs in an empty folder the panel makes for
+each run, so nothing another program leaves in a shared folder is read as a
+project.
 
 A run that fails keeps the last figures, with `as of 14:02` beside the name, or
 in place of the reset on the folded tile. A login with no account quota, such as
 a `GEMINI_API_KEY`, makes agy exit with code 2: the block goes, and the panel
 asks again an hour later. Without agy, nothing runs and nothing shows. A window
 whose reset time has passed reads 0% until the next reading.
+
+agy runs with the environment iTerm2 started the panel with, not your shell's,
+so a `GEMINI_API_KEY`, a `GOOGLE_*` setting or an `HTTPS_PROXY` set only in a
+shell profile such as `~/.zshrc` does not reach it. The block shows the quota of
+the Google login agy keeps in the Keychain, while panes started from a shell
+with a key may be spending the key. Behind a proxy set only in the shell, runs
+can fail and the block keeps its last figures. To give the panel the same
+values, run `launchctl setenv NAME value` and restart iTerm2.

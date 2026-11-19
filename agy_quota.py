@@ -12,6 +12,7 @@ exits with code 2.
 import json
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
 import threading
@@ -31,6 +32,10 @@ RELOAD_FLOOR_SECONDS = 60
 TIMEOUT_SECONDS = 60
 #: agy's exit code when the login has no account quota to show.
 NO_QUOTA_EXIT = 2
+#: agy treats the folder it starts in as a project and reads its
+#: .agents/hooks.json, so each run starts in a new empty folder under this
+#: one, which the panel owns.
+AGY_FOLDER = os.path.expanduser("~/.local/share/agents-sidebar/agy")
 
 #: The window names agy uses -> (minutes, the label the foot uses for that length elsewhere).
 WINDOWS = {"5h": (300, "5-hour"), "weekly": (10080, "Weekly")}
@@ -102,14 +107,34 @@ def quota_from_reply(text, read_at):
     return {"groups": groups} if groups else None
 
 
+def _own_folder(path):
+    """`path`, made if missing, as a folder of this user's that only this user can open.
+
+    Raises OSError when it is anything else, a link included.
+    """
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    st = os.lstat(path)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise OSError(f"{path} is not a folder of this user")
+    if stat.S_IMODE(st.st_mode) != 0o700:
+        os.chmod(path, 0o700)
+    return path
+
+
 def run_agy(agy):
-    """One `agy -p /quota` -> (exit code, stdout). Raises OSError or TimeoutExpired."""
-    done = subprocess.run(
-        [agy, "-p", "/quota", "--output-format", "json", "--log-file", os.devnull],
-        capture_output=True, text=True, timeout=TIMEOUT_SECONDS, stdin=subprocess.DEVNULL,
-        # Out of any project folder, and with agy's updater asked to stay out
-        # of a run that only reads the quota.
-        cwd=tempfile.gettempdir(), env={**os.environ, "AGY_CLI_DISABLE_AUTO_UPDATE": "1"})
+    """One `agy -p /quota` -> (exit code, stdout). Raises OSError or TimeoutExpired.
+
+    agy starts in a new empty folder under AGY_FOLDER, taken away after the run.
+    """
+    run = tempfile.mkdtemp(prefix="run-", dir=_own_folder(AGY_FOLDER))
+    try:
+        done = subprocess.run(
+            [agy, "-p", "/quota", "--output-format", "json", "--log-file", os.devnull],
+            capture_output=True, text=True, timeout=TIMEOUT_SECONDS, stdin=subprocess.DEVNULL,
+            # With agy's updater asked to stay out of a run that only reads the quota.
+            cwd=run, env={**os.environ, "AGY_CLI_DISABLE_AUTO_UPDATE": "1"})
+    finally:
+        shutil.rmtree(run, ignore_errors=True)
     return done.returncode, done.stdout
 
 

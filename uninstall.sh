@@ -314,7 +314,8 @@ else
   rm -rf "$status_dir"
 fi
 rm -rf "$HOME/.claude/agents-sidebar-subagents" \
-       "$HOME/.claude/agents-sidebar-tasks" "$HOME/.claude/agents-sidebar-links"
+       "$HOME/.claude/agents-sidebar-tasks" "$HOME/.claude/agents-sidebar-links" \
+       "$HOME/.local/share/agents-sidebar/agy"
 rm -f "$HOME/.claude/agents-sidebar-settings.json" "$HOME/.local/share/agents-sidebar/endpoint.json"
 if [ "$keep_accounts" = 1 ]; then
   ok data "settings and state removed"
