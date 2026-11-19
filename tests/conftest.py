@@ -47,6 +47,14 @@ def codex_config_of_the_test(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(codex, "MODELS_CACHE", str(folder / "models_cache.json"))
 
 
+@pytest.fixture(autouse=True)
+def no_agy_for_the_test(monkeypatch):
+    """A daemon built in a test finds no agy, so a reload or a quota step never starts this
+    machine's own Antigravity CLI, which would ask Google on its login."""
+    import antigravity
+    monkeypatch.setattr(antigravity, "find_agy", lambda *paths: None)
+
+
 SIDEBAR_PY = str(Path(__file__).resolve().parent.parent / "sidebar.py")
 
 

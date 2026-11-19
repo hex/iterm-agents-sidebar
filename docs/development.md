@@ -196,6 +196,8 @@ read against the source.
   or it cannot read the key from the Keychain.
 - `codex.py`: Codex rate limits, read from Codex's own session logs, and a linked
   Codex session's reply, read from its rollout.
+- `antigravity.py`: Antigravity's quota, read every 5 minutes by running
+  `agy -p /quota --output-format json`, and the last reading with its age when a run fails.
 - `omp.py`: what an omp session says about itself, read from its own files.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
 - `past.py`: the rows of the History fold's Sessions tab, read from Claude Code's transcripts.
@@ -303,6 +305,14 @@ Inspect Element.
   start. Figures another `activity.py` made (the file's SHA-256), or made in
   another time zone, or not wholly in the shape it writes, are not used: that
   read starts cold and `daemon.log` says why.
+- **Antigravity's quota:** `agy -p /quota --output-format json`, run by
+  `watch_antigravity` on the account loop's 30-second tick whenever
+  `antigravity.Quota` says a reading is due (every 5 minutes, an hour after agy
+  exits with code 2), in a thread, from the temporary folder, with
+  `--log-file /dev/null`. agy reports how much of each window is left; the panel
+  draws how much is used, as it does for accounts. The rebuild only copies the
+  last reading into the snapshot, so it never waits on agy. Tests never start
+  agy: an autouse fixture in `tests/conftest.py` makes `find_agy` find none.
 - **CPU and memory:** one `ps` listing per rebuild, summed over each session's
   process tree by parent pid, stopping at any pid that is another card so a
   teammate is not counted twice. CPU is `ps %cpu` summed. Only the verdict

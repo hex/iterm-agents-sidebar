@@ -13,9 +13,10 @@ def test_no_icon_is_classed_by_assigning_className():
 
 
 def test_every_agent_the_daemon_names_has_a_mark():
+    """Antigravity's marks only its quota in the foot: no card runs it."""
     source = PAGE.read_text(encoding="utf-8")
     listed = re.search(r"const PROVIDER_ICONS = \{(.*?)\n\};", source, re.S).group(1)
-    assert re.findall(r"^\s*(\w+): '", listed, re.M) == ["claude", "openai", "omp"]
+    assert re.findall(r"^\s*(\w+): '", listed, re.M) == ["claude", "openai", "omp", "antigravity"]
 
 
 def test_an_agent_without_a_mark_of_its_own_gets_the_plain_one():

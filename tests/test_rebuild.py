@@ -731,6 +731,42 @@ def test_the_refresh_button_asks_the_mirror_for_a_release_too(monkeypatch):
     assert b.update is None and "update" not in b.latest
 
 
+AGY_REPLY = json.dumps({"status": "SUCCESS", "command": {"name": "usage", "data": {"groups": [
+    {"name": "Gemini Models", "buckets": [{"window": "5h", "remaining_fraction": 0.75,
+                                           "reset_time": "2099-01-01T00:00:00Z"}]}]}}})
+
+
+def test_antigravitys_quota_rides_the_snapshot_once_agy_has_answered(monkeypatch):
+    """No key until agy has answered: a panel without agy sends what it always did."""
+    b = bridge(monkeypatch, [])
+    asyncio.run(b.rebuild())
+    assert "antigravity" not in b.latest
+    b.antigravity = sidebar.antigravity.Quota(find=lambda: "/bin/agy", run=lambda agy: (0, AGY_REPLY))
+    b.antigravity.step(time.time())
+    asyncio.run(b.rebuild())
+    [group] = b.latest["antigravity"]["groups"]
+    assert (group["name"], group["windows"][0]["label"], group["windows"][0]["used"]) == ("Gemini Models", "5-hour", 25.0)
+
+
+def test_the_refresh_button_asks_agy_again(monkeypatch):
+    class Meters:
+        def read_now(self, now):
+            return {"accounts": []}
+    asks = []
+    b = sidebar.Bridge(None, Quiet(), Meters())
+    b.latest = {"groups": []}
+    monkeypatch.setattr(sidebar.update, "origin", lambda here: None)
+    b.antigravity = sidebar.antigravity.Quota(find=lambda: "/bin/agy",
+                                              run=lambda agy: asks.append(agy) or (0, AGY_REPLY))
+    b.account_op("read", {})
+    # In a thread of its own, so the accounts' reading does not wait on agy.
+    for _ in range(200):
+        if asks:
+            break
+        time.sleep(0.01)
+    assert asks == ["/bin/agy"]
+
+
 def test_each_rebuild_decides_the_alerts_and_carries_them_out(monkeypatch, tmp_path):
     """The daemon, not a page, turns a change it read into a sound and a banner,
     under the settings on disk at that moment."""

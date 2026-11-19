@@ -36,6 +36,7 @@ import accounts  # noqa: E402
 import activity  # noqa: E402
 import api_fallback  # noqa: E402
 import alerts  # noqa: E402
+import antigravity  # noqa: E402
 import codex  # noqa: E402
 import context_usage  # noqa: E402
 import links  # noqa: E402
@@ -4452,6 +4453,8 @@ class Bridge:
         self.update = None
         #: This checkout's GitHub repository page, or None; set by watch_releases.
         self.repository = None
+        #: Antigravity's quota as agy last reported it; asked by watch_antigravity.
+        self.antigravity = antigravity.Quota(log=self.log)
         self.notices = Notices()
         #: The API fallback's record, as last saved; only step_fallback moves it.
         self.fallback, problem = api_fallback.load(os.path.join(STATUS_DIR, API_FALLBACK_RECORD))
@@ -4855,6 +4858,9 @@ class Bridge:
             model = await asyncio.to_thread(codex.default_model)
             if model:
                 self.latest["codex"]["model"] = model
+        quota = self.antigravity.snapshot(time.time())
+        if quota is not None:
+            self.latest["antigravity"] = quota
         conversations = {row["session_id"]: row.get("conversation") for row in self.rows}
         self.alert(self.watch.step(self.latest, settings, conversations), settings)
         self.step_partners(settings["links"])
@@ -5916,6 +5922,9 @@ class Bridge:
         if op == "read":
             # The reload button: a person asking for fresh figures wants a
             # fresh answer about releases too, not tomorrow's.
+            # agy takes seconds to answer: asked beside the accounts, not before them.
+            threading.Thread(target=self.antigravity.reload, args=(time.time(),),
+                             name="antigravity-reload", daemon=True).start()
             self.check_release()
             return self.meters.read_now(time.time())
         if op == "add":
@@ -5956,6 +5965,21 @@ class Bridge:
             except Exception as error:               # noqa: BLE001
                 print(f"sidebar: account meters failed: {error!r}", flush=True)
             await self.step_fallback_or_log()
+            await asyncio.sleep(ACCOUNT_TICK_SECONDS)
+
+    async def watch_antigravity(self):
+        """Ask agy for Antigravity's quota when a reading is due, and rebuild
+        when the answer changes what the foot draws.
+
+        Each ask starts agy for a few seconds, so it runs in a thread, on the
+        account loop's cadence; Quota decides whether one is due.
+        """
+        while True:
+            try:
+                if await asyncio.to_thread(self.antigravity.step, time.time()):
+                    await self.rebuild_or_report()
+            except Exception as error:               # noqa: BLE001
+                print(f"sidebar: antigravity quota failed: {error!r}", flush=True)
             await asyncio.sleep(ACCOUNT_TICK_SECONDS)
 
     async def sweep_status(self):
@@ -6108,6 +6132,7 @@ async def main(connection):
     asyncio.ensure_future(bridge.watch_filed_state())
     asyncio.ensure_future(bridge.poll())
     asyncio.ensure_future(bridge.watch_accounts())
+    asyncio.ensure_future(bridge.watch_antigravity())
     asyncio.ensure_future(bridge.sweep_status())
     asyncio.ensure_future(bridge.watch_releases())
 

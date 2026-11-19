@@ -73,7 +73,7 @@ cancels, and an empty name goes back to the email.
 
 Click **Accounts**, or anywhere in its head outside Auto-switch and its chip,
 to fold the accounts. Folded, every
-account and Codex sit side by side, a tile each, the account your sessions run
+account, Codex and Antigravity sit side by side, a tile each, the account your sessions run
 on first and marked with its check. A tile shows one bar, its fullest window,
 with the even-spend tick, then the percentage, the window's short name (`5h`,
 `wk`, `fab` for Fable) and the time to its reset; a reserve Codex draws on
@@ -391,3 +391,32 @@ reading, which stays used up until the plan's window resets. Back on the plan,
 the row goes.
 
 `docs/accounts-design.md` has the design this came from.
+
+## Antigravity limits
+
+Under Codex's, the foot shows Antigravity's own quota if the Antigravity CLI
+(`agy`) is on the machine, on your `PATH` or in `~/.local/bin`,
+`/opt/homebrew/bin` or `/usr/local/bin`. Antigravity splits its quota into
+groups, and the models of a group share its windows: Gemini models, Claude and
+GPT models, and a model with an allowance of its own, such as Gemini 4 Argon on
+paid Pro plans. The foot names each group, with its models on hover, and draws
+a bar for each window the group has, 5-hour and weekly, or weekly alone. A
+weekly bar carries the even-spend tick, as an account's does. Folded,
+Antigravity is one tile with the fullest window of any group, and its hover
+lists every group's windows. At compact width it gets a line of Codex's shape
+only while that window is tight.
+
+The panel runs `agy -p /quota --output-format json` every 5 minutes, and again on
+a press of reload unless the last run was under a minute ago. It is agy's own
+quota command: it runs no model turn and spends no quota, and agy asks Google on
+its own login, which the panel never reads, keeps or sends. Each run takes about
+three seconds. agy writes its log to `/dev/null` for these runs, so they leave
+nothing in `~/.gemini/antigravity-cli/log`, and the panel sets
+`AGY_CLI_DISABLE_AUTO_UPDATE` for them, since a run that only reads the quota
+has no reason to update agy.
+
+A run that fails keeps the last figures, with `as of 14:02` beside the name, or
+in place of the reset on the folded tile. A login with no account quota, such as
+a `GEMINI_API_KEY`, makes agy exit with code 2: the block goes, and the panel
+asks again an hour later. Without agy, nothing runs and nothing shows. A window
+whose reset time has passed reads 0% until the next reading.
