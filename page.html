@@ -8999,6 +8999,8 @@ const SETTING_ROWS = [
    note: "An agent card's Details shows its project's commits per day for the last twelve weeks, every branch and author, as GitHub draws them."},
   {k: "codex_memory_note", label: "Hand Codex Claude's memory index",
    note: "Each new Codex session is sent the project's Claude Code memory index, up to 10 KB of MEMORY.md, so OpenAI receives it too. Codex can read the rest of the file and the notes it lists."},
+  {k: "antigravity_quota", label: "Antigravity quota",
+   note: "The Accounts foot shows Antigravity's quota, read by running the Antigravity CLI's /quota every 5 minutes, or up to every 30 while the figures hold still. agy asks Google for it on its own login."},
 ];
 
 // Each control keeps a closure that repaints it from SETTINGS, so a change

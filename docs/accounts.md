@@ -394,9 +394,11 @@ the row goes.
 
 ## Antigravity limits
 
-Under Codex's, the foot shows Antigravity's own quota if the Antigravity CLI
-(`agy`) is on the machine, on your `PATH` or in `~/.local/bin`,
-`/opt/homebrew/bin` or `/usr/local/bin`. Antigravity splits its quota into
+With Antigravity quota on under Experimental in Settings (it starts off), the
+foot shows Antigravity's own quota under Codex's if the Antigravity CLI (`agy`)
+is on the machine, on your `PATH` or in `~/.local/bin`, `/opt/homebrew/bin` or
+`/usr/local/bin`. With the setting off, agy never runs and the block goes.
+Antigravity splits its quota into
 groups, and the models of a group share its windows: Gemini models, Claude and
 GPT models, and a model with an allowance of its own, such as Gemini 4 Argon on
 paid Pro plans. The foot names each group, with its models on hover, and draws
@@ -406,8 +408,11 @@ Antigravity is one tile with the fullest window of any group, and its hover
 lists every group's windows. At compact width it gets a line of Codex's shape
 only while that window is tight.
 
-The panel runs `agy -p /quota --output-format json` every 5 minutes, and again on
-a press of reload unless the last run was under a minute ago. It is agy's own
+The panel runs `agy -p /quota --output-format json` every 5 minutes. While two
+readings in a row show the same figures it waits twice as long before the next,
+up to 30 minutes; a change in the figures, or a press of reload, brings it back
+to every 5. A press of reload runs it again at once unless the last run was
+under a minute ago. It is agy's own
 quota command: it runs no model turn and spends no quota, and agy asks Google on
 its own login, which the panel never reads, keeps or sends. Each run takes about
 three seconds. agy writes its log to `/dev/null` for these runs, so they leave

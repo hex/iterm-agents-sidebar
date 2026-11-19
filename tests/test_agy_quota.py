@@ -131,20 +131,20 @@ class Agy:
 def test_a_reading_shows_in_the_snapshot_and_the_next_ask_waits_its_interval():
     agy = Agy((0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
-    assert quota.step(NOW) is True
+    assert quota.step(NOW, True) is True
     snap = quota.snapshot(NOW)
     assert [g["name"] for g in snap["groups"]] == ["Gemini Models", "Claude and GPT models", "Gemini 4 Argon"]
     assert "as_of" not in snap
-    assert quota.step(NOW + agy_quota.READ_SECONDS - 1) is False
+    assert quota.step(NOW + agy_quota.READ_SECONDS - 1, True) is False
     assert agy.asks == 1
-    quota.step(NOW + agy_quota.READ_SECONDS)
+    quota.step(NOW + agy_quota.READ_SECONDS, True)
     assert agy.asks == 2
 
 
 def test_without_agy_nothing_runs_and_nothing_shows():
     agy = Agy()
     quota = Quota(find=lambda: None, run=agy)
-    assert quota.step(NOW) is False
+    assert quota.step(NOW, True) is False
     assert quota.snapshot(NOW) is None
     assert agy.asks == 0
 
@@ -153,13 +153,13 @@ def test_a_failed_ask_keeps_the_last_figures_and_says_how_old_they_are():
     agy = Agy((0, json.dumps(REPLY), ""), (1, "", ""), subprocess.TimeoutExpired("agy", 60))
     said = []
     quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
-    quota.step(NOW)
-    assert quota.step(NOW + agy_quota.READ_SECONDS) is True
+    quota.step(NOW, True)
+    assert quota.step(NOW + agy_quota.READ_SECONDS, True) is True
     snap = quota.snapshot(NOW + agy_quota.READ_SECONDS)
     assert snap["as_of"] == NOW
     assert snap["groups"][0]["windows"][0]["used"] == 8.4
     # A second failure in a row changes nothing the foot draws.
-    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS) is False
+    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS, True) is False
     assert len(said) == 2 and all(line.startswith("antigravity quota not read:") for line in said)
 
 
@@ -174,7 +174,7 @@ def _asks(*answers):
     said = []
     quota = Quota(find=lambda: "/bin/agy", run=Agy(*answers), log=lambda *words: said.append(" ".join(words)))
     for n in range(len(answers)):
-        quota.step(NOW + n * agy_quota.READ_SECONDS)
+        quota.step(NOW + n * agy_quota.READ_SECONDS, True)
     return said
 
 
@@ -217,29 +217,29 @@ def _one_bucket(bucket):
 def test_a_reply_that_cannot_be_read_is_a_failed_ask_and_waits_its_interval(answer):
     agy = Agy((0, json.dumps(REPLY), ""), answer)
     quota = Quota(find=lambda: "/bin/agy", run=agy)
-    quota.step(NOW)
-    assert quota.step(NOW + agy_quota.READ_SECONDS) is True
+    quota.step(NOW, True)
+    assert quota.step(NOW + agy_quota.READ_SECONDS, True) is True
     snap = quota.snapshot(NOW + agy_quota.READ_SECONDS)
     assert snap["as_of"] == NOW
     assert snap["groups"][0]["windows"][0]["used"] == 8.4
     # The account loop's next tick runs no agy.
-    assert quota.step(NOW + agy_quota.READ_SECONDS + 30) is False
+    assert quota.step(NOW + agy_quota.READ_SECONDS + 30, True) is False
     assert agy.asks == 2
 
 
 def test_an_ask_that_raises_still_moves_the_next_one():
     agy = Agy((0, json.dumps(REPLY), ""), RuntimeError("unforeseen"), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
-    quota.step(NOW)
+    quota.step(NOW, True)
     with pytest.raises(RuntimeError):
-        quota.step(NOW + agy_quota.READ_SECONDS)
-    assert quota.step(NOW + agy_quota.READ_SECONDS + 30) is False
+        quota.step(NOW + agy_quota.READ_SECONDS, True)
+    assert quota.step(NOW + agy_quota.READ_SECONDS + 30, True) is False
     assert agy.asks == 2
 
 
 def test_a_first_ask_that_fails_shows_nothing():
     quota = Quota(find=lambda: "/bin/agy", run=Agy(OSError("gone")))
-    quota.step(NOW)
+    quota.step(NOW, True)
     assert quota.snapshot(NOW) is None
 
 
@@ -248,22 +248,22 @@ def test_exit_code_2_is_a_failed_ask_like_any_other():
     agy = Agy((0, json.dumps(REPLY), ""), (2, "", ""), (0, json.dumps(REPLY), ""))
     said = []
     quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
-    quota.step(NOW)
-    assert quota.step(NOW + agy_quota.READ_SECONDS) is True
+    quota.step(NOW, True)
+    assert quota.step(NOW + agy_quota.READ_SECONDS, True) is True
     snap = quota.snapshot(NOW + agy_quota.READ_SECONDS)
     assert snap and snap["as_of"] == NOW
     assert snap["groups"][0]["windows"][0]["used"] == 8.4
     assert len(said) == 1
     # The next ask is the usual interval away, not an hour.
-    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS - 1) is False
+    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS - 1, True) is False
     assert agy.asks == 2
-    quota.step(NOW + 2 * agy_quota.READ_SECONDS)
+    quota.step(NOW + 2 * agy_quota.READ_SECONDS, True)
     assert agy.asks == 3
 
 
 def test_a_window_whose_reset_has_passed_reads_empty_until_the_next_reading():
     quota = Quota(find=lambda: "/bin/agy", run=Agy((0, json.dumps(REPLY), "")))
-    quota.step(NOW)
+    quota.step(NOW, True)
     after = 1795140941  # the Gemini 5-hour window's reset
     five, weekly = quota.snapshot(after)["groups"][0]["windows"]
     assert (five["used"], five["resets_at"]) == (0.0, None)
@@ -273,10 +273,10 @@ def test_a_window_whose_reset_has_passed_reads_empty_until_the_next_reading():
 def test_reload_asks_at_once_unless_the_last_ask_was_a_moment_ago():
     agy = Agy((0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
-    quota.step(NOW)
-    assert quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS - 1) is False
+    quota.step(NOW, True)
+    assert quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS - 1, True) is False
     assert agy.asks == 1
-    quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS)
+    quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS, True)
     assert agy.asks == 2
 
 
@@ -303,13 +303,13 @@ class HeldAgy:
 def test_an_ask_while_another_is_in_flight_skips_rather_than_queue_another_agy():
     agy = HeldAgy()
     quota = Quota(find=lambda: "/bin/agy", run=agy)
-    first = threading.Thread(target=quota.reload, args=(NOW,))
+    first = threading.Thread(target=quota.reload, args=(NOW, True))
     first.start()
     assert agy.started.wait(timeout=5)
     said = {}
     helpers = [
-        threading.Thread(target=lambda: said.update(step=quota.step(NOW + agy_quota.READ_SECONDS))),
-        threading.Thread(target=lambda: said.update(reload=quota.reload(NOW + 2 * agy_quota.RELOAD_FLOOR_SECONDS))),
+        threading.Thread(target=lambda: said.update(step=quota.step(NOW + agy_quota.READ_SECONDS, True))),
+        threading.Thread(target=lambda: said.update(reload=quota.reload(NOW + 2 * agy_quota.RELOAD_FLOOR_SECONDS, True))),
     ]
     for helper in helpers:
         helper.start()
@@ -349,19 +349,130 @@ def test_a_snapshot_reads_what_the_foot_draws_once_while_an_ask_may_replace_it()
 def test_a_step_after_a_reload_waits_for_the_reloads_interval():
     agy = Agy((0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
-    quota.step(NOW)
-    assert quota.reload(NOW + agy_quota.READ_SECONDS - 1) is True
-    assert quota.step(NOW + agy_quota.READ_SECONDS) is False
+    quota.step(NOW, True)
+    assert quota.reload(NOW + agy_quota.READ_SECONDS - 1, True) is True
+    assert quota.step(NOW + agy_quota.READ_SECONDS, True) is False
     assert agy.asks == 2
 
 
 def test_agy_going_away_clears_the_block():
     present = ["/bin/agy"]
     quota = Quota(find=lambda: present[0], run=Agy((0, json.dumps(REPLY), "")))
-    quota.step(NOW)
+    quota.step(NOW, True)
     present[0] = None
-    assert quota.step(NOW + agy_quota.READ_SECONDS) is True
+    assert quota.step(NOW + agy_quota.READ_SECONDS, True) is True
     assert quota.snapshot(NOW + agy_quota.READ_SECONDS) is None
+
+
+def test_with_the_setting_off_agy_is_never_looked_up_or_run_and_nothing_shows():
+    looked = []
+    agy = Agy()
+    quota = Quota(find=lambda: looked.append(1) or "/bin/agy", run=agy)
+    assert quota.step(NOW, False) is False
+    assert quota.reload(NOW, False) is False
+    assert quota.step(NOW + agy_quota.QUIET_READ_SECONDS, False) is False
+    assert (looked, agy.asks) == ([], 0)
+    assert quota.snapshot(NOW) is None
+
+
+def test_turning_the_setting_off_clears_the_block_and_turning_it_on_asks_at_once():
+    agy = Agy((0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""))
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    assert quota.step(NOW + 30, False) is True
+    assert quota.snapshot(NOW + 30) is None
+    assert quota.step(NOW + 60, False) is False
+    # On again a minute later, well inside the interval: agy is asked at once.
+    quota.step(NOW + 90, True)
+    assert agy.asks == 2
+    assert quota.snapshot(NOW + 90)
+
+
+def _changed(fraction=None, reset_time=None):
+    """REPLY with the Gemini 5-hour window's figure or its reset time changed."""
+    reply = json.loads(json.dumps(REPLY))
+    five = reply["command"]["data"]["groups"][0]["buckets"][1]
+    if fraction is not None:
+        five["remaining_fraction"] = fraction
+    if reset_time is not None:
+        five["reset_time"] = reset_time
+    return json.dumps(reply)
+
+
+def _iso(epoch):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch))
+
+
+def _gaps(quota, agy, since, count):
+    """Steps once a second after an ask at `since`: -> the seconds between each of the next `count` asks."""
+    gaps, last, now = [], since, since
+    while len(gaps) < count:
+        now += 1
+        asks = agy.asks
+        quota.step(now, True)
+        if agy.asks > asks:
+            gaps.append(now - last)
+            last = now
+        assert now - last <= 2 * agy_quota.QUIET_READ_SECONDS, f"no ask in an hour after {gaps}"
+    return gaps
+
+
+def test_while_the_figures_hold_still_the_gap_doubles_up_to_half_an_hour():
+    agy = Agy(*[(0, json.dumps(REPLY), "")] * 6)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    assert _gaps(quota, agy, NOW, 5) == [5 * 60, 10 * 60, 20 * 60, 30 * 60, 30 * 60]
+
+
+def test_a_change_in_the_figures_brings_the_gap_back_to_five_minutes():
+    agy = Agy(*[(0, json.dumps(REPLY), "")] * 3, (0, _changed(fraction=0.5), ""), (0, _changed(fraction=0.5), ""))
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    assert _gaps(quota, agy, NOW, 4) == [5 * 60, 10 * 60, 20 * 60, 5 * 60]
+
+
+def test_readings_that_differ_only_in_their_reset_times_hold_still():
+    """agy's reset times drift by a second or so from one answer to the next."""
+    agy = Agy((0, json.dumps(REPLY), ""), (0, _changed(reset_time="2026-11-20T02:15:42Z"), ""),
+              (0, _changed(reset_time="2026-11-20T02:15:43Z"), ""))
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    assert _gaps(quota, agy, NOW, 2) == [5 * 60, 10 * 60]
+
+
+def test_a_reload_after_a_stretch_brings_the_gap_back_to_five_minutes():
+    agy = Agy(*[(0, json.dumps(REPLY), "")] * 6)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    assert _gaps(quota, agy, NOW, 2) == [5 * 60, 10 * 60]
+    pressed = NOW + 15 * 60 + 2 * agy_quota.RELOAD_FLOOR_SECONDS
+    assert quota.reload(pressed, True) is True
+    assert agy.asks == 4
+    assert _gaps(quota, agy, pressed, 2) == [5 * 60, 10 * 60]
+
+
+def test_a_reload_the_floor_refuses_still_brings_the_next_ask_within_five_minutes():
+    agy = Agy(*[(0, json.dumps(REPLY), "")] * 5)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    assert _gaps(quota, agy, NOW, 2) == [5 * 60, 10 * 60]
+    asked = NOW + 15 * 60
+    assert quota.reload(asked + agy_quota.RELOAD_FLOOR_SECONDS - 1, True) is False
+    assert agy.asks == 3
+    assert _gaps(quota, agy, asked, 2) == [5 * 60, 10 * 60]
+
+
+def test_a_reset_inside_a_long_gap_still_reads_empty_on_time():
+    resets = NOW + 50 * 60
+    agy = Agy(*[(0, _changed(reset_time=_iso(resets)), "")] * 4)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    # Asks at 0, 5, 15 and 35 minutes; the next is 30 minutes on, at 65.
+    assert _gaps(quota, agy, NOW, 3) == [5 * 60, 10 * 60, 20 * 60]
+    assert quota.step(resets, True) is False and agy.asks == 4
+    five = quota.snapshot(resets)["groups"][0]["windows"][0]
+    assert (five["label"], five["used"], five["resets_at"]) == ("5-hour", 0.0, None)
+    assert quota.snapshot(resets - 1)["groups"][0]["windows"][0]["used"] == 8.4
 
 
 def test_find_agy_takes_the_first_executable_listed_path(tmp_path, monkeypatch):
@@ -513,7 +624,7 @@ def test_a_daemons_quota_looks_agy_up_at_each_ask(monkeypatch):
     monkeypatch.setattr(agy_quota, "find_agy", lambda *paths: "/bin/agy")
     monkeypatch.setattr(agy_quota, "run_agy", lambda agy: asked.append(agy) or (0, json.dumps(REPLY), ""))
     quota = Quota()
-    quota.step(NOW)
+    quota.step(NOW, True)
     assert asked == ["/bin/agy"] and quota.snapshot(NOW)
 
 

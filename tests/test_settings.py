@@ -221,6 +221,14 @@ def test_codex_hears_the_memory_index_only_once_the_switch_the_panel_saved_is_on
     assert emit_state.memory_switch_on(str(tmp_path)) is True
 
 
+def test_antigravitys_quota_is_off_until_asked_for(tmp_path):
+    """agy asks Google on its own login, so a panel that never turned the setting on starts no agy."""
+    assert DEFAULT_SETTINGS["antigravity_quota"] is False
+    store = tmp_path / "s.json"
+    save_settings({"antigravity_quota": True}, store)
+    assert load_settings(store)["antigravity_quota"] is True
+
+
 # -------------------------------------------------------------------- version
 
 def test_the_version_is_the_file_s_first_line(tmp_path):

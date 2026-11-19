@@ -217,7 +217,7 @@
   <line x1="24" y1="1590" x2="428" y2="1590" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
   <text x="34" y="1609.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Release notes</text>
   <path transform="translate(406 1599.5) scale(0.046875)" fill="#98989d" d="M200,64V168a8,8,0,0,1-16,0V83.31L69.66,197.66a8,8,0,0,1-11.32-11.32L172.69,72H88a8,8,0,0,1,0-16H192A8,8,0,0,1,200,64Z"/>
-  <rect x="452" y="44" width="404" height="353" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
+  <rect x="452" y="44" width="404" height="448" rx="8" fill="#2c2c2e" stroke="#3a3a3c"/>
   <text x="462" y="65" fill="#f2f2f7" font-size="12.5" font-weight="600" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Experimental</text>
   <line x1="452" y1="77" x2="856" y2="77" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
   <text x="462" y="96.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Link cards</text>
@@ -247,4 +247,12 @@
   <text x="462" y="355" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Each new Codex session is sent the project's Claude Code memory</text>
   <text x="462" y="370" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">index, up to 10 KB of MEMORY.md, so OpenAI receives it too.</text>
   <text x="462" y="385" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Codex can read the rest of the file and the notes it lists.</text>
+  <line x1="452" y1="397" x2="856" y2="397" stroke="#f2f2f7" opacity="0.14" stroke-dasharray="1 2"/>
+  <text x="462" y="416.5" fill="#f2f2f7" font-size="12" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">Antigravity quota</text>
+  <rect x="818" y="404.0" width="28" height="17" rx="8.5" fill="#f2f2f7" opacity="0.18"/>
+  <circle cx="826.5" cy="412.5" r="6.5" fill="#ffffff"/>
+  <text x="462" y="435" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">The Accounts foot shows Antigravity's quota, read by running</text>
+  <text x="462" y="450" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">the Antigravity CLI's /quota every 5 minutes, or up to every 30</text>
+  <text x="462" y="465" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">while the figures hold still. agy asks Google for it on its own</text>
+  <text x="462" y="480" fill="#98989d" font-size="11" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">login.</text>
 </svg>

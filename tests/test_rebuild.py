@@ -737,18 +737,23 @@ AGY_REPLY = json.dumps({"status": "SUCCESS", "command": {"name": "usage", "data"
 
 
 def test_antigravitys_quota_rides_the_snapshot_once_agy_has_answered(monkeypatch):
-    """No key until agy has answered: a panel without agy sends what it always did."""
+    """No key until agy has answered, and none while Antigravity quota is off in Settings: a panel
+    without agy, or with the setting off, sends what it always did."""
     b = bridge(monkeypatch, [])
     asyncio.run(b.rebuild())
     assert "antigravity" not in b.latest
     b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy", run=lambda agy: (0, AGY_REPLY, ""))
-    b.antigravity.step(time.time())
+    b.antigravity.step(time.time(), True)
+    asyncio.run(b.rebuild())
+    assert "antigravity" not in b.latest
+    sidebar.save_settings({"antigravity_quota": True})
     asyncio.run(b.rebuild())
     [group] = b.latest["antigravity"]["groups"]
     assert (group["name"], group["windows"][0]["label"], group["windows"][0]["used"]) == ("Gemini Models", "5-hour", 25.0)
 
 
 def test_the_refresh_button_asks_agy_again(monkeypatch):
+    """Only while Antigravity quota is on in Settings: off, a press of reload starts no agy."""
     class Meters:
         def read_now(self, now):
             return {"accounts": []}
@@ -758,12 +763,18 @@ def test_the_refresh_button_asks_agy_again(monkeypatch):
     monkeypatch.setattr(sidebar.update, "origin", lambda here: None)
     b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy",
                                             run=lambda agy: asks.append(agy) or (0, AGY_REPLY, ""))
-    b.account_op("read", {})
-    # In a thread of its own, so the accounts' reading does not wait on agy.
-    for _ in range(200):
-        if asks:
-            break
-        time.sleep(0.01)
+
+    def press():
+        b.account_op("read", {})
+        # In a thread of its own, so the accounts' reading does not wait on agy.
+        for thread in threading.enumerate():
+            if thread.name == "antigravity-reload":
+                thread.join(timeout=5)
+
+    press()
+    assert asks == []
+    sidebar.save_settings({"antigravity_quota": True})
+    press()
     assert asks == ["/bin/agy"]
 
 

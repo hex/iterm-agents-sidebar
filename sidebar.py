@@ -254,6 +254,10 @@ DEFAULT_SETTINGS = {
     # memory index, and OpenAI receives it with the session. Off, the Codex
     # hook reads none.
     "codex_memory_note": False,
+    # Experimental: the Accounts foot shows Antigravity's quota, read by running
+    # the Antigravity CLI (agy), which asks Google on its own login. Off, agy is
+    # never started.
+    "antigravity_quota": False,
 }
 
 #: (low, high) for the values that are numbers.
@@ -4858,7 +4862,7 @@ class Bridge:
             model = await asyncio.to_thread(codex.default_model)
             if model:
                 self.latest["codex"]["model"] = model
-        quota = self.antigravity.snapshot(time.time())
+        quota = self.antigravity.snapshot(time.time()) if settings["antigravity_quota"] else None
         if quota is not None:
             self.latest["antigravity"] = quota
         conversations = {row["session_id"]: row.get("conversation") for row in self.rows}
@@ -5923,8 +5927,9 @@ class Bridge:
             # The reload button: a person asking for fresh figures wants a
             # fresh answer about releases too, not tomorrow's.
             # agy takes seconds to answer: asked beside the accounts, not before them.
-            threading.Thread(target=self.antigravity.reload, args=(time.time(),),
-                             name="antigravity-reload", daemon=True).start()
+            if load_settings()["antigravity_quota"]:
+                threading.Thread(target=self.antigravity.reload, args=(time.time(), True),
+                                 name="antigravity-reload", daemon=True).start()
             self.check_release()
             return self.meters.read_now(time.time())
         if op == "add":
@@ -5972,11 +5977,13 @@ class Bridge:
         when the answer changes what the foot draws.
 
         Each ask starts agy for a few seconds, so it runs in a thread, on the
-        account loop's cadence; Quota decides whether one is due.
+        account loop's cadence; Quota decides whether one is due. With
+        Antigravity quota off in Settings, no agy starts and the block clears.
         """
         while True:
             try:
-                if await asyncio.to_thread(self.antigravity.step, time.time()):
+                on = load_settings()["antigravity_quota"]
+                if await asyncio.to_thread(self.antigravity.step, time.time(), on):
                     await self.rebuild_or_report()
             except Exception as error:               # noqa: BLE001
                 print(f"sidebar: antigravity quota failed: {error!r}", flush=True)

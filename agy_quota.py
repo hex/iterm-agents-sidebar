@@ -25,6 +25,8 @@ from accounts import DAY_SECONDS, _epoch, pace
 AGY_PATHS = ("~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy")
 #: How often to ask while readings succeed; each ask starts agy for about three seconds.
 READ_SECONDS = 5 * 60
+#: The longest gap between asks while the figures hold still.
+QUIET_READ_SECONDS = 30 * 60
 #: A press of reload asks again unless the last ask is this recent.
 RELOAD_FLOOR_SECONDS = 60
 #: agy loads its tools and logs in before it answers; past this it is stuck.
@@ -166,6 +168,12 @@ def _reason(out, err):
     return why[:REASON_CHARS]
 
 
+def _figures(quota):
+    """What a reading says of each window, without its times: two readings with
+    the same figures hold still."""
+    return [(g["name"], [(w["label"], w["used"]) for w in g["windows"]]) for g in quota["groups"]]
+
+
 def _expired(window, now):
     """A window whose reset has passed since the reading reads empty until the next one."""
     if window["resets_at"] is not None and window["resets_at"] <= now:
@@ -179,7 +187,8 @@ class Quota:
     `step` runs in a worker thread of watch_antigravity and `reload` in a
     thread of its own for each press of reload. One lock keeps two asks from
     overlapping: an ask that finds another in flight skips, and whether one
-    is due is decided under the lock.
+    is due is decided under the lock. Both take `on`, the Antigravity quota
+    setting: while it is off, agy is never started and nothing shows.
     """
 
     def __init__(self, find=None, run=None, log=lambda *words: None):
@@ -193,6 +202,9 @@ class Quota:
         self._said = None        # the failure last logged, until a good reading
         self.asked_at = None
         self.next_at = 0.0
+        # The wait after a good reading: READ_SECONDS, doubled after each one
+        # whose figures match the last, up to QUIET_READ_SECONDS.
+        self.gap = READ_SECONDS
         self._lock = threading.Lock()
 
     @property
@@ -213,15 +225,39 @@ class Quota:
         shown = self._shown
         return shown[2] if shown else False
 
-    def step(self, now):
+    def step(self, now, on):
         """Ask agy if a reading is due. Returns whether the snapshot may have changed."""
+        if not on:
+            return self._off()
         return self._ask(now, lambda: now >= self.next_at)
 
-    def reload(self, now):
-        """The reload button: ask now unless the last ask was moments ago."""
-        return self._ask(now, lambda: self.asked_at is None or now - self.asked_at >= RELOAD_FLOOR_SECONDS)
+    def reload(self, now, on):
+        """The reload button: ask now unless the last ask was moments ago, and
+        every READ_SECONDS again from here."""
+        if not on:
+            return self._off()
 
-    def _ask(self, now, due):
+        def due():
+            self.gap = READ_SECONDS
+            if self.asked_at is None or now - self.asked_at >= RELOAD_FLOOR_SECONDS:
+                return True
+            # Too soon to ask again, but the next ask is still no more than
+            # READ_SECONDS after the last.
+            self.next_at = min(self.next_at, self.asked_at + READ_SECONDS)
+            return False
+        return self._ask(now, due, stretch=False)
+
+    def _off(self):
+        # Without the lock: an ask already in flight may still show its
+        # answer, and the next step clears it again.
+        changed = self._shown is not None
+        self._shown = None
+        # Turned on again, agy is asked at once.
+        self.next_at = 0.0
+        self.gap = READ_SECONDS
+        return changed
+
+    def _ask(self, now, due, stretch=True):
         # An ask in flight gets the answer this one would, so this one skips
         # rather than wait and start a second agy.
         if not self._lock.acquire(blocking=False):
@@ -248,9 +284,16 @@ class Quota:
                 return self._failed(now, f"agy's reply could not be read: {error!r}")
             if quota is None:
                 return self._failed(now, f"agy /quota exited {code}: {_reason(out, err)}")
+            shown = self._shown
+            # Figures that hold still from one reading to the next stretch the
+            # gap; a change, or a reload's own reading, brings it back.
+            if stretch and shown is not None and _figures(quota) == _figures(shown[0]):
+                self.gap = min(self.gap * 2, QUIET_READ_SECONDS)
+            else:
+                self.gap = READ_SECONDS
             self._shown = (quota, now, False)
             self._said = None
-            self.next_at = now + READ_SECONDS
+            self.next_at = now + self.gap
             return True
         finally:
             self._lock.release()

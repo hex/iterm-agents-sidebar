@@ -99,7 +99,7 @@ def heads():
     ("On a card", ["show_branch", "show_task", "show_task_activity", "show_task_age", "show_task_bar", "show_task_list",
                    "show_model", "show_agents", "show_shells", "expand_shells"]),
     ("Rows", ["context_threshold", "cpu_threshold", "memory_threshold", "order", "offers"]),
-    ("Experimental", ["links", "keep_remote", "commit_heatmap", "codex_memory_note"]),
+    ("Experimental", ["links", "keep_remote", "commit_heatmap", "codex_memory_note", "antigravity_quota"]),
 ])
 def test_each_head_holds_its_settings_in_order(head, keys):
     assert heads().get(head) == keys

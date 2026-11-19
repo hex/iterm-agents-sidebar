@@ -30,9 +30,9 @@ def quota(gemini_5h=0.92, third_party_5h=1.0, argon=0.99, failed=False):
          "buckets": [{"window": "weekly", "remaining_fraction": argon, "reset_time": "2026-11-08T12:00:00Z"}]}]}}}
     answers = [(0, json.dumps(reply), "")] + ([(1, "", "")] if failed else [])
     q = Quota(find=lambda: "/bin/agy", run=lambda agy: answers.pop(0))
-    q.step(NOW)
+    q.step(NOW, True)
     if failed:
-        q.step(NOW + 600)
+        q.step(NOW + 600, True)
     return q.snapshot(NOW + (600 if failed else 0))
 
 

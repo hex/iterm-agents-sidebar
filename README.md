@@ -252,7 +252,7 @@ offer stays dismissed.
 | Look | Card style, Card anatomy, Follow the terminal's background, Session colour on the tab, Text size, Shell names, Provider badge: see [Card style](docs/usage.md#card-style) and [The session's colour on its tab](docs/usage.md#the-sessions-colour-on-its-tab) |
 | On a card | Branch, Task (under it What it is doing, How old the report is (Name first), Progress bar, Task list), Model, Subagents, Background shells (under it Start expanded) |
 | Rows | Warn above, CPU heavy at, Memory heavy at, Order, Show the foot's offers again (while an offer stays dismissed) |
-| Experimental | Link cards, Keep remote control after a switch, Commit heatmap and Hand Codex Claude's memory index, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control), [Commit heatmap](docs/usage.md#commit-heatmap) and [Claude's memory index in Codex](docs/usage.md#claudes-memory-index-in-codex) |
+| Experimental | Link cards, Keep remote control after a switch, Commit heatmap, Hand Codex Claude's memory index and Antigravity quota, each off until you turn it on: see [Linking two sessions](docs/usage.md#linking-two-sessions), [Remote control](docs/usage.md#remote-control), [Commit heatmap](docs/usage.md#commit-heatmap), [Claude's memory index in Codex](docs/usage.md#claudes-memory-index-in-codex) and [Antigravity limits](docs/accounts.md#antigravity-limits) |
 | Accounts | When every account is full, use API credits, and per account its API key and that key's Cap: see [API credits](docs/usage.md#api-credits) |
 | Repository | Nothing to set: the GitHub repository the install updates from, and Release notes, each opening its page in your browser |
 
@@ -297,10 +297,11 @@ Codex's own limits sit under them, read from
 its session log: a 5-hour and a weekly window, or weekly alone, depending on
 the plan, and a row for the fallback allowance while Codex draws on one, such
 as Luna Reserve. A spent window stays at 100% until it resets, also while
-Codex refuses every new session. With the Antigravity CLI (`agy`) on the machine,
-Antigravity's quota sits under Codex's: each quota group by name (Gemini models,
-Claude and GPT models, and a model with an allowance of its own), with its 5-hour
-and weekly windows, as `agy -p /quota` reports them every 5 minutes
+Codex refuses every new session. With Antigravity quota on in Settings and the
+Antigravity CLI (`agy`) installed, Antigravity's quota sits under Codex's: each
+quota group by name (Gemini models, Claude and GPT models, and a model with an
+allowance of its own), with its 5-hour and weekly windows, as `agy -p /quota`
+reports them every 5 minutes, or up to every 30 while the figures hold still
 ([docs/accounts.md](docs/accounts.md#antigravity-limits)).
 Click **Accounts**, or its head outside Auto-switch and its
 chip, to fold the lot to a tile per
@@ -368,7 +369,7 @@ named, and 1 on a timeout, a closed session or no panel. See
 ## What it reads, and where it goes
 
 Everything stays on your Mac unless you store an account or turn on Hand Codex
-Claude's memory index. The daemon reads:
+Claude's memory index or Antigravity quota. The daemon reads:
 
 - iTerm2, through its API: every session's title, working directory and
   foreground job, and the pane in front.
@@ -379,9 +380,10 @@ Claude's memory index. The daemon reads:
   token, key or password in a command or a scheduled prompt shows as `***`;
   free text in a question reads as the agent wrote it.
 - The statusline payload: context, model, effort, cost and limits.
-- With the Antigravity CLI installed, what `agy -p /quota --output-format json`
-  prints, every 5 minutes and on a press of reload: each quota group's windows,
-  how much of each is left and when it resets.
+- With Antigravity quota on in Settings and agy installed, what
+  `agy -p /quota --output-format json` prints, every 5 to 30 minutes and on a
+  press of reload: each quota group's windows, how much of each is left and
+  when it resets.
 - The first 64 KB of each transcript under `~/.claude/projects`, for
   History's **Sessions** tab: the directory and the first prompt, nothing after.
 - `ps`, for each session's process tree, and `git` in each session's
@@ -407,8 +409,10 @@ back once at its start, with `defaults write` or `defaults delete` on
 The daemon serves the panel on `127.0.0.1` behind a random token minted at
 every start. It sends nothing anywhere, with five exceptions: the update
 check fetches this repository from GitHub; `ssh` reaches the hosts your panes
-already reach; with the Antigravity CLI installed, the `agy -p /quota` the panel
-runs asks Google for the quota on agy's own login, which the panel never reads;
+already reach; with Antigravity quota on in Settings and agy installed, the
+`agy -p /quota` the panel runs asks Google for the quota on agy's own login,
+which the panel never reads, and what else agy sends is agy's own (turn
+Antigravity quota off under Experimental and agy never runs);
 once you store an account, the panel keeps that login's
 refresh token in its own Keychain item and calls Anthropic's token and usage
 endpoints with it, which [docs/accounts.md](docs/accounts.md#before-you-store-anything)
