@@ -130,3 +130,44 @@ def test_at_compact_width_antigravity_gets_a_line_only_while_its_fullest_window_
 def test_the_tiny_foot_says_antigravitys_figures_on_hover():
     [line] = run(COMPACT, quota(), compact=True, tiny=True)
     assert "Antigravity · Gemini Models: 5-hour 8%, resets in 1h; Weekly 3%, resets in 5d" in line["title"]
+
+
+# buildBudget paints the foot from the frame. The parts of it that are not
+# Antigravity's stand in as a node each, so only its own calls are checked.
+BUDGET = function(PAGE, "buildBudget") + """
+Object.defineProperty(Node.prototype, "childElementCount", {get() { return this.children.length; }});
+const part = cls => Object.assign(document.createElement("div"), {className: cls});
+let accountNotice = "";
+function historyFold() { return part("past"); }
+function paintAccounts(strip) { strip.append(part("acct-stub")); }
+function paintSessionBudget(strip) {}
+function paintCodex(strip) { strip.append(part("codex-stub")); }
+function addButton() { return part("add-stub"); }
+function devicesRow() { return part("devices-stub"); }
+"""
+
+
+def budget(snapshot, folded=True, compact=False):
+    """What buildBudget draws for a frame of CALM accounts and `snapshot`, each
+    of its parts with its class, its words and its children's."""
+    body = BUDGET + f"""
+SETTINGS.limits_folded = {json.dumps(folded)};
+const said = n => ({{cls: n.className, words: words(n)}});
+const strip = buildBudget({{accounts: STORE, antigravity: AG}});
+console.log(JSON.stringify(strip.children.map(n => ({{...said(n), children: n.children.map(said)}}))));
+"""
+    return run(body, snapshot, compact=compact)
+
+
+def test_the_open_foot_draws_antigravitys_block():
+    assert "ag-limits" in [part["cls"] for part in budget(quota(), folded=False)]
+
+
+def test_the_folded_foot_draws_antigravitys_tile_among_the_accounts():
+    [tiles] = [part for part in budget(quota()) if part["cls"] == "fold-tiles"]
+    assert any(tile["words"][:1] == ["Antigravity"] for tile in tiles["children"])
+
+
+def test_the_compact_foot_is_handed_antigravitys_quota():
+    [box] = budget(quota(third_party_5h=0.1), compact=True)
+    assert any("Antigravity" in line["words"] for line in box["children"])

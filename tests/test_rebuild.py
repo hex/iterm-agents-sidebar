@@ -778,6 +778,29 @@ def test_the_refresh_button_asks_agy_again(monkeypatch):
     assert asks == ["/bin/agy"]
 
 
+@pytest.mark.parametrize("on", [True, False])
+async def test_each_tick_of_the_watch_asks_agy_only_while_antigravity_quota_is_on(monkeypatch, on):
+    """The watch reads the setting at each tick and rebuilds when agy's answer changed what
+    shows. Its own except takes any error, so what it called is the only sign of a slip."""
+    b = bridge(monkeypatch, [])
+    asks, rebuilds = [], []
+    b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy",
+                                            run=lambda agy: asks.append(agy) or (0, AGY_REPLY, ""))
+
+    async def rebuild_or_report():
+        rebuilds.append(1)
+    b.rebuild_or_report = rebuild_or_report
+
+    # The wait after the first tick ends the watch.
+    async def one_tick(seconds):
+        raise asyncio.CancelledError
+    monkeypatch.setattr(sidebar.asyncio, "sleep", one_tick)
+    sidebar.save_settings({"antigravity_quota": on})
+    with pytest.raises(asyncio.CancelledError):
+        await b.watch_antigravity()
+    assert (asks, rebuilds) == ((["/bin/agy"], [1]) if on else ([], []))
+
+
 def test_each_rebuild_decides_the_alerts_and_carries_them_out(monkeypatch, tmp_path):
     """The daemon, not a page, turns a change it read into a sound and a banner,
     under the settings on disk at that moment."""
