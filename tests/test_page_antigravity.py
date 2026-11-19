@@ -123,8 +123,10 @@ def test_at_compact_width_antigravity_gets_a_line_only_while_its_fullest_window_
     # Tight, so its reset shows too, as Codex's line does.
     assert line["words"] == ["Antigravity", "5h", "90%", "2h"]
     assert line["title"].startswith("Antigravity · Gemini Models: 5-hour 8%")
+    # Its hover says when each window resets, as Codex's line's does.
+    assert "Claude and GPT models: 5-hour 90%, resets in 2h; Weekly 0%, resets in 6d" in line["title"]
 
 
 def test_the_tiny_foot_says_antigravitys_figures_on_hover():
     [line] = run(COMPACT, quota(), compact=True, tiny=True)
-    assert "Antigravity · Gemini Models: 5-hour 8%, Weekly 3%" in line["title"]
+    assert "Antigravity · Gemini Models: 5-hour 8%, resets in 1h; Weekly 3%, resets in 5d" in line["title"]

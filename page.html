@@ -6297,7 +6297,7 @@ function compactFoot(store, codex, fallback, antigravity) {
     line.title = [windows.length ? said(active.name, windows) : `${active.name}: ${accountStatus(active)}`,
                   ...standing.passedOver.map(passedOverSaid),
                   next?.textContent, theirs.length ? said("Codex", theirs) : null,
-                  ag.length ? antigravitySaid(antigravity) : null,
+                  ag.length ? antigravitySaid(antigravity, now) : null,
                   "Accounts: every account and its windows"].filter(Boolean).join("\n");
     on(line, "click", open);
     box.append(line);
@@ -6328,7 +6328,7 @@ function compactFoot(store, codex, fallback, antigravity) {
     const lead = el("span", "cprov");
     lead.append(providerIcon("antigravity", "Antigravity"), el("span", "cacct", "Antigravity"));
     const line = footLine(lead, "Antigravity", ag);
-    line.title = antigravitySaid(antigravity);
+    line.title = antigravitySaid(antigravity, now);
     box.append(line);
   }
   return box;
@@ -6368,8 +6368,12 @@ function antigravityWindows(quota) {
   return quota.groups.flatMap(g => g.windows.map(w => ({...w, group: g.name})));
 }
 const antigravityAsOf = quota => quota.as_of ? `as of ${clock(quota.as_of)}` : "";
-const antigravitySaid = quota => ["Antigravity", ...quota.groups.map(g =>
-  `${g.name}: ${g.windows.map(w => `${w.label} ${Math.round(w.used)}%`).join(", ")}`), antigravityAsOf(quota)]
+// Given `now`, each window says when it resets, as Codex's lines do, and a
+// group's windows part with "; " so the commas stay unambiguous.
+const antigravitySaid = (quota, now = null) => ["Antigravity", ...quota.groups.map(g =>
+  `${g.name}: ${g.windows.map(w => `${w.label} ${Math.round(w.used)}%`
+    + (now !== null && w.resets_at ? `, resets in ${untilReset(w.resets_at, now)}` : ""))
+    .join(now === null ? ", " : "; ")}`), antigravityAsOf(quota)]
   .filter(Boolean).join(" \u00b7 ");
 // Folded, one tile: the fullest window of any group, and a failed reading's
 // age in place of the reset, as an account's tile says it.
