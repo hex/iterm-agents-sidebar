@@ -116,8 +116,7 @@ console.log(JSON.stringify(box.children.map(line => ({words: words(line), title:
 
 
 def test_at_compact_width_antigravity_gets_a_line_only_while_its_fullest_window_is_tight():
-    assert not any(line["words"][:1] == ["Antigravity"] or "Antigravity" in line["words"]
-                   for line in run(COMPACT, quota(), compact=True))
+    assert not any("Antigravity" in line["words"] for line in run(COMPACT, quota(), compact=True))
     lines = run(COMPACT, quota(third_party_5h=0.1), compact=True)
     [line] = [line for line in lines if "Antigravity" in line["words"]]
     # Tight, so its reset shows too, as Codex's line does.
