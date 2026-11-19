@@ -12,6 +12,7 @@ exits with code 2.
 import json
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import tempfile
@@ -124,19 +125,30 @@ def _own_folder(path):
 def run_agy(agy):
     """One `agy -p /quota` -> (exit code, stdout). Raises OSError or TimeoutExpired.
 
-    agy starts in a new empty folder under AGY_FOLDER, taken away after the run.
+    agy starts in a new empty folder under AGY_FOLDER, taken away after the run,
+    and in a session of its own, so a timeout ends whatever agy started with it.
     """
     run = tempfile.mkdtemp(prefix="run-", dir=_own_folder(AGY_FOLDER))
     try:
-        done = subprocess.run(
+        proc = subprocess.Popen(
             [agy, "-p", "/quota", "--output-format", "json", "--log-file", os.devnull],
-            capture_output=True, text=True, timeout=TIMEOUT_SECONDS, stdin=subprocess.DEVNULL,
             # agy reads `true` here and ignores `1`. With its updater on, a run
             # starts a background updater that can replace the agy binary.
-            cwd=run, env={**os.environ, "AGY_CLI_DISABLE_AUTO_UPDATE": "true"})
+            cwd=run, env={**os.environ, "AGY_CLI_DISABLE_AUTO_UPDATE": "true"},
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, start_new_session=True)
+        try:
+            out, err = proc.communicate(timeout=TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            out, err = proc.communicate()
+            raise subprocess.TimeoutExpired(proc.args, TIMEOUT_SECONDS, output=out, stderr=err)
     finally:
         shutil.rmtree(run, ignore_errors=True)
-    return done.returncode, done.stdout
+    return proc.returncode, out
 
 
 def _expired(window, now):

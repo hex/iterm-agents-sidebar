@@ -5,10 +5,12 @@ descriptions shortened; its figures are kept as they came.
 """
 import json
 import os
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -217,19 +219,46 @@ def test_find_agy_takes_the_first_executable_listed_path(tmp_path, monkeypatch):
     assert find_agy((str(plain),)) is None
 
 
+def stand_in_for_popen(monkeypatch, answer=("{}", ""), check=lambda kwargs: None):
+    """subprocess.Popen as run_agy sees it: each start keeps its argv, its kwargs (after `check`
+    has looked at them while the run is on) and each wait's timeout, and the first wait answers
+    with `answer`, (stdout, stderr), or raises it. Returns the list of starts."""
+    started = []
+
+    class Popen:
+        # No process has this pid, so even a real signal to it would reach nothing.
+        pid = 1 << 30
+
+        def __init__(self, argv, **kwargs):
+            check(kwargs)
+            self.args, self.kwargs, self.returncode, self.waits = argv, kwargs, None, []
+            started.append(self)
+
+        def communicate(self, timeout=None):
+            self.waits.append(timeout)
+            if isinstance(answer, BaseException):
+                if len(self.waits) == 1:
+                    raise answer
+                return "", ""
+            self.returncode = 0
+            return answer
+
+    monkeypatch.setattr(agy_quota.subprocess, "Popen", Popen)
+    return started
+
+
 def test_agy_runs_quietly_out_of_any_project_with_its_log_kept_out_of_its_folder(monkeypatch):
-    seen = {}
-
-    def fake_run(argv, **kwargs):
-        seen.update(argv=argv, **kwargs)
-        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
-
-    monkeypatch.setattr(agy_quota.subprocess, "run", fake_run)
+    started = stand_in_for_popen(monkeypatch)
     assert agy_quota.run_agy("/bin/agy") == (0, "{}")
-    assert seen["argv"] == ["/bin/agy", "-p", "/quota", "--output-format", "json", "--log-file", "/dev/null"]
-    assert seen["env"]["AGY_CLI_DISABLE_AUTO_UPDATE"] == "true"
-    assert seen["timeout"] == agy_quota.TIMEOUT_SECONDS
-    assert seen["stdin"] == subprocess.DEVNULL
+    [agy] = started
+    assert agy.args == ["/bin/agy", "-p", "/quota", "--output-format", "json", "--log-file", "/dev/null"]
+    assert agy.kwargs["env"]["AGY_CLI_DISABLE_AUTO_UPDATE"] == "true"
+    assert agy.waits == [agy_quota.TIMEOUT_SECONDS]
+    assert agy.kwargs["stdin"] == subprocess.DEVNULL
+    assert agy.kwargs["stdout"] == agy.kwargs["stderr"] == subprocess.PIPE
+    assert agy.kwargs["text"] is True
+    # A session of its own, so a timeout can end what agy started as well.
+    assert agy.kwargs["start_new_session"] is True
 
 
 def test_each_run_starts_in_a_new_empty_folder_of_the_panels_own_and_leaves_none(tmp_path, monkeypatch):
@@ -237,36 +266,67 @@ def test_each_run_starts_in_a_new_empty_folder_of_the_panels_own_and_leaves_none
     program can write to."""
     folder = tmp_path / "share" / "agy"
     monkeypatch.setattr(agy_quota, "AGY_FOLDER", str(folder))
-    cwds = []
 
-    def fake_run(argv, **kwargs):
+    def check(kwargs):
         cwd = kwargs["cwd"]
-        cwds.append(cwd)
         assert Path(cwd).parent == folder
         assert os.listdir(cwd) == []
         assert stat.S_IMODE(os.stat(cwd).st_mode) == 0o700
         assert stat.S_IMODE(os.stat(folder).st_mode) == 0o700
-        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
 
-    monkeypatch.setattr(agy_quota.subprocess, "run", fake_run)
+    started = stand_in_for_popen(monkeypatch, check=check)
     assert agy_quota.run_agy("/bin/agy") == (0, "{}")
-    assert len(cwds) == 1 and not os.path.exists(cwds[0])
+    assert len(started) == 1 and not os.path.exists(started[0].kwargs["cwd"])
 
 
 def test_a_run_that_times_out_still_takes_its_folder_away(tmp_path, monkeypatch):
     folder = tmp_path / "share" / "agy"
     monkeypatch.setattr(agy_quota, "AGY_FOLDER", str(folder))
-    cwds = []
-
-    def fake_run(argv, **kwargs):
-        cwds.append(kwargs["cwd"])
-        raise subprocess.TimeoutExpired(argv, agy_quota.TIMEOUT_SECONDS)
-
-    monkeypatch.setattr(agy_quota.subprocess, "run", fake_run)
+    killed = []
+    monkeypatch.setattr(agy_quota.os, "killpg", lambda pid, sig: killed.append((pid, sig)))
+    started = stand_in_for_popen(monkeypatch, answer=subprocess.TimeoutExpired("agy", agy_quota.TIMEOUT_SECONDS))
     with pytest.raises(subprocess.TimeoutExpired):
         agy_quota.run_agy("/bin/agy")
-    assert len(cwds) == 1 and Path(cwds[0]).parent == folder
-    assert not os.path.exists(cwds[0])
+    [agy] = started
+    assert Path(agy.kwargs["cwd"]).parent == folder
+    assert not os.path.exists(agy.kwargs["cwd"])
+    # The whole session goes, then what agy printed is collected.
+    assert killed == [(agy.pid, signal.SIGKILL)] and agy.waits == [agy_quota.TIMEOUT_SECONDS, None]
+
+
+def test_a_run_that_times_out_ends_what_agy_started_too(tmp_path, monkeypatch):
+    """A stand-in for agy that starts a child and waits on it, as a signed-out agy waits on `open`."""
+    pidfile = tmp_path / "child.pid"
+    script = tmp_path / "agy"
+    script.write_text('#!/bin/sh\nsleep 30 &\necho $! > "$PIDFILE"\nwait\n')
+    script.chmod(0o755)
+    monkeypatch.setattr(agy_quota, "TIMEOUT_SECONDS", 1)
+    monkeypatch.setenv("PIDFILE", str(pidfile))
+    gone = False
+    try:
+        began = time.monotonic()
+        with pytest.raises(subprocess.TimeoutExpired):
+            agy_quota.run_agy(str(script))
+        # The run ends at its timeout, not once the child lets go of agy's output.
+        assert time.monotonic() - began < 10
+        child = int(pidfile.read_text())
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(child, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.05)
+        with pytest.raises(ProcessLookupError):
+            os.kill(child, 0)
+        gone = True
+    finally:
+        # The test started that sleep, so it ends it if the run left it behind.
+        if not gone and pidfile.exists():
+            try:
+                os.kill(int(pidfile.read_text()), signal.SIGKILL)
+            except (ProcessLookupError, ValueError):
+                pass
 
 
 def test_a_folder_for_agy_that_is_a_link_is_refused_and_agy_never_runs(tmp_path, monkeypatch):
@@ -276,11 +336,10 @@ def test_a_folder_for_agy_that_is_a_link_is_refused_and_agy_never_runs(tmp_path,
     folder.parent.mkdir()
     folder.symlink_to(elsewhere)
     monkeypatch.setattr(agy_quota, "AGY_FOLDER", str(folder))
-    runs = []
-    monkeypatch.setattr(agy_quota.subprocess, "run", lambda argv, **kwargs: runs.append(argv))
+    started = stand_in_for_popen(monkeypatch)
     with pytest.raises(OSError):
         agy_quota.run_agy("/bin/agy")
-    assert runs == [] and os.listdir(elsewhere) == []
+    assert started == [] and os.listdir(elsewhere) == []
 
 
 def test_the_panels_folder_for_agy_is_not_under_the_shared_temporary_folder():

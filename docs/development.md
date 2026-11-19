@@ -312,6 +312,8 @@ Inspect Element.
   daemon's environment. agy treats the folder it starts in as a project and
   reads its `.agents/hooks.json`, so each run starts in a new empty folder of
   its own under `~/.local/share/agents-sidebar/agy`, removed after the run.
+  agy runs in a session of its own: a run still going after 60 seconds is
+  ended with everything it started, such as the `open` a signed-out agy runs.
   agy reports how much of each window is left; the panel draws how much is
   used, as it does for accounts. The rebuild only copies the last reading into
   the snapshot, so it never waits on agy. Tests never start agy: an autouse
