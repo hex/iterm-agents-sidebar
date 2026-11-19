@@ -403,7 +403,8 @@ groups, and the models of a group share its windows: Gemini models, Claude and
 GPT models, and a model with an allowance of its own, such as Gemini 4 Argon on
 paid Pro plans. The foot names each group, with its models on hover, and draws
 a bar for each window the group has, 5-hour and weekly, or weekly alone. A
-weekly bar carries the even-spend tick, as an account's does. Folded,
+window the panel does not know is left out, and the daemon's log says so once.
+A weekly bar carries the even-spend tick, as an account's does. Folded,
 Antigravity is one tile with the fullest window of any group, and its hover
 lists every group's windows. At compact width it gets a line of Codex's shape
 only while that window is tight.

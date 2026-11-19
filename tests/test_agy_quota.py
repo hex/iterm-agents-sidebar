@@ -246,6 +246,35 @@ def test_agys_message_is_cut_to_its_first_characters():
     assert said == ["antigravity quota not read: agy /quota exited 1: " + "x" * agy_quota.REASON_CHARS]
 
 
+def _gemini_buckets(*buckets):
+    """REPLY with the Gemini group's buckets replaced by these."""
+    gemini, *rest = REPLY["command"]["data"]["groups"]
+    return _reply(command={"name": "usage", "data": {"groups": [{**gemini, "buckets": list(buckets)}, *rest]}})
+
+
+GEMINI_5H = REPLY["command"]["data"]["groups"][0]["buckets"][1]
+
+
+@pytest.mark.parametrize("bucket, window, reason", [
+    ({"id": "gemini-daily", "window": "daily", "remaining_fraction": 0.5, "reset_time": "2026-11-20T21:33:20Z"},
+     "daily", "unknown window"),
+    ({"id": "gemini-weekly", "window": "weekly", "reset_time": "2026-11-26T21:15:41Z"},
+     "weekly", "no remaining_fraction"),
+], ids=["unknown-window", "no-remaining-fraction"])
+def test_a_bucket_the_foot_cannot_draw_is_logged_once_with_its_group(bucket, window, reason):
+    """Google names the windows, so a new one can come without an agy update."""
+    answer = (0, _gemini_buckets(bucket, GEMINI_5H), "")
+    agy = Agy(answer, answer)
+    said = []
+    quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
+    quota.step(NOW, True)
+    assert said == [f"antigravity quota: Gemini Models window {window!r} not drawn ({reason})"]
+    # The group still shows the window it can draw.
+    assert [w["label"] for w in quota.snapshot(NOW)["groups"][0]["windows"]] == ["5-hour"]
+    quota.step(NOW + agy_quota.READ_SECONDS, True)
+    assert agy.asks == 2 and len(said) == 1
+
+
 def _one_bucket(bucket):
     return _reply(command={"name": "usage", "data": {"groups": [{"name": "Odd", "buckets": [bucket]}]}})
 

@@ -63,13 +63,21 @@ def find_agy(paths=AGY_PATHS):
     return None
 
 
-def _window(bucket, read_at):
+def _set_aside(bucket):
+    """Why the foot cannot draw `bucket`: "unknown window" or "no remaining_fraction", else None."""
     window = bucket.get("window") if isinstance(bucket, dict) else None
     if not isinstance(window, str) or window not in WINDOWS:
-        return None
+        return "unknown window"
     left = bucket.get("remaining_fraction")
     if not isinstance(left, (int, float)) or isinstance(left, bool):
+        return "no remaining_fraction"
+    return None
+
+
+def _window(bucket, read_at):
+    if _set_aside(bucket):
         return None
+    window, left = bucket["window"], bucket["remaining_fraction"]
     minutes, label = WINDOWS[window]
     used = round(min(100.0, max(0.0, (1 - float(left)) * 100)), 1)
     resets_at = _epoch(bucket.get("reset_time"))
@@ -87,12 +95,13 @@ def _models(description):
     return [m.strip() for m in description[len(MODELS_PREFIX):].split(",") if m.strip()]
 
 
-def quota_from_reply(text, read_at):
+def quota_from_reply(text, read_at, skipped=None):
     """agy's JSON reply -> {"groups": [{name, models, windows}]}, or None when it holds no quota.
 
     Each window is {label, used, resets_at, minutes, pace}, shortest first,
     `used` the percentage spent as the account meters count it. A group with
-    no window the foot can draw is left out.
+    no window the foot can draw is left out. When `skipped` is a list, each
+    bucket set aside adds (group name, window, reason) to it.
     """
     try:
         reply = json.loads(text)
@@ -110,6 +119,11 @@ def quota_from_reply(text, read_at):
         if not isinstance(raw, dict) or not isinstance(raw.get("name"), str):
             continue
         buckets = raw.get("buckets") if isinstance(raw.get("buckets"), list) else []
+        if skipped is not None:
+            for bucket in buckets:
+                why = _set_aside(bucket)
+                if why:
+                    skipped.append((raw["name"], bucket.get("window") if isinstance(bucket, dict) else None, why))
         windows = sorted((w for w in (_window(b, read_at) for b in buckets) if w), key=lambda w: w["minutes"])
         if windows:
             groups.append({"name": raw["name"], "models": _models(raw.get("description")), "windows": windows})
@@ -248,6 +262,7 @@ class Quota:
         # ends never mixes two asks: None, or (reading, read_at, failed).
         self._shown = None
         self._said = None        # the failure last logged, until a good reading
+        self._skipped_said = set()   # each bucket the foot cannot draw, logged once
         self.asked_at = None
         self.next_at = 0.0
         # The wait after a good reading: READ_SECONDS, doubled after each one
@@ -335,10 +350,18 @@ class Quota:
                 if isinstance(error, subprocess.TimeoutExpired) and _says_signed_out(None, error.stderr):
                     return self._pause_signed_out(now)
                 return self._failed(now, f"agy did not answer: {error!r}")
+            skipped = []
             try:
-                quota = quota_from_reply(out, now) if code == 0 else None
+                quota = quota_from_reply(out, now, skipped) if code == 0 else None
             except (ValueError, TypeError, ArithmeticError) as error:
                 return self._failed(now, f"agy's reply could not be read: {error!r}")
+            # Google names the windows, so one the panel does not know can
+            # come without an agy update.
+            for group, window, reason in skipped:
+                line = f"antigravity quota: {group} window {window!r} not drawn ({reason})"
+                if line not in self._skipped_said:
+                    self.log(line)
+                    self._skipped_said.add(line)
             if quota is None:
                 if _says_signed_out(out, err):
                     return self._pause_signed_out(now)
