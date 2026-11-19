@@ -115,7 +115,7 @@ def test_used_stays_within_nought_and_a_hundred():
 
 
 class Agy:
-    """Stands in for `agy`: answers each ask with the next (exit code, stdout), or raises it."""
+    """Stands in for `agy`: answers each ask with the next (exit code, stdout, stderr), or raises it."""
 
     def __init__(self, *answers):
         self.answers, self.asks = list(answers), 0
@@ -129,7 +129,7 @@ class Agy:
 
 
 def test_a_reading_shows_in_the_snapshot_and_the_next_ask_waits_its_interval():
-    agy = Agy((0, json.dumps(REPLY)), (0, json.dumps(REPLY)))
+    agy = Agy((0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
     assert quota.step(NOW) is True
     snap = quota.snapshot(NOW)
@@ -150,7 +150,7 @@ def test_without_agy_nothing_runs_and_nothing_shows():
 
 
 def test_a_failed_ask_keeps_the_last_figures_and_says_how_old_they_are():
-    agy = Agy((0, json.dumps(REPLY)), (1, ""), subprocess.TimeoutExpired("agy", 60))
+    agy = Agy((0, json.dumps(REPLY), ""), (1, "", ""), subprocess.TimeoutExpired("agy", 60))
     said = []
     quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
     quota.step(NOW)
@@ -163,17 +163,59 @@ def test_a_failed_ask_keeps_the_last_figures_and_says_how_old_they_are():
     assert len(said) == 2 and all(line.startswith("antigravity quota not read:") for line in said)
 
 
+#: What a signed-out agy 1.5.13 printed once its 60 s wait for a sign-in ran out.
+SIGNED_OUT = (1, '{"status":"ERROR","error":"authentication failed or timed out"}',
+              "Authentication required. Please visit the URL to log in:\n"
+              "https://accounts.google.com/o/oauth2/auth?client_id=x\n")
+
+
+def _asks(*answers):
+    """The log lines of one ask per answer, each READ_SECONDS after the last."""
+    said = []
+    quota = Quota(find=lambda: "/bin/agy", run=Agy(*answers), log=lambda *words: said.append(" ".join(words)))
+    for n in range(len(answers)):
+        quota.step(NOW + n * agy_quota.READ_SECONDS)
+    return said
+
+
+def test_a_failed_run_is_logged_once_with_agys_own_error():
+    said = _asks(SIGNED_OUT, SIGNED_OUT)
+    assert len(said) == 1
+    assert "agy /quota exited 1: authentication failed or timed out" in said[0]
+
+
+def test_a_failed_run_with_no_reply_is_logged_once_with_the_last_line_agy_wrote_on_stderr():
+    said = _asks((1, "", "Loading tools\nError: not signed in\n\n"), (1, "", "Loading tools\nError: not signed in\n\n"))
+    assert len(said) == 1
+    assert said[0].endswith("agy /quota exited 1: Error: not signed in")
+
+
+def test_a_failure_is_logged_again_after_a_good_reading():
+    said = _asks(SIGNED_OUT, (0, json.dumps(REPLY), ""), SIGNED_OUT)
+    assert len(said) == 2 and said[0] == said[1]
+
+
+def test_a_failed_run_that_says_nothing_is_logged_as_such():
+    said = _asks((1, "", ""))
+    assert said == ["antigravity quota not read: agy /quota exited 1: no message"]
+
+
+def test_agys_message_is_cut_to_its_first_characters():
+    said = _asks((1, "", "x" * 1000 + "\n"))
+    assert said == ["antigravity quota not read: agy /quota exited 1: " + "x" * agy_quota.REASON_CHARS]
+
+
 def _one_bucket(bucket):
     return _reply(command={"name": "usage", "data": {"groups": [{"name": "Odd", "buckets": [bucket]}]}})
 
 
 @pytest.mark.parametrize("answer", [
-    (0, _one_bucket({"window": ["5h"], "remaining_fraction": 0.5})),
-    (0, _one_bucket({"window": "5h", "remaining_fraction": 10 ** 400})),
+    (0, _one_bucket({"window": ["5h"], "remaining_fraction": 0.5}), ""),
+    (0, _one_bucket({"window": "5h", "remaining_fraction": 10 ** 400}), ""),
     UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
 ], ids=["window-a-list", "fraction-of-400-digits", "output-not-utf-8"])
 def test_a_reply_that_cannot_be_read_is_a_failed_ask_and_waits_its_interval(answer):
-    agy = Agy((0, json.dumps(REPLY)), answer)
+    agy = Agy((0, json.dumps(REPLY), ""), answer)
     quota = Quota(find=lambda: "/bin/agy", run=agy)
     quota.step(NOW)
     assert quota.step(NOW + agy_quota.READ_SECONDS) is True
@@ -186,7 +228,7 @@ def test_a_reply_that_cannot_be_read_is_a_failed_ask_and_waits_its_interval(answ
 
 
 def test_an_ask_that_raises_still_moves_the_next_one():
-    agy = Agy((0, json.dumps(REPLY)), RuntimeError("unforeseen"), (0, json.dumps(REPLY)))
+    agy = Agy((0, json.dumps(REPLY), ""), RuntimeError("unforeseen"), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
     quota.step(NOW)
     with pytest.raises(RuntimeError):
@@ -203,7 +245,7 @@ def test_a_first_ask_that_fails_shows_nothing():
 
 def test_exit_code_2_is_a_failed_ask_like_any_other():
     """agy exits 2 on a flag it does not know, with its usage text and no quota."""
-    agy = Agy((0, json.dumps(REPLY)), (2, ""), (0, json.dumps(REPLY)))
+    agy = Agy((0, json.dumps(REPLY), ""), (2, "", ""), (0, json.dumps(REPLY), ""))
     said = []
     quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
     quota.step(NOW)
@@ -220,7 +262,7 @@ def test_exit_code_2_is_a_failed_ask_like_any_other():
 
 
 def test_a_window_whose_reset_has_passed_reads_empty_until_the_next_reading():
-    quota = Quota(find=lambda: "/bin/agy", run=Agy((0, json.dumps(REPLY))))
+    quota = Quota(find=lambda: "/bin/agy", run=Agy((0, json.dumps(REPLY), "")))
     quota.step(NOW)
     after = 1795140941  # the Gemini 5-hour window's reset
     five, weekly = quota.snapshot(after)["groups"][0]["windows"]
@@ -229,7 +271,7 @@ def test_a_window_whose_reset_has_passed_reads_empty_until_the_next_reading():
 
 
 def test_reload_asks_at_once_unless_the_last_ask_was_a_moment_ago():
-    agy = Agy((0, json.dumps(REPLY)), (0, json.dumps(REPLY)))
+    agy = Agy((0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
     quota.step(NOW)
     assert quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS - 1) is False
@@ -255,7 +297,7 @@ class HeldAgy:
         self.answer.wait(timeout=10)
         with self._count:
             self.in_flight -= 1
-        return 0, json.dumps(REPLY)
+        return 0, json.dumps(REPLY), ""
 
 
 def test_an_ask_while_another_is_in_flight_skips_rather_than_queue_another_agy():
@@ -305,7 +347,7 @@ def test_a_snapshot_reads_what_the_foot_draws_once_while_an_ask_may_replace_it()
 
 
 def test_a_step_after_a_reload_waits_for_the_reloads_interval():
-    agy = Agy((0, json.dumps(REPLY)), (0, json.dumps(REPLY)), (0, json.dumps(REPLY)))
+    agy = Agy((0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
     quota.step(NOW)
     assert quota.reload(NOW + agy_quota.READ_SECONDS - 1) is True
@@ -315,7 +357,7 @@ def test_a_step_after_a_reload_waits_for_the_reloads_interval():
 
 def test_agy_going_away_clears_the_block():
     present = ["/bin/agy"]
-    quota = Quota(find=lambda: present[0], run=Agy((0, json.dumps(REPLY))))
+    quota = Quota(find=lambda: present[0], run=Agy((0, json.dumps(REPLY), "")))
     quota.step(NOW)
     present[0] = None
     assert quota.step(NOW + agy_quota.READ_SECONDS) is True
@@ -363,7 +405,7 @@ def stand_in_for_popen(monkeypatch, answer=("{}", ""), check=lambda kwargs: None
 
 def test_agy_runs_quietly_out_of_any_project_with_its_log_kept_out_of_its_folder(monkeypatch):
     started = stand_in_for_popen(monkeypatch)
-    assert agy_quota.run_agy("/bin/agy") == (0, "{}")
+    assert agy_quota.run_agy("/bin/agy") == (0, "{}", "")
     [agy] = started
     assert agy.args == ["/bin/agy", "-p", "/quota", "--output-format", "json", "--log-file", "/dev/null"]
     assert agy.kwargs["env"]["AGY_CLI_DISABLE_AUTO_UPDATE"] == "true"
@@ -391,7 +433,7 @@ def test_each_run_starts_in_a_new_empty_folder_of_the_panels_own_and_leaves_none
         assert stat.S_IMODE(os.stat(folder).st_mode) == 0o700
 
     started = stand_in_for_popen(monkeypatch, check=check)
-    assert agy_quota.run_agy("/bin/agy") == (0, "{}")
+    assert agy_quota.run_agy("/bin/agy") == (0, "{}", "")
     assert len(started) == 1 and not os.path.exists(started[0].kwargs["cwd"])
 
 
@@ -469,7 +511,7 @@ def test_a_daemons_quota_looks_agy_up_at_each_ask(monkeypatch):
     """The suite's own fixture hides agy from every daemon a test builds; this is how."""
     asked = []
     monkeypatch.setattr(agy_quota, "find_agy", lambda *paths: "/bin/agy")
-    monkeypatch.setattr(agy_quota, "run_agy", lambda agy: asked.append(agy) or (0, json.dumps(REPLY)))
+    monkeypatch.setattr(agy_quota, "run_agy", lambda agy: asked.append(agy) or (0, json.dumps(REPLY), ""))
     quota = Quota()
     quota.step(NOW)
     assert asked == ["/bin/agy"] and quota.snapshot(NOW)

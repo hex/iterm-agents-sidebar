@@ -741,7 +741,7 @@ def test_antigravitys_quota_rides_the_snapshot_once_agy_has_answered(monkeypatch
     b = bridge(monkeypatch, [])
     asyncio.run(b.rebuild())
     assert "antigravity" not in b.latest
-    b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy", run=lambda agy: (0, AGY_REPLY))
+    b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy", run=lambda agy: (0, AGY_REPLY, ""))
     b.antigravity.step(time.time())
     asyncio.run(b.rebuild())
     [group] = b.latest["antigravity"]["groups"]
@@ -757,7 +757,7 @@ def test_the_refresh_button_asks_agy_again(monkeypatch):
     b.latest = {"groups": []}
     monkeypatch.setattr(sidebar.update, "origin", lambda here: None)
     b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy",
-                                            run=lambda agy: asks.append(agy) or (0, AGY_REPLY))
+                                            run=lambda agy: asks.append(agy) or (0, AGY_REPLY, ""))
     b.account_op("read", {})
     # In a thread of its own, so the accounts' reading does not wait on agy.
     for _ in range(200):

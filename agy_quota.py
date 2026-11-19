@@ -29,6 +29,8 @@ READ_SECONDS = 5 * 60
 RELOAD_FLOOR_SECONDS = 60
 #: agy loads its tools and logs in before it answers; past this it is stuck.
 TIMEOUT_SECONDS = 60
+#: How much of agy's own message a log line keeps.
+REASON_CHARS = 200
 #: agy treats the folder it starts in as a project and reads its
 #: .agents/hooks.json, so each run starts in a new empty folder under this
 #: one, which the panel owns.
@@ -120,7 +122,7 @@ def _own_folder(path):
 
 
 def run_agy(agy):
-    """One `agy -p /quota` -> (exit code, stdout). Raises OSError or TimeoutExpired.
+    """One `agy -p /quota` -> (exit code, stdout, stderr). Raises OSError or TimeoutExpired.
 
     agy starts in a new empty folder under AGY_FOLDER, taken away after the run,
     and in a session of its own, so a timeout ends whatever agy started with it.
@@ -145,7 +147,23 @@ def run_agy(agy):
             raise subprocess.TimeoutExpired(proc.args, TIMEOUT_SECONDS, output=out, stderr=err)
     finally:
         shutil.rmtree(run, ignore_errors=True)
-    return proc.returncode, out
+    return proc.returncode, out, err
+
+
+def _reason(out, err):
+    """What agy said of a run that gave no quota: the error in its JSON reply,
+    else its last line on stderr, cut to REASON_CHARS."""
+    try:
+        reply = json.loads(out)
+    except ValueError:
+        reply = None
+    error = reply.get("error") if isinstance(reply, dict) and reply.get("status") == "ERROR" else None
+    if isinstance(error, str) and error.strip():
+        why = error.strip()
+    else:
+        lines = [line.strip() for line in err.splitlines() if line.strip()]
+        why = lines[-1] if lines else "no message"
+    return why[:REASON_CHARS]
 
 
 def _expired(window, now):
@@ -172,6 +190,7 @@ class Quota:
         # What the foot draws, replaced whole so a snapshot taken while an ask
         # ends never mixes two asks: None, or (reading, read_at, failed).
         self._shown = None
+        self._said = None        # the failure last logged, until a good reading
         self.asked_at = None
         self.next_at = 0.0
         self._lock = threading.Lock()
@@ -220,7 +239,7 @@ class Quota:
             # Set before agy runs, so an ask that raises still waits its interval.
             self.next_at = now + READ_SECONDS
             try:
-                code, out = self.run(agy)
+                code, out, err = self.run(agy)
             except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as error:
                 return self._failed(now, f"agy did not answer: {error!r}")
             try:
@@ -228,15 +247,19 @@ class Quota:
             except (ValueError, TypeError, ArithmeticError) as error:
                 return self._failed(now, f"agy's reply could not be read: {error!r}")
             if quota is None:
-                return self._failed(now, f"agy /quota exited {code} without a quota")
+                return self._failed(now, f"agy /quota exited {code}: {_reason(out, err)}")
             self._shown = (quota, now, False)
+            self._said = None
             self.next_at = now + READ_SECONDS
             return True
         finally:
             self._lock.release()
 
     def _failed(self, now, why):
-        self.log("antigravity quota not read:", why)
+        # A run that keeps failing the same way is logged once: nothing rotates daemon.log.
+        if why != self._said:
+            self.log("antigravity quota not read:", why)
+            self._said = why
         self.next_at = now + READ_SECONDS
         shown = self._shown
         # With no reading nothing shows, failed or not.
