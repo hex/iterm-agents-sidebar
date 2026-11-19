@@ -417,11 +417,10 @@ honours: these runs never check for or install an update. agy runs in an
 empty folder the panel makes for each run, so nothing another program leaves
 in a shared folder is read as a project.
 
-A run that fails keeps the last figures, with `as of 14:02` beside the name, or
-in place of the reset on the folded tile. A login with no account quota, such as
-a `GEMINI_API_KEY`, makes agy exit with code 2: the block goes, and the panel
-asks again an hour later. Without agy, nothing runs and nothing shows. A window
-whose reset time has passed reads 0% until the next reading.
+A run that fails, whatever agy's exit code, keeps the last figures, with
+`as of 14:02` beside the name, or in place of the reset on the folded tile.
+Without agy, nothing runs and nothing shows. A window whose reset time has
+passed reads 0% until the next reading.
 
 agy runs with the environment iTerm2 started the panel with, not your shell's,
 so a `GEMINI_API_KEY`, a `GOOGLE_*` setting or an `HTTPS_PROXY` set only in a

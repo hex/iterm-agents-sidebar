@@ -307,9 +307,10 @@ Inspect Element.
   read starts cold and `daemon.log` says why.
 - **Antigravity's quota:** `agy -p /quota --output-format json`, run by
   `watch_antigravity` on the account loop's 30-second tick whenever
-  `agy_quota.Quota` says a reading is due (every 5 minutes, an hour after agy
-  exits with code 2), in a thread, with `--log-file /dev/null` and the
-  daemon's environment. agy treats the folder it starts in as a project and
+  `agy_quota.Quota` says a reading is due (every 5 minutes), in a thread,
+  with `--log-file /dev/null` and the daemon's environment. A run that fails,
+  whatever its exit code, keeps the last figures, shown as of their time.
+  agy treats the folder it starts in as a project and
   reads its `.agents/hooks.json`, so each run starts in a new empty folder of
   its own under `~/.local/share/agents-sidebar/agy`, removed after the run.
   agy runs in a session of its own: a run still going after 60 seconds is

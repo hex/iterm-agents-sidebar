@@ -201,16 +201,22 @@ def test_a_first_ask_that_fails_shows_nothing():
     assert quota.snapshot(NOW) is None
 
 
-def test_a_login_without_account_quota_hides_the_block_and_waits_an_hour():
-    agy = Agy((0, json.dumps(REPLY)), (agy_quota.NO_QUOTA_EXIT, ""), (0, json.dumps(REPLY)))
-    quota = Quota(find=lambda: "/bin/agy", run=agy)
+def test_exit_code_2_is_a_failed_ask_like_any_other():
+    """agy exits 2 on a flag it does not know, with its usage text and no quota."""
+    agy = Agy((0, json.dumps(REPLY)), (2, ""), (0, json.dumps(REPLY)))
+    said = []
+    quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
     quota.step(NOW)
     assert quota.step(NOW + agy_quota.READ_SECONDS) is True
-    assert quota.snapshot(NOW + agy_quota.READ_SECONDS) is None
-    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS) is False
+    snap = quota.snapshot(NOW + agy_quota.READ_SECONDS)
+    assert snap and snap["as_of"] == NOW
+    assert snap["groups"][0]["windows"][0]["used"] == 8.4
+    assert len(said) == 1
+    # The next ask is the usual interval away, not an hour.
+    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS - 1) is False
     assert agy.asks == 2
-    quota.step(NOW + agy_quota.READ_SECONDS + agy_quota.NO_QUOTA_SECONDS)
-    assert agy.asks == 3 and quota.snapshot(NOW + agy_quota.READ_SECONDS + agy_quota.NO_QUOTA_SECONDS)
+    quota.step(NOW + 2 * agy_quota.READ_SECONDS)
+    assert agy.asks == 3
 
 
 def test_a_window_whose_reset_has_passed_reads_empty_until_the_next_reading():

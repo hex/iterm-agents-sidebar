@@ -6,8 +6,8 @@
 `agy -p /quota --output-format json` answers with the account's quota groups
 (Gemini models, Claude and GPT models, a model with an allowance of its own),
 each with its windows: how much of it is left and when it fully refreshes.
-The same command run on a `GEMINI_API_KEY` has no account quota to show and
-exits with code 2.
+A run that fails, whatever its exit code, keeps the last figures with the
+time they were read.
 """
 import json
 import os
@@ -25,14 +25,10 @@ from accounts import DAY_SECONDS, _epoch, pace
 AGY_PATHS = ("~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy")
 #: How often to ask while readings succeed; each ask starts agy for about three seconds.
 READ_SECONDS = 5 * 60
-#: How long to leave agy alone after it says the login has no account quota (an API key).
-NO_QUOTA_SECONDS = 60 * 60
 #: A press of reload asks again unless the last ask is this recent.
 RELOAD_FLOOR_SECONDS = 60
 #: agy loads its tools and logs in before it answers; past this it is stuck.
 TIMEOUT_SECONDS = 60
-#: agy's exit code when the login has no account quota to show.
-NO_QUOTA_EXIT = 2
 #: agy treats the folder it starts in as a project and reads its
 #: .agents/hooks.json, so each run starts in a new empty folder under this
 #: one, which the panel owns.
@@ -176,7 +172,6 @@ class Quota:
         # What the foot draws, replaced whole so a snapshot taken while an ask
         # ends never mixes two asks: None, or (reading, read_at, failed).
         self._shown = None
-        self.no_quota = False    # agy said the login has no account quota
         self.asked_at = None
         self.next_at = 0.0
         self._lock = threading.Lock()
@@ -217,8 +212,8 @@ class Quota:
                 return False
             agy = self.find()
             if agy is None:
-                changed = self._shown is not None or self.no_quota
-                self._shown, self.no_quota = None, False
+                changed = self._shown is not None
+                self._shown = None
                 self.next_at = now + READ_SECONDS
                 return changed
             self.asked_at = now
@@ -228,18 +223,13 @@ class Quota:
                 code, out = self.run(agy)
             except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as error:
                 return self._failed(now, f"agy did not answer: {error!r}")
-            if code == NO_QUOTA_EXIT:
-                changed = self._shown is not None or not self.no_quota
-                self._shown, self.no_quota = None, True
-                self.next_at = now + NO_QUOTA_SECONDS
-                return changed
             try:
                 quota = quota_from_reply(out, now) if code == 0 else None
             except (ValueError, TypeError, ArithmeticError) as error:
                 return self._failed(now, f"agy's reply could not be read: {error!r}")
             if quota is None:
                 return self._failed(now, f"agy /quota exited {code} without a quota")
-            self._shown, self.no_quota = (quota, now, False), False
+            self._shown = (quota, now, False)
             self.next_at = now + READ_SECONDS
             return True
         finally:
