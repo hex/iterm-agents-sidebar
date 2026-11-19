@@ -427,7 +427,8 @@ A run that fails, whatever agy's exit code, keeps the last figures, with
 When agy is signed out, the panel stops asking until you press reload, or turn
 the setting off and on again, and it never opens a browser for agy's sign-in.
 Without agy, nothing runs and nothing shows. A window whose reset time has
-passed reads 0% until the next reading.
+passed reads 0% until the next reading. While runs fail, such a window shows
+nothing rather than 0%, and the block goes once its figures are a day old.
 
 agy runs with the environment iTerm2 started the panel with, not your shell's,
 so a `GEMINI_API_KEY`, a `GOOGLE_*` setting or an `HTTPS_PROXY` set only in a

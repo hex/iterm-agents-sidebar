@@ -7,7 +7,8 @@
 (Gemini models, Claude and GPT models, a model with an allowance of its own),
 each with its windows: how much of it is left and when it fully refreshes.
 A run that fails, whatever its exit code, keeps the last figures with the
-time they were read.
+time they were read, for a day at most and without any window that has reset
+since.
 """
 import json
 import os
@@ -27,6 +28,8 @@ AGY_PATHS = ("~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy")
 READ_SECONDS = 5 * 60
 #: The longest gap between asks while the figures hold still.
 QUIET_READ_SECONDS = 30 * 60
+#: A reading this old, with every ask since failing, is dropped: nothing says what the quota holds now.
+STALE_SECONDS = 24 * 60 * 60
 #: A press of reload asks again unless the last ask is this recent.
 RELOAD_FLOOR_SECONDS = 60
 #: agy loads its tools and logs in before it answers; past this it is stuck.
@@ -220,7 +223,7 @@ def _figures(quota):
 
 
 def _expired(window, now):
-    """A window whose reset has passed since the reading reads empty until the next one."""
+    """While readings succeed, a window whose reset has passed since the last reads empty until the next."""
     if window["resets_at"] is not None and window["resets_at"] <= now:
         return {**window, "used": 0.0, "resets_at": None, "pace": None}
     return window
@@ -377,10 +380,18 @@ class Quota:
 
         {"groups": [...]} with each window as of `now` (a passed reset reads
         0%), and "as_of", the reading's time, while the latest ask failed.
+        While asks fail, a window whose reset has passed is left out, a group
+        left with none goes, and a reading STALE_SECONDS old shows nothing.
         """
         shown = self._shown
         if shown is None:
             return None
         reading, read_at, failed = shown
-        groups = [{**g, "windows": [_expired(w, now) for w in g["windows"]]} for g in reading["groups"]]
-        return {"groups": groups, **({"as_of": read_at} if failed else {})}
+        if not failed:
+            return {"groups": [{**g, "windows": [_expired(w, now) for w in g["windows"]]} for g in reading["groups"]]}
+        if now - read_at >= STALE_SECONDS:
+            return None
+        groups = [{**g, "windows": [w for w in g["windows"] if w["resets_at"] is None or w["resets_at"] > now]}
+                  for g in reading["groups"]]
+        groups = [g for g in groups if g["windows"]]
+        return {"groups": groups, "as_of": read_at} if groups else None

@@ -316,7 +316,8 @@ Inspect Element.
   each tick and each press: off, they clear the reading and never look agy up
   or start it, and the rebuild leaves the `antigravity` key out of the
   snapshot. A run that fails,
-  whatever its exit code, keeps the last figures, shown as of their time.
+  whatever its exit code, keeps the last figures, shown as of their time,
+  without any window whose reset has passed since, and for a day at most.
   agy treats the folder it starts in as a project and
   reads its `.agents/hooks.json`, so each run starts in a new empty folder of
   its own under `~/.local/share/agents-sidebar/agy`, removed after the run.

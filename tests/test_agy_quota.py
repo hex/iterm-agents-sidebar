@@ -516,6 +516,66 @@ def test_a_reset_inside_a_long_gap_still_reads_empty_on_time():
     assert quota.snapshot(resets - 1)["groups"][0]["windows"][0]["used"] == 8.4
 
 
+HOUR = 60 * 60
+
+
+def _resetting(five_hour_at, weekly_at, argon_at):
+    """A reply of Gemini, 25% of its 5-hour and 10% of its weekly window spent, and Argon, 50% of
+    its one weekly window, each window resetting at the time given."""
+    groups = [
+        {"name": "Gemini Models", "buckets": [
+            {"window": "5h", "remaining_fraction": 0.75, "reset_time": _iso(five_hour_at)},
+            {"window": "weekly", "remaining_fraction": 0.9, "reset_time": _iso(weekly_at)}]},
+        {"name": "Gemini 4 Argon", "buckets": [
+            {"window": "weekly", "remaining_fraction": 0.5, "reset_time": _iso(argon_at)}]}]
+    return (0, _reply(command={"name": "usage", "data": {"groups": groups}}), "")
+
+
+def _failing_since(reading):
+    """A Quota that read `reading` at NOW and whose ask 5 minutes later failed."""
+    quota = Quota(find=lambda: "/bin/agy", run=Agy(reading, UNAVAILABLE))
+    quota.step(NOW, True)
+    quota.step(NOW + agy_quota.READ_SECONDS, True)
+    return quota
+
+
+def _drawn(snap):
+    return [(g["name"], [(w["label"], w["used"]) for w in g["windows"]]) for g in snap["groups"]]
+
+
+def test_while_asks_fail_a_window_past_its_reset_shows_no_figure():
+    """Nothing says what a window holds after its reset until agy answers again, so it is left out
+    rather than read as 0%; Argon's only window has reset, so Argon goes too."""
+    quota = _failing_since(_resetting(NOW + HOUR, NOW + 6 * 24 * HOUR, NOW + HOUR))
+    snap = quota.snapshot(NOW + HOUR - 1)
+    assert _drawn(snap) == [("Gemini Models", [("5-hour", 25.0), ("Weekly", 10.0)]),
+                            ("Gemini 4 Argon", [("Weekly", 50.0)])]
+    snap = quota.snapshot(NOW + 2 * HOUR)
+    assert snap["as_of"] == NOW
+    assert _drawn(snap) == [("Gemini Models", [("Weekly", 10.0)])]
+
+
+def test_while_asks_fail_a_quota_whose_every_window_has_reset_shows_nothing():
+    quota = _failing_since(_resetting(NOW + HOUR, NOW + HOUR, NOW + HOUR))
+    assert quota.snapshot(NOW + 2 * HOUR) is None
+
+
+def test_figures_a_day_old_with_every_ask_since_failing_show_nothing():
+    quota = _failing_since(_resetting(NOW + HOUR, NOW + 6 * 24 * HOUR, NOW + 6 * 24 * HOUR))
+    assert quota.snapshot(NOW + agy_quota.STALE_SECONDS - 1)["as_of"] == NOW
+    assert quota.snapshot(NOW + agy_quota.STALE_SECONDS) is None
+
+
+def test_while_asks_succeed_a_window_past_its_reset_still_reads_empty():
+    quota = Quota(find=lambda: "/bin/agy", run=Agy(_resetting(NOW + HOUR, NOW + 6 * 24 * HOUR, NOW + HOUR)))
+    quota.step(NOW, True)
+    snap = quota.snapshot(NOW + 2 * HOUR)
+    assert "as_of" not in snap
+    assert [(g["name"], [(w["label"], w["used"], w["resets_at"]) for w in g["windows"]]) for g in snap["groups"]] == [
+        ("Gemini Models", [("5-hour", 0.0, None), ("Weekly", 10.0, NOW + 6 * 24 * HOUR)]),
+        ("Gemini 4 Argon", [("Weekly", 0.0, None)])]
+
+
 def test_find_agy_takes_the_first_executable_listed_path(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     plain = tmp_path / "plain-agy"
