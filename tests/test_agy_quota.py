@@ -167,6 +167,8 @@ def test_a_failed_ask_keeps_the_last_figures_and_says_how_old_they_are():
 SIGNED_OUT = (1, '{"status":"ERROR","error":"authentication failed or timed out"}',
               "Authentication required. Please visit the URL to log in:\n"
               "https://accounts.google.com/o/oauth2/auth?client_id=x\n")
+#: A failed run for some other reason, with agy's own error in its JSON reply.
+UNAVAILABLE = (1, '{"status":"ERROR","error":"quota service unavailable"}', "")
 
 
 def _asks(*answers):
@@ -179,9 +181,9 @@ def _asks(*answers):
 
 
 def test_a_failed_run_is_logged_once_with_agys_own_error():
-    said = _asks(SIGNED_OUT, SIGNED_OUT)
+    said = _asks(UNAVAILABLE, UNAVAILABLE)
     assert len(said) == 1
-    assert "agy /quota exited 1: authentication failed or timed out" in said[0]
+    assert "agy /quota exited 1: quota service unavailable" in said[0]
 
 
 def test_a_failed_run_with_no_reply_is_logged_once_with_the_last_line_agy_wrote_on_stderr():
@@ -191,8 +193,47 @@ def test_a_failed_run_with_no_reply_is_logged_once_with_the_last_line_agy_wrote_
 
 
 def test_a_failure_is_logged_again_after_a_good_reading():
-    said = _asks(SIGNED_OUT, (0, json.dumps(REPLY), ""), SIGNED_OUT)
+    said = _asks(UNAVAILABLE, (0, json.dumps(REPLY), ""), UNAVAILABLE)
     assert len(said) == 2 and said[0] == said[1]
+
+
+@pytest.mark.parametrize("signed_out", [
+    SIGNED_OUT,
+    subprocess.TimeoutExpired("agy", agy_quota.TIMEOUT_SECONDS, output="",
+                              stderr="Authentication required. Please visit the URL to log in:\n"
+                                     "  https://accounts.google.com/o/oauth2/auth?x=y\n"),
+], ids=["its-wait-for-a-sign-in-ran-out", "the-panels-timeout-came-first"])
+def test_a_signed_out_agy_is_asked_again_only_after_a_reload_or_the_setting_going_off_and_on(signed_out):
+    """Signed out, agy wants a browser sign-in and waits a minute for it: asking every few minutes
+    would only wait that minute again."""
+    agy = Agy((0, json.dumps(REPLY), ""), signed_out, signed_out, signed_out)
+    said = []
+    quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
+    quota.step(NOW - agy_quota.READ_SECONDS, True)
+    assert quota.step(NOW, True) is True
+    assert said == ["antigravity quota not read: agy is signed out; asking again after a press of reload"]
+    assert quota.snapshot(NOW)["as_of"] == NOW - agy_quota.READ_SECONDS
+    for later in (agy_quota.READ_SECONDS, agy_quota.QUIET_READ_SECONDS, 2 * agy_quota.QUIET_READ_SECONDS):
+        assert quota.step(NOW + later, True) is False
+    assert agy.asks == 2
+    pressed = NOW + 2 * agy_quota.QUIET_READ_SECONDS + 2 * agy_quota.RELOAD_FLOOR_SECONDS
+    quota.reload(pressed, True)
+    assert agy.asks == 3
+    # Still signed out: it waits again, and says nothing new.
+    assert quota.step(pressed + agy_quota.QUIET_READ_SECONDS, True) is False
+    assert agy.asks == 3 and len(said) == 1
+    quota.step(pressed + agy_quota.QUIET_READ_SECONDS, False)
+    quota.step(pressed + agy_quota.QUIET_READ_SECONDS + 30, True)
+    assert agy.asks == 4
+
+
+def test_a_run_that_fails_for_another_reason_is_asked_again_on_time():
+    agy = Agy((0, json.dumps(REPLY), ""), UNAVAILABLE, UNAVAILABLE)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    quota.step(NOW + agy_quota.READ_SECONDS, True)
+    quota.step(NOW + 2 * agy_quota.READ_SECONDS, True)
+    assert agy.asks == 3
 
 
 def test_a_failed_run_that_says_nothing_is_logged_as_such():
@@ -546,6 +587,35 @@ def test_each_run_starts_in_a_new_empty_folder_of_the_panels_own_and_leaves_none
     started = stand_in_for_popen(monkeypatch, check=check)
     assert agy_quota.run_agy("/bin/agy") == (0, "{}", "")
     assert len(started) == 1 and not os.path.exists(started[0].kwargs["cwd"])
+
+
+def test_agy_finds_an_open_of_the_panels_own_first_on_its_path_and_it_opens_nothing(monkeypatch):
+    """Signed out, agy runs `open` on a Google sign-in URL, looked up on PATH."""
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    started = stand_in_for_popen(monkeypatch)
+    agy_quota.run_agy("/bin/agy")
+    bin_folder = os.path.join(agy_quota.AGY_FOLDER, "bin")
+    assert started[0].kwargs["env"]["PATH"] == bin_folder + os.pathsep + "/usr/bin:/bin"
+    stub = Path(bin_folder) / "open"
+    assert not stub.is_symlink() and stub.read_text() == "#!/bin/sh\nexit 0\n"
+    assert stat.S_IMODE(stub.stat().st_mode) == 0o700
+    assert stat.S_IMODE(os.stat(bin_folder).st_mode) == 0o700
+    before = stub.stat()
+    agy_quota.run_agy("/bin/agy")
+    assert (stub.stat().st_ino, stub.stat().st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
+    stub.write_text('#!/bin/sh\nexec /usr/bin/open "$@"\n')
+    agy_quota.run_agy("/bin/agy")
+    assert stub.read_text() == "#!/bin/sh\nexit 0\n"
+    assert stat.S_IMODE(stub.stat().st_mode) == 0o700
+
+
+def test_a_run_looks_open_up_in_the_panels_folder_before_the_systems(tmp_path):
+    """A stand-in for agy that only says which `open` its PATH finds; `command -v` runs nothing."""
+    script = tmp_path / "agy"
+    script.write_text("#!/bin/sh\ncommand -v open\n")
+    script.chmod(0o755)
+    code, out, err = agy_quota.run_agy(str(script))
+    assert (code, out.strip()) == (0, os.path.join(agy_quota.AGY_FOLDER, "bin", "open"))
 
 
 def test_a_run_that_times_out_still_takes_its_folder_away(tmp_path, monkeypatch):

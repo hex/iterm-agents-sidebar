@@ -321,7 +321,14 @@ Inspect Element.
   reads its `.agents/hooks.json`, so each run starts in a new empty folder of
   its own under `~/.local/share/agents-sidebar/agy`, removed after the run.
   agy runs in a session of its own: a run still going after 60 seconds is
-  ended with everything it started, such as the `open` a signed-out agy runs.
+  ended with everything it started. Signed out, agy runs `open` on a Google
+  sign-in URL, looked up on `PATH`, and waits a minute for the sign-in, so
+  each run puts `~/.local/share/agents-sidebar/agy/bin` first on agy's `PATH`,
+  where an `open` of the panel's own exits at once: the panel never opens a
+  browser. After a signed-out answer (`Authentication required` on agy's
+  stderr, or an authentication error in its reply) `Quota.step` asks no more
+  until a press of reload, or the setting going off and on, and `daemon.log`
+  says so once.
   agy reports how much of each window is left; the panel draws how much is
   used, as it does for accounts. The rebuild only copies the last reading into
   the snapshot, so it never waits on agy. Tests never start agy: an autouse
@@ -423,7 +430,8 @@ of a guess.
   token and pid, for `agents-sidebar`.
 - `~/.local/share/agents-sidebar/agy/`: a folder only your user can open,
   with a new empty folder for each `agy -p /quota` run to start in, removed
-  when that run ends.
+  when that run ends, and `bin/open`, the `open` that does nothing, first on
+  agy's `PATH`.
 
 ## Tests
 

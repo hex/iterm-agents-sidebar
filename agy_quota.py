@@ -37,6 +37,10 @@ REASON_CHARS = 200
 #: .agents/hooks.json, so each run starts in a new empty folder under this
 #: one, which the panel owns.
 AGY_FOLDER = os.path.expanduser("~/.local/share/agents-sidebar/agy")
+#: The `open` agy finds first on its PATH, in AGY_FOLDER/bin: it opens nothing.
+OPEN_STUB = "#!/bin/sh\nexit 0\n"
+#: What agy writes to stderr when it has no login and wants a browser sign-in.
+SIGNED_OUT_SAYS = "Authentication required"
 
 #: The window names agy uses -> (minutes, the label the foot uses for that length elsewhere).
 WINDOWS = {"5h": (300, "5-hour"), "weekly": (10080, "Weekly")}
@@ -123,19 +127,45 @@ def _own_folder(path):
     return path
 
 
+def _stub_open(folder):
+    """`folder`/open as OPEN_STUB, written again when it is missing or holds anything else.
+
+    Raises OSError when it cannot be, a link in its place included.
+    """
+    path = os.path.join(folder, "open")
+    try:
+        with open(path, encoding="utf-8") as stub:
+            if stub.read() == OPEN_STUB and stat.S_IMODE(os.lstat(path).st_mode) == 0o700:
+                return path
+    except (OSError, ValueError):
+        pass
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o700)
+    with os.fdopen(fd, "w", encoding="utf-8") as stub:
+        stub.write(OPEN_STUB)
+    os.chmod(path, 0o700)
+    return path
+
+
 def run_agy(agy):
     """One `agy -p /quota` -> (exit code, stdout, stderr). Raises OSError or TimeoutExpired.
 
     agy starts in a new empty folder under AGY_FOLDER, taken away after the run,
     and in a session of its own, so a timeout ends whatever agy started with it.
     """
-    run = tempfile.mkdtemp(prefix="run-", dir=_own_folder(AGY_FOLDER))
+    home = _own_folder(AGY_FOLDER)
+    bin_folder = _own_folder(os.path.join(home, "bin"))
+    # Signed out, agy runs `open` on a Google sign-in URL, looked up on PATH,
+    # and waits a minute for the sign-in; this stub keeps the panel from ever
+    # opening a browser.
+    _stub_open(bin_folder)
+    run = tempfile.mkdtemp(prefix="run-", dir=home)
     try:
         proc = subprocess.Popen(
             [agy, "-p", "/quota", "--output-format", "json", "--log-file", os.devnull],
             # agy reads `true` here and ignores `1`. With its updater on, a run
             # starts a background updater that can replace the agy binary.
-            cwd=run, env={**os.environ, "AGY_CLI_DISABLE_AUTO_UPDATE": "true"},
+            cwd=run, env={**os.environ, "PATH": bin_folder + os.pathsep + os.environ.get("PATH", os.defpath),
+                          "AGY_CLI_DISABLE_AUTO_UPDATE": "true"},
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, errors="replace", start_new_session=True)
         try:
@@ -166,6 +196,21 @@ def _reason(out, err):
         lines = [line.strip() for line in err.splitlines() if line.strip()]
         why = lines[-1] if lines else "no message"
     return why[:REASON_CHARS]
+
+
+def _says_signed_out(out, err):
+    """Whether a run that gave no quota says agy has no login: SIGNED_OUT_SAYS on
+    its stderr, or an authentication error in its JSON reply."""
+    if isinstance(err, bytes):
+        err = err.decode("utf-8", errors="replace")
+    if isinstance(err, str) and SIGNED_OUT_SAYS in err:
+        return True
+    try:
+        reply = json.loads(out) if out else None
+    except (ValueError, TypeError):
+        return False
+    error = reply.get("error") if isinstance(reply, dict) and reply.get("status") == "ERROR" else None
+    return isinstance(error, str) and "authentication" in error.lower()
 
 
 def _figures(quota):
@@ -205,6 +250,9 @@ class Quota:
         # The wait after a good reading: READ_SECONDS, doubled after each one
         # whose figures match the last, up to QUIET_READ_SECONDS.
         self.gap = READ_SECONDS
+        # Set by a signed-out answer: no step asks again until a press of
+        # reload, or the setting going off, clears it.
+        self.signed_out = False
         self._lock = threading.Lock()
 
     @property
@@ -229,7 +277,7 @@ class Quota:
         """Ask agy if a reading is due. Returns whether the snapshot may have changed."""
         if not on:
             return self._off()
-        return self._ask(now, lambda: now >= self.next_at)
+        return self._ask(now, lambda: not self.signed_out and now >= self.next_at)
 
     def reload(self, now, on):
         """The reload button: ask now unless the last ask was moments ago, and
@@ -238,6 +286,7 @@ class Quota:
             return self._off()
 
         def due():
+            self.signed_out = False
             self.gap = READ_SECONDS
             if self.asked_at is None or now - self.asked_at >= RELOAD_FLOOR_SECONDS:
                 return True
@@ -255,6 +304,7 @@ class Quota:
         # Turned on again, agy is asked at once.
         self.next_at = 0.0
         self.gap = READ_SECONDS
+        self.signed_out = False
         return changed
 
     def _ask(self, now, due, stretch=True):
@@ -277,12 +327,18 @@ class Quota:
             try:
                 code, out, err = self.run(agy)
             except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as error:
+                # The panel's timeout usually ends a signed-out agy before its
+                # own wait for a sign-in does.
+                if isinstance(error, subprocess.TimeoutExpired) and _says_signed_out(None, error.stderr):
+                    return self._pause_signed_out(now)
                 return self._failed(now, f"agy did not answer: {error!r}")
             try:
                 quota = quota_from_reply(out, now) if code == 0 else None
             except (ValueError, TypeError, ArithmeticError) as error:
                 return self._failed(now, f"agy's reply could not be read: {error!r}")
             if quota is None:
+                if _says_signed_out(out, err):
+                    return self._pause_signed_out(now)
                 return self._failed(now, f"agy /quota exited {code}: {_reason(out, err)}")
             shown = self._shown
             # Figures that hold still from one reading to the next stretch the
@@ -297,6 +353,11 @@ class Quota:
             return True
         finally:
             self._lock.release()
+
+    def _pause_signed_out(self, now):
+        # Asked again, agy would only wait another minute for a sign-in.
+        self.signed_out = True
+        return self._failed(now, "agy is signed out; asking again after a press of reload")
 
     def _failed(self, now, why):
         # A run that keeps failing the same way is logged once: nothing rotates daemon.log.

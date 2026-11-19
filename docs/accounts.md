@@ -424,6 +424,8 @@ in a shared folder is read as a project.
 
 A run that fails, whatever agy's exit code, keeps the last figures, with
 `as of 14:02` beside the name, or in place of the reset on the folded tile.
+When agy is signed out, the panel stops asking until you press reload, or turn
+the setting off and on again, and it never opens a browser for agy's sign-in.
 Without agy, nothing runs and nothing shows. A window whose reset time has
 passed reads 0% until the next reading.
 
