@@ -162,6 +162,38 @@ def test_a_failed_ask_keeps_the_last_figures_and_says_how_old_they_are():
     assert len(said) == 2 and all(line.startswith("antigravity quota not read:") for line in said)
 
 
+def _one_bucket(bucket):
+    return _reply(command={"name": "usage", "data": {"groups": [{"name": "Odd", "buckets": [bucket]}]}})
+
+
+@pytest.mark.parametrize("answer", [
+    (0, _one_bucket({"window": ["5h"], "remaining_fraction": 0.5})),
+    (0, _one_bucket({"window": "5h", "remaining_fraction": 10 ** 400})),
+    UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+], ids=["window-a-list", "fraction-of-400-digits", "output-not-utf-8"])
+def test_a_reply_that_cannot_be_read_is_a_failed_ask_and_waits_its_interval(answer):
+    agy = Agy((0, json.dumps(REPLY)), answer)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW)
+    assert quota.step(NOW + agy_quota.READ_SECONDS) is True
+    snap = quota.snapshot(NOW + agy_quota.READ_SECONDS)
+    assert snap["as_of"] == NOW
+    assert snap["groups"][0]["windows"][0]["used"] == 8.4
+    # The account loop's next tick runs no agy.
+    assert quota.step(NOW + agy_quota.READ_SECONDS + 30) is False
+    assert agy.asks == 2
+
+
+def test_an_ask_that_raises_still_moves_the_next_one():
+    agy = Agy((0, json.dumps(REPLY)), RuntimeError("unforeseen"), (0, json.dumps(REPLY)))
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW)
+    with pytest.raises(RuntimeError):
+        quota.step(NOW + agy_quota.READ_SECONDS)
+    assert quota.step(NOW + agy_quota.READ_SECONDS + 30) is False
+    assert agy.asks == 2
+
+
 def test_a_first_ask_that_fails_shows_nothing():
     quota = Quota(find=lambda: "/bin/agy", run=Agy(OSError("gone")))
     quota.step(NOW)
@@ -257,6 +289,8 @@ def test_agy_runs_quietly_out_of_any_project_with_its_log_kept_out_of_its_folder
     assert agy.kwargs["stdin"] == subprocess.DEVNULL
     assert agy.kwargs["stdout"] == agy.kwargs["stderr"] == subprocess.PIPE
     assert agy.kwargs["text"] is True
+    # Bytes that are not UTF-8 read as U+FFFD, so they fail as a reply, not as a decode.
+    assert agy.kwargs["errors"] == "replace"
     # A session of its own, so a timeout can end what agy started as well.
     assert agy.kwargs["start_new_session"] is True
 

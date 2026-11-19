@@ -57,12 +57,13 @@ def find_agy(paths=AGY_PATHS):
 
 
 def _window(bucket, read_at):
-    if not isinstance(bucket, dict) or bucket.get("window") not in WINDOWS:
+    window = bucket.get("window") if isinstance(bucket, dict) else None
+    if not isinstance(window, str) or window not in WINDOWS:
         return None
     left = bucket.get("remaining_fraction")
     if not isinstance(left, (int, float)) or isinstance(left, bool):
         return None
-    minutes, label = WINDOWS[bucket["window"]]
+    minutes, label = WINDOWS[window]
     used = round(min(100.0, max(0.0, (1 - float(left)) * 100)), 1)
     resets_at = _epoch(bucket.get("reset_time"))
     seconds = minutes * 60
@@ -136,7 +137,7 @@ def run_agy(agy):
             # starts a background updater that can replace the agy binary.
             cwd=run, env={**os.environ, "AGY_CLI_DISABLE_AUTO_UPDATE": "true"},
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, start_new_session=True)
+            text=True, errors="replace", start_new_session=True)
         try:
             out, err = proc.communicate(timeout=TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
@@ -199,16 +200,21 @@ class Quota:
                 self.next_at = now + READ_SECONDS
                 return changed
             self.asked_at = now
+            # Set before agy runs, so an ask that raises still waits its interval.
+            self.next_at = now + READ_SECONDS
             try:
                 code, out = self.run(agy)
-            except (OSError, subprocess.SubprocessError) as error:
+            except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as error:
                 return self._failed(now, f"agy did not answer: {error!r}")
             if code == NO_QUOTA_EXIT:
                 changed = self.reading is not None or not self.no_quota
                 self.reading, self.read_at, self.failed, self.no_quota = None, None, False, True
                 self.next_at = now + NO_QUOTA_SECONDS
                 return changed
-            quota = quota_from_reply(out, now) if code == 0 else None
+            try:
+                quota = quota_from_reply(out, now) if code == 0 else None
+            except (ValueError, TypeError, ArithmeticError) as error:
+                return self._failed(now, f"agy's reply could not be read: {error!r}")
             if quota is None:
                 return self._failed(now, f"agy /quota exited {code} without a quota")
             self.reading, self.read_at, self.failed, self.no_quota = quota, now, False, False
