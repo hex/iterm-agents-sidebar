@@ -412,10 +412,10 @@ quota command: it runs no model turn and spends no quota, and agy asks Google on
 its own login, which the panel never reads, keeps or sends. Each run takes about
 three seconds. agy writes its log to `/dev/null` for these runs, so they leave
 nothing in `~/.gemini/antigravity-cli/log`, and the panel sets
-`AGY_CLI_DISABLE_AUTO_UPDATE` for them, since a run that only reads the quota
-has no reason to update agy. agy runs in an empty folder the panel makes for
-each run, so nothing another program leaves in a shared folder is read as a
-project.
+`AGY_CLI_DISABLE_AUTO_UPDATE=true` for them, which agy (1.5.12, 1.5.13)
+honours: these runs never check for or install an update. agy runs in an
+empty folder the panel makes for each run, so nothing another program leaves
+in a shared folder is read as a project.
 
 A run that fails keeps the last figures, with `as of 14:02` beside the name, or
 in place of the reset on the folded tile. A login with no account quota, such as

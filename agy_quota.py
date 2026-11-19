@@ -131,8 +131,9 @@ def run_agy(agy):
         done = subprocess.run(
             [agy, "-p", "/quota", "--output-format", "json", "--log-file", os.devnull],
             capture_output=True, text=True, timeout=TIMEOUT_SECONDS, stdin=subprocess.DEVNULL,
-            # With agy's updater asked to stay out of a run that only reads the quota.
-            cwd=run, env={**os.environ, "AGY_CLI_DISABLE_AUTO_UPDATE": "1"})
+            # agy reads `true` here and ignores `1`. With its updater on, a run
+            # starts a background updater that can replace the agy binary.
+            cwd=run, env={**os.environ, "AGY_CLI_DISABLE_AUTO_UPDATE": "true"})
     finally:
         shutil.rmtree(run, ignore_errors=True)
     return done.returncode, done.stdout

@@ -227,7 +227,7 @@ def test_agy_runs_quietly_out_of_any_project_with_its_log_kept_out_of_its_folder
     monkeypatch.setattr(agy_quota.subprocess, "run", fake_run)
     assert agy_quota.run_agy("/bin/agy") == (0, "{}")
     assert seen["argv"] == ["/bin/agy", "-p", "/quota", "--output-format", "json", "--log-file", "/dev/null"]
-    assert seen["env"]["AGY_CLI_DISABLE_AUTO_UPDATE"] == "1"
+    assert seen["env"]["AGY_CLI_DISABLE_AUTO_UPDATE"] == "true"
     assert seen["timeout"] == agy_quota.TIMEOUT_SECONDS
     assert seen["stdin"] == subprocess.DEVNULL
 
