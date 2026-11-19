@@ -8,10 +8,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
-import antigravity
-from antigravity import Quota, find_agy, quota_from_reply
+import agy_quota
+from agy_quota import Quota, find_agy, quota_from_reply
 
 NOW = 1795124000  # 2026-11-19T21:33:20Z
 REPLY = {
@@ -123,9 +124,9 @@ def test_a_reading_shows_in_the_snapshot_and_the_next_ask_waits_its_interval():
     snap = quota.snapshot(NOW)
     assert [g["name"] for g in snap["groups"]] == ["Gemini Models", "Claude and GPT models", "Gemini 4 Argon"]
     assert "as_of" not in snap
-    assert quota.step(NOW + antigravity.READ_SECONDS - 1) is False
+    assert quota.step(NOW + agy_quota.READ_SECONDS - 1) is False
     assert agy.asks == 1
-    quota.step(NOW + antigravity.READ_SECONDS)
+    quota.step(NOW + agy_quota.READ_SECONDS)
     assert agy.asks == 2
 
 
@@ -142,12 +143,12 @@ def test_a_failed_ask_keeps_the_last_figures_and_says_how_old_they_are():
     said = []
     quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
     quota.step(NOW)
-    assert quota.step(NOW + antigravity.READ_SECONDS) is True
-    snap = quota.snapshot(NOW + antigravity.READ_SECONDS)
+    assert quota.step(NOW + agy_quota.READ_SECONDS) is True
+    snap = quota.snapshot(NOW + agy_quota.READ_SECONDS)
     assert snap["as_of"] == NOW
     assert snap["groups"][0]["windows"][0]["used"] == 8.4
     # A second failure in a row changes nothing the foot draws.
-    assert quota.step(NOW + 2 * antigravity.READ_SECONDS) is False
+    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS) is False
     assert len(said) == 2 and all(line.startswith("antigravity quota not read:") for line in said)
 
 
@@ -158,15 +159,15 @@ def test_a_first_ask_that_fails_shows_nothing():
 
 
 def test_a_login_without_account_quota_hides_the_block_and_waits_an_hour():
-    agy = Agy((0, json.dumps(REPLY)), (antigravity.NO_QUOTA_EXIT, ""), (0, json.dumps(REPLY)))
+    agy = Agy((0, json.dumps(REPLY)), (agy_quota.NO_QUOTA_EXIT, ""), (0, json.dumps(REPLY)))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
     quota.step(NOW)
-    assert quota.step(NOW + antigravity.READ_SECONDS) is True
-    assert quota.snapshot(NOW + antigravity.READ_SECONDS) is None
-    assert quota.step(NOW + 2 * antigravity.READ_SECONDS) is False
+    assert quota.step(NOW + agy_quota.READ_SECONDS) is True
+    assert quota.snapshot(NOW + agy_quota.READ_SECONDS) is None
+    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS) is False
     assert agy.asks == 2
-    quota.step(NOW + antigravity.READ_SECONDS + antigravity.NO_QUOTA_SECONDS)
-    assert agy.asks == 3 and quota.snapshot(NOW + antigravity.READ_SECONDS + antigravity.NO_QUOTA_SECONDS)
+    quota.step(NOW + agy_quota.READ_SECONDS + agy_quota.NO_QUOTA_SECONDS)
+    assert agy.asks == 3 and quota.snapshot(NOW + agy_quota.READ_SECONDS + agy_quota.NO_QUOTA_SECONDS)
 
 
 def test_a_window_whose_reset_has_passed_reads_empty_until_the_next_reading():
@@ -182,9 +183,9 @@ def test_reload_asks_at_once_unless_the_last_ask_was_a_moment_ago():
     agy = Agy((0, json.dumps(REPLY)), (0, json.dumps(REPLY)))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
     quota.step(NOW)
-    assert quota.reload(NOW + antigravity.RELOAD_FLOOR_SECONDS - 1) is False
+    assert quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS - 1) is False
     assert agy.asks == 1
-    quota.reload(NOW + antigravity.RELOAD_FLOOR_SECONDS)
+    quota.reload(NOW + agy_quota.RELOAD_FLOOR_SECONDS)
     assert agy.asks == 2
 
 
@@ -193,8 +194,8 @@ def test_agy_going_away_clears_the_block():
     quota = Quota(find=lambda: present[0], run=Agy((0, json.dumps(REPLY))))
     quota.step(NOW)
     present[0] = None
-    assert quota.step(NOW + antigravity.READ_SECONDS) is True
-    assert quota.snapshot(NOW + antigravity.READ_SECONDS) is None
+    assert quota.step(NOW + agy_quota.READ_SECONDS) is True
+    assert quota.snapshot(NOW + agy_quota.READ_SECONDS) is None
 
 
 def test_find_agy_takes_the_first_executable_listed_path(tmp_path, monkeypatch):
@@ -215,19 +216,25 @@ def test_agy_runs_quietly_out_of_any_project_with_its_log_kept_out_of_its_folder
         seen.update(argv=argv, **kwargs)
         return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
 
-    monkeypatch.setattr(antigravity.subprocess, "run", fake_run)
-    assert antigravity.run_agy("/bin/agy") == (0, "{}")
+    monkeypatch.setattr(agy_quota.subprocess, "run", fake_run)
+    assert agy_quota.run_agy("/bin/agy") == (0, "{}")
     assert seen["argv"] == ["/bin/agy", "-p", "/quota", "--output-format", "json", "--log-file", "/dev/null"]
     assert seen["env"]["AGY_CLI_DISABLE_AUTO_UPDATE"] == "1"
-    assert seen["timeout"] == antigravity.TIMEOUT_SECONDS
+    assert seen["timeout"] == agy_quota.TIMEOUT_SECONDS
     assert seen["stdin"] == subprocess.DEVNULL
 
 
 def test_a_daemons_quota_looks_agy_up_at_each_ask(monkeypatch):
     """The suite's own fixture hides agy from every daemon a test builds; this is how."""
     asked = []
-    monkeypatch.setattr(antigravity, "find_agy", lambda *paths: "/bin/agy")
-    monkeypatch.setattr(antigravity, "run_agy", lambda agy: asked.append(agy) or (0, json.dumps(REPLY)))
+    monkeypatch.setattr(agy_quota, "find_agy", lambda *paths: "/bin/agy")
+    monkeypatch.setattr(agy_quota, "run_agy", lambda agy: asked.append(agy) or (0, json.dumps(REPLY)))
     quota = Quota()
     quota.step(NOW)
     assert asked == ["/bin/agy"] and quota.snapshot(NOW)
+
+
+def test_no_module_beside_the_daemon_shadows_the_standard_library():
+    """sidebar.py puts its own folder first on sys.path: a file there named as a standard module
+    stands in for it, and on any other path order the standard one loads instead."""
+    assert sorted(p.stem for p in ROOT.glob("*.py") if p.stem in sys.stdlib_module_names) == []

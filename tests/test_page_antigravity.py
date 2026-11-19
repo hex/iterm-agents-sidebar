@@ -1,5 +1,5 @@
 # ABOUTME: Checks how the Accounts foot draws Antigravity's quota: open, folded to a tile, and at compact width.
-# ABOUTME: Runs page.html's functions under Node over the limits tests' stand-in DOM, fed a quota antigravity.py shapes.
+# ABOUTME: Runs page.html's functions under Node over the limits tests' stand-in DOM, fed a quota agy_quota.py shapes.
 import json
 import os
 import subprocess
@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from antigravity import Quota  # noqa: E402
+from agy_quota import Quota  # noqa: E402
 from page_source import function  # noqa: E402
 from test_page_limits_fold import DOM, HELPERS, LIMITS, NOW, PAGE, store  # noqa: E402
 

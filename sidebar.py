@@ -36,7 +36,7 @@ import accounts  # noqa: E402
 import activity  # noqa: E402
 import api_fallback  # noqa: E402
 import alerts  # noqa: E402
-import antigravity  # noqa: E402
+import agy_quota  # noqa: E402
 import codex  # noqa: E402
 import context_usage  # noqa: E402
 import links  # noqa: E402
@@ -4454,7 +4454,7 @@ class Bridge:
         #: This checkout's GitHub repository page, or None; set by watch_releases.
         self.repository = None
         #: Antigravity's quota as agy last reported it; asked by watch_antigravity.
-        self.antigravity = antigravity.Quota(log=self.log)
+        self.antigravity = agy_quota.Quota(log=self.log)
         self.notices = Notices()
         #: The API fallback's record, as last saved; only step_fallback moves it.
         self.fallback, problem = api_fallback.load(os.path.join(STATUS_DIR, API_FALLBACK_RECORD))
