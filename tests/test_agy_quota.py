@@ -842,6 +842,48 @@ def test_an_open_that_is_a_link_is_replaced_with_a_file_of_the_panels_own(tmp_pa
     assert (after.st_ino, after.st_mtime_ns, stat.S_IMODE(after.st_mode)) == (before.st_ino, before.st_mtime_ns, 0o700)
 
 
+def _stat_as_the_stub(real_lstat, path):
+    """An lstat that reports `path` as the stub was a moment ago: a plain file of mode 0700."""
+    def lstat(name, *args, **kwargs):
+        found = real_lstat(name, *args, **kwargs)
+        if os.fspath(name) != os.fspath(path):
+            return found
+        fields = list(found)
+        fields[stat.ST_MODE] = stat.S_IFREG | 0o700
+        return os.stat_result(fields)
+    return lstat
+
+
+def test_an_open_swapped_for_a_fifo_after_it_was_looked_at_does_not_hold_the_run(tmp_path, monkeypatch):
+    """What is trusted is what was opened: a FIFO in the stub's place must not block the ask."""
+    bin_folder = Path(agy_quota.AGY_FOLDER) / "bin"
+    bin_folder.mkdir(parents=True, mode=0o700)
+    stub = bin_folder / "open"
+    os.mkfifo(stub, 0o700)
+    monkeypatch.setattr(agy_quota.os, "lstat", _stat_as_the_stub(os.lstat, stub))
+    done = []
+    worker = threading.Thread(target=lambda: done.append(agy_quota._stub_open(str(bin_folder))), daemon=True)
+    worker.start()
+    worker.join(timeout=2)
+    if worker.is_alive():
+        # Unblock the reader the old code left waiting, so the test does not leave it behind.
+        os.close(os.open(stub, os.O_WRONLY | os.O_NONBLOCK))
+        worker.join(timeout=2)
+        pytest.fail("the stub check blocked on a FIFO")
+    assert stat.S_ISREG(os.lstat(stub).st_mode) and stub.read_text() == agy_quota.OPEN_STUB
+
+
+def test_an_open_that_holds_the_stub_but_anyone_can_write_is_written_anew(tmp_path, monkeypatch):
+    bin_folder = Path(agy_quota.AGY_FOLDER) / "bin"
+    bin_folder.mkdir(parents=True, mode=0o700)
+    stub = bin_folder / "open"
+    stub.write_text(agy_quota.OPEN_STUB)
+    stub.chmod(0o777)
+    monkeypatch.setattr(agy_quota.os, "lstat", _stat_as_the_stub(os.lstat, stub))
+    agy_quota._stub_open(str(bin_folder))
+    assert stat.S_IMODE(os.stat(stub).st_mode) == 0o700 and stub.read_text() == agy_quota.OPEN_STUB
+
+
 def test_a_run_looks_open_up_in_the_panels_folder_before_the_systems(tmp_path):
     """A stand-in for agy that only says which `open` its PATH finds; `command -v` runs nothing."""
     script = tmp_path / "agy"
