@@ -196,6 +196,8 @@ read against the source.
   or it cannot read the key from the Keychain.
 - `codex.py`: Codex rate limits, read from Codex's own session logs, and a linked
   Codex session's reply, read from its rollout.
+- `agy_quota.py`: Antigravity's quota, read every 5 to 30 minutes by running
+  `agy -p /quota --output-format json` while Antigravity quota is on, and the last reading with its age when a run fails.
 - `omp.py`: what an omp session says about itself, read from its own files.
 - `context_usage.py`: a Claude session's `/context`, read from a fork of it.
 - `past.py`: the rows of the History fold's Sessions tab, read from Claude Code's transcripts.
@@ -303,6 +305,39 @@ Inspect Element.
   start. Figures another `activity.py` made (the file's SHA-256), or made in
   another time zone, or not wholly in the shape it writes, are not used: that
   read starts cold and `daemon.log` says why.
+- **Antigravity's quota:** `agy -p /quota --output-format json`, run by
+  `watch_antigravity` on the account loop's 30-second tick whenever
+  `agy_quota.Quota` says a reading is due, in a thread,
+  with `--log-file /dev/null` and the daemon's environment. A reading is due 5
+  minutes after the last; each good reading whose figures (each window's label
+  and percentage used, not its times) match the last one's doubles that gap, up
+  to 30 minutes, and a change or a press of reload brings it back to 5.
+  `Quota.step` and `Quota.reload` take the `antigravity_quota` setting, read at
+  each tick and each press: off, they clear the reading and never look agy up
+  or start it, and the rebuild leaves the `antigravity` key out of the
+  snapshot. A run that fails,
+  whatever its exit code, keeps the last figures, shown as of their time,
+  without any window whose reset has passed since, and for a day at most.
+  agy treats the folder it starts in as a project and
+  reads its `.agents/hooks.json`, so each run starts in a new empty folder of
+  its own under `~/.local/share/agents-sidebar/agy`, removed after the run.
+  agy runs in a session of its own: a run still going after 60 seconds is
+  ended with everything still in its process group, and the run stops reading
+  agy's output 5 seconds later, so a process that left the group cannot hold
+  the ask; when agy had already answered and exited, that answer is used. Signed out, agy runs `open` on a Google
+  sign-in URL, looked up on `PATH`, and waits a minute for the sign-in, so
+  each run puts `~/.local/share/agents-sidebar/agy/bin` first on agy's `PATH`,
+  where an `open` of the panel's own exits at once: the panel never opens a
+  browser. After a signed-out answer (`Authentication required` on agy's
+  stderr, or an authentication error in its reply) `Quota.step` asks no more
+  until a press of reload, or the setting going off and on (a change to it in
+  Settings calls `Quota.reset`, so two quick clicks are enough), and
+  `daemon.log` says so once.
+  agy reports how much of each window is left; the panel draws how much is
+  used, as it does for accounts. The rebuild only copies the last reading into
+  the snapshot, so it never waits on agy. Tests never start agy: an autouse
+  fixture in `tests/conftest.py` makes `find_agy` find none and points
+  `AGY_FOLDER` into the test's own folder.
 - **CPU and memory:** one `ps` listing per rebuild, summed over each session's
   process tree by parent pid, stopping at any pid that is another card so a
   teammate is not counted twice. CPU is `ps %cpu` summed. Only the verdict
@@ -397,6 +432,10 @@ of a guess.
 - `~/.config/agents-sidebar/accounts.json`: the accounts the panel knows.
 - `~/.local/share/agents-sidebar/endpoint.json`: the running daemon's port,
   token and pid, for `agents-sidebar`.
+- `~/.local/share/agents-sidebar/agy/`: a folder only your user can open,
+  with a new empty folder for each `agy -p /quota` run to start in, removed
+  when that run ends, and `bin/open`, the `open` that does nothing, first on
+  agy's `PATH`.
 
 ## Tests
 

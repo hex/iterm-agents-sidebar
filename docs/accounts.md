@@ -73,7 +73,7 @@ cancels, and an empty name goes back to the email.
 
 Click **Accounts**, or anywhere in its head outside Auto-switch and its chip,
 to fold the accounts. Folded, every
-account and Codex sit side by side, a tile each, the account your sessions run
+account, Codex and Antigravity sit side by side, a tile each, the account your sessions run
 on first and marked with its check. A tile shows one bar, its fullest window,
 with the even-spend tick, then the percentage, the window's short name (`5h`,
 `wk`, `fab` for Fable) and the time to its reset; a reserve Codex draws on
@@ -391,3 +391,52 @@ reading, which stays used up until the plan's window resets. Back on the plan,
 the row goes.
 
 `docs/accounts-design.md` has the design this came from.
+
+## Antigravity limits
+
+With Antigravity quota on under Experimental in Settings (it starts off), the
+foot shows Antigravity's own quota under Codex's if the Antigravity CLI (`agy`)
+is on the machine, on your `PATH` or in `~/.local/bin`, `/opt/homebrew/bin` or
+`/usr/local/bin`. With the setting off, agy never runs and the block goes.
+Antigravity splits its quota into
+groups, and the models of a group share its windows: Gemini models, Claude and
+GPT models, and a model with an allowance of its own, such as Gemini 4 Argon on
+paid Pro plans. The foot names each group, with its models on hover, and draws
+a bar for each window the group has, 5-hour and weekly, or weekly alone. A
+window the panel does not know is left out, and the daemon's log says so once.
+A weekly bar carries the even-spend tick, as an account's does. Folded,
+Antigravity is one tile with the fullest window of any group, and its hover
+lists every group's windows. At compact width it gets a line of Codex's shape
+only while that window is tight.
+
+The panel runs `agy -p /quota --output-format json` every 5 minutes. While two
+readings in a row show the same figures it waits twice as long before the next,
+up to 30 minutes; a change in the figures, or a press of reload, brings it back
+to every 5. A press of reload runs it again at once unless the last run was
+under a minute ago. It is agy's own
+quota command: it runs no model turn and spends no quota, and agy asks Google on
+its own login, which the panel never reads, keeps or sends. Each run takes about
+three seconds. agy writes its log to `/dev/null` for these runs, so they leave
+nothing in `~/.gemini/antigravity-cli/log`, and the panel sets
+`AGY_CLI_DISABLE_AUTO_UPDATE=true` for them, which agy (1.5.12, 1.5.13)
+honours: these runs never check for or install an update. agy runs in an
+empty folder the panel makes for each run, so nothing another program leaves
+in a shared folder is read as a project.
+
+A run that fails, whatever agy's exit code, keeps the last figures, with
+`as of 14:02` beside the name, or in place of the reset on the folded tile.
+When agy is signed out, the panel stops asking until you press reload, or turn
+the setting off and on again, and it never opens a browser for agy's sign-in.
+Without agy, nothing runs and nothing shows. A window whose reset time has
+passed reads 0% until the next reading. While runs fail, such a window shows
+nothing rather than 0%, and the block goes once its figures are a day old.
+
+agy runs with the environment iTerm2 started the panel with, not your shell's,
+so a `GEMINI_API_KEY`, a `GOOGLE_*` setting or an `HTTPS_PROXY` set only in a
+shell profile such as `~/.zshrc` does not reach it. The block reads the quota of
+the Google login agy keeps in the Keychain, so it needs no `GEMINI_API_KEY`;
+panes started from a shell with a key may be spending the key instead. Behind a
+proxy set only in the shell, runs can fail and the block keeps its last
+figures. To give the panel a proxy setting such as `HTTPS_PROXY`, run
+`launchctl setenv HTTPS_PROXY value` and restart iTerm2. A value set that way
+reaches every app started afterwards in your login session.

@@ -731,6 +731,76 @@ def test_the_refresh_button_asks_the_mirror_for_a_release_too(monkeypatch):
     assert b.update is None and "update" not in b.latest
 
 
+AGY_REPLY = json.dumps({"status": "SUCCESS", "command": {"name": "usage", "data": {"groups": [
+    {"name": "Gemini Models", "buckets": [{"window": "5h", "remaining_fraction": 0.75,
+                                           "reset_time": "2099-01-01T00:00:00Z"}]}]}}})
+
+
+def test_antigravitys_quota_rides_the_snapshot_once_agy_has_answered(monkeypatch):
+    """No key until agy has answered, and none while Antigravity quota is off in Settings: a panel
+    without agy, or with the setting off, sends what it always did."""
+    b = bridge(monkeypatch, [])
+    asyncio.run(b.rebuild())
+    assert "antigravity" not in b.latest
+    b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy", run=lambda agy: (0, AGY_REPLY, ""))
+    b.antigravity.step(time.time(), True)
+    asyncio.run(b.rebuild())
+    assert "antigravity" not in b.latest
+    sidebar.save_settings({"antigravity_quota": True})
+    asyncio.run(b.rebuild())
+    [group] = b.latest["antigravity"]["groups"]
+    assert (group["name"], group["windows"][0]["label"], group["windows"][0]["used"]) == ("Gemini Models", "5-hour", 25.0)
+
+
+def test_the_refresh_button_asks_agy_again(monkeypatch):
+    """Only while Antigravity quota is on in Settings: off, a press of reload starts no agy."""
+    class Meters:
+        def read_now(self, now):
+            return {"accounts": []}
+    asks = []
+    b = sidebar.Bridge(None, Quiet(), Meters())
+    b.latest = {"groups": []}
+    monkeypatch.setattr(sidebar.update, "origin", lambda here: None)
+    b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy",
+                                            run=lambda agy: asks.append(agy) or (0, AGY_REPLY, ""))
+
+    def press():
+        b.account_op("read", {})
+        # In a thread of its own, so the accounts' reading does not wait on agy.
+        for thread in threading.enumerate():
+            if thread.name == "antigravity-reload":
+                thread.join(timeout=5)
+
+    press()
+    assert asks == []
+    sidebar.save_settings({"antigravity_quota": True})
+    press()
+    assert asks == ["/bin/agy"]
+
+
+@pytest.mark.parametrize("on", [True, False])
+async def test_each_tick_of_the_watch_asks_agy_only_while_antigravity_quota_is_on(monkeypatch, on):
+    """The watch reads the setting at each tick and rebuilds when agy's answer changed what
+    shows. Its own except takes any error, so what it called is the only sign of a slip."""
+    b = bridge(monkeypatch, [])
+    asks, rebuilds = [], []
+    b.antigravity = sidebar.agy_quota.Quota(find=lambda: "/bin/agy",
+                                            run=lambda agy: asks.append(agy) or (0, AGY_REPLY, ""))
+
+    async def rebuild_or_report():
+        rebuilds.append(1)
+    b.rebuild_or_report = rebuild_or_report
+
+    # The wait after the first tick ends the watch.
+    async def one_tick(seconds):
+        raise asyncio.CancelledError
+    monkeypatch.setattr(sidebar.asyncio, "sleep", one_tick)
+    sidebar.save_settings({"antigravity_quota": on})
+    with pytest.raises(asyncio.CancelledError):
+        await b.watch_antigravity()
+    assert (asks, rebuilds) == ((["/bin/agy"], [1]) if on else ([], []))
+
+
 def test_each_rebuild_decides_the_alerts_and_carries_them_out(monkeypatch, tmp_path):
     """The daemon, not a page, turns a change it read into a sound and a banner,
     under the settings on disk at that moment."""

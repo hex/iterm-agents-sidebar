@@ -12,6 +12,7 @@ import pytest
 
 from accounts import (StoreError, SwitchRefused, account_for, claude_paths, merge_credential, needs_refresh, nickname,
                       next_poll, pace, parse_store, parse_usage, plan_switch, should_resync)
+from accounts import _epoch
 
 WEEK = 604800
 
@@ -69,6 +70,12 @@ def test_parse_usage_leaves_out_a_window_the_response_lacks():
 def test_parse_usage_keeps_a_reading_whose_reset_time_is_unreadable():
     raw = {"five_hour": {"utilization": 19.0, "resets_at": "soon"}}
     assert parse_usage(raw)["five_hour"] == {"used": 19.0, "resets_at": None}
+
+
+@pytest.mark.parametrize("fraction", ["", ".5", ".12", ".123", ".1234", ".123456", ".123456789"])
+def test_a_reset_time_reads_with_any_number_of_digits_after_the_second(fraction):
+    """Go prints from one to nine; Python 3.10's fromisoformat reads only 3 or 6."""
+    assert _epoch(f"2026-11-26T21:15:41{fraction}Z") == _epoch("2026-11-26T21:15:41Z") == 1795727741
 
 
 def test_parse_usage_skips_limits_without_a_model_name_or_a_number():

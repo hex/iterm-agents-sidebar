@@ -36,6 +36,7 @@ import accounts  # noqa: E402
 import activity  # noqa: E402
 import api_fallback  # noqa: E402
 import alerts  # noqa: E402
+import agy_quota  # noqa: E402
 import codex  # noqa: E402
 import context_usage  # noqa: E402
 import links  # noqa: E402
@@ -253,6 +254,10 @@ DEFAULT_SETTINGS = {
     # memory index, and OpenAI receives it with the session. Off, the Codex
     # hook reads none.
     "codex_memory_note": False,
+    # Experimental: the Accounts foot shows Antigravity's quota, read by running
+    # the Antigravity CLI (agy), which asks Google on its own login. Off, agy is
+    # never started.
+    "antigravity_quota": False,
 }
 
 #: (low, high) for the values that are numbers.
@@ -3798,7 +3803,7 @@ class Sidebar:
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
                  context_fn=None, link_fn=None, github_fn=None, untie_fn=None, review_fn=None, hand_over_fn=None,
                  past_fn=None, reopen_fn=None, stop_port_fn=None, open_port_fn=None, rebuild_fn=None, activity_fn=None,
-                 api_fallback_fn=None, bridge_fn=lambda: False, keys_fn=lambda: False,
+                 api_fallback_fn=None, bridge_fn=lambda: False, keys_fn=lambda: False, antigravity_reset_fn=None,
                  log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
@@ -3825,6 +3830,9 @@ class Sidebar:
         self.bridge_fn = bridge_fn
         #: () -> whether any stored account has an API key; the setting needs one too.
         self.keys_fn = keys_fn
+        #: () -> None: forgets Antigravity's reading and any pause when its setting
+        #: changes, so switching it off and on asks agy again however quickly it is done.
+        self.antigravity_reset_fn = antigravity_reset_fn
         #: () -> (ok, text): takes the release the panel was offered.
         self.update_fn = update_fn
         #: () -> the statusline it displaced; raises ValueError when it may not.
@@ -3868,7 +3876,11 @@ class Sidebar:
                     return self._json(400, {"error": "malformed body"})
                 if changes.get("api_fallback") and not (self.bridge_fn() and self.keys_fn()):
                     changes = {key: value for key, value in changes.items() if key != "api_fallback"}
-                return self._json(200, save_settings(changes, self.settings_path))
+                before = load_settings(self.settings_path)["antigravity_quota"]
+                saved = save_settings(changes, self.settings_path)
+                if saved["antigravity_quota"] != before and self.antigravity_reset_fn is not None:
+                    self.antigravity_reset_fn()
+                return self._json(200, saved)
             return self._json(200, load_settings(self.settings_path))
         if method == "POST" and path == "/action":
             return self._action(body)
@@ -4452,6 +4464,8 @@ class Bridge:
         self.update = None
         #: This checkout's GitHub repository page, or None; set by watch_releases.
         self.repository = None
+        #: Antigravity's quota as agy last reported it; asked by watch_antigravity.
+        self.antigravity = agy_quota.Quota(log=self.log)
         self.notices = Notices()
         #: The API fallback's record, as last saved; only step_fallback moves it.
         self.fallback, problem = api_fallback.load(os.path.join(STATUS_DIR, API_FALLBACK_RECORD))
@@ -4855,6 +4869,9 @@ class Bridge:
             model = await asyncio.to_thread(codex.default_model)
             if model:
                 self.latest["codex"]["model"] = model
+        quota = self.antigravity.snapshot(time.time()) if settings["antigravity_quota"] else None
+        if quota is not None:
+            self.latest["antigravity"] = quota
         conversations = {row["session_id"]: row.get("conversation") for row in self.rows}
         self.alert(self.watch.step(self.latest, settings, conversations), settings)
         self.step_partners(settings["links"])
@@ -5916,6 +5933,10 @@ class Bridge:
         if op == "read":
             # The reload button: a person asking for fresh figures wants a
             # fresh answer about releases too, not tomorrow's.
+            # agy takes seconds to answer: asked beside the accounts, not before them.
+            if load_settings()["antigravity_quota"]:
+                threading.Thread(target=self.antigravity.reload, args=(time.time(), True),
+                                 name="antigravity-reload", daemon=True).start()
             self.check_release()
             return self.meters.read_now(time.time())
         if op == "add":
@@ -5956,6 +5977,23 @@ class Bridge:
             except Exception as error:               # noqa: BLE001
                 print(f"sidebar: account meters failed: {error!r}", flush=True)
             await self.step_fallback_or_log()
+            await asyncio.sleep(ACCOUNT_TICK_SECONDS)
+
+    async def watch_antigravity(self):
+        """Ask agy for Antigravity's quota when a reading is due, and rebuild
+        when the answer changes what the foot draws.
+
+        Each ask starts agy for a few seconds, so it runs in a thread, on the
+        account loop's cadence; Quota decides whether one is due. With
+        Antigravity quota off in Settings, no agy starts and the block clears.
+        """
+        while True:
+            try:
+                on = load_settings()["antigravity_quota"]
+                if await asyncio.to_thread(self.antigravity.step, time.time(), on):
+                    await self.rebuild_or_report()
+            except Exception as error:               # noqa: BLE001
+                print(f"sidebar: antigravity quota failed: {error!r}", flush=True)
             await asyncio.sleep(ACCOUNT_TICK_SECONDS)
 
     async def sweep_status(self):
@@ -6055,6 +6093,7 @@ async def main(connection):
         api_fallback_fn=lambda op, request: bridge.fallback_op(op, request),
         bridge_fn=lambda: statusline.state(CLAUDE_SETTINGS, BRIDGE) == "installed",
         keys_fn=lambda: any_api_key(accounts.STORE_PATH),
+        antigravity_reset_fn=lambda: bridge.antigravity.reset(),
         update_fn=lambda: update.take(here, bridge.update),
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
         hand_over_fn=lambda: statusline.drop_cc_status(CLAUDE_SETTINGS),
@@ -6108,6 +6147,7 @@ async def main(connection):
     asyncio.ensure_future(bridge.watch_filed_state())
     asyncio.ensure_future(bridge.poll())
     asyncio.ensure_future(bridge.watch_accounts())
+    asyncio.ensure_future(bridge.watch_antigravity())
     asyncio.ensure_future(bridge.sweep_status())
     asyncio.ensure_future(bridge.watch_releases())
 
