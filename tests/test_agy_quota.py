@@ -421,6 +421,70 @@ def test_an_ask_while_another_is_in_flight_skips_rather_than_queue_another_agy()
     assert (agy.runs, agy.most_in_flight) == (1, 1)
 
 
+class HeldLast:
+    """Stands in for agy: each ask takes the next answer, and the last answer waits for `release`."""
+
+    def __init__(self, *answers):
+        self.answers, self.asks = list(answers), 0
+        self.started, self.release = threading.Event(), threading.Event()
+
+    def __call__(self, path):
+        self.asks += 1
+        answer = self.answers.pop(0)
+        if not self.answers:
+            self.started.set()
+            self.release.wait(timeout=10)
+        return answer
+
+
+def _press_while_held(quota, agy, asked):
+    """A step's ask at `asked` held in agy, and a press of reload meanwhile: -> what the press returned."""
+    step = threading.Thread(target=quota.step, args=(asked, True))
+    step.start()
+    assert agy.started.wait(timeout=5)
+    began = time.monotonic()
+    pressed = quota.reload(asked + 2 * agy_quota.RELOAD_FLOOR_SECONDS, True)
+    assert time.monotonic() - began < 1
+    agy.release.set()
+    step.join(timeout=5)
+    assert not step.is_alive()
+    return pressed
+
+
+def test_a_reload_pressed_while_a_step_asks_brings_the_next_ask_within_five_minutes():
+    agy = HeldLast(*[(0, json.dumps(REPLY), "")] * 4)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    assert _gaps(quota, agy, NOW, 2) == [5 * 60, 10 * 60]
+    assert quota.gap == 20 * 60
+    asked = NOW + 35 * 60
+    assert _press_while_held(quota, agy, asked) is False
+    assert agy.asks == 4 and quota.asked_at == asked
+    assert quota.gap == agy_quota.READ_SECONDS
+    assert quota.next_at <= asked + agy_quota.READ_SECONDS
+
+
+def test_a_reload_pressed_while_a_step_hears_agy_is_signed_out_clears_that_pause():
+    agy = HeldLast((0, json.dumps(REPLY), ""), SIGNED_OUT)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    asked = NOW + agy_quota.READ_SECONDS
+    assert _press_while_held(quota, agy, asked) is False
+    assert agy.asks == 2
+    assert quota.signed_out is False
+    assert quota.next_at <= asked + agy_quota.READ_SECONDS
+
+
+def test_a_reload_whose_own_ask_hears_agy_is_signed_out_stays_paused():
+    agy = Agy((0, json.dumps(REPLY), ""), SIGNED_OUT)
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW, True)
+    assert quota.reload(NOW + agy_quota.READ_SECONDS, True) is True
+    assert agy.asks == 2 and quota.signed_out is True
+    assert quota.step(NOW + 2 * agy_quota.READ_SECONDS, True) is False
+    assert agy.asks == 2
+
+
 def test_a_snapshot_reads_what_the_foot_draws_once_while_an_ask_may_replace_it():
     reading = quota_from_reply(json.dumps(REPLY), NOW)
 

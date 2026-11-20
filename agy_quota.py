@@ -269,7 +269,8 @@ class Quota:
     `step` runs in a worker thread of watch_antigravity and `reload` in a
     thread of its own for each press of reload. One lock keeps two asks from
     overlapping: an ask that finds another in flight skips, and whether one
-    is due is decided under the lock. Both take `on`, the Antigravity quota
+    is due is decided under the lock. A press of reload that finds an ask in
+    flight takes effect as that ask ends. Both take `on`, the Antigravity quota
     setting: while it is off, agy is never started and nothing shows.
     """
 
@@ -291,6 +292,9 @@ class Quota:
         # Set by a signed-out answer: no step asks again until a press of
         # reload, or the setting going off, clears it.
         self.signed_out = False
+        # Set by a press of reload, and taken under the lock by the press's
+        # own ask or, when it found one in flight, as that one ends.
+        self._pressed = False
         self._lock = threading.Lock()
 
     @property
@@ -322,17 +326,23 @@ class Quota:
         every READ_SECONDS again from here."""
         if not on:
             return self._off()
+        self._pressed = True
 
         def due():
-            self.signed_out = False
-            self.gap = READ_SECONDS
-            if self.asked_at is None or now - self.asked_at >= RELOAD_FLOOR_SECONDS:
-                return True
-            # Too soon to ask again, but the next ask is still no more than
-            # READ_SECONDS after the last.
-            self.next_at = min(self.next_at, self.asked_at + READ_SECONDS)
-            return False
+            return self.asked_at is None or now - self.asked_at >= RELOAD_FLOOR_SECONDS
         return self._ask(now, due, stretch=False)
+
+    def _take_press(self):
+        # Under the lock. A press clears a signed-out pause and the stretched
+        # gap, and even when it is too soon to ask again, the next ask is no
+        # more than READ_SECONDS after the last.
+        if not self._pressed:
+            return
+        self._pressed = False
+        self.signed_out = False
+        self.gap = READ_SECONDS
+        if self.asked_at is not None:
+            self.next_at = min(self.next_at, self.asked_at + READ_SECONDS)
 
     def _off(self):
         # Without the lock: an ask already in flight may still show its
@@ -351,6 +361,7 @@ class Quota:
         if not self._lock.acquire(blocking=False):
             return False
         try:
+            self._take_press()
             if not due():
                 return False
             agy = self.find()
@@ -401,6 +412,8 @@ class Quota:
             self.next_at = now + self.gap
             return True
         finally:
+            # A press that came while agy was asked counts after its answer.
+            self._take_press()
             self._lock.release()
 
     def _pause_signed_out(self, now):
