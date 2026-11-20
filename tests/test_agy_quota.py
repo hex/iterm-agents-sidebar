@@ -192,6 +192,17 @@ def test_a_failed_run_with_no_reply_is_logged_once_with_the_last_line_agy_wrote_
     assert said[0].endswith("agy /quota exited 1: Error: not signed in")
 
 
+#: What agy wrote on stderr while it could not reach Google through a proxy.
+PROXY_SAYS = "proxyconnect tcp: dial tcp 10.0.0.1:3128: i/o timeout\n"
+
+
+@pytest.mark.parametrize("stderr", [PROXY_SAYS, PROXY_SAYS.encode()], ids=["text", "bytes"])
+def test_a_run_that_times_out_is_logged_with_the_last_line_agy_wrote_on_stderr(stderr):
+    said = _asks(subprocess.TimeoutExpired("agy", 60, output="", stderr=stderr))
+    assert len(said) == 1
+    assert "within 60 s" in said[0] and "proxyconnect tcp" in said[0]
+
+
 def test_a_failure_is_logged_again_after_a_good_reading():
     said = _asks(UNAVAILABLE, (0, json.dumps(REPLY), ""), UNAVAILABLE)
     assert len(said) == 2 and said[0] == said[1]

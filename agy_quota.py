@@ -217,7 +217,8 @@ def run_agy(agy):
 
 def _reason(out, err):
     """What agy said of a run that gave no quota: the error in its JSON reply,
-    else its last line on stderr, cut to REASON_CHARS."""
+    else its last line on stderr, cut to REASON_CHARS. `err` may be bytes or
+    None, as a timeout leaves it."""
     try:
         reply = json.loads(out)
     except ValueError:
@@ -226,7 +227,9 @@ def _reason(out, err):
     if isinstance(error, str) and error.strip():
         why = error.strip()
     else:
-        lines = [line.strip() for line in err.splitlines() if line.strip()]
+        if isinstance(err, bytes):
+            err = err.decode("utf-8", errors="replace")
+        lines = [line.strip() for line in (err or "").splitlines() if line.strip()]
         why = lines[-1] if lines else "no message"
     return why[:REASON_CHARS]
 
@@ -363,8 +366,11 @@ class Quota:
             except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as error:
                 # The panel's timeout usually ends a signed-out agy before its
                 # own wait for a sign-in does.
-                if isinstance(error, subprocess.TimeoutExpired) and _says_signed_out(None, error.stderr):
-                    return self._pause_signed_out(now)
+                if isinstance(error, subprocess.TimeoutExpired):
+                    if _says_signed_out(None, error.stderr):
+                        return self._pause_signed_out(now)
+                    return self._failed(now, f"agy did not answer within {TIMEOUT_SECONDS} s: "
+                                             f"{_reason('', error.stderr)}")
                 return self._failed(now, f"agy did not answer: {error!r}")
             skipped = []
             try:
