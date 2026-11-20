@@ -180,8 +180,8 @@ def run_agy(agy):
 
     agy starts in a new empty folder under AGY_FOLDER, taken away after the run,
     and in a session of its own, so a timeout ends agy and whatever is still in
-    that session. KILL_GRACE_SECONDS later the run stops reading what agy
-    printed, so a process that left the session cannot hold it.
+    its process group. KILL_GRACE_SECONDS later the run stops reading what agy
+    printed, so a process that left the group cannot hold it.
     """
     home = _own_folder(AGY_FOLDER)
     bin_folder = _own_folder(os.path.join(home, "bin"))
@@ -206,13 +206,13 @@ def run_agy(agy):
                 os.killpg(proc.pid, signal.SIGKILL)
             # macOS answers EPERM, not ESRCH, for a group whose members are all
             # zombies, as when agy has exited and only a process that left its
-            # session is left.
+            # group is left.
             except (ProcessLookupError, PermissionError):
                 pass
             try:
                 out, err = proc.communicate(timeout=KILL_GRACE_SECONDS)
             except subprocess.TimeoutExpired as held:
-                # A process outside agy's session still holds the pipes: keep
+                # A process outside agy's group still holds the pipes: keep
                 # what was read so far and reap agy.
                 proc.stdout.close()
                 proc.stderr.close()
@@ -227,11 +227,11 @@ def run_agy(agy):
 
 def _reason(out, err):
     """What agy said of a run that gave no quota: the error in its JSON reply,
-    else its last line on stderr, cut to REASON_CHARS. `err` may be bytes or
-    None, as a timeout leaves it."""
+    else its last line on stderr, cut to REASON_CHARS. `out` and `err` may be
+    bytes or None, as a timeout leaves them."""
     try:
-        reply = json.loads(out)
-    except (ValueError, RecursionError):
+        reply = json.loads(out) if out else None
+    except (ValueError, TypeError, RecursionError):
         reply = None
     error = reply.get("error") if isinstance(reply, dict) and reply.get("status") == "ERROR" else None
     if isinstance(error, str) and error.strip():
@@ -391,10 +391,12 @@ class Quota:
                 # The panel's timeout usually ends a signed-out agy before its
                 # own wait for a sign-in does.
                 if isinstance(error, subprocess.TimeoutExpired):
-                    if _says_signed_out(None, error.stderr):
+                    # What agy printed before the kill, stdout included: it may
+                    # have answered while a process outside its group held the pipes.
+                    if _says_signed_out(error.output, error.stderr):
                         return self._pause_signed_out(now)
                     return self._failed(now, f"agy did not answer within {TIMEOUT_SECONDS} s: "
-                                             f"{_reason('', error.stderr)}")
+                                             f"{_reason(error.output, error.stderr)}")
                 return self._failed(now, f"agy did not answer: {error!r}")
             skipped = []
             try:

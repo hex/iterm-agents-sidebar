@@ -203,6 +203,22 @@ def test_a_run_that_times_out_is_logged_with_the_last_line_agy_wrote_on_stderr(s
     assert "within 60 s" in said[0] and "proxyconnect tcp" in said[0]
 
 
+#: What agy printed before a process outside its group kept the run's pipes open past the timeout.
+HELD_REPLY = '{"status":"ERROR","error":"quota service unavailable"}\n'
+
+
+@pytest.mark.parametrize("output", [HELD_REPLY, HELD_REPLY.encode()], ids=["text", "bytes"])
+def test_a_run_that_times_out_after_agy_answered_is_logged_with_its_answer(output):
+    said = _asks(subprocess.TimeoutExpired("agy", 60, output=output, stderr=""))
+    assert len(said) == 1
+    assert "within 60 s" in said[0] and "quota service unavailable" in said[0]
+
+
+def test_a_run_that_times_out_with_no_output_says_so():
+    said = _asks(subprocess.TimeoutExpired("agy", 60, output=None, stderr=None))
+    assert said == ["antigravity quota not read: agy did not answer within 60 s: no message"]
+
+
 def test_a_failure_is_logged_again_after_a_good_reading():
     said = _asks(UNAVAILABLE, (0, json.dumps(REPLY), ""), UNAVAILABLE)
     assert len(said) == 2 and said[0] == said[1]
