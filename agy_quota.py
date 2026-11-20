@@ -34,6 +34,8 @@ STALE_SECONDS = 24 * 60 * 60
 RELOAD_FLOOR_SECONDS = 60
 #: agy loads its tools and logs in before it answers; past this it is stuck.
 TIMEOUT_SECONDS = 60
+#: After a timeout's kill, how long to keep reading what agy printed before giving up on its pipes.
+KILL_GRACE_SECONDS = 5
 #: How much of agy's own message a log line keeps.
 REASON_CHARS = 200
 #: agy treats the folder it starts in as a project and reads its
@@ -167,7 +169,9 @@ def run_agy(agy):
     """One `agy -p /quota` -> (exit code, stdout, stderr). Raises OSError or TimeoutExpired.
 
     agy starts in a new empty folder under AGY_FOLDER, taken away after the run,
-    and in a session of its own, so a timeout ends whatever agy started with it.
+    and in a session of its own, so a timeout ends agy and whatever is still in
+    that session. KILL_GRACE_SECONDS later the run stops reading what agy
+    printed, so a process that left the session cannot hold it.
     """
     home = _own_folder(AGY_FOLDER)
     bin_folder = _own_folder(os.path.join(home, "bin"))
@@ -190,9 +194,21 @@ def run_agy(agy):
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
+            # macOS answers EPERM, not ESRCH, for a group whose members are all
+            # zombies, as when agy has exited and only a process that left its
+            # session is left.
+            except (ProcessLookupError, PermissionError):
                 pass
-            out, err = proc.communicate()
+            try:
+                out, err = proc.communicate(timeout=KILL_GRACE_SECONDS)
+            except subprocess.TimeoutExpired as held:
+                # A process outside agy's session still holds the pipes: keep
+                # what was read so far and reap agy.
+                proc.stdout.close()
+                proc.stderr.close()
+                proc.wait()
+                out, err = (part.decode("utf-8", errors="replace") if isinstance(part, bytes) else part or ""
+                            for part in (held.stdout, held.stderr))
             raise subprocess.TimeoutExpired(proc.args, TIMEOUT_SECONDS, output=out, stderr=err)
     finally:
         shutil.rmtree(run, ignore_errors=True)

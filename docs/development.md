@@ -322,7 +322,9 @@ Inspect Element.
   reads its `.agents/hooks.json`, so each run starts in a new empty folder of
   its own under `~/.local/share/agents-sidebar/agy`, removed after the run.
   agy runs in a session of its own: a run still going after 60 seconds is
-  ended with everything it started. Signed out, agy runs `open` on a Google
+  ended with everything still in its session, and the run stops reading agy's
+  output 5 seconds later, so a process that left the session cannot hold the
+  ask. Signed out, agy runs `open` on a Google
   sign-in URL, looked up on `PATH`, and waits a minute for the sign-in, so
   each run puts `~/.local/share/agents-sidebar/agy/bin` first on agy's `PATH`,
   where an `open` of the panel's own exits at once: the panel never opens a

@@ -433,8 +433,10 @@ nothing rather than 0%, and the block goes once its figures are a day old.
 
 agy runs with the environment iTerm2 started the panel with, not your shell's,
 so a `GEMINI_API_KEY`, a `GOOGLE_*` setting or an `HTTPS_PROXY` set only in a
-shell profile such as `~/.zshrc` does not reach it. The block shows the quota of
-the Google login agy keeps in the Keychain, while panes started from a shell
-with a key may be spending the key. Behind a proxy set only in the shell, runs
-can fail and the block keeps its last figures. To give the panel the same
-values, run `launchctl setenv NAME value` and restart iTerm2.
+shell profile such as `~/.zshrc` does not reach it. The block reads the quota of
+the Google login agy keeps in the Keychain, so it needs no `GEMINI_API_KEY`;
+panes started from a shell with a key may be spending the key instead. Behind a
+proxy set only in the shell, runs can fail and the block keeps its last
+figures. To give the panel a proxy setting such as `HTTPS_PROXY`, run
+`launchctl setenv HTTPS_PROXY value` and restart iTerm2. A value set that way
+reaches every app started afterwards in your login session.

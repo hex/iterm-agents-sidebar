@@ -718,8 +718,9 @@ def test_a_run_that_times_out_still_takes_its_folder_away(tmp_path, monkeypatch)
     [agy] = started
     assert Path(agy.kwargs["cwd"]).parent == folder
     assert not os.path.exists(agy.kwargs["cwd"])
-    # The whole session goes, then what agy printed is collected.
-    assert killed == [(agy.pid, signal.SIGKILL)] and agy.waits == [agy_quota.TIMEOUT_SECONDS, None]
+    # The whole session goes, then what agy printed is collected, for a few seconds at most.
+    assert killed == [(agy.pid, signal.SIGKILL)] and agy.waits == [agy_quota.TIMEOUT_SECONDS,
+                                                                    agy_quota.KILL_GRACE_SECONDS]
 
 
 def test_a_run_that_times_out_ends_what_agy_started_too(tmp_path, monkeypatch):
@@ -755,6 +756,61 @@ def test_a_run_that_times_out_ends_what_agy_started_too(tmp_path, monkeypatch):
                 os.kill(int(pidfile.read_text()), signal.SIGKILL)
             except (ProcessLookupError, ValueError):
                 pass
+
+
+@pytest.fixture
+def child_that_leaves_the_session(tmp_path, monkeypatch):
+    """A stand-in for agy that starts a child which leaves agy's session, as a detached updater
+    would, and keeps agy's output open; then the script runs the line given. Run timeouts are a
+    second. The test started that child, so it ends it afterwards: no kill of the run reaches it."""
+    pidfile = tmp_path / "child.pid"
+    monkeypatch.setenv("PIDFILE", str(pidfile))
+    monkeypatch.setattr(agy_quota, "TIMEOUT_SECONDS", 1)
+    monkeypatch.setattr(agy_quota, "KILL_GRACE_SECONDS", 1)
+    child = "import os, sys, time; os.setsid(); open(sys.argv[1], 'w').write(str(os.getpid())); time.sleep(30)"
+
+    def agy(then):
+        script = tmp_path / "agy"
+        script.write_text(f'#!/bin/sh\n"{sys.executable}" -c "{child}" "$PIDFILE" &\n{then}\n')
+        script.chmod(0o755)
+        return str(script)
+
+    yield agy
+    deadline = time.monotonic() + 5
+    while True:
+        try:
+            pid = int(pidfile.read_text())
+            break
+        except (OSError, ValueError):
+            if time.monotonic() > deadline:
+                return
+            time.sleep(0.05)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def test_a_run_that_times_out_ends_even_while_a_process_that_left_agys_session_holds_its_output(
+        child_that_leaves_the_session):
+    agy = child_that_leaves_the_session("sleep 30")
+    began = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        agy_quota.run_agy(agy)
+    # The timeout, then the grace for agy's output: not the 30 s the child holds it.
+    assert time.monotonic() - began < 5
+
+
+def test_a_run_whose_agy_has_exited_while_its_child_holds_the_output_times_out_with_what_it_printed(
+        child_that_leaves_the_session):
+    """agy is gone and only a process outside its session is left, so ending the session
+    finds no live process in it."""
+    agy = child_that_leaves_the_session("echo '{}'")
+    began = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        agy_quota.run_agy(agy)
+    assert time.monotonic() - began < 5
+    assert (raised.value.output, raised.value.stderr) == ("{}\n", "")
 
 
 def test_a_folder_for_agy_that_is_a_link_is_refused_and_agy_never_runs(tmp_path, monkeypatch):
