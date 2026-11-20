@@ -238,6 +238,20 @@ def test_a_signed_out_agy_is_asked_again_only_after_a_reload_or_the_setting_goin
     assert agy.asks == 4
 
 
+def test_a_reset_lifts_the_pause_and_the_next_step_asks_at_once():
+    """Settings resets the quota when the setting changes, so switching it off and on again works
+    however quickly it is done, with no tick in between to see it off."""
+    agy = Agy((0, json.dumps(REPLY), ""), SIGNED_OUT, (0, json.dumps(REPLY), ""))
+    quota = Quota(find=lambda: "/bin/agy", run=agy)
+    quota.step(NOW - agy_quota.READ_SECONDS, True)
+    quota.step(NOW, True)
+    assert quota.signed_out is True
+    assert quota.reset() is True
+    assert quota.signed_out is False and quota.snapshot(NOW) is None
+    assert quota.step(NOW + 1, True) is True
+    assert agy.asks == 3
+
+
 def test_a_run_that_fails_for_another_reason_is_asked_again_on_time():
     agy = Agy((0, json.dumps(REPLY), ""), UNAVAILABLE, UNAVAILABLE)
     quota = Quota(find=lambda: "/bin/agy", run=agy)

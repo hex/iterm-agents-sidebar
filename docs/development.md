@@ -330,8 +330,9 @@ Inspect Element.
   where an `open` of the panel's own exits at once: the panel never opens a
   browser. After a signed-out answer (`Authentication required` on agy's
   stderr, or an authentication error in its reply) `Quota.step` asks no more
-  until a press of reload, or the setting going off and on, and `daemon.log`
-  says so once.
+  until a press of reload, or the setting going off and on (a change to it in
+  Settings calls `Quota.reset`, so two quick clicks are enough), and
+  `daemon.log` says so once.
   agy reports how much of each window is left; the panel draws how much is
   used, as it does for accounts. The rebuild only copies the last reading into
   the snapshot, so it never waits on agy. Tests never start agy: an autouse

@@ -3803,7 +3803,7 @@ class Sidebar:
                  settings_path=None, accounts_fn=None, update_fn=None, statusline_fn=None,
                  context_fn=None, link_fn=None, github_fn=None, untie_fn=None, review_fn=None, hand_over_fn=None,
                  past_fn=None, reopen_fn=None, stop_port_fn=None, open_port_fn=None, rebuild_fn=None, activity_fn=None,
-                 api_fallback_fn=None, bridge_fn=lambda: False, keys_fn=lambda: False,
+                 api_fallback_fn=None, bridge_fn=lambda: False, keys_fn=lambda: False, antigravity_reset_fn=None,
                  log_fn=lambda line: print(f"sidebar: {line}", flush=True)):
         self.token = token
         self.page_path = Path(page_path)
@@ -3830,6 +3830,9 @@ class Sidebar:
         self.bridge_fn = bridge_fn
         #: () -> whether any stored account has an API key; the setting needs one too.
         self.keys_fn = keys_fn
+        #: () -> None: forgets Antigravity's reading and any pause when its setting
+        #: changes, so switching it off and on asks agy again however quickly it is done.
+        self.antigravity_reset_fn = antigravity_reset_fn
         #: () -> (ok, text): takes the release the panel was offered.
         self.update_fn = update_fn
         #: () -> the statusline it displaced; raises ValueError when it may not.
@@ -3873,7 +3876,11 @@ class Sidebar:
                     return self._json(400, {"error": "malformed body"})
                 if changes.get("api_fallback") and not (self.bridge_fn() and self.keys_fn()):
                     changes = {key: value for key, value in changes.items() if key != "api_fallback"}
-                return self._json(200, save_settings(changes, self.settings_path))
+                before = load_settings(self.settings_path)["antigravity_quota"]
+                saved = save_settings(changes, self.settings_path)
+                if saved["antigravity_quota"] != before and self.antigravity_reset_fn is not None:
+                    self.antigravity_reset_fn()
+                return self._json(200, saved)
             return self._json(200, load_settings(self.settings_path))
         if method == "POST" and path == "/action":
             return self._action(body)
@@ -6086,6 +6093,7 @@ async def main(connection):
         api_fallback_fn=lambda op, request: bridge.fallback_op(op, request),
         bridge_fn=lambda: statusline.state(CLAUDE_SETTINGS, BRIDGE) == "installed",
         keys_fn=lambda: any_api_key(accounts.STORE_PATH),
+        antigravity_reset_fn=lambda: bridge.antigravity.reset(),
         update_fn=lambda: update.take(here, bridge.update),
         statusline_fn=lambda: statusline.install(CLAUDE_SETTINGS, BRIDGE, STATUS_DIR),
         hand_over_fn=lambda: statusline.drop_cc_status(CLAUDE_SETTINGS),

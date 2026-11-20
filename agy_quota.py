@@ -327,14 +327,14 @@ class Quota:
     def step(self, now, on):
         """Ask agy if a reading is due. Returns whether the snapshot may have changed."""
         if not on:
-            return self._off()
+            return self.reset()
         return self._ask(now, lambda: not self.signed_out and now >= self.next_at)
 
     def reload(self, now, on):
         """The reload button: ask now unless the last ask was moments ago, and
         every READ_SECONDS again from here."""
         if not on:
-            return self._off()
+            return self.reset()
         self._pressed = True
 
         def due():
@@ -353,7 +353,10 @@ class Quota:
         if self.asked_at is not None:
             self.next_at = min(self.next_at, self.asked_at + READ_SECONDS)
 
-    def _off(self):
+    def reset(self):
+        """Forget the reading and any pause: the setting went off, or was just
+        switched. The next step with the setting on asks at once. Returns
+        whether the snapshot changed."""
         # Without the lock: an ask already in flight may still show its
         # answer, and the next step clears it again.
         changed = self._shown is not None
