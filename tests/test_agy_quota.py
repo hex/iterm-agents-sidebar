@@ -891,7 +891,8 @@ def test_an_open_swapped_for_a_fifo_after_it_was_looked_at_does_not_hold_the_run
         os.close(os.open(stub, os.O_WRONLY | os.O_NONBLOCK))
         worker.join(timeout=2)
         pytest.fail("the stub check blocked on a FIFO")
-    assert stat.S_ISREG(os.lstat(stub).st_mode) and stub.read_text() == agy_quota.OPEN_STUB
+    # os.stat, not the patched lstat, and the type before the read: a FIFO left there would block it.
+    assert stat.S_ISREG(os.stat(stub).st_mode) and stub.read_text() == agy_quota.OPEN_STUB
 
 
 def test_an_open_that_holds_the_stub_but_anyone_can_write_is_written_anew(tmp_path, monkeypatch):
@@ -903,6 +904,21 @@ def test_an_open_that_holds_the_stub_but_anyone_can_write_is_written_anew(tmp_pa
     monkeypatch.setattr(agy_quota.os, "lstat", _stat_as_the_stub(os.lstat, stub))
     agy_quota._stub_open(str(bin_folder))
     assert stat.S_IMODE(os.stat(stub).st_mode) == 0o700 and stub.read_text() == agy_quota.OPEN_STUB
+
+
+def test_an_open_far_larger_than_the_stub_is_never_read_whole(tmp_path, monkeypatch):
+    bin_folder = Path(agy_quota.AGY_FOLDER) / "bin"
+    bin_folder.mkdir(parents=True, mode=0o700)
+    stub = bin_folder / "open"
+    stub.write_text(agy_quota.OPEN_STUB + "#" * 1_000_000)
+    stub.chmod(0o700)
+    asked = []
+    real_read = os.read
+    monkeypatch.setattr(agy_quota.os, "read", lambda fd, size: asked.append(size) or real_read(fd, size))
+    agy_quota._stub_open(str(bin_folder))
+    monkeypatch.undo()
+    assert all(size <= len(agy_quota.OPEN_STUB) + 1 for size in asked)
+    assert stub.read_text() == agy_quota.OPEN_STUB
 
 
 def test_a_run_looks_open_up_in_the_panels_folder_before_the_systems(tmp_path):
