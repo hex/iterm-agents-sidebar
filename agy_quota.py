@@ -148,18 +148,27 @@ def _own_folder(path):
 
 
 def _stub_open(folder):
-    """`folder`/open as OPEN_STUB, written again when it is missing or holds anything else.
+    """`folder`/open as OPEN_STUB: kept only when it is a plain file of mode 0700
+    that holds OPEN_STUB, read without following a link. Anything else there, a
+    link included, is removed and the file written anew.
 
-    Raises OSError when it cannot be, a link in its place included.
+    Raises OSError when it cannot be, a folder in its place included.
     """
     path = os.path.join(folder, "open")
     try:
-        with open(path, encoding="utf-8") as stub:
-            if stub.read() == OPEN_STUB and stat.S_IMODE(os.lstat(path).st_mode) == 0o700:
-                return path
-    except (OSError, ValueError):
-        pass
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o700)
+        found = os.lstat(path)
+    except FileNotFoundError:
+        found = None
+    if found is not None:
+        try:
+            if stat.S_ISREG(found.st_mode) and stat.S_IMODE(found.st_mode) == 0o700:
+                with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), encoding="utf-8") as stub:
+                    if stub.read() == OPEN_STUB:
+                        return path
+        except (OSError, ValueError):
+            pass
+        os.unlink(path)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o700)
     with os.fdopen(fd, "w", encoding="utf-8") as stub:
         stub.write(OPEN_STUB)
     os.chmod(path, 0o700)

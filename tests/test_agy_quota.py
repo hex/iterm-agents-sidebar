@@ -789,6 +789,29 @@ def test_agy_finds_an_open_of_the_panels_own_first_on_its_path_and_it_opens_noth
     assert stat.S_IMODE(stub.stat().st_mode) == 0o700
 
 
+def test_an_open_that_is_a_link_is_replaced_with_a_file_of_the_panels_own(tmp_path, monkeypatch):
+    """A link to a file that holds the stub today can point at another program tomorrow."""
+    target = tmp_path / "elsewhere-open"
+    target.write_text(agy_quota.OPEN_STUB)
+    target.chmod(0o700)
+    before = target.stat()
+    bin_folder = Path(agy_quota.AGY_FOLDER) / "bin"
+    bin_folder.mkdir(parents=True, mode=0o700)
+    link = bin_folder / "open"
+    os.symlink(target, link)
+    # The link's own mode, which an lstat sees, is what the stub's would be.
+    if hasattr(os, "lchmod"):
+        os.lchmod(link, 0o700)
+    stand_in_for_popen(monkeypatch)
+    agy_quota.run_agy("/bin/agy")
+    assert not os.path.islink(link)
+    assert link.read_text() == agy_quota.OPEN_STUB
+    assert stat.S_IMODE(os.lstat(link).st_mode) == 0o700
+    after = target.stat()
+    assert target.read_text() == agy_quota.OPEN_STUB
+    assert (after.st_ino, after.st_mtime_ns, stat.S_IMODE(after.st_mode)) == (before.st_ino, before.st_mtime_ns, 0o700)
+
+
 def test_a_run_looks_open_up_in_the_panels_folder_before_the_systems(tmp_path):
     """A stand-in for agy that only says which `open` its PATH finds; `command -v` runs nothing."""
     script = tmp_path / "agy"
