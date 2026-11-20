@@ -313,6 +313,9 @@ class Quota:
         # Set by a press of reload, and taken under the lock by the press's
         # own ask or, when it found one in flight, as that one ends.
         self._pressed = False
+        # Bumped by each reset: an ask whose agy was asked before the latest
+        # reset counts for nothing when it answers.
+        self._resets = 0
         self._lock = threading.Lock()
 
     @property
@@ -366,8 +369,9 @@ class Quota:
         """Forget the reading and any pause: the setting went off, or was just
         switched. The next step with the setting on asks at once. Returns
         whether the snapshot changed."""
-        # Without the lock: an ask already in flight may still show its
-        # answer, and the next step clears it again.
+        # Without the lock, so it never waits on agy: an ask already in flight
+        # sees the count move when its agy answers, and drops that answer.
+        self._resets += 1
         changed = self._shown is not None
         self._shown = None
         # Turned on again, agy is asked at once.
@@ -394,9 +398,12 @@ class Quota:
             self.asked_at = now
             # Set before agy runs, so an ask that raises still waits its interval.
             self.next_at = now + READ_SECONDS
+            resets = self._resets
             try:
                 code, out, err = self.run(agy)
             except (OSError, UnicodeDecodeError, subprocess.SubprocessError) as error:
+                if self._resets != resets:
+                    return self._dropped()
                 # The panel's timeout usually ends a signed-out agy before its
                 # own wait for a sign-in does.
                 if isinstance(error, subprocess.TimeoutExpired):
@@ -407,6 +414,8 @@ class Quota:
                     return self._failed(now, f"agy did not answer within {TIMEOUT_SECONDS} s: "
                                              f"{_reason(error.output, error.stderr)}")
                 return self._failed(now, f"agy did not answer: {error!r}")
+            if self._resets != resets:
+                return self._dropped()
             skipped = []
             try:
                 quota = quota_from_reply(out, now, skipped) if code == 0 else None
@@ -438,6 +447,12 @@ class Quota:
             # A press that came while agy was asked counts after its answer.
             self._take_press()
             self._lock.release()
+
+    def _dropped(self):
+        # The setting was switched while agy was asked: its answer, a sign-out
+        # included, belongs to before the switch, so the next step asks anew.
+        self.next_at = 0.0
+        return False
 
     def _pause_signed_out(self, now):
         # Asked again, agy would only wait another minute for a sign-in.

@@ -268,6 +268,25 @@ def test_a_reset_lifts_the_pause_and_the_next_step_asks_at_once():
     assert agy.asks == 3
 
 
+def test_an_ask_already_in_flight_when_the_setting_is_switched_counts_for_nothing():
+    """A signed-out agy keeps its run waiting up to a minute: the switch must win over that answer."""
+    agy = HeldLast((0, json.dumps(REPLY), ""), SIGNED_OUT)
+    said = []
+    quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
+    quota.step(NOW - agy_quota.READ_SECONDS, True)
+    step = threading.Thread(target=quota.step, args=(NOW, True))
+    step.start()
+    assert agy.started.wait(timeout=5)
+    quota.reset()
+    agy.release.set()
+    step.join(timeout=5)
+    assert not step.is_alive()
+    assert quota.signed_out is False and quota.snapshot(NOW) is None and said == []
+    agy.answers.append((0, json.dumps(REPLY), ""))
+    assert quota.step(NOW + 1, True) is True
+    assert agy.asks == 3
+
+
 def test_a_run_that_fails_for_another_reason_is_asked_again_on_time():
     agy = Agy((0, json.dumps(REPLY), ""), UNAVAILABLE, UNAVAILABLE)
     quota = Quota(find=lambda: "/bin/agy", run=agy)
