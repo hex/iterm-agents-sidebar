@@ -107,7 +107,8 @@ def quota_from_reply(text, read_at, skipped=None):
     """
     try:
         reply = json.loads(text)
-    except ValueError:
+    # RecursionError: a reply nested too deep to parse.
+    except (ValueError, RecursionError):
         return None
     if not isinstance(reply, dict) or reply.get("status") != "SUCCESS":
         return None
@@ -221,7 +222,7 @@ def _reason(out, err):
     None, as a timeout leaves it."""
     try:
         reply = json.loads(out)
-    except ValueError:
+    except (ValueError, RecursionError):
         reply = None
     error = reply.get("error") if isinstance(reply, dict) and reply.get("status") == "ERROR" else None
     if isinstance(error, str) and error.strip():
@@ -243,7 +244,7 @@ def _says_signed_out(out, err):
         return True
     try:
         reply = json.loads(out) if out else None
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         return False
     error = reply.get("error") if isinstance(reply, dict) and reply.get("status") == "ERROR" else None
     return isinstance(error, str) and "authentication" in error.lower()
@@ -375,7 +376,7 @@ class Quota:
             skipped = []
             try:
                 quota = quota_from_reply(out, now, skipped) if code == 0 else None
-            except (ValueError, TypeError, ArithmeticError) as error:
+            except (ValueError, TypeError, ArithmeticError, RecursionError) as error:
                 return self._failed(now, f"agy's reply could not be read: {error!r}")
             # Google names the windows, so one the panel does not know can
             # come without an agy update.

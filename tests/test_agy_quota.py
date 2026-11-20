@@ -308,6 +308,22 @@ def test_a_reply_that_cannot_be_read_is_a_failed_ask_and_waits_its_interval(answ
     assert agy.asks == 2
 
 
+def test_a_reply_nested_too_deep_to_parse_is_a_failed_ask():
+    """json.loads raises RecursionError, not ValueError, on arrays nested this deep."""
+    deep = "[" * 200000
+    agy = Agy((0, json.dumps(REPLY), ""), (0, deep, ""), (1, deep, ""))
+    said = []
+    quota = Quota(find=lambda: "/bin/agy", run=agy, log=lambda *words: said.append(" ".join(words)))
+    quota.step(NOW, True)
+    for n in (1, 2):
+        quota.step(NOW + n * agy_quota.READ_SECONDS, True)
+        snap = quota.snapshot(NOW + n * agy_quota.READ_SECONDS)
+        assert snap["as_of"] == NOW
+        assert snap["groups"][0]["windows"][0]["used"] == 8.4
+        assert len(said) == n and said[-1].startswith("antigravity quota not read:")
+    assert agy.asks == 3
+
+
 def test_an_ask_that_raises_still_moves_the_next_one():
     agy = Agy((0, json.dumps(REPLY), ""), RuntimeError("unforeseen"), (0, json.dumps(REPLY), ""))
     quota = Quota(find=lambda: "/bin/agy", run=agy)
