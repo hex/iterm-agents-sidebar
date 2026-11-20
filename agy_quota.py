@@ -190,7 +190,8 @@ def run_agy(agy):
     agy starts in a new empty folder under AGY_FOLDER, taken away after the run,
     and in a session of its own, so a timeout ends agy and whatever is still in
     its process group. KILL_GRACE_SECONDS later the run stops reading what agy
-    printed, so a process that left the group cannot hold it.
+    printed, so a process that left the group cannot hold it; when agy had
+    exited by itself, what it printed is the run's answer.
     """
     home = _own_folder(AGY_FOLDER)
     bin_folder = _own_folder(os.path.join(home, "bin"))
@@ -228,6 +229,10 @@ def run_agy(agy):
                 proc.wait()
                 out, err = (part.decode("utf-8", errors="replace") if isinstance(part, bytes) else part or ""
                             for part in (held.stdout, held.stderr))
+            # agy had answered and exited by itself, and only a process outside
+            # its group kept the pipes open: its answer is the run's.
+            if proc.returncode != -signal.SIGKILL:
+                return proc.returncode, out, err
             raise subprocess.TimeoutExpired(proc.args, TIMEOUT_SECONDS, output=out, stderr=err)
     finally:
         shutil.rmtree(run, ignore_errors=True)

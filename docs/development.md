@@ -324,7 +324,7 @@ Inspect Element.
   agy runs in a session of its own: a run still going after 60 seconds is
   ended with everything still in its process group, and the run stops reading
   agy's output 5 seconds later, so a process that left the group cannot hold
-  the ask. Signed out, agy runs `open` on a Google
+  the ask; when agy had already answered and exited, that answer is used. Signed out, agy runs `open` on a Google
   sign-in URL, looked up on `PATH`, and waits a minute for the sign-in, so
   each run puts `~/.local/share/agents-sidebar/agy/bin` first on agy's `PATH`,
   where an `open` of the panel's own exits at once: the panel never opens a

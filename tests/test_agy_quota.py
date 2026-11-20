@@ -776,6 +776,8 @@ def stand_in_for_popen(monkeypatch, answer=("{}", ""), check=lambda kwargs: None
             if isinstance(answer, BaseException):
                 if len(self.waits) == 1:
                     raise answer
+                # Read again after the kill: agy is gone, killed as a real one would be.
+                self.returncode = -signal.SIGKILL
                 return "", ""
             self.returncode = 0
             return answer
@@ -923,7 +925,7 @@ def test_a_run_that_times_out_still_takes_its_folder_away(tmp_path, monkeypatch)
     [agy] = started
     assert Path(agy.kwargs["cwd"]).parent == folder
     assert not os.path.exists(agy.kwargs["cwd"])
-    # The whole session goes, then what agy printed is collected, for a few seconds at most.
+    # agy's whole process group goes, then what agy printed is collected, for a few seconds at most.
     assert killed == [(agy.pid, signal.SIGKILL)] and agy.waits == [agy_quota.TIMEOUT_SECONDS,
                                                                     agy_quota.KILL_GRACE_SECONDS]
 
@@ -1006,16 +1008,14 @@ def test_a_run_that_times_out_ends_even_while_a_process_that_left_agys_session_h
     assert time.monotonic() - began < 5
 
 
-def test_a_run_whose_agy_has_exited_while_its_child_holds_the_output_times_out_with_what_it_printed(
+def test_a_run_whose_agy_has_exited_while_its_child_holds_the_output_gives_what_agy_printed(
         child_that_leaves_the_session):
-    """agy is gone and only a process outside its session is left, so ending the session
-    finds no live process in it."""
-    agy = child_that_leaves_the_session("echo '{}'")
+    """agy answered and exited by itself, and only a process outside its group holds the pipes:
+    the kill of agy's group finds no live process, and agy's own answer is the run's."""
+    agy = child_that_leaves_the_session("echo '{}'; exit 3")
     began = time.monotonic()
-    with pytest.raises(subprocess.TimeoutExpired) as raised:
-        agy_quota.run_agy(agy)
+    assert agy_quota.run_agy(agy) == (3, "{}\n", "")
     assert time.monotonic() - began < 5
-    assert (raised.value.output, raised.value.stderr) == ("{}\n", "")
 
 
 def test_a_folder_for_agy_that_is_a_link_is_refused_and_agy_never_runs(tmp_path, monkeypatch):
