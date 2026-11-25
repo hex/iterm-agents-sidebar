@@ -866,27 +866,60 @@ def task_tools(session_id, now, root=None):
     return names
 
 
-def report_calls(bound, tools):
+#: The task tools as a Codex session's model and its hooks name them. install.sh registers codex-task-tools.py as the
+#: agents-sidebar server, and Codex 0.171.0 names an MCP tool mcp__<server>__<tool>, every character of the
+#: server's name outside [A-Za-z0-9_] made "_" (read in a rollout, and in its source's hook_tool_name_for).
+CODEX_TASK_TOOLS = ("mcp__agents_sidebar__task_begin", "mcp__agents_sidebar__task_report")
+#: The server's table in Codex's config.toml, bare as `codex mcp add` writes it or quoted.
+_CODEX_TASK_SERVER = re.compile(r'^[ \t]*\[[ \t]*mcp_servers[ \t]*\.[ \t]*(agents-sidebar|"agents-sidebar")[ \t]*\]',
+                                re.MULTILINE)
+
+
+def codex_task_tools(environ):
+    """CODEX_TASK_TOOLS when Codex's config.toml declares their server, or None for the commands.
+
+    The config is where Codex reads it, $CODEX_HOME or ~/.codex. Found by its
+    table header rather than parsed: the hook runs on whatever python3 is,
+    which may predate tomllib, and a miss only means the commands, which work
+    everywhere.
+    """
+    path = os.path.join(environ.get("CODEX_HOME") or os.path.expanduser("~/.codex"), "config.toml")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            declared = _CODEX_TASK_SERVER.search(fh.read())
+    except (OSError, UnicodeDecodeError):
+        return None
+    return CODEX_TASK_TOOLS if declared else None
+
+
+def report_calls(bound, tools, codex=False):
     """The example calls the prompt names, in the shape the session reports through: the three bound
-    commands, or the two tools with the line that loads their schemas."""
+    commands; the two tools of the link mod with the line that loads their schemas; or, for Codex, the
+    two tools of its server with the commands as one line for a session started before it was installed."""
     if tools is None:
         return (f"Commands:\n{bound} begin --title 'Task title'\n"
                 f"{bound} report --activity 'Reading code' --percent 25\n"
                 f"{bound} report --activity 'Assessing task' --unknown\n")
     begin, report = tools
-    return (f"Tools (deferred: load them once with ToolSearch \"select:{begin},{report}\"):\n"
-            f'{begin} {{"title": "Task title"}}\n'
-            f'{report} {{"activity": "Reading code", "percent": 25}}\n'
-            f'{report} {{"activity": "Assessing task", "percent": null}}\n')
+    calls = (f'{begin} {{"title": "Task title"}}\n'
+             f'{report} {{"activity": "Reading code", "percent": 25}}\n'
+             f'{report} {{"activity": "Assessing task", "percent": null}}\n')
+    if codex:
+        return ("Tools (the agents-sidebar MCP server):\n" + calls
+                + f"Without those tools, as in a session started before they were installed, run {bound} with "
+                  "begin --title 'Task title', report --activity 'Reading code' --percent 25, "
+                  "or report --activity 'Assessing task' --unknown\n")
+    return f"Tools (deferred: load them once with ToolSearch \"select:{begin},{report}\"):\n" + calls
 
 
-def whisper(event, payload, note, now, reminded, script, tools=None):
+def whisper(event, payload, note, now, reminded, script, tools=None, codex=False):
     """What to add to the agent's context about its task line, or None.
 
     The agent writes the note itself; this is the reminder. Every prompt
     gets the instructions and the calls it reports through: the tools the
-    session's mod registered (`tools`, from task_tools), else the bound
-    commands. A tool boundary gets one line, when the last report is a
+    session's mod registered (`tools`, from task_tools) or, for Codex
+    (`codex`), those its config declares (from codex_task_tools), else the
+    bound commands. A tool boundary gets one line, when the last report is a
     minute old and no reminder went out in the last minute. Subagents never
     hear it, and the report itself is not a boundary worth a nudge.
     """
@@ -903,7 +936,7 @@ def whisper(event, payload, note, now, reminded, script, tools=None):
         except OSError:
             return None
         current = json.dumps(note) if note else "none"
-        return f"{instructions}\n\nCurrent task: {current}\n\n{report_calls(bound, tools)}"
+        return f"{instructions}\n\nCurrent task: {current}\n\n{report_calls(bound, tools, codex)}"
     if event != "PostToolUse" or "task.py" in json.dumps(payload.get("tool_input") or {}):
         return None
     if tools and payload.get("tool_name") in tools:
@@ -1843,7 +1876,7 @@ def main():
     # Only where the panel runs: a machine with hooks alone has nothing that reads the reports.
     context = whisper(event, payload, read_note(session_id), time.time(), doc.get("reminded") or 0,
                       os.path.join(os.path.dirname(os.path.abspath(__file__)), "task.py"),
-                      None if codex else task_tools(session_id, time.time())) \
+                      codex_task_tools(os.environ) if codex else task_tools(session_id, time.time()), codex) \
         if os.path.exists(ENDPOINT) else None
     if context:
         mark_reminded(session_id, time.time())

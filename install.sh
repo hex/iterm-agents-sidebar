@@ -154,7 +154,8 @@ fi
 # anyway, creating ~/.codex; --no-codex leaves Codex's files alone. Two files
 # change: ~/.codex/hooks.json, which other tools write too (some register
 # their own entries there), so only our entries move; and config.toml, where
-# Codex's sandbox learns the task directory. Codex asks once to trust the hooks.
+# Codex's sandbox learns the task directory and Codex finds the task tools'
+# server. Codex asks once to trust the hooks.
 if [ "$codex" = auto ]; then
   if [ -d "$HOME/.codex" ] || command -v codex >/dev/null 2>&1; then codex=1; else codex=0; fi
 fi
@@ -177,6 +178,19 @@ if [ "$codex" = 1 ]; then
     warn codex "sandbox not opened, so the task line will not reach Codex cards: $(tr '\n' ' ' < "$tasks_dir/.sandbox.err")"
   fi
   rm -f "$tasks_dir/.sandbox.err"
+  # The task line's tools: an MCP server Codex starts beside each session, so
+  # a report is a tool call, never a command that waits on an approval or
+  # rides along with another. Codex's own CLI writes the entry and keeps the
+  # rest of config.toml as it was; adding it again replaces it. CODEX_HOME is
+  # named so the entry lands beside the hooks above, whatever the shell sets.
+  if ! command -v codex >/dev/null 2>&1; then
+    warn codex "codex is not on PATH, so its task tools are not registered; Codex sessions report through task.py commands"
+  elif added=$(CODEX_HOME="$HOME/.codex" codex mcp add agents-sidebar -- python3 "$plugin_dir/hooks-handlers/codex-task-tools.py" 2>&1); then
+    ok codex "task tools in ~/.codex/config.toml as the agents-sidebar MCP server"
+    next+=("Codex sessions started from now on report their task line through its tools.")
+  else
+    warn codex "task tools not registered, so Codex sessions report through task.py commands: $(printf '%s' "$added" | tr '\n' ' ')"
+  fi
   next+=("Codex asks once to trust its hooks.")
   [ -f "$codex_hooks.before-agents-sidebar" ] && undo+=("codex       cp $(tilde "$codex_hooks").before-agents-sidebar $(tilde "$codex_hooks")   (or --no-codex next time)")
 else

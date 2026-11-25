@@ -324,6 +324,60 @@ def test_a_prompt_names_the_tools_when_the_mod_registered_them_and_the_nudge_fol
     assert whisper("PostToolUse", {"tool_name": TOOLS[1]}, NOTE, now=NOTE["ts"] + 61) is not None
 
 
+CODEX_TOOLS = ("mcp__agents_sidebar__task_begin", "mcp__agents_sidebar__task_report")
+
+
+def test_a_codex_prompt_names_the_servers_tools_and_the_commands_for_a_session_without_them():
+    """A Codex session started before the server was installed has no such tools, so the commands stay as one
+    line; the nudge names the tool, and the report call itself is no boundary to nudge at."""
+    text = emit_state.whisper("UserPromptSubmit", {"prompt": "fix it", "session_id": "abc-123"}, NOTE, 1789000030, 0,
+                              SCRIPT, CODEX_TOOLS, codex=True)
+    bound = f"python3 {SCRIPT} --session abc-123"
+    assert text.endswith(
+        "Tools (the agents-sidebar MCP server):\n"
+        'mcp__agents_sidebar__task_begin {"title": "Task title"}\n'
+        'mcp__agents_sidebar__task_report {"activity": "Reading code", "percent": 25}\n'
+        'mcp__agents_sidebar__task_report {"activity": "Assessing task", "percent": null}\n'
+        f"Without those tools, as in a session started before they were installed, run {bound} with "
+        "begin --title 'Task title', report --activity 'Reading code' --percent 25, "
+        "or report --activity 'Assessing task' --unknown\n")
+    assert "ToolSearch" not in text
+    later = NOTE["ts"] + 61
+    nudge = emit_state.whisper("PostToolUse", {"session_id": "abc-123", "tool_name": "exec_command"}, NOTE, later, 0,
+                               SCRIPT, CODEX_TOOLS, codex=True)
+    assert nudge.endswith('mcp__agents_sidebar__task_report {"activity": "...", "percent": N}')
+    for tool in CODEX_TOOLS:
+        assert emit_state.whisper("PostToolUse", {"session_id": "abc-123", "tool_name": tool}, NOTE, later, 0,
+                                  SCRIPT, CODEX_TOOLS, codex=True) is None
+
+
+def codex_home(tmp_path, config):
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    if config is not None:
+        (home / "config.toml").write_text(config)
+    return {"CODEX_HOME": str(home)}
+
+
+@pytest.mark.parametrize("config, tools", [
+    (None, None),
+    ('model = "gpt-x"\n\n[mcp_servers.other]\ncommand = "node"\n', None),
+    ('# [mcp_servers.agents-sidebar]\n', None),
+    ('[mcp_servers.agents-sidebar]\ncommand = "python3"\nargs = ["/x/codex-task-tools.py"]\n', CODEX_TOOLS),
+    ('[mcp_servers."agents-sidebar"]\ncommand = "python3"\n', CODEX_TOOLS),
+], ids=["no config", "other servers", "commented out", "declared", "quoted"])
+def test_codex_has_the_tools_only_where_its_config_declares_their_server(tmp_path, config, tools):
+    assert emit_state.codex_task_tools(codex_home(tmp_path, config)) == tools
+
+
+def test_the_codex_config_is_read_where_codex_home_points_else_under_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex" / "config.toml").write_text("[mcp_servers.agents-sidebar]\n")
+    assert emit_state.codex_task_tools({}) == CODEX_TOOLS
+    assert emit_state.codex_task_tools(codex_home(tmp_path, "")) is None
+
+
 def test_the_marker_names_the_tools_only_when_fresh_whole_and_the_sessions_own(tmp_path):
     good = {"session": "abc-123", "begin": TOOLS[0], "report": TOOLS[1]}
     now = 1789000030
@@ -1082,6 +1136,26 @@ def test_a_codex_prompt_hands_its_link_drop_to_codex_after_the_task_line(tmp_pat
         f"{bound} report --activity 'Reading code' --percent 25\n"
         f"{bound} report --activity 'Assessing task' --unknown\n"
         "\n\nA report from the session “alpha” ... (link nnnn)")}}
+
+
+def test_a_codex_prompt_names_the_task_tools_when_codex_home_declares_their_server(tmp_path):
+    session = "019a0c5e-7d1e-7c55-9a53-2f6f0c1d8e22"
+    endpoint = tmp_path / ".local" / "share" / "agents-sidebar" / "endpoint.json"
+    endpoint.parent.mkdir(parents=True)
+    endpoint.write_text("{}")
+    env = codex_home(tmp_path, '[mcp_servers.agents-sidebar]\ncommand = "python3"\n')
+    code, out, _ = run_handler(tmp_path, ["UserPromptSubmit", "--codex"], {"session_id": session}, env)
+    instructions = (HANDLER.parent / "task-instructions.md").read_text().strip()
+    bound = f"python3 {HANDLER.parent / 'task.py'} --session {session}"
+    assert code == 0
+    assert json.loads(out) == {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": (
+        f"{instructions}\n\nCurrent task: none\n\nTools (the agents-sidebar MCP server):\n"
+        'mcp__agents_sidebar__task_begin {"title": "Task title"}\n'
+        'mcp__agents_sidebar__task_report {"activity": "Reading code", "percent": 25}\n'
+        'mcp__agents_sidebar__task_report {"activity": "Assessing task", "percent": null}\n'
+        f"Without those tools, as in a session started before they were installed, run {bound} with "
+        "begin --title 'Task title', report --activity 'Reading code' --percent 25, "
+        "or report --activity 'Assessing task' --unknown\n")}}
 
 
 def test_the_published_state_says_which_machine_and_folder_it_is_from(monkeypatch):

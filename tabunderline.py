@@ -59,9 +59,16 @@ async def defaults(*words):
 
 
 def said(stderr):
-    """`defaults`'s complaint on one line, without the time and process NSLog puts before it."""
+    """`defaults`'s complaint on one line, without what it puts before it: the time and process of NSLog,
+    or the "Error: " of macOS 27."""
     text = " ".join(line.strip() for line in stderr.splitlines() if line.strip())
-    return re.sub(r"^\S+ \S+ defaults\[[\d:]+\]\s*", "", text) or "nothing"
+    return re.sub(r"^(\S+ \S+ defaults\[[\d:]+\]\s*|Error:\s*)", "", text) or "nothing"
+
+
+#: How `defaults read-type` says the key, or its whole domain, is not there: "The domain/default pair of (D, K)
+#: does not exist" and "Domain D does not exist" up to macOS 26, "Could not find key 'K' in domain 'D'." and
+#: "Domain 'D' not found." on macOS 27.
+_UNSET = re.compile(r"does not exist$|^Could not find key '.*' in domain '.*'\.$|^Domain '.*' not found\.$")
 
 
 def written(value):
@@ -76,7 +83,7 @@ async def read(key=KEY):
     try:
         word = await defaults("read-type", DOMAIN, key)
     except Failed as error:
-        if str(error).endswith("does not exist"):
+        if _UNSET.search(str(error).removeprefix("defaults read-type said ")):
             return None
         raise
     return Value(word.strip().removeprefix("Type is "), (await defaults("read", DOMAIN, key)).removesuffix("\n"))

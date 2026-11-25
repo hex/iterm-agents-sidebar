@@ -81,11 +81,31 @@ def report(note, activity, percent, now):
     activity = clean(activity, ACTIVITY_WIDTH)
     if not activity:
         raise ValueError("activity is empty")
-    if percent is not None and not 0 <= percent <= 100:
+    # An int and not a bool or a fraction: the MCP tool passes the model's JSON as it came.
+    if percent is not None and (type(percent) is not int or not 0 <= percent <= 100):
         raise ValueError("percent must be 0 to 100")
     done = percent == 100
     return dict(note, activity="Complete" if done else activity, percent=percent,
                 done=done, ts=round(now))
+
+
+def update_note(session_id, change):
+    """Read the session's note, pass it through `change` and write what comes
+    back, all under the session's lock, so two writers never lose each
+    other's report. -> the note written.
+
+    Raises ValueError for a session id that is not a plain token or a change
+    that refuses, OSError when the note cannot be read or written.
+    """
+    if not _SESSION.match(session_id):
+        raise ValueError("session id must be a plain token")
+    path = note_path(session_id)
+    os.makedirs(TASKS_DIR, exist_ok=True)
+    with open(lock_path(session_id), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        note = change(read_note(path))
+        write_note(path, note)
+    return note
 
 
 def parse(argv):
@@ -107,20 +127,13 @@ def main(argv):
         args = parse(argv)
     except SystemExit as error:
         return int(error.code or 0)
-    if not _SESSION.match(args.session):
-        print("task.py: session id must be a plain token", file=sys.stderr)
-        return 1
-    path = note_path(args.session)
+    def change(note):
+        if args.verb == "begin":
+            return begin(args.title, time.time())
+        return report(note, args.activity, None if args.unknown else args.percent, time.time())
+
     try:
-        os.makedirs(TASKS_DIR, exist_ok=True)
-        with open(lock_path(args.session), "a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            if args.verb == "begin":
-                note = begin(args.title, time.time())
-            else:
-                note = report(read_note(path), args.activity,
-                              None if args.unknown else args.percent, time.time())
-            write_note(path, note)
+        note = update_note(args.session, change)
     except (ValueError, OSError) as error:
         print(f"task.py: {error}", file=sys.stderr)
         return 1

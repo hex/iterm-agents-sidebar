@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import tabunderline  # noqa: E402
-from conftest import iterm_prefs as prefs  # noqa: E402
+from conftest import iterm_prefs as prefs, refused_delete_complaint  # noqa: E402
 
 KEY = "MinimalSelectedTabUnderlineProminence"
 
@@ -98,8 +98,8 @@ def iterm_prefs_in(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("kept, verb, complaint", [
-    ({"type": "float", "value": "0.4"}, "write", "Could not write domain {domain}; exiting"),
-    (None, "delete", "Domain ({domain}) not found. Defaults have not been changed."),
+    ({"type": "float", "value": "0.4"}, "write", "Could not write domain {domain}; exiting".format),
+    (None, "delete", refused_delete_complaint),
 ], ids=["write", "delete, its complaint over two lines"])
 def test_a_line_that_cannot_be_put_back_is_logged_and_its_record_kept_for_the_next_start(
         tmp_path, monkeypatch, kept, verb, complaint):
@@ -109,7 +109,7 @@ def test_a_line_that_cannot_be_put_back_is_logged_and_its_record_kept_for_the_ne
     folder.chmod(0o555)
     logged = put_back(path)
     assert (prefs(), record_left(tmp_path)) == ({KEY: 0.0}, {"kept": kept})
-    assert logged == [f"tab underline: defaults {verb} said {complaint.format(domain=tabunderline.DOMAIN)}"]
+    assert logged == [f"tab underline: defaults {verb} said {complaint(domain=tabunderline.DOMAIN)}"]
     folder.chmod(0o755)
     assert put_back(path) == ["tab underline put back"]
     assert record_left(tmp_path) is None

@@ -920,7 +920,10 @@ first's bar is solid, and a finished task reads `100% · Complete`, with no
 tick.
 
 A Claude session reports through two tools the plugin registers,
-`task_begin` and `task_report`; a Codex session runs the plugin's `task.py`.
+`task_begin` and `task_report`. A Codex session reports through the same two
+tools, served by the plugin's `agents-sidebar` MCP server, which the install
+registers in Codex's config; a session started before that runs the plugin's
+`task.py`.
 `docs/task-line-design.md` has the hook cadence and the note format.
 
 ## Tasks

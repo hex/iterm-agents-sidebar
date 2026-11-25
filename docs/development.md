@@ -218,7 +218,9 @@ read against the source.
 - `agents-sidebar`: the command scripts use to list agents and wait on one;
   standard library only, and it runs on the Python 3.9 macOS ships.
 - `plugin/`: the state hook (`hooks/hooks.json`, `hooks-handlers/`) and
-  `statusline-bridge.sh`; `plugin/omp/` holds omp's extension, which runs the
+  `statusline-bridge.sh`; `hooks-handlers/codex-task-tools.py` is the MCP
+  server Codex starts for the task line's two tools, writing the note through
+  `task.py`; `plugin/omp/` holds omp's extension, which runs the
   same hook with `--agent omp`, and its `bun test` cases. `hooks/link.tsx` is
   the mod for linked cards, partners and the task line's two tools, with its
   helpers `partner-text.ts`, `task-line.ts` and `task-cases.ts`, the test world
@@ -233,8 +235,9 @@ read against the source.
 - `assets/`: the README figures and their scripts, and the notifier's source
   (`notifier.swift`) and icon.
 - `tests/`: the test suite; `tests/live/` holds manual scripts that are not
-  collected: most drive a real iTerm2, and `api_fallback_check.py` drives the
-  installed Claude Code.
+  collected: most drive a real iTerm2, `api_fallback_check.py` drives the
+  installed Claude Code, and `codex_task_tools_check.py` drives the installed
+  Codex.
 
 ## The tool identifier
 
@@ -260,7 +263,9 @@ Inspect Element.
 
 - **Shells:** the process tree, because Claude Code publishes them nowhere. The
   panel's own task report (`task.py`, run by a Codex session when the prompt hook asks) is
-  filtered out, and a home directory in a command reads as `~`.
+  filtered out, and a home directory in a command reads as `~`. Codex's task
+  tools server never shows as a shell: only a process started from a Claude
+  Code shell snapshot counts, and Codex starts the server itself.
 - **Teammates:** the lead's session id in the teammate's
   `--parent-session-id`, matched against the lead's own id from its statusline
   payload, so nesting needs the statusline bridge. The badge colour comes from
@@ -326,9 +331,12 @@ looks for that result in the last megabyte of the transcript (a subagent's
 own, for a subagent's tool) and closes the gate when it is there. A Codex state reaches its pane another way when it has to:
 Codex runs hooks in an app-server daemon that outlives the Codex that started
 it and serves the next, and from there the hook finds no terminal. It files
-the state with its directory instead, and the panel gives it to the pane
-running Codex in that directory, if exactly one state newer than that Codex
-is filed there. In a Codex session any tool starting closes every gate too:
+the state with its directory and its rollout instead, and the panel gives it
+to the pane running Codex in the folder that session started in, read from
+the `session_meta` line its rollout opens with, so a Codex that moved into a
+worktree still pairs; a rollout that cannot be read leaves the filed
+directory to decide. A state pairs only if exactly one state newer than that
+Codex is filed there. In a Codex session any tool starting closes every gate too:
 Codex issues no tool while its prompt is up, and waiting for the approved
 command to finish kept the card waiting through whole test runs.
 
@@ -437,11 +445,17 @@ live iTerm2. `tests/live/` holds the scripts for that: each opens a throwaway
 window on a bare shell, drives the daemon or the iTerm2 API, prints a PASS or
 FAIL line per expectation and closes the window. Run them with iTerm2's own
 python and its cookie, as their docstrings say. `tests/live/api_fallback_check.py`
-is the one that uses no iTerm2: run it with plain `python3`. It drives the
+uses no iTerm2: run it with plain `python3`. It drives the
 installed Claude Code (`claude -p`) under a scratch `CLAUDE_CONFIG_DIR` and
 never writes the real `settings.json`. `--bad-key` adds a check of about four
 minutes, and `--real-key` one Haiku turn on the first stored account's key,
-about $0.005. Pytest collects none of these scripts.
+about $0.005. `tests/live/codex_task_tools_check.py` runs with plain
+`python3` too: one `codex exec` turn on the logged-in Codex account, under a
+minute, against this checkout's `codex-task-tools.py`. It checks that the
+model sees the tools, that their annotations spare the call an approval and
+that `_meta.threadId` is the session id; it passes the server with `-c`
+overrides and checks that `~/.codex/config.toml` is unchanged. Run it again
+against each new Codex. Pytest collects none of these scripts.
 
 ## Measuring what the machine executes
 

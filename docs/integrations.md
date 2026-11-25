@@ -16,7 +16,7 @@ version.
 | `~/.local/bin/agents-sidebar` | A link to the checkout's `agents-sidebar` command. The install creates the directory, says so when your `PATH` lacks it, and leaves a file of that name alone unless that file is a link |
 | `~/.local/share/agents-sidebar/Agents.app` | The app that posts the macOS notices. It needs `swiftc`; without it the install warns and builds nothing. macOS asks once to allow its notifications |
 | `~/.claude/settings.json` | The statusline bridge, below |
-| `~/.codex/hooks.json` and `~/.codex/config.toml` | The Codex hooks, below |
+| `~/.codex/hooks.json` and `~/.codex/config.toml` | The Codex hooks and the task tools' MCP server, below |
 | `~/.omp/agent/extensions/agents-sidebar.ts` | The omp extension, below. A profile or a moved agent directory puts it elsewhere |
 | `~/.claude/agents-sidebar-links` | A folder only you can open, with one folder per session for linked cards, below |
 
@@ -131,6 +131,20 @@ so add the directory by hand then.
 `--codex` installs even when Codex is missing, and creates `~/.codex` for it;
 `--no-codex` skips both files.
 
+The install also registers the task line's tools for Codex: it runs
+`codex mcp add agents-sidebar -- python3 ~/.claude/skills/agents-sidebar/hooks-handlers/codex-task-tools.py`
+with `CODEX_HOME` set to `~/.codex`. That command writes the
+`[mcp_servers.agents-sidebar]` table and leaves the rest of `config.toml`
+untouched; a re-run replaces the entry. Codex starts the server beside each session,
+and the model reports through `mcp__agents_sidebar__task_begin` and
+`mcp__agents_sidebar__task_report`, which write the note through `task.py`'s
+rules and lock. The tools declare that they write only their own note, so
+Codex runs them without asking for approval, and a report is never a command
+chained to another. When the config names the server, the prompt hook names
+the tools and keeps the `task.py` commands as one line for a session started
+before the install. Without the `codex` binary on your `PATH`, the install
+warns and leaves the config without the server, and sessions get the commands.
+
 Before its first prompt, a Codex session has published nothing. The panel
 still shows a Codex card for a pane whose foreground job is `codex`.
 
@@ -173,7 +187,8 @@ bash codex-hooks.sh --remove ~/.codex/hooks.json \
 ```
 
 The `writable_roots` entry in `config.toml` stays either way; remove it by
-hand if you like.
+hand if you like. To take out the task tools' server alone, run
+`codex mcp remove agents-sidebar`.
 
 See `docs/codex-rows-design.md` for what a Codex card reads and from where.
 
@@ -340,6 +355,9 @@ Uninstall stops the daemon and removes:
   checkout's own for a stored account or the one the fallback's record says the
   daemon wrote; another tool's stays, and the `api key` line says so
 - our entries from `~/.codex/hooks.json`, through `codex-hooks.sh --remove`
+- the `agents-sidebar` MCP server from `~/.codex/config.toml`, through
+  `codex mcp remove`; without the `codex` binary, the `codex` line warns and
+  the table stays for you to remove
 - the omp extension, through `omp-extension.sh --remove`, while its third line
   is still the panel's marker
 - the panel's settings, state and linked-cards folder

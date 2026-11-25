@@ -90,6 +90,16 @@ def iterm_prefs():
     return plistlib.loads(path.read_bytes()) if path.exists() else {}
 
 
+def refused_delete_complaint(domain):
+    """What this macOS's `defaults delete` says of a domain whose folder it cannot write: two lines up to
+    macOS 26, nothing on macOS 27, told apart by the "Error: " macOS 27 puts before its other complaints."""
+    probe = subprocess.run(["/usr/bin/defaults", "read-type", domain + "-absent", "none"],
+                           capture_output=True, text=True)
+    if probe.stderr.startswith("Error: "):
+        return "nothing"
+    return f"Domain ({domain}) not found. Defaults have not been changed."
+
+
 @pytest.fixture
 def utc(monkeypatch):
     """Start stamps read as UTC for the test, and the process clock goes back

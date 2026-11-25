@@ -39,7 +39,11 @@ Show the foot's offers again brings dismissed offers back.
 If Codex CLI is on the machine, the install also adds the state hook to
 `~/.codex/hooks.json`, keeping whatever other tools put there, and names a
 writable directory in `~/.codex/config.toml`; Codex asks once to trust the
-hook. Without Codex, nothing of that happens.
+hook. It also registers the `agents-sidebar` MCP server with `codex mcp add`.
+A Codex session reports its task line through that server's two tools, so no
+command needs approving. If `codex` is not on your `PATH`, the install warns
+and Codex sessions report through `task.py` commands instead. Without
+Codex, nothing of that happens.
 
 If omp is on the machine (on your `PATH`, or `~/.omp/agent` exists), the install
 also writes `agents-sidebar.ts` into omp's extensions directory, so omp
@@ -49,7 +53,7 @@ of that name it did not write.
 ```sh
 ./install.sh --no-statusline   # leave settings.json alone; cards show no context figure
 ./install.sh --no-codex        # leave Codex's files alone
-./install.sh --codex           # insist, and fail if Codex is not there
+./install.sh --codex           # install even when Codex is missing, creating ~/.codex
 ./install.sh --no-omp          # leave omp's directory alone
 ./install.sh --omp             # insist: fail if omp is not there or its extension cannot be written
 ```
@@ -58,7 +62,7 @@ Through the one-liner, a flag goes after `bash -s --`. See
 [docs/integrations.md](docs/integrations.md) for the detail and how to undo
 any of it. Run `agents-sidebar uninstall`, or choose **Uninstall the panel…**
 at the bottom of Settings and confirm. Both remove the script, the hook,
-our entries from Codex's hooks, the omp extension,
+our entries from Codex's hooks, the `agents-sidebar` MCP server from Codex's config, the omp extension,
 the notifier, the `agents-sidebar` command, the panel's own `apiKeyHelper` in
 `~/.claude/settings.json` (another tool's stays, and uninstall says so), and the
 panel's settings, state and account store with the Keychain items

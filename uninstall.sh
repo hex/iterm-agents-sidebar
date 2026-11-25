@@ -172,7 +172,7 @@ def leave(text, code):
 def defaults(*words):
     done = subprocess.run(["/usr/bin/defaults", *words], capture_output=True, text=True)
     text = " ".join(line.strip() for line in done.stderr.splitlines() if line.strip())
-    complaint = re.sub(r"^\S+ \S+ defaults\[[\d:]+\]\s*", "", text) or "nothing"
+    complaint = re.sub(r"^(\S+ \S+ defaults\[[\d:]+\]\s*|Error:\s*)", "", text) or "nothing"
     return done.returncode, done.stdout[:-1] if done.stdout.endswith("\n") else done.stdout, complaint
 try:
     record = json.load(open(path))
@@ -219,15 +219,29 @@ else
 fi
 
 codex_hooks="$HOME/.codex/hooks.json"
+codex_config="$HOME/.codex/config.toml"
+codex_found=0
 if [ -f "$codex_hooks" ]; then
+  codex_found=1
   bash "$repo/codex-hooks.sh" --remove "$codex_hooks" "$plugin_dir/hooks-handlers/emit-state.py"
   ok codex "our entries out of $(tilde "$codex_hooks")"
-  if grep -q "agents-sidebar-tasks" "$HOME/.codex/config.toml" 2>/dev/null; then
+  if grep -q "agents-sidebar-tasks" "$codex_config" 2>/dev/null; then
     next+=("Codex's config.toml still lists ~/.claude/agents-sidebar-tasks under writable_roots; harmless, remove it by hand if you like.")
   fi
-else
-  skip codex "nothing registered"
 fi
+# The task tools' server, while config.toml names it (bare, as install.sh
+# writes it, or quoted), taken out through Codex's own CLI.
+if grep -Eq '^[[:space:]]*\[[[:space:]]*mcp_servers[[:space:]]*\.[[:space:]]*("agents-sidebar"|agents-sidebar)[[:space:]]*\]' "$codex_config" 2>/dev/null; then
+  codex_found=1
+  if ! command -v codex >/dev/null 2>&1; then
+    warn codex "task tools still in $(tilde "$codex_config"): codex is not on PATH; remove [mcp_servers.agents-sidebar] by hand"
+  elif removed=$(CODEX_HOME="$HOME/.codex" codex mcp remove agents-sidebar 2>&1); then
+    ok codex "task tools out of $(tilde "$codex_config")"
+  else
+    warn codex "task tools still in $(tilde "$codex_config"): $(printf '%s' "$removed" | tr '\n' ' ')"
+  fi
+fi
+[ "$codex_found" = 1 ] || skip codex "nothing registered"
 
 # Only a link to this checkout's command: another checkout's, or a file of
 # the same name, is not ours to take.

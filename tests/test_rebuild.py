@@ -649,6 +649,38 @@ def test_a_codex_whose_hooks_find_no_terminal_is_read_from_its_filed_state(monke
     assert row["rollout"] == "/Users/x/.codex/sessions/rollout-codex-new.jsonl"
 
 
+def test_a_codex_that_moved_into_another_folder_is_still_its_panes(monkeypatch, tmp_path):
+    """Seen 2026-11-24: a Codex sent to work in a worktree filed that folder from then on, and its pane, still
+    in the folder Codex started in, sat on a bare card through a working turn. Its rollout opens with where
+    it started."""
+    states = tmp_path / "states"
+    states.mkdir()
+    rollout = tmp_path / "rollout-codex-moved.jsonl"
+    rollout.write_text(json.dumps({"type": "session_meta", "payload": {"id": "codex-moved", "cwd": "/Users/x/atlas"}})
+                       + "\n" + json.dumps({"type": "turn_context", "payload": {"cwd": "/Users/x/atlas/worktrees/fix"}})
+                       + "\n")
+    (states / "codex-moved.published").write_text(json.dumps(
+        {"state": "working", "pid": None, "session": "codex-moved", "ts": codex_started() + 20,
+         "cwd": "/Users/x/atlas/worktrees/fix", "agents": 0, "subagents": [], "model": "gpt-6-astra",
+         "transcript_path": str(rollout)}))
+    [row] = asyncio.run(codex_pane(monkeypatch, states).read_sessions())
+    assert (row["agent_state"], row["conversation"]) == ("working", "codex-moved")
+
+
+def test_a_codex_that_started_in_another_folder_and_moved_here_is_not_this_panes(monkeypatch, tmp_path):
+    states = tmp_path / "states"
+    states.mkdir()
+    rollout = tmp_path / "rollout-codex-visitor.jsonl"
+    rollout.write_text(json.dumps({"type": "session_meta", "payload": {"id": "codex-visitor", "cwd": "/Users/x/beacon"}})
+                       + "\n")
+    (states / "codex-visitor.published").write_text(json.dumps(
+        {"state": "working", "pid": None, "session": "codex-visitor", "ts": codex_started() + 20,
+         "cwd": "/Users/x/atlas", "agents": 0, "subagents": [], "model": "gpt-6-astra",
+         "transcript_path": str(rollout)}))
+    [row] = asyncio.run(codex_pane(monkeypatch, states).read_sessions())
+    assert (row["agent_state"], row["conversation"]) == (None, None)
+
+
 def test_two_filed_codex_sessions_in_one_directory_pair_with_neither(monkeypatch, tmp_path):
     filed(tmp_path, "codex-a", "/Users/x/atlas", ts=codex_started() + 20)
     filed(tmp_path, "codex-b", "/Users/x/atlas", ts=codex_started() + 27)

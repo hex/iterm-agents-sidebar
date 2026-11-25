@@ -36,8 +36,14 @@ Two writers, one note. A Claude session reports through two tools its
 link mod registers, `task_begin {title}` and `task_report {activity,
 percent}`, with `percent` an integer or null for unknown; the mod writes the
 note in its own process, staged then renamed, with calls in one message
-serialised. A Codex session, which has no mod engine, runs
-`plugin/hooks-handlers/task.py`:
+serialised. A Codex session, which has no mod engine, calls the same two
+tools on `plugin/hooks-handlers/codex-task-tools.py`, a stdio MCP server the
+install registers in Codex's config as `agents-sidebar`. Codex names them
+`mcp__agents_sidebar__task_begin` and `mcp__agents_sidebar__task_report` and
+sends the session as `_meta.threadId` with each call; the server writes the
+note through `task.py`'s `update_note`, so the rules, the refusals and the
+lock are the script's. A Codex session started before the install, or one
+whose config lacks the server, runs `plugin/hooks-handlers/task.py`:
 
 ```
 task.py --session <id> begin --title "Fix the login bug"
@@ -48,10 +54,12 @@ task.py --session <id> report --activity "All checks pass" --percent 100
 
 `begin` replaces any task, done or not. `report` needs a task. Every write
 is atomic (temp file then rename). A refusal is one line: a tool result that
-starts `Not recorded:`, or stderr with exit 1 from the script; the
+starts `Not recorded:`, a Codex tool result with `isError` and the script's
+message, or stderr with exit 1 from the script; the
 instructions tell the model never to retry in a loop. The rules live once in
 `plugin/hooks/task-cases.ts`, a case list both the script's tests and the
-mod's kit tests run, so the two cannot drift without a failing test.
+mod's kit tests run, and the Codex server's tests too, so they cannot drift
+without a failing test.
 SessionEnd deletes the note (emit-state already clears its own state there).
 The mod stamps `task-tools.json` beside `ready` in the session's links
 folder, each tick and at every turn's start, naming the tools or the reason
@@ -68,8 +76,11 @@ of the current `{}`, when there is something to say.
 
 - UserPromptSubmit: the instructions (below), the current note as JSON or
   `none`, and the calls to report through: the two tools, with the ToolSearch
-  line that loads their schemas, when the mod's marker names them; else the
-  exact commands with the session id and the script path filled in. Always.
+  line that loads their schemas, when the mod's marker names them; for Codex,
+  the server's two tools when `$CODEX_HOME/config.toml` (else
+  `~/.codex/config.toml`) has the `[mcp_servers.agents-sidebar]` table, with
+  the commands as one fallback line; else the exact commands with the session
+  id and the script path filled in. Always.
 - PostToolUse: one line, "Progress check-in is due if this is a natural
   boundary. Reassess; do not invent progress." plus the command, only when
   the note's `ts` is over 60 s old and the task is not done, or there is no
@@ -77,7 +88,7 @@ of the current `{}`, when there is something to say.
   (`reminded`); with no note, the emit-state state document keeps it.
 - Never when the payload carries `agent_id` or its transcript path contains
   `/subagents/` (a subagent), never when `tool_input` mentions `task.py` or
-  `tool_name` is one of the marker's tools (the report itself), never on
+  `tool_name` is one of the marker's or the Codex server's tools (the report itself), never on
   other events.
 
 Instructions text (kept in `plugin/hooks-handlers/task-instructions.md`,

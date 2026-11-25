@@ -354,6 +354,34 @@ def read_session(rollout_path):
         return session_from_lines([])
 
 
+#: Each rollout's starting folder, once read: a session starts in one place.
+_started_in = {}
+
+
+def started_in(rollout_path):
+    """The folder a Codex session started in, from the session_meta line its rollout opens with, or None
+    when the rollout cannot be read or opens with anything else. The folder a session works in can move
+    afterwards, into a worktree for one, while its pane stays here."""
+    if rollout_path in _started_in:
+        return _started_in[rollout_path]
+    try:
+        # Opened without blocking and checked once open, as _tail_lines does: the path comes from a filed state.
+        with open(os.open(rollout_path, os.O_RDONLY | os.O_NONBLOCK), "rb") as f:
+            if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
+                return None
+            opening = json.loads(f.readline())
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(opening, dict) or opening.get("type") != "session_meta":
+        return None
+    payload = opening.get("payload")
+    folder = payload.get("cwd") if isinstance(payload, dict) else None
+    if not isinstance(folder, str):
+        return None
+    _started_in[rollout_path] = folder
+    return folder
+
+
 def thread_name(session_id, db_path=None):
     """The title Codex gave a conversation, as its status line shows it, or None.
 

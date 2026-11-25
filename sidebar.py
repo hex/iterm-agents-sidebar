@@ -2433,6 +2433,11 @@ def filed_codex_state(cwd, since, directory=None, jobs=frozenset()):
     write to and file the state instead. Nothing Codex records ties a session
     to a terminal; the directory and the start time are what is left. Only a
     single filing newer than the pane's Codex counts: two would be a guess.
+
+    The directory is the one the session started in, as its rollout says: a
+    Codex sent into a worktree files that folder from then on, while its pane
+    stays where Codex started. A rollout that cannot be read leaves the filed
+    folder to speak.
     """
     if not cwd or since is None:
         return None
@@ -2449,7 +2454,8 @@ def filed_codex_state(cwd, since, directory=None, jobs=frozenset()):
                 doc = json.load(fh)
         except (OSError, ValueError):
             continue
-        if (isinstance(doc, dict) and "transcript_path" in doc and doc.get("cwd") == cwd
+        if (isinstance(doc, dict) and "transcript_path" in doc
+                and (codex.started_in(doc["transcript_path"]) or doc.get("cwd")) == cwd
                 and isinstance(doc.get("ts"), (int, float)) and doc["ts"] >= since
                 and doc.get("session") not in jobs):
             found.append(doc)

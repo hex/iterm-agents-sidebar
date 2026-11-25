@@ -7,17 +7,20 @@ entries must survive; the account store's Keychain items must go; the
 checkout under ~/.local/share must not, since the script may run from it;
 a second run must be quiet, not an error.
 """
+import hashlib
 import json
 import os
 import plistlib
+import shutil
 import subprocess
+import sys
 import uuid
 from pathlib import Path
 
 import pytest
 
 import accounts
-from conftest import LOGIN_KEYCHAIN, iterm_prefs
+from conftest import LOGIN_KEYCHAIN, iterm_prefs, refused_delete_complaint
 
 REPO = Path(__file__).resolve().parent.parent
 SERVICE = "agents-sidebar-accounts"
@@ -26,7 +29,8 @@ SERVICE = "agents-sidebar-accounts"
 def run(script, home, *args, **extra_env):
     # These name omp's agent directory outside HOME; set in the shell running
     # the tests, the install would write into the real one.
-    omp_dirs = {"OMP_PROFILE", "PI_PROFILE", "PI_CONFIG_DIR", "PI_CODING_AGENT_DIR"}
+    # CODEX_HOME moves Codex's config the same way, and `codex mcp` would write the real one.
+    outside_home = {"OMP_PROFILE", "PI_PROFILE", "PI_CONFIG_DIR", "PI_CODING_AGENT_DIR", "CODEX_HOME"}
     commands = home.parent / "commands"
     commands.mkdir(exist_ok=True)
     for name in ("osascript", "pgrep", "ps", "kill", "swiftc"):
@@ -50,7 +54,7 @@ case "${0##*/}" in
 esac
 ''')
         command.chmod(0o755)
-    env = {**{k: v for k, v in os.environ.items() if k not in omp_dirs},
+    env = {**{k: v for k, v in os.environ.items() if k not in outside_home},
            "HOME": str(home), "PATH": f"{commands}:/usr/bin:/bin:/usr/sbin:/sbin",
            "TEST_COMMAND_LOG": str(home.parent / "commands.log"), **extra_env}
     return subprocess.run(["bash", "-c", 'enable -n kill; script=$1; shift; source "$script" "$@"',
@@ -373,8 +377,8 @@ def test_uninstall_leaves_a_line_the_panel_never_held(tmp_path, record, said):
 
 
 @pytest.mark.parametrize("kept, verb, complaint, after", [
-    (None, "delete", "Domain ({domain}) not found. Defaults have not been changed.", {}),
-    ({"type": "float", "value": "0.4"}, "write", "Could not write domain {domain}; exiting",
+    (None, "delete", refused_delete_complaint, {}),
+    ({"type": "float", "value": "0.4"}, "write", "Could not write domain {domain}; exiting".format,
      {UNDERLINE: 0.4000000059604645}),
 ], ids=["delete", "write"])
 def test_an_underline_that_cannot_be_put_back_keeps_its_record_for_another_uninstall(tmp_path, kept, verb, complaint,
@@ -393,7 +397,7 @@ def test_an_underline_that_cannot_be_put_back_keeps_its_record_for_another_unins
     result = run("uninstall.sh", home, AGENTS_SIDEBAR_ITERM_PREFS=domain)
     assert (result.returncode, result.stderr) == (
         0, "  ! underline   still hidden, and ~/.claude/agents-sidebar-status/tab-underline.json kept, so running "
-           f"uninstall again tries again; defaults {verb} said {complaint.format(domain=domain)}\n")
+           f"uninstall again tries again; defaults {verb} said {complaint(domain=domain)}\n")
     assert [path.name for path in status.iterdir()] == ["tab-underline.json"]
     assert json.loads((status / "tab-underline.json").read_text()) == {"kept": kept}
     locked.chmod(0o755)
@@ -538,3 +542,71 @@ def test_the_fallback_record_goes_with_the_status_folder(tmp_path, unlocked_keyc
     assert run("uninstall.sh", home).returncode == 0
     assert not (status / "api-fallback.json").exists()
     assert not (status / "api-fallback-orphaned").exists()
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+
+
+def test_install_registers_the_codex_task_tools_and_uninstall_takes_them_out(tmp_path):
+    """Through the real codex CLI under the spare HOME: the server's entry names the installed copy, a second
+    install leaves one entry, the rest of config.toml stays, and this machine's own config is never touched."""
+    codex = shutil.which("codex")
+    if codex is None:
+        pytest.skip("codex is not on this machine's PATH")
+    real = Path.home() / ".codex" / "config.toml"
+    real_before = digest(real)
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    (home / ".codex").mkdir()
+    config = home / ".codex" / "config.toml"
+    config.write_text('# kept\nmodel = "gpt-x"\n')
+    # The codex launcher is a node script; both live on nvm's bin, or wherever this machine has them.
+    tools_path = {"PATH": ":".join([str(tmp_path / "commands"), str(Path(codex).parent),
+                                    str(Path(shutil.which("node") or codex).parent), "/usr/bin:/bin:/usr/sbin:/sbin"])}
+    codex_home = {**os.environ, "HOME": str(home), "CODEX_HOME": str(home / ".codex"), **tools_path}
+    installed = home / ".claude" / "skills" / "agents-sidebar" / "hooks-handlers" / "codex-task-tools.py"
+
+    for _ in range(2):
+        result = run("install.sh", home, "--codex", "--no-statusline", "--no-omp", **tools_path)
+        assert result.returncode == 0, result.stderr
+        assert "  ✓ codex       task tools in ~/.codex/config.toml as the agents-sidebar MCP server\n" in result.stdout
+        # The second run's sandbox edit reads the file codex mcp add rewrote.
+        assert "sandbox not opened" not in result.stderr
+    entry = subprocess.run([codex, "mcp", "get", "agents-sidebar", "--json"], env=codex_home,
+                           capture_output=True, text=True, timeout=30)
+    assert entry.returncode == 0, entry.stderr
+    assert json.loads(entry.stdout)["transport"] == {
+        "type": "stdio", "command": "python3", "args": [str(installed)], "env": None, "env_vars": [], "cwd": None}
+    text = config.read_text()
+    assert text.startswith('# kept\nmodel = "gpt-x"\n') and text.count("[mcp_servers.agents-sidebar]") == 1
+
+    # The entry starts the installed server, which writes the note where the panel reads it.
+    begin = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+             "params": {"_meta": {"threadId": "test-session"}, "name": "task_begin", "arguments": {"title": "Fix"}}}
+    served = subprocess.run([sys.executable, str(installed)], input=json.dumps(begin) + "\n", env=codex_home,
+                            capture_output=True, text=True, timeout=20)
+    assert (served.returncode, served.stderr, json.loads(served.stdout)["result"]["isError"]) == (0, "", False)
+    assert json.loads((home / ".claude" / "agents-sidebar-tasks" / "test-session.json").read_text())["title"] == "Fix"
+
+    result = run("uninstall.sh", home, **tools_path)
+    assert result.returncode == 0, result.stderr
+    assert "  ✓ codex       task tools out of ~/.codex/config.toml\n" in result.stdout
+    gone = subprocess.run([codex, "mcp", "get", "agents-sidebar", "--json"], env=codex_home,
+                          capture_output=True, text=True, timeout=30)
+    assert (gone.returncode, gone.stderr.strip()) == (1, "Error: No MCP server named 'agents-sidebar' found.")
+    assert config.read_text().startswith('# kept\nmodel = "gpt-x"\n')
+    again = run("uninstall.sh", home, **tools_path)
+    assert (again.returncode, again.stderr) == (0, "")
+    assert digest(real) == real_before
+
+
+def test_an_install_without_the_codex_binary_says_codex_keeps_the_commands(tmp_path):
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    (home / ".codex").mkdir()
+    result = run("install.sh", home, "--no-statusline", "--no-omp")
+    assert result.returncode == 0
+    assert ("  ! codex       codex is not on PATH, so its task tools are not registered; "
+            "Codex sessions report through task.py commands\n") in result.stderr
+    assert not (home / ".codex" / "config.toml").read_text().count("mcp_servers")

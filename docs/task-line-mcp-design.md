@@ -10,6 +10,13 @@ a tool argument. A user-level entry also makes every Claude session log a failed
 connection when iTerm2 is not running. We fixed the race below with a lock
 instead: `task.py` and `clear_note` hold `<session>.lock` around the note.
 
+Codex sessions now report through a stdio MCP server,
+`plugin/hooks-handlers/codex-task-tools.py`, for a reason this proposal did not
+weigh: approvals, not speed. A report as a command waited on an approval or
+rode along with another command; an annotated MCP tool needs neither. Codex
+passes the session as `_meta.threadId`, so no tool argument names it. See
+[task-line-design.md](task-line-design.md).
+
 ## What it costs today
 
 Every report is `python3 plugin/hooks-handlers/task.py --session <id> report
