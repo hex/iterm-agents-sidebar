@@ -103,6 +103,23 @@ def test_post_settings_persists_and_returns_the_result(tmp_path):
     assert load_settings(store)["order"] == "attention"
 
 
+def test_switching_antigravitys_quota_resets_its_asks_and_nothing_else_does(tmp_path):
+    """A signed-out agy pauses the asks until reload, or the setting going off and on: the
+    switch itself resets them, so it works however quickly the two clicks come."""
+    from sidebar import Sidebar
+    page = tmp_path / "page.html"
+    page.write_text("x")
+    resets = []
+    server = Sidebar(token="t", page_path=page, snapshot_fn=lambda: {"groups": []},
+                     action_fn=lambda *a: None, settings_path=tmp_path / "settings.json",
+                     antigravity_reset_fn=lambda: resets.append(1))
+    for change, expected in (({"antigravity_quota": True}, 1), ({"antigravity_quota": True}, 1),
+                             ({"order": "attention"}, 1), ({"antigravity_quota": False}, 2),
+                             ({"antigravity_quota": True}, 3)):
+        assert server.handle("POST", "/settings?token=t", json.dumps(change).encode())[0] == 200
+        assert len(resets) == expected, change
+
+
 def test_settings_need_the_token_like_everything_else(tmp_path):
     server, _ = _server(tmp_path)
     assert server.handle("GET", "/settings?token=wrong", b"")[0] == 403
@@ -219,6 +236,14 @@ def test_codex_hears_the_memory_index_only_once_the_switch_the_panel_saved_is_on
     assert (load_settings(store)["codex_memory_note"], emit_state.memory_switch_on(str(tmp_path))) == (False, False)
     save_settings({"codex_memory_note": True}, store)
     assert emit_state.memory_switch_on(str(tmp_path)) is True
+
+
+def test_antigravitys_quota_is_off_until_asked_for(tmp_path):
+    """agy asks Google on its own login, so a panel that never turned the setting on starts no agy."""
+    assert DEFAULT_SETTINGS["antigravity_quota"] is False
+    store = tmp_path / "s.json"
+    save_settings({"antigravity_quota": True}, store)
+    assert load_settings(store)["antigravity_quota"] is True
 
 
 # -------------------------------------------------------------------- version

@@ -113,6 +113,8 @@ def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, acc
     (checkout / "marker").write_text("")
     endpoint = home / ".local" / "share" / "agents-sidebar" / "endpoint.json"
     endpoint.write_text('{"port": 50123, "token": "t", "pid": 1}')
+    agy_runs = home / ".local" / "share" / "agents-sidebar" / "agy"
+    (agy_runs / "run-left").mkdir(parents=True)
 
     extensions = home / ".omp" / "agent" / "extensions"
     assert sorted(p.name for p in extensions.iterdir()) == ["agents-sidebar.ts", "mine.ts"]
@@ -124,6 +126,7 @@ def test_uninstall_reverses_the_install_and_keeps_what_is_not_ours(tmp_path, acc
 
     assert not os.path.lexists(home / ".local" / "bin" / "agents-sidebar")
     assert not endpoint.exists()
+    assert not agy_runs.exists()
     assert sorted(p.name for p in extensions.iterdir()) == ["mine.ts"]
 
     assert not (home / "Library/Application Support/iTerm2/Scripts/AutoLaunch/agents_sidebar.py").exists()

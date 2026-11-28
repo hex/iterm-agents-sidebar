@@ -85,6 +85,9 @@ def _epoch(stamp):
     """POSIX seconds for an ISO 8601 reset time, or None when it cannot be read."""
     if not isinstance(stamp, str):
         return None
+    # Go prints from one to nine digits after the second; Python 3.10's
+    # fromisoformat reads only 3 or 6. Only the time part has a ".".
+    stamp = re.sub(r"\.(\d+)", lambda m: "." + (m.group(1) + "000000")[:6], stamp, count=1)
     try:
         return int(datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp())
     except ValueError:

@@ -47,6 +47,16 @@ def codex_config_of_the_test(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(codex, "MODELS_CACHE", str(folder / "models_cache.json"))
 
 
+@pytest.fixture(autouse=True)
+def no_agy_for_the_test(monkeypatch, tmp_path):
+    """A daemon built in a test finds no agy, so a reload or a quota step never starts this
+    machine's own Antigravity CLI, which would ask Google on its login. A run a test stages
+    makes its folder in the test's own, never under this machine's home."""
+    import agy_quota
+    monkeypatch.setattr(agy_quota, "find_agy", lambda *paths: None)
+    monkeypatch.setattr(agy_quota, "AGY_FOLDER", str(tmp_path / "agents-sidebar-agy"))
+
+
 SIDEBAR_PY = str(Path(__file__).resolve().parent.parent / "sidebar.py")
 
 
